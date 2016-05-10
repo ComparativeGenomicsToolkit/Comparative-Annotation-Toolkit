@@ -11,6 +11,7 @@ import socket
 import shutil
 import gzip
 import itertools
+import tempfile
 
 
 class TemporaryFilePath(object):
@@ -43,6 +44,15 @@ class TemporaryDirectoryPath(object):
         shutil.rmtree(self.path)
 
 
+def dir_is_writeable(d):
+    """
+    Is directory d writeable?
+    :param d: directory
+    :return: boolean
+    """
+    return os.access(d, os.W_OK | os.X_OK)
+
+
 def ensure_dir(d):
     """
     Ensure that a directory exists, creating it (and parents) if needed.
@@ -56,24 +66,18 @@ def ensure_dir(d):
         elif len(d) == 0:
             pass
         else:
-            raise
+            raise RuntimeError('Unable to create directory {}'.format(d))
+    if not dir_is_writeable(d):
+        raise RuntimeError('{} is not writeable.'.format(d))
 
 
 def ensure_file_dir(file_path):
     """
-    Ensure that the parent directory of a file path exists, creating it as needed.
+    Ensure that the parent directory of a file path exists, creating it as needed, and making sure it is writeable.
     :param file_path: Path of file to ensure a parent directory of.
     """
     d = os.path.dirname(file_path)
-    try:
-        os.makedirs(d)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(d):
-            pass
-        elif len(d) == 0:
-            pass
-        else:
-            raise
+    ensure_dir(d)
 
 
 def opengz(file, mode="r"):
@@ -135,13 +139,7 @@ def get_tmp_file(prefix=None, suffix="tmp", tmp_dir=None):
     :return: A file path.
     """
     if tmp_dir is None:
-        tmp_dir = os.getenv("TMPDIR")
-    if tmp_dir is None:
-        tmp_dir = "/scratch/tmp"
-        if not os.path.exists(tmp_dir):
-            tmp_dir = "/var/tmp"
-    if not os.path.exists(tmp_dir) or not os.access(tmp_dir, os.W_OK | os.X_OK):
-        raise RuntimeError('Unable to locate a valid place to put temporary files.')
+        tmp_dir = tempfile.gettempdir()
     if prefix is None:
         base_path = os.path.join(tmp_dir, '.'.join([socket.gethostname(), str(os.getpid())]))
     else:
@@ -158,6 +156,7 @@ def atomic_install(tmp_path, final_path):
     :param tmp_path: Path of parent (temporary) file.
     :param final_path: Destination path.
     """
+    ensure_file_dir(final_path)
     try:
         os.rename(tmp_path, final_path)
     except OSError:
@@ -165,3 +164,13 @@ def atomic_install(tmp_path, final_path):
         shutil.copy(tmp_path, tmp)
         os.rename(tmp, final_path)
         os.remove(tmp_path)
+
+
+def print_row(file_handle, *items):
+    """
+    Convenience function that writes a delimited line to file_handle
+    :param file_handle: A open file_handle
+    :param items: One or more things to write. Must be convertible to strings.
+    :param sep: Separator to use
+    """
+    file_handle.write('\t'.join(map(str, items)) + '\n')

@@ -63,10 +63,6 @@ class Feature(object):
     the file are stored as None.
     """
 
-    __slots__ = ("seqname", "source", "type", "start", "end", "score",
-                 "strand", "frame", "attributes", "gff3Set", "lineNumber",
-                 "parents", "children")
-
     def __init__(self, seqname, source, type, start, end, score, strand,
                  frame, attributes, gff3Set, lineNumber=None):
         """

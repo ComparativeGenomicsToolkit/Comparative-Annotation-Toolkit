@@ -5,6 +5,7 @@ Original Author: Dent Earl
 Modified by Ian Fiddes
 """
 import re
+from collections import Counter
 from tools.mathOps import format_ratio
 from tools.fileOps import iter_lines
 
@@ -123,21 +124,27 @@ class PslRow(object):
                                    ','.join([str(b) for b in self.t_starts])]))
 
 
-def psl_iterator(psl_file):
+def psl_iterator(psl_file, make_unique=False):
     """
     Iterates over PSL file generating PslRow objects returning the name and the object itself
     """
+    counts = Counter()
     with open(psl_file) as inf:
         for tokens in iter_lines(inf):
             psl = PslRow(tokens)
+            if make_unique is True:
+                counts[psl.q_name] += 1
+                numbered_aln_id = '-'.join([psl.q_name, str(counts[psl.q_name])])
+                psl.q_name = numbered_aln_id
             yield psl.q_name, psl
 
 
-def get_alignment_dict(psl_file):
+def get_alignment_dict(psl_file, make_unique=False):
     """
     Convenience function for creating a dictionary of PslRow objects.
     """
-    return {aln_id: aln for aln_id, aln in psl_iterator(psl_file)}
+    if make_unique is False:
+        return {aln_id: aln for aln_id, aln in psl_iterator(psl_file, make_unique)}
 
 
 def remove_alignment_number(s, aln_re=re.compile("-[0-9]+$")):
