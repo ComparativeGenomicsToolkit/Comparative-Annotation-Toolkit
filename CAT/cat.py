@@ -11,10 +11,11 @@ import tools.fileOps
 import tools.procOps
 import tools.toilInterface
 import tools.hal
+import tools.transcripts
 import tools.psl
 from tools.luigiAddons import multiple_inherits, multiple_requires
 from luigi.util import inherits, requires
-from src.abstractClasses import AbstractAtomicFileTask, AbstractAtomicManyFileTask
+from src.abstractClasses import AbstractAtomicFileTask
 from src.chaining import chaining
 
 
@@ -204,7 +205,7 @@ class ReferenceFiles(luigi.WrapperTask):
 
 
 @inherits(ReferenceFiles)
-class Gff3ToGenePred(AbstractAtomicManyFileTask):
+class Gff3ToGenePred(luigi.Task):
     """
     Generates a genePred from a gff3 file. Also produces an attributes table.
     """
@@ -219,19 +220,37 @@ class Gff3ToGenePred(AbstractAtomicManyFileTask):
         Convert attributes file from gff3ToGenePred to attrs table using pandas.
         :param attrs_in: luigi.LocalTarget pointing to the attributes file.
         """
-        df = pd.read_csv(attrs_in.path, sep='\t')
-        df.columns = ['TxId', 'Tag', 'Val']
+        def converter(s):
+            """munges input data that comes from ensembl and not gencode. These have gene:ENSMUSG as the main ID"""
+            return s.split(':')[-1]
+        colnames = ['TxId', 'Tag', 'Val']
+        conv_d = {x: converter for x in colnames}
+        df = pd.read_csv(attrs_in.path, sep='\t', names=colnames, converters=conv_d)
         df = df.pivot(index='TxId', columns='Tag', values='Val')
         with luigi.LocalTarget(self.annotation_attrs).open('w') as outf:
             df.to_csv(outf, sep='\t')
 
+    def munge_gp(self, gp):
+        """
+        Converts input genePreds resulting from gff3ToGenePRed that come from ensembl. Removes excess tag info.
+        """
+        fixed_gp = luigi.LocalTarget(is_tmp=True)
+        with fixed_gp.open('w') as outf:
+            for n, tx in tools.transcripts.gene_pred_iterator(gp.path):
+                name2 = tx.name2.split(':')[1]
+                name = tx.name.split(':')[1]
+                tx_rec = '\t'.join(map(str, tx.get_gene_pred(name=name, name2=name2)))
+                outf.write(tx_rec + '\n')
+        return fixed_gp
+
     def run(self):
-        attrs = self.get_tmp()
-        gp = self.get_tmp()
+        attrs = luigi.LocalTarget(is_tmp=True)
+        gp = luigi.LocalTarget(is_tmp=True)
         cmd = ['gff3ToGenePred', '-attrsOut={}'.format(attrs.path), '-honorStartStopCodons', self.annotation, gp.path]
         tools.procOps.run_proc(cmd)
         self.transform_attrs(attrs)
-        tools.fileOps.atomic_install(gp.path, self.annotation_gene_pred)
+        fixed_gp = self.munge_gp(gp)
+        tools.fileOps.atomic_install(fixed_gp.path, self.annotation_gene_pred)
 
 
 @requires(Gff3ToGenePred)
@@ -436,6 +455,6 @@ class EvalTransMap(luigi.WrapperTask):
 
 if __name__ == '__main__':
     luigi.build([Chaining(hal='1509.hal',
-                target_genomes=('C57BL_6NJ','A_J'), work_dir='test', ref_genome='C57B6J',
+                target_genomes=('C57BL_6NJ',), work_dir='test', ref_genome='C57B6J',
                 annotation='Mus_musculus.GRCm38.83.gff3')], logging_conf_file='logging.cfg')
 
