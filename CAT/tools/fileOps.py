@@ -166,11 +166,22 @@ def atomic_install(tmp_path, final_path):
         os.remove(tmp_path)
 
 
-def print_row(file_handle, *items):
+def print_row(file_handle, line, sep='\t'):
     """
     Convenience function that writes a delimited line to file_handle
     :param file_handle: A open file_handle
-    :param items: One or more things to write. Must be convertible to strings.
-    :param sep: Separator to use
+    :param line: One or more things to write. Must be convertible to strings.
+    :param sep: separator to use
     """
-    file_handle.write('\t'.join(map(str, items)) + '\n')
+    file_handle.write(sep.join(map(str, line)) + '\n')
+
+
+def print_rows(file_handle, item_iter, sep='\t'):
+    """
+    Convenience function that writes a iterable of lines to file_handle
+    :param file_handle: A open file_handle
+    :param items: One or more things to write. Must be convertible to strings.
+    :param sep: separator to use
+    """
+    for line in item_iter:
+        print_row(file_handle, line, sep)

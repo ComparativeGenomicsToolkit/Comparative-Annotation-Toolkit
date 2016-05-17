@@ -203,7 +203,7 @@ class ReferenceFiles(luigi.WrapperTask):
         args.update(GenomeFiles.get_args(self.work_dir, self.ref_genome))
         yield self.clone(FakePsl, **args)
         yield self.clone(FlatTranscriptFasta, **args)
-        yield self.cone(Gff3ToAttrs, **args)
+        yield self.clone(Gff3ToAttrs, **args)
 
 
 @inherits(ReferenceFiles)

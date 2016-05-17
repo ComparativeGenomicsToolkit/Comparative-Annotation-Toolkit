@@ -311,3 +311,38 @@ class Gff3Parser(object):
             fh.close()
         gff3Set.finish()
         return gff3Set
+
+
+def extract_attrs(gp):
+    """
+    Extracts attributes table from gff3.
+    The attributes we are about are GeneId, GeneName, GeneType, TranscriptId, TranscriptType
+    :param gp: input gp
+    :returns:
+    """
+    valid_gene_types = {u'rRNA_gene', u'snRNA_gene', u'pseudogene', u'lincRNA_gene', u'RNA', u'mt_gene',
+                        u'miRNA_gene', u'processed_transcript', u'snoRNA_gene', u'gene'}
+    valid_tx_types = {u'processed_pseudogene', u'pseudogenic_transcript', u'snRNA', u'NMD_transcript_variant',
+                      u'pseudogene', u'processed_transcript', u'lincRNA', u'transcript', u'snoRNA',
+                      u'nc_primary_transcript', u'miRNA', u'aberrant_processed_transcript', u'rRNA'}
+    results = collections.defaultdict(list)
+    parser = Gff3Parser(gp)
+    tree = parser.parse()
+    for gene in tree.roots:
+        if gene.type not in valid_gene_types:
+            continue
+        assert len(gene.attributes['gene_id']) == 1, len(gene.attributes['gene_id'])
+        gene_id = gene.attributes['gene_id'][0]
+        assert len(gene.attributes['biotype']) == 1, len(gene.attributes['biotype'])
+        gene_biotype = gene.attributes['biotype'][0]
+        assert len(gene.attributes['Name']) == 1, len(gene.attributes['Name'])
+        gene_name = gene.attributes['Name'][0]
+        for tx in gene.children:
+            if tx.type not in valid_tx_types:
+                continue
+            assert len(tx.attributes['transcript_id']) == 1, len(tx.attributes['transcript_id'])
+            tx_id = tx.attributes['transcript_id'][0]
+            assert len(tx.attributes['biotype']) == 1, len(tx.attributes['biotype'])
+            tx_biotype = tx.attributes['biotype'][0]
+            results[tx_id] = [gene_id, gene_name, gene_biotype, tx_id, tx_biotype]
+    return results
