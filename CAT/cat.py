@@ -6,7 +6,6 @@ import itertools
 import os
 import luigi
 import tempfile
-import pandas as pd
 import tools.fileOps
 import tools.procOps
 import tools.toilInterface
@@ -95,8 +94,11 @@ class GenomeFiles(luigi.WrapperTask):
         target_genomes = RunCat.resolve_target_genomes(self.hal, self.target_genomes)
         for genome in itertools.chain(target_genomes, [self.ref_genome]):
             args = self.get_args(self.work_dir, genome)
-            yield self.clone(GenomeFastaIndex, **args)
+            yield self.clone(GenomeFasta, **args)
+            yield self.clone(GenomeTwoBit, **args)
             yield self.clone(GenomeSizes, **args)
+            yield self.clone(GenomeFlatFasta, **args)
+            yield self.clone(GenomeFastaIndex, **args)
 
 
 @inherits(PrepareFiles)
@@ -201,9 +203,12 @@ class ReferenceFiles(luigi.WrapperTask):
     def requires(self):
         args = self.get_args(self.work_dir, self.annotation)
         args.update(GenomeFiles.get_args(self.work_dir, self.ref_genome))
-        yield self.clone(FakePsl, **args)
-        yield self.clone(FlatTranscriptFasta, **args)
+        yield self.clone(Gff3ToGenePred, **args)
         yield self.clone(Gff3ToAttrs, **args)
+        yield self.clone(TranscriptBed, **args)
+        yield self.clone(TranscriptFasta, **args)
+        yield self.clone(FlatTranscriptFasta, **args)
+        yield self.clone(FakePsl, **args)
 
 
 @inherits(ReferenceFiles)
@@ -217,6 +222,20 @@ class Gff3ToGenePred(luigi.Task):
 
     def output(self):
         return luigi.LocalTarget(self.annotation_gene_pred)
+
+    def munge_gp(self, gp):
+        """
+        Converts input genePreds resulting from gff3ToGenePRed that come from ensembl. Removes excess tag info.
+        :param gp: input gp
+        """
+        fixed_gp = luigi.LocalTarget(is_tmp=True)
+        with fixed_gp.open('w') as outf:
+            for n, tx in tools.transcripts.gene_pred_iterator(gp.path):
+                name2 = tx.name2.split(':')[1]
+                name = tx.name.split(':')[1]
+                tx_rec = '\t'.join(map(str, tx.get_gene_pred(name=name, name2=name2)))
+                outf.write(tx_rec + '\n')
+        return fixed_gp
 
     def run(self):
         tmp_gp = luigi.LocalTarget(is_tmp=True)
@@ -383,6 +402,7 @@ class TransMap(luigi.WrapperTask):
         target_genomes = RunCat.resolve_target_genomes(self.hal, self.target_genomes)
         for target_genome in target_genomes:
             args = self.get_args(self.work_dir, target_genome, self.ref_genome, self.annotation)
+            yield self.clone(TransMapPsl, tm_args=args, genome=target_genome)
             yield self.clone(TransMapGp, tm_args=args, genome=target_genome)
 
 
