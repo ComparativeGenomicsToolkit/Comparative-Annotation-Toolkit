@@ -1,7 +1,24 @@
 """
-Addons for Luigi for multiple inheritance and requirements.
+Addons for Luigi. Includes decorators multiple inheritance and requirements as well as abstract classes extending
+both the Task and Target paradigms.
 """
 import luigi
+import luigi.util
+import luigi.contrib.sqla
+import procOps
+
+
+class AbstractAtomicFileTask(luigi.Task):
+    """
+    Abstract Task for single files.
+    """
+    def run_cmd(self, cmd):
+        """
+        Run a external command that will produce the output file for this task to stdout. Capture this to the file.
+        """
+        # luigi localTargets guarantee atomicity if used as a handle
+        with self.output().open('w') as outf:
+            procOps.run_proc(cmd, stdout=outf)
 
 
 class multiple_inherits(object):

@@ -1,6 +1,5 @@
 """
-Implements a hashable and iterable namespace.
-Functions for validation using the ConfigObj library.
+Provides a simple interface between Toil and Luigi.
 """
 import os
 import tempfile

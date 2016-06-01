@@ -8,6 +8,7 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import pandas as pd
 import urllib
 import copy
 import re
@@ -325,7 +326,7 @@ def extract_attrs(gp):
     valid_tx_types = {u'processed_pseudogene', u'pseudogenic_transcript', u'snRNA', u'NMD_transcript_variant',
                       u'pseudogene', u'processed_transcript', u'lincRNA', u'transcript', u'snoRNA',
                       u'nc_primary_transcript', u'miRNA', u'aberrant_processed_transcript', u'rRNA'}
-    results = collections.defaultdict(list)
+    results = {}
     parser = Gff3Parser(gp)
     tree = parser.parse()
     for gene in tree.roots:
@@ -344,5 +345,8 @@ def extract_attrs(gp):
             tx_id = tx.attributes['transcript_id'][0]
             assert len(tx.attributes['biotype']) == 1, len(tx.attributes['biotype'])
             tx_biotype = tx.attributes['biotype'][0]
-            results[tx_id] = [gene_id, gene_name, gene_biotype, tx_id, tx_biotype]
-    return results
+            r = {'tx_biotype': tx_biotype, 'gene_id': gene_id, 'gene_name': gene_name, 'gene_biotype': gene_biotype}
+            results[tx_id] = r
+    df = pd.DataFrame.from_dict(results)
+    df = df.transpose()
+    return df

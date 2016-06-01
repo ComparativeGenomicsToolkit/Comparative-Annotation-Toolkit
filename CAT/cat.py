@@ -13,10 +13,10 @@ import tools.hal
 import tools.transcripts
 import tools.psl
 import tools.gff3
-from tools.luigiAddons import multiple_inherits, multiple_requires
+from tools.luigiAddons import multiple_inherits, multiple_requires, AbstractAtomicFileTask
 from luigi.util import inherits, requires
-from src.abstractClasses import AbstractAtomicFileTask
-from src.chaining import chaining
+from chaining import chaining
+#from tm_eval import EvalTransMapTask
 
 
 class UserException(Exception):
@@ -192,7 +192,7 @@ class ReferenceFiles(luigi.WrapperTask):
     @staticmethod
     def get_args(work_dir, annotation):
         base_dir = os.path.join(work_dir, 'reference')
-        args = {'annotation_gene_pred': os.path.join(base_dir, annotation + '.gp'),
+        args = {'annotation_gp': os.path.join(base_dir, annotation + '.gp'),
                  'annotation_attrs': os.path.join(base_dir, annotation + '.attrs.tsv'),
                  'transcript_fasta':  os.path.join(base_dir, annotation + '.fa'),
                  'transcript_flat_fasta': os.path.join(base_dir, annotation + '.fa.flat'),
@@ -212,37 +212,20 @@ class ReferenceFiles(luigi.WrapperTask):
 
 
 @inherits(ReferenceFiles)
-class Gff3ToGenePred(luigi.Task):
+class Gff3ToGenePred(AbstractAtomicFileTask):
     """
     Generates a genePred from a gff3 file. Also produces an attributes table.
     TODO: I really should just create the genePred from the gff3 parser yourself, instead of this hack.
     However, then I will spend a week writing my own converter and probably get it wrong.
     """
-    annotation_gene_pred = luigi.Parameter()
+    annotation_gp = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.annotation_gene_pred)
-
-    def munge_gp(self, gp):
-        """
-        Converts input genePreds resulting from gff3ToGenePRed that come from ensembl. Removes excess tag info.
-        :param gp: input gp
-        """
-        fixed_gp = luigi.LocalTarget(is_tmp=True)
-        with fixed_gp.open('w') as outf:
-            for n, tx in tools.transcripts.gene_pred_iterator(gp.path):
-                name2 = tx.name2.split(':')[1]
-                name = tx.name.split(':')[1]
-                tx_rec = '\t'.join(map(str, tx.get_gene_pred(name=name, name2=name2)))
-                outf.write(tx_rec + '\n')
-        return fixed_gp
+        return luigi.LocalTarget(self.annotation_gp)
 
     def run(self):
-        tmp_gp = luigi.LocalTarget(is_tmp=True)
-        cmd = ['gff3ToGenePred', '-honorStartStopCodons', self.annotation, tmp_gp.path]
-        tools.procOps.run_proc(cmd)
-        fixed_gp = self.munge_gp(tmp_gp)
-        tools.fileOps.atomic_install(fixed_gp.path, self.annotation_gene_pred)
+        cmd = ['gff3ToGenePred', '-useName', '-honorStartStopCodons', self.annotation, '/dev/stdout']
+        self.run_cmd(cmd)
 
 
 @inherits(ReferenceFiles)
@@ -250,7 +233,7 @@ class Gff3ToAttrs(luigi.Task):
     """
     Uses the gff3 parser to extract the attributes table.
     """
-    annotation_gene_pred = luigi.Parameter()
+    annotation_gp = luigi.Parameter()
     annotation_attrs = luigi.Parameter()
 
     def output(self):
@@ -259,7 +242,7 @@ class Gff3ToAttrs(luigi.Task):
     def run(self):
         results = tools.gff3.extract_attrs(self.annotation)
         with self.output().open('w') as outf:
-            tools.fileOps.print_rows(outf, results.itervalues())
+            results.to_csv(outf, sep='\t', index_label='tx_id')
 
 
 @requires(Gff3ToGenePred)
@@ -268,13 +251,13 @@ class TranscriptBed(AbstractAtomicFileTask):
     Produces a BED record from the input genePred annotation. Makes use of Kent tool genePredToBed
     """
     transcript_bed = luigi.Parameter()
-    annotation_gene_pred = luigi.Parameter()
+    annotation_gp = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.transcript_bed)
 
     def run(self):
-        cmd = ['genePredToBed', self.annotation_gene_pred, '/dev/stdout']
+        cmd = ['genePredToBed', self.annotation_gp, '/dev/stdout']
         self.run_cmd(cmd)
 
 
@@ -322,7 +305,7 @@ class FakePsl(AbstractAtomicFileTask):
 
     def run(self):
         cmd = ['genePredToFakePsl', '-chromSize={}'.format(self.sizes), 'noDB',
-               self.annotation_gene_pred, '/dev/stdout', '/dev/null']
+               self.annotation_gp, '/dev/stdout', '/dev/null']
         self.run_cmd(cmd)
 
 
@@ -389,7 +372,7 @@ class TransMap(luigi.WrapperTask):
         args = {'two_bit': tgt_genome_files['two_bit'],
                 'chain_file': chain_args['chain_file'],
                 'transcript_fasta': ref_files['transcript_fasta'], 'fake_psl': ref_files['fake_psl'],
-                'annotation_gene_pred': ref_files['annotation_gene_pred'],
+                'annotation_gp': ref_files['annotation_gp'],
                 'tm_psl': os.path.join(base_dir, genome + '.psl'), 'tm_gp': os.path.join(base_dir, genome + '.gp')}
         return args
 
@@ -448,7 +431,7 @@ class TransMapGp(AbstractAtomicFileTask):
 
     def run(self):
         cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=50', '-codingGapFillMax=50',
-               self.tm_args['annotation_gene_pred'], self.tm_args['tm_psl'], '/dev/stdout']
+               self.tm_args['annotation_gp'], self.tm_args['tm_psl'], '/dev/stdout']
         self.run_cmd(cmd)
 
 
@@ -461,6 +444,30 @@ class EvalTransMap(luigi.WrapperTask):
     def validate(self):
         # TODO: make sure that all input args exist
         pass
+
+    @staticmethod
+    def get_args(work_dir, genome, ref_genome, annotation):
+        tm_args = TransMap.get_args(work_dir, genome, ref_genome, annotation)
+        tgt_genome_files = GenomeFiles.get_args(work_dir, genome)
+        annotation_files = ReferenceFiles.get_args(work_dir, annotation)
+        base_dir = os.path.join(work_dir, 'tm_eval')
+        args = {'db': os.path.join(base_dir, 'evaluations.db'),
+                'tm_psl': tm_args['tm_psl'],
+                'tm_gp': tm_args['tm_gp'],
+                'annotation_gp': annotation_files['annotation_gp'],
+                'annotation_attrs': annotation_files['annotation_attrs'],
+                'genome_fasta': tgt_genome_files['fasta'],
+                'genome': genome,
+                'classify_table': genome + '_Classify',
+                'details_table': genome + '_Details'}
+        return args
+
+    def run(self):
+        self.validate()
+        target_genomes = RunCat.resolve_target_genomes(self.hal, self.target_genomes)
+        for target_genome in target_genomes:
+            args = self.get_args(self.work_dir, target_genome, self.ref_genome, self.annotation)
+            yield self.clone(EvalTransMapTask, args=args, genome=target_genome)
 
 
 if __name__ == '__main__':
