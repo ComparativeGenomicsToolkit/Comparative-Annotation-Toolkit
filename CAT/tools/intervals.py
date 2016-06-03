@@ -11,20 +11,15 @@ class ChromosomeInterval(object):
     Represents a continuous genomic interval.
     interval arithmetic adapted from http://code.activestate.com/recipes/576816-interval/
     """
-    __slots__ = ('chromosome', 'start', 'stop', 'strand', 'name')
+    __slots__ = ('chromosome', 'start', 'stop', 'strand', 'data')
 
-    def __init__(self, chromosome, start, stop, strand, name=None):
+    def __init__(self, chromosome, start, stop, strand, data=None):
         self.chromosome = str(chromosome)
         self.start = int(start)    # 0 based
         self.stop = int(stop)      # exclusive
         assert self.start <= self.stop
         self.strand = strand       # + or -
-        self.name = name
-
-    @property
-    def __dict__(self):
-        return {'chromosome': self.chromosome, 'start': self.start, 'stop': self.stop, 'strand': self.strand,
-                'name': self.name}
+        self.data = data
 
     def __len__(self):
         return abs(self.stop - self.start)
@@ -71,11 +66,11 @@ class ChromosomeInterval(object):
         return ChromosomeInterval(self.chromosome, self.start - other.start, self.stop - other.stop, self.strand)
 
     def __repr__(self):
-        if self.name is None:
+        if self.data is None:
             return "ChromosomeInterval('{}', {}, {}, '{}')".format(self.chromosome, self.start, self.stop, self.strand)
         else:
             return "ChromosomeInterval('{}', {}, {}, '{}', '{}')".format(self.chromosome, self.start, self.stop,
-                                                                         self.strand, self.name)
+                                                                         self.strand, self.data)
 
     @property
     def is_null(self):

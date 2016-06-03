@@ -13,10 +13,11 @@ import tools.hal
 import tools.transcripts
 import tools.psl
 import tools.gff3
+import tools.misc
 from tools.luigiAddons import multiple_inherits, multiple_requires, AbstractAtomicFileTask
 from luigi.util import inherits, requires
 from chaining import chaining
-#from tm_eval import EvalTransMapTask
+from augustus import augustus
 
 
 class UserException(Exception):
@@ -36,6 +37,8 @@ class RunCat(luigi.WrapperTask):
     augustus = luigi.BoolParameter(default=False)
     augustus_genomes = luigi.TupleParameter(default=None)
     augustus_hints_db = luigi.Parameter(default=None)
+    tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
+    tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
 
     @staticmethod
     def resolve_target_genomes(hal, target_genomes):
@@ -47,8 +50,8 @@ class RunCat(luigi.WrapperTask):
         yield self.clone(PrepareFiles)
         yield self.clone(Chaining)
         yield self.clone(TransMap)
-        #yield EvalTransMap()
-        #yield AugustusTMR()
+        if self.augustus is True:
+            yield self.clone(Augustus)
         #yield Align()
         #yield EvalTranscripts()
         #yield Consensus()
@@ -197,7 +200,7 @@ class ReferenceFiles(luigi.WrapperTask):
                  'transcript_fasta':  os.path.join(base_dir, annotation + '.fa'),
                  'transcript_flat_fasta': os.path.join(base_dir, annotation + '.fa.flat'),
                  'transcript_bed': os.path.join(base_dir, annotation + '.bed'),
-                 'fake_psl': os.path.join(base_dir, annotation + '.psl')}
+                 'ref_psl': os.path.join(base_dir, annotation + '.psl')}
         return args
 
     def requires(self):
@@ -214,9 +217,7 @@ class ReferenceFiles(luigi.WrapperTask):
 @inherits(ReferenceFiles)
 class Gff3ToGenePred(AbstractAtomicFileTask):
     """
-    Generates a genePred from a gff3 file. Also produces an attributes table.
-    TODO: I really should just create the genePred from the gff3 parser yourself, instead of this hack.
-    However, then I will spend a week writing my own converter and probably get it wrong.
+    Generates a genePred from a gff3 file.
     """
     annotation_gp = luigi.Parameter()
 
@@ -224,7 +225,8 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.annotation_gp)
 
     def run(self):
-        cmd = ['gff3ToGenePred', '-useName', '-honorStartStopCodons', self.annotation, '/dev/stdout']
+        cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
+               self.annotation, '/dev/stdout']
         self.run_cmd(cmd)
 
 
@@ -298,10 +300,10 @@ class FakePsl(AbstractAtomicFileTask):
     """
     Produces a fake PSL mapping transcripts to the genome, using the Kent tool genePredToFakePsl
     """
-    fake_psl = luigi.Parameter()
+    ref_psl = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.fake_psl)
+        return luigi.LocalTarget(self.ref_psl)
 
     def run(self):
         cmd = ['genePredToFakePsl', '-chromSize={}'.format(self.sizes), 'noDB',
@@ -353,8 +355,8 @@ class PairwiseChaining(tools.toilInterface.ToilTask):
         return self.clone(GenomeFiles)
 
     def run(self):
-        job_sub_path = os.path.join('chaining', self.genome)
-        toil_options = self.prepare_toil_options(job_sub_path)
+        job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
+        toil_options = self.prepare_toil_options(job_store)
         chaining(self.chain_args, self.hal, toil_options)
 
 
@@ -371,7 +373,7 @@ class TransMap(luigi.WrapperTask):
         chain_args = Chaining.get_args(work_dir, ref_genome, genome)
         args = {'two_bit': tgt_genome_files['two_bit'],
                 'chain_file': chain_args['chain_file'],
-                'transcript_fasta': ref_files['transcript_fasta'], 'fake_psl': ref_files['fake_psl'],
+                'transcript_fasta': ref_files['transcript_fasta'], 'ref_psl': ref_files['ref_psl'],
                 'annotation_gp': ref_files['annotation_gp'],
                 'tm_psl': os.path.join(base_dir, genome + '.psl'), 'tm_gp': os.path.join(base_dir, genome + '.gp')}
         return args
@@ -405,7 +407,7 @@ class TransMapPsl(luigi.Task):
 
     def run(self):
         tools.fileOps.ensure_file_dir(self.output().path)
-        psl_cmd = ['pslMap', '-chainMapFile', self.tm_args['fake_psl'],
+        psl_cmd = ['pslMap', '-chainMapFile', self.tm_args['ref_psl'],
                    self.tm_args['chain_file'], '/dev/stdout']
         post_chain_cmd = ['postTransMapChain', '/dev/stdin', '/dev/stdout']
         sort_cmd = ['sort', '-k', '14,14', '-k', '16,16n']
@@ -418,7 +420,7 @@ class TransMapPsl(luigi.Task):
             tools.procOps.run_proc(cmd_list, stdout=tmp_fh)
         with self.output().open('w') as outf:
             for q_name, psl_rec in tools.psl.psl_iterator(tmp_file.path, make_unique=True):
-                outf.write('\t'.join(map(str, psl_rec.psl_string())) + '\n')
+                outf.write(psl_rec.psl_string() + '\n')
 
 
 @requires(TransMapPsl)
@@ -430,16 +432,96 @@ class TransMapGp(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.tm_args['tm_gp'])
 
     def run(self):
-        cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=50', '-codingGapFillMax=50',
+        cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
                self.tm_args['annotation_gp'], self.tm_args['tm_psl'], '/dev/stdout']
         self.run_cmd(cmd)
 
 
 @inherits(RunCat)
-class EvalTransMap(luigi.WrapperTask):
+class Augustus(luigi.WrapperTask):
     """
-    WrapperTask for first evaluation step. This step evaluates transMap alignments for having problems such as
-    invalid splice sites, losing original introns, original start/stop, scaffold gaps
+    Runs AugustusTM(R) on the coding output from transMap.
+    """
+    @staticmethod
+    def get_args(work_dir, genome, ref_genome, annotation, augustus_hints_db, tm_cfg, tmr_cfg):
+        tm_args = TransMap.get_args(work_dir, genome, ref_genome, annotation)
+        tgt_genome_files = GenomeFiles.get_args(work_dir, genome)
+        annotation_files = ReferenceFiles.get_args(work_dir, annotation)
+        base_dir = os.path.join(work_dir, 'augustus')
+        if augustus_hints_db is not None:
+            augustus_gp = os.path.join(base_dir, genome + '.TM.gp')
+        else:
+            augustus_gp = os.path.join(base_dir, genome + '.TMR.gp')
+        args = {'ref_genome': ref_genome, 'genome': genome,
+                'genome_fasta': os.path.abspath(tgt_genome_files['fasta']),
+                'annotation_gp': os.path.abspath(annotation_files['annotation_gp']),
+                'ref_psl': os.path.abspath(tm_args['ref_psl']),
+                'annotation_attrs': os.path.abspath(annotation_files['annotation_attrs']),
+                'tm_gp': os.path.abspath(tm_args['tm_gp']),
+                'tm_psl': os.path.abspath(tm_args['tm_psl']),
+                'augustus_gp': os.path.abspath(augustus_gp),
+                'augustus_hints_db': os.path.abspath(augustus_hints_db) if augustus_hints_db is not None else None,
+                'tm_cfg': os.path.abspath(tm_cfg),
+                'tmr_cfg': os.path.abspath(tmr_cfg)}
+        return args
+
+    def validate(self):
+        # TODO: make sure that all input args exist
+        pass
+
+    def requires(self):
+        self.validate()
+        # we only run Augustus on transMap genomes
+        if self.augustus_genomes is None and self.target_genomes is not None:
+            target_genomes = RunCat.resolve_target_genomes(self.hal, self.target_genomes)
+        else:
+            target_genomes = RunCat.resolve_target_genomes(self.hal, self.augustus_genomes)
+        for target_genome in target_genomes:
+            args = self.get_args(self.work_dir, target_genome, self.ref_genome, self.annotation, self.augustus_hints_db,
+                                 self.tm_cfg, self.tmr_cfg)
+            yield self.clone(AugustusDriverTask, augustus_args=args, genome=target_genome)
+
+
+@inherits(Augustus)
+class AugustusDriverTask(tools.toilInterface.ToilTask):
+    """
+    Task for per-genome launching of a toil pipeline for running Augustus.
+    """
+    augustus_args = luigi.DictParameter()  # dict to pass directory to TMR toil module
+    genome = luigi.Parameter()
+    
+    def output(self):
+        return luigi.LocalTarget(self.augustus_args['augustus_gp'])
+    
+    def requires(self):
+        return self.clone(TransMap)
+
+    def extract_coding_genes(self):
+        """extracts only coding genes from the input genePred, returning a path to a tmp file"""
+        coding_gp = tools.fileOps.get_tmp_file()
+        attrs = tools.misc.read_attributes_tsv(self.augustus_args['annotation_attrs'])
+        names = set(attrs[attrs.tx_biotype == 'protein_coding'].index)
+        with open(coding_gp, 'w') as outf:
+            for name, tx in tools.transcripts.gene_pred_iterator(self.augustus_args['tm_gp']):
+                if tools.psl.strip_alignment_numbers(name) in names:
+                    outf.write(tx.get_gene_pred() + '\n')
+        if os.path.getsize(coding_gp) == 0:
+            raise RuntimeError('Unable to extract coding transcripts from the transMap genePred.')
+        return coding_gp
+
+    def run(self):
+        job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
+        toil_options = self.prepare_toil_options(job_store)
+        coding_gp = self.extract_coding_genes()
+        augustus_results = augustus(self.augustus_args, coding_gp, toil_options)
+        with self.output().open('w') as outf:
+            tools.fileOps.print_rows(outf, augustus_results)
+        os.remove(coding_gp)
+
+
+class EvaluateTranscripts(luigi.WrapperTask):
+    """
+    Evaluates all transcripts for important features.
     """
     def validate(self):
         # TODO: make sure that all input args exist
@@ -462,16 +544,8 @@ class EvalTransMap(luigi.WrapperTask):
                 'details_table': genome + '_Details'}
         return args
 
-    def run(self):
-        self.validate()
-        target_genomes = RunCat.resolve_target_genomes(self.hal, self.target_genomes)
-        for target_genome in target_genomes:
-            args = self.get_args(self.work_dir, target_genome, self.ref_genome, self.annotation)
-            yield self.clone(EvalTransMapTask, args=args, genome=target_genome)
-
 
 if __name__ == '__main__':
-    luigi.build([Chaining(hal='1509.hal',
-                target_genomes=('C57BL_6NJ',), work_dir='test', ref_genome='C57B6J',
+    luigi.build([Augustus(hal='1509.hal',
+                target_genomes=('C57BL_6NJ',), work_dir='cat_work', ref_genome='C57B6J', augustus=True,
                 annotation='Mus_musculus.GRCm38.83.gff3')], logging_conf_file='logging.cfg')
-

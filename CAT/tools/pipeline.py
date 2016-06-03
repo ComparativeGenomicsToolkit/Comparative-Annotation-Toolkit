@@ -3,7 +3,8 @@
 Process pipelines constructed as a DAG.
 """
 import os, sys, fcntl, signal, errno, threading, traceback, pickle, time
-from tools import fifo, trace, strOps, PycbioException
+import fifo, trace, strOps
+from tools import PycbioException
 
 try:
     MAXFD = os.sysconf("SC_OPEN_MAX")

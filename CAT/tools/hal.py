@@ -2,7 +2,7 @@
 Functions for working with HAL files.
 """
 import ete3
-from tools.procOps import call_proc_lines
+from procOps import call_proc_lines
 
 
 def build_genome_order(hal, ref_genome):

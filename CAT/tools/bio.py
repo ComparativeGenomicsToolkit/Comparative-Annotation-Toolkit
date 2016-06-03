@@ -5,7 +5,7 @@ import string
 import array
 import os
 from pyfasta import Fasta, NpyFastaRecord
-from tools.fileOps import opengz
+from fileOps import opengz
 
 
 class UpperNpyFastaRecord(NpyFastaRecord):
@@ -184,6 +184,9 @@ def get_sequence_dict(file_path, upper=True):
     gdx_path = file_path + ".gdx"
     assert os.path.exists(gdx_path), ("Error: gdx does not exist for this fasta. We need the fasta files to be "
                                       "flattened in place prior to running the pipeline because of concurrency issues.")
+    flat_path = file_path + '.flat'
+    assert os.path.exists(flat_path), ("Error: flat file does not exist for this fasta. We need the fasta files to be "
+                                       "flattened in place prior to running the pipeline because of concurrency issues.")
     if upper is True:
         return Fasta(file_path, record_class=UpperNpyFastaRecord)
     else:

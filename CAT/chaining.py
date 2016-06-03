@@ -1,5 +1,7 @@
 """"
 Toil program to generate UCSC chains and nets between two genomes in a HAL file.
+TODO: needs to properly use fileStore, load HAL/chrom/size into it. May want to consider consolidating all of the
+pairwise chaining calls into one toil pipeline so that we don't copy the HAL n genomes times
 """
 import logging
 import tools.hal
@@ -22,7 +24,7 @@ def chain_by_chromosome(job, args, hal, chrom, size):
                               level=logging.INFO)
     bed_path = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
     with open(bed_path, 'w') as outf:
-        tools.fileOps.print_row(outf, chrom, 0, size)
+        tools.fileOps.print_row(outf, chrom, size)
     chain = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
     cmd = [["halLiftover", "--outPSL", hal, args['ref_genome'], bed_path, args['genome'], "/dev/stdout"],
            ["pslPosTarget", "/dev/stdin", "/dev/stdout"],

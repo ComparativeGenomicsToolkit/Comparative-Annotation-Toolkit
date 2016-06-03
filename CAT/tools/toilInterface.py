@@ -4,7 +4,7 @@ Provides a simple interface between Toil and Luigi.
 import os
 import tempfile
 import luigi
-import tools.fileOps
+import fileOps
 from toil.job import Job
 
 
@@ -12,26 +12,29 @@ class ToilTask(luigi.Task):
     """
     Task for launching toil pipelines from within luigi.
     """
-    workDir = luigi.Parameter(default=tempfile.gettempdir())
-    batchSystem = luigi.Parameter(default='singleMachine')
-    maxCores = luigi.IntParameter(default=16)
-    logLevel = luigi.Parameter(default='WARNING')
+    workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
+    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
+    maxCores = luigi.IntParameter(default=16, significant=False)
+    logLevel = luigi.Parameter(default='WARNING', significant=False)
 
-    def prepare_toil_options(self, job_sub_path):
+    def prepare_toil_options(self, job_store=None):
         """
         Prepares a Namespace object for Toil which has all defaults, overridden as specified
         Will see if the jobStore path exists, and if it does, assume that we need to add --restart
-        :param job_sub_path: The sub path that will be joined to make a full path. For example, 'chaining/C57BL_6NJ'
+        :param job_store: path to jobStore. Will use default if not set.
         :return: Namespace
         """
-        job_store = os.path.abspath(os.path.join(self.workDir, 'toil', job_sub_path))
+        if job_store is None:
+            job_store = os.path.abspath(os.path.join(self.workDir, tempfile.gettempdir()))
+        else:
+            job_store = os.path.abspath(job_store)
         toil_args = get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.jobStore = job_store
         if os.path.exists(job_store):
             toil_args.restart = True
         else:
-            tools.fileOps.ensure_file_dir(job_store)
+            fileOps.ensure_file_dir(job_store)
         return toil_args
 
 

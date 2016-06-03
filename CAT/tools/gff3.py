@@ -319,7 +319,7 @@ def extract_attrs(gp):
     Extracts attributes table from gff3.
     The attributes we are about are GeneId, GeneName, GeneType, TranscriptId, TranscriptType
     :param gp: input gp
-    :returns:
+    :returns: DataFrame
     """
     valid_gene_types = {u'rRNA_gene', u'snRNA_gene', u'pseudogene', u'lincRNA_gene', u'RNA', u'mt_gene',
                         u'miRNA_gene', u'processed_transcript', u'snoRNA_gene', u'gene'}

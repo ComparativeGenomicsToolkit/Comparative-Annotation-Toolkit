@@ -3,9 +3,9 @@ Represent either BED12 or genePred transcripts as objects. Allows for conversion
 chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
 from itertools import izip
-from tools.fileOps import iter_lines
-from tools.bio import reverse_complement, translate_sequence
-from tools.intervals import ChromosomeInterval
+from fileOps import iter_lines
+from bio import reverse_complement, translate_sequence
+from intervals import ChromosomeInterval
 
 __author__ = "Ian Fiddes"
 
@@ -16,7 +16,7 @@ class Transcript(object):
     """
     __slots__ = ('name', 'strand', 'score', 'thick_start', 'rgb', 'thick_stop', 'start', 'stop', 'intron_intervals',
                  'exon_intervals', 'exons', 'block_sizes', 'block_starts', 'block_count', 'chromosome',
-                 'cds_size', 'transcript_size', 'interval')
+                 'interval')
 
     def __init__(self, bed_tokens):
         self.chromosome = bed_tokens[0]
@@ -176,8 +176,8 @@ class Transcript(object):
             thick_stop = 0
         block_starts = ",".join(map(str, block_starts))
         block_sizes = ",".join(map(str, block_sizes))
-        return map(str, [self.chromosome, start, stop, name, self.score, self.strand, thick_start, thick_stop, rgb,
-                         block_count, block_sizes, block_starts])
+        return '\t'.join(map(str, [self.chromosome, start, stop, name, self.score, self.strand, thick_start, thick_stop,
+                                   rgb, block_count, block_sizes, block_starts]))
 
     def chromosome_coordinate_to_mrna(self, coord):
         if not (self.start <= coord < self.stop):
@@ -397,8 +397,9 @@ class GenePredTranscript(Transcript):
         # change names if desired
         name2 = self.name2 if name2 is None else name2
         uid = self.id if uid is None else uid
-        return map(str, [name, chrom, strand, start, stop, thick_start, thick_stop, block_count,
-                         exon_starts, exon_ends, uid, name2, self.cds_start_stat, self.cds_end_stat, exon_frames])
+        return '\t'.join(map(str, [name, chrom, strand, start, stop, thick_start, thick_stop, block_count,
+                                   exon_starts, exon_ends, uid, name2, self.cds_start_stat, self.cds_end_stat,
+                                   exon_frames]))
 
 
 def get_gene_pred_dict(gp_file):
