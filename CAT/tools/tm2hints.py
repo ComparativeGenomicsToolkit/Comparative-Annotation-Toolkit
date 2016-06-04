@@ -5,23 +5,24 @@ import intervals
 import psl
 
 
-def construct_start_stop_hints(tm_tx, tm_psl, start_stop_radius=5, tss_tts_radius=10):
+def construct_start_stop_hints(tm_tx, ref_tx, tm_psl, start_stop_radius=5, tss_tts_radius=10):
     """
     Construct start/stop/tss/tts hints
     :param tm_tx: GenePredTranscript object for transMap transcript
+    :param ref_tx: GenePredTranscript object for reference transcript
     :param tm_psl: PslRow object for the relationship between tm_tx and ref_tx
     :param start_stop_radius: Radius to extend CDS start/stop hints
     :param tss_tts_radius: Radius to extend tts/tss hints
     :return: list of 4 ChromosomeInterval objects
     """
     hints = []
-    if tm_tx.cds_start_stat == 'cmpl':
+    if psl.is_original_cds_start(tm_tx, ref_tx, tm_psl):
         start = tm_tx.thick_start - start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_stop - 3 - start_stop_radius
         stop = tm_tx.thick_start + 3 + start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_stop + start_stop_radius
         c = intervals.ChromosomeInterval(tm_tx.chromosome, start, stop, tm_tx.strand,
                                          data={'score': 0, 'name': 'start'})
         hints.append(c)
-    if tm_tx.cds_end_stat == 'cmpl':
+    if psl.is_original_cds_stop(tm_tx, ref_tx, tm_psl):
         start = tm_tx.thick_stop - 3 - start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_start - start_stop_radius
         stop = tm_tx.thick_stop + start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_start + 3 + start_stop_radius
         c = intervals.ChromosomeInterval(tm_tx.chromosome, start, stop, tm_tx.strand,
@@ -137,12 +138,13 @@ def generate_fuzzy_hints(converted_hints, exon_part_margin=12):
     return fuzzy_hints
 
 
-def tm_to_hints(tm_tx, ref_psl, tm_psl):
+def tm_to_hints(tm_tx, ref_tx, tm_psl, ref_psl):
     """
     Converts a genePred transcript to hints parseable by Augustus.
 
     Note for anyone reading this code: GFF coordinates are 1-based, genePred coordinates are 0-based
     :param tm_tx: GenePredTranscript object for transMap transcript
+    :param ref_tx: GenePredTranscript object for reference transcript
     :param ref_psl: PslRow object for the relationship between the source transcript and genome as made by
     GenePredToFakePsl
     :param tm_psl: PslRow object for the relationship between tm_tx and ref_tx
@@ -159,6 +161,6 @@ def tm_to_hints(tm_tx, ref_psl, tm_psl):
     converted_hints = convert_exonpart_to_cdspart_intronpart(exon_hints, tm_tx)
     hints = generate_fuzzy_hints(converted_hints)
     hints.extend(construct_intron_hints(tm_tx, ref_psl, tm_psl))
-    hints.extend(construct_start_stop_hints(tm_tx, tm_psl))
+    hints.extend(construct_start_stop_hints(tm_tx, ref_tx, tm_psl))
     gff_hints = [interval_to_gff(i) for i in hints]
     return '\n'.join(gff_hints)

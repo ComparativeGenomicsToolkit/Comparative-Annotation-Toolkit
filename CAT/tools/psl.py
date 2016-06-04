@@ -235,7 +235,7 @@ def is_original_cds_stop(tm_tx, ref_tx, tm_psl):
     :return: boolean
     """
     for i in xrange(tm_tx.cds_size - 4, tm_tx.cds_size - 1):
-        p = tm_tx.chromosome_coordinate_to_cds(tm_psl.query_coordinate_to_target(ref_tx.cds_coordinate_to_transcript(i)))
+        p = tm_tx.chromosome_coordinate_to_cds(tm_psl.query_coordinate_to_target(ref_tx.cds_coordinate_to_mrna(i)))
         if p is None:
             return False
     return True
@@ -250,7 +250,7 @@ def is_original_cds_start(tm_tx, ref_tx, tm_psl):
     :return: boolean
     """
     for i in xrange(3):
-        p = tm_tx.chromosome_coordinate_to_cds(tm_psl.query_coordinate_to_target(ref_tx.cds_coordinate_to_transcript(i)))
+        p = tm_tx.chromosome_coordinate_to_cds(tm_psl.query_coordinate_to_target(ref_tx.cds_coordinate_to_mrna(i)))
         if p is None:
             return False
     return True

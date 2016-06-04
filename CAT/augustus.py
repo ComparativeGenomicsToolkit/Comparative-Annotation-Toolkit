@@ -19,7 +19,6 @@ import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
 from toil.job import Job
-from toil.common import Toil
 
 import tools.bio
 import tools.dataOps
@@ -84,47 +83,38 @@ def get_rnaseq_hints(genome, chromosome, start, stop, speciesnames, seqnames, hi
     return '\n'.join(hints)
 
 
-def rename_transcripts(aug_output, valid_txs, cfg_version, name):
+def munge_augustus_output(aug_output, cfg_version, tm_tx):
     """
+    Extracts transcripts from raw augustus output. If Augustus produces more than one transcript, discard all.
     Renames overlapping transcripts augIX-ID, where X is the index of the extrinsic.cfg file, e.g. 1 or 2 and where
-    ID is the transmap alignment ID, use augIX-n-ID if more than 1 transcript overlaps the alignment
-    formats these transcripts into a string
+    ID is the transMap alignment ID. Formats this transcript into a GTF string
     """
-    name_map = {}
-    for i, x in enumerate(valid_txs):
-        if i > 0:
-            name_map[x] = "augI{}-{}-{}".format(cfg_version, i + 1, name)
-        else:
-            name_map[x] = "augI{}-{}".format(cfg_version, name)
-    print name_map
+    # extract the transcript lines
+    tx_entries = [x.split() for x in aug_output if "\ttranscript\t" in x]
+    # filter out transcripts that do not overlap the alignment range
+    valid_txs = [x[-1] for x in tx_entries if not (int(x[4]) < tm_tx.start or int(x[3]) > tm_tx.stop)]
+    if len(valid_txs) != 1:
+        return None
+    tx_id = 'aug-I{}-{}'.format(cfg_version, tm_tx.name)
+    tx_lines = [x.split('\t') for x in aug_output if 'AUGUSTUS' in x and not x.startswith('#')]
     features = {"exon", "CDS", "start_codon", "stop_codon", "tts", "tss"}
-    for x in aug_output:
-        if x.startswith("#"):
+    gtf = []
+    for chrom, source, feature, start, stop, score, strand, frame, attributes in tx_lines:
+        if feature not in features:
             continue
-        if "AUGUSTUS" in x:
-            x = x.split("\t")
-            if x[2] in features:
-                t = x[-1].split()
-                n = t[-3].split('"')[1]
-                if n not in name_map:
-                    continue  # skip transcripts filtered out previously
-                try:
-                    t[-1] = t[-3] = '"{}";'.format(name_map[n])
-                except:
-                    assert False, (name_map, aug_output, name)
-                t = " ".join(t)
-                x[-1] = t
-                yield x
+        new_attributes = 'transcript_id "{}"; gene_id "{}";'.format(tx_id, tm_tx.name2)
+        gtf.append('\t'.join([chrom, source, feature, start, stop, score, strand, frame, new_attributes]))
+    return '\n'.join(gtf)
 
 
-def setup(job, args, coding_gp, chunk_size=5):
+def setup(job, args, coding_gp, chunk_size):
     """
     Entry function for running AugustusTM(R). Loads the genome fasta into the fileStore then spins up chunks of
     jobs.
     :param args: args from Luigi pipeline
     :param coding_gp: genePred with only coding transcripts
     :param chunk_size: number of transcripts to process per-job
-    :return:
+    :return: completed GTF format results for all jobs
     """
     job.fileStore.logToMaster('Beginning Augustus run on {}'.format(args['genome']), level=logging.INFO)
     fasta_file_id = job.fileStore.writeGlobalFile(args['genome_fasta'])
@@ -140,14 +130,16 @@ def setup(job, args, coding_gp, chunk_size=5):
     # load the reference and transMap PSL data necessary for filtering transMap hints
     ref_psl_dict = tools.psl.get_alignment_dict(args['ref_psl'])
     tm_psl_dict = tools.psl.get_alignment_dict(args['tm_psl'])
-    job.fileStore.logToMaster('Augustus loaded reference and transMap PSLs')
+    ref_tx_dict = tools.transcripts.get_gene_pred_dict(args['annotation_gp'])
+    job.fileStore.logToMaster('Augustus loaded reference and transMap PSLs and reference genePred')
     results = []
     for i, chunk in enumerate(tools.dataOps.grouper(tools.transcripts.gene_pred_iterator(coding_gp), chunk_size)):
-        if i > 40:
+        if i > 100:
             break
         grouped_recs = {}
         for tx_id, tx in chunk:
-            grouped_recs[tx_id] = [tx, tm_psl_dict[tx_id], ref_psl_dict[tools.psl.remove_alignment_number(tx_id)]]
+            grouped_recs[tx_id] = [tx, ref_tx_dict[tools.psl.remove_alignment_number(tx_id)],
+                                   tm_psl_dict[tx_id], ref_psl_dict[tools.psl.remove_alignment_number(tx_id)]]
         j = job.addChildJobFn(run_augustus_chunk, i, args, grouped_recs, fasta_file_id, gdx_file_id, tm_cfg_file_id,
                               flat_file_id, hints_db_file_id, tmr_cfg_file_id)
         results.append(j.rv())
@@ -193,10 +185,10 @@ def run_augustus_chunk(job, i, args, grouped_recs, fasta_file_id, gdx_file_id, t
 
     # start iteratively running Augustus on this chunk
     results = []
-    for tm_tx, tm_psl, ref_psl in grouped_recs.itervalues():
+    for tm_tx, ref_tx, tm_psl, ref_psl in grouped_recs.itervalues():
         if len(tm_tx) > 3 * 10 ** 6:  # no huge transcripts
             continue
-        tm_hints = tools.tm2hints.tm_to_hints(tm_tx, ref_psl, tm_psl)
+        tm_hints = tools.tm2hints.tm_to_hints(tm_tx, ref_tx, tm_psl, ref_psl)
         chromosome = tm_tx.chromosome
         start = max(tm_tx.start - padding, 0)
         stop = min(tm_tx.stop + padding, len(fasta[chromosome]))
@@ -204,11 +196,13 @@ def run_augustus_chunk(job, i, args, grouped_recs, fasta_file_id, gdx_file_id, t
             rnaseq_hints = get_rnaseq_hints(args['genome'], chromosome, start, stop, speciesnames, seqnames, hints,
                                             featuretypes, session)
             hint = ''.join([tm_hints, rnaseq_hints])
-            results.append(run_augustus(job, hint, fasta, tm_tx, tmr_cfg_file, start, stop, cfg_version=2))
+            transcripts = run_augustus(job, hint, fasta, tm_tx, tmr_cfg_file, start, stop, cfg_version=2)
+            if transcripts is not None:
+                results.append(transcripts)
         else:
             hint = tm_hints
         transcripts = run_augustus(job, hint, fasta, tm_tx, tm_cfg_file, start, stop, cfg_version=1)
-        if len(transcripts) > 0:  # we may not have found anything
+        if transcripts is not None:  # we may not have found anything
             results.append(transcripts)
     return results
 
@@ -222,32 +216,31 @@ def run_augustus(job, hint, fasta, tm_tx, cfg_file, start, stop, cfg_version=1):
     :param tm_tx: GenePredTranscript object
     :param cfg_file: config file
     :param cfg_version: config file version
-    :return: GFF formatted output from Augustus
+    :return: GTF formatted output from Augustus or None if nothing was produced
     """
     with tools.fileOps.TemporaryFilePath(tmp_dir=job.fileStore.getLocalTempDir()) as hints_out, \
             tools.fileOps.TemporaryFilePath(tmp_dir=job.fileStore.getLocalTempDir()) as fasta_out:
         with open(hints_out, 'w') as hints_out_handle, open(fasta_out, 'w') as fasta_out_handle:
             hints_out_handle.write(hint)
-            fasta_out_handle.write(fasta[tm_tx.chromosome][start:stop])
-            cmd = ['augustus', fasta_out, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(stop),
+            tools.bio.write_fasta(fasta_out_handle, tm_tx.chromosome, fasta[tm_tx.chromosome][start:stop])
+            cmd = ['augustus', fasta_out, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
                    '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR=on',
                    '--alternatives-from-evidence=0', '--species=human', '--allow_hinted_splicesites=atac',
                    '--protein=0', '--softmasking=1']
-        aug_output = tools.procOps.call_proc(cmd)
-    aug_output = aug_output.split("\n")
-    print 'aug output:\n{}\ntx:{}'.format(aug_output, tm_tx.name)
-    # extract the transcript lines
-    tx_entries = [x.split() for x in aug_output if "\ttranscript\t" in x]
-    # filter out transcripts that do not overlap the alignment range
-    valid_txs = [x[-1] for x in tx_entries if not (int(x[4]) < tm_tx.start or int(x[3]) > tm_tx.stop)]
-    # rename transcript based on cfg version, and make names unique
-    transcripts = list(rename_transcripts(aug_output, valid_txs, cfg_version, tm_tx.name))
-    print 'transcripts after renaming:\n{}'.format(transcripts)
+        aug_output = tools.procOps.call_proc_lines(cmd)
+    transcripts = munge_augustus_output(aug_output, cfg_version, tm_tx)
     return transcripts
 
 
 def augustus(args, coding_gp, toil_options):
-    toil_options.cleanWorkDir = 'never'
-    j = Job.wrapJobFn(setup, args, coding_gp)
+    """
+    Main entry function for Augustus toil pipeline
+    :param args: dictionary of arguments from CAT
+    :param coding_gp: genePred with only coding transcripts
+    :param toil_options: toil options Namespace object
+    :return: GTF formatted string of output
+    """
+    chunk_size = 25 if args['augustus_hints_db'] is None else 50
+    j = Job.wrapJobFn(setup, args, coding_gp, chunk_size)
     results = Job.Runner.startToil(j, toil_options)
     return results

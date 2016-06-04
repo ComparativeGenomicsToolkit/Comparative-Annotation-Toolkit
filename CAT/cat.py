@@ -509,14 +509,22 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
             raise RuntimeError('Unable to extract coding transcripts from the transMap genePred.')
         return coding_gp
 
+    def convert_gtf_gp(self, gtf_path):
+        """converts the Augustus output GTF to genePred"""
+        with self.output().open('w') as outf:
+            cmd = ['gtfToGenePred', gtf_path, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf)
+
     def run(self):
         job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         coding_gp = self.extract_coding_genes()
         augustus_results = augustus(self.augustus_args, coding_gp, toil_options)
-        with self.output().open('w') as outf:
-            tools.fileOps.print_rows(outf, augustus_results)
         os.remove(coding_gp)
+        with tools.fileOps.TemporaryFilePath() as tmp_gtf:
+            with open(tmp_gtf, 'w') as outf:
+                tools.fileOps.print_rows(outf, augustus_results)
+            self.convert_gtf_gp(tmp_gtf)
 
 
 class EvaluateTranscripts(luigi.WrapperTask):
