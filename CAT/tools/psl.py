@@ -256,35 +256,29 @@ def is_original_cds_start(tm_tx, ref_tx, tm_psl):
     return True
 
 
-def is_original_tss(tm_psl, tm_tx, fuzz_distance=50):
+def is_original_tss(tm_psl, fuzz_distance=25):
     """
-    Is this transMap alignment +/- fuzz_distance from the original transcription start point?
+    Is this transMap alignment within fuzz_distance from the original transcription start site?
+    This can only be calculated inwards from the original start
     :param tm_psl: PslRow object for the relationship between tm_tx and ref_tx
-    :param tm_tx: GenePredTranscript object for transMap transcript
     :param fuzz_distance: integer distance
     :return: boolean
     """
-    # convert reference tss to target
-    p = tm_psl.query_coordinate_to_target(0)
-    if p is None:
-        return False
-    # convert this to transcript space
-    tgt_p = tm_tx.chromosome_coordinate_to_mrna(p)
-    return 0 - fuzz_distance <= tgt_p <= fuzz_distance
+    if tm_psl.strand == '+':
+        return tm_psl.q_start < fuzz_distance
+    else:
+        return tm_psl.q_size - tm_psl.q_end < fuzz_distance
 
 
-def is_original_tts(tm_psl, tm_tx, fuzz_distance=50):
+def is_original_tts(tm_psl, fuzz_distance=25):
     """
-    Is this transMap alignment +/- fuzz_distance from the original transcription termination point?
+    Is this transMap alignment within fuzz_distance from the original transcription termination point?
+    This can only be calculated inwards from the original stop
     :param tm_psl: PslRow object for the relationship between tm_tx and ref_tx
-    :param tm_tx: GenePredTranscript object for transMap transcript
     :param fuzz_distance: integer distance
     :return: boolean
     """
-    # convert reference tss to target
-    p = tm_psl.query_coordinate_to_target(len(tm_tx) - 1)
-    if p is None:
-        return False
-    # convert this to transcript space
-    tgt_p = tm_tx.chromosome_coordinate_to_mrna(p)
-    return len(tm_tx) - fuzz_distance <= tgt_p <= len(tm_tx) + fuzz_distance
+    if tm_psl.strand == '-':
+        return tm_psl.q_start < fuzz_distance
+    else:
+        return tm_psl.q_size - tm_psl.q_end < fuzz_distance
