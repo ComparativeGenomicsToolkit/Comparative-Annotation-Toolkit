@@ -46,14 +46,20 @@ class RunCat(luigi.WrapperTask):
             target_genomes = tools.hal.extract_genomes(hal)
         return target_genomes
 
+    @staticmethod
+    def resolve_augustus_genomes(hal, target_genomes, augustus_genomes):
+        """Augustus genomes can either be A) all genomes, B) target genomes, C) specified separately"""
+        if augustus_genomes is not None:
+            return augustus_genomes
+        return RunCat.resolve_target_genomes(hal, target_genomes)
+
     def requires(self):
         yield self.clone(PrepareFiles)
         yield self.clone(Chaining)
         yield self.clone(TransMap)
         if self.augustus is True:
             yield self.clone(Augustus)
-        #yield Align()
-        #yield EvalTranscripts()
+        #yield EvaluateTranscripts()
         #yield Consensus()
         #yield Plots()
 
@@ -471,11 +477,7 @@ class Augustus(luigi.WrapperTask):
 
     def requires(self):
         self.validate()
-        # we only run Augustus on transMap genomes
-        if self.augustus_genomes is None and self.target_genomes is not None:
-            target_genomes = RunCat.resolve_target_genomes(self.hal, self.target_genomes)
-        else:
-            target_genomes = RunCat.resolve_target_genomes(self.hal, self.augustus_genomes)
+        target_genomes = RunCat.resolve_augustus_genomes(self.hal, self.target_genomes, self.augustus_genomes)
         for target_genome in target_genomes:
             args = self.get_args(self.work_dir, target_genome, self.ref_genome, self.annotation, self.augustus_hints_db,
                                  self.tm_cfg, self.tmr_cfg)
@@ -536,7 +538,7 @@ class EvaluateTranscripts(luigi.WrapperTask):
         pass
 
     @staticmethod
-    def get_args(work_dir, genome, ref_genome, annotation):
+    def get_args(work_dir, genome, ref_genome, annotation, augustus_hints_db, tm_cfg, tmr_cfg, augustus):
         tm_args = TransMap.get_args(work_dir, genome, ref_genome, annotation)
         tgt_genome_files = GenomeFiles.get_args(work_dir, genome)
         annotation_files = ReferenceFiles.get_args(work_dir, annotation)
@@ -550,7 +552,52 @@ class EvaluateTranscripts(luigi.WrapperTask):
                 'genome': genome,
                 'classify_table': genome + '_Classify',
                 'details_table': genome + '_Details'}
+        if augustus is True:
+            aug_args = Augustus.get_args(work_dir, genome, ref_genome, annotation, augustus_hints_db, tm_cfg, tmr_cfg)
+            args['augustus_gp'] = aug_args['augustus_gp']
+        else:
+            args['augustus_gp'] = None
         return args
+
+    def requires(self):
+        self.validate()
+        target_genomes = RunCat.resolve_augustus_genomes(self.hal, self.target_genomes, self.augustus_genomes)
+        for target_genome in target_genomes:
+            args = self.get_args(self.work_dir, target_genome, self.ref_genome, self.annotation, self.augustus_hints_db,
+                                 self.tm_cfg, self.tmr_cfg, self.augustus)
+            yield self.clone(EvaluateDriverTask, eval_args=args, genome=target_genome)
+
+
+@inherits(EvaluateTranscripts)
+class EvaluateDriverTask(tools.toilInterface.ToilTask):
+    """
+    Task for per-genome launching of a toil pipeline for running Augustus.
+    """
+    eval_args = luigi.DictParameter()  # dict to pass directory to evaluate toil module
+    genome = luigi.Parameter()
+
+    def output(self):
+        return luigi.LocalTarget(self.augustus_args['augustus_gp'])
+
+    def requires(self):
+        return self.clone(TransMap)
+
+    def convert_gtf_gp(self, gtf_path):
+        """converts the Augustus output GTF to genePred"""
+        with self.output().open('w') as outf:
+            cmd = ['gtfToGenePred', gtf_path, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf)
+
+    def run(self):
+        job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
+        toil_options = self.prepare_toil_options(job_store)
+        coding_gp = self.extract_coding_genes()
+        augustus_results = augustus(self.augustus_args, coding_gp, toil_options)
+        os.remove(coding_gp)
+        with tools.fileOps.TemporaryFilePath() as tmp_gtf:
+            with open(tmp_gtf, 'w') as outf:
+                tools.fileOps.print_rows(outf, augustus_results)
+            self.convert_gtf_gp(tmp_gtf)
 
 
 if __name__ == '__main__':
