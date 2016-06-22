@@ -78,7 +78,7 @@ def get_rnaseq_hints(genome, chromosome, start, stop, speciesnames, seqnames, hi
     hints = []
     for h, f in query:
         tags = 'pri=3;src={};mult={}'.format(h.esource, h.mult)
-        l = [chromosome, h.source, f.typename, h.start, h.end, h.score, '.', '.', tags]
+        l = [chromosome, h.source, f.typename, h.start + 1, h.end + 1, h.score, '.', '.', tags]
         hints.append('\t'.join(map(str, l)) + '\n')
     return '\n'.join(hints)
 

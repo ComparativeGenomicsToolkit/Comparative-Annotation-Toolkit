@@ -16,13 +16,13 @@ def construct_start_stop_hints(tm_tx, ref_tx, tm_psl, start_stop_radius=5, tss_t
     :return: list of 4 ChromosomeInterval objects
     """
     hints = []
-    if psl.is_original_cds_start(tm_tx, ref_tx, tm_psl):
+    if psl.is_original_cds_start(tm_tx, ref_tx, tm_psl) and ref_tx.cds_start_stat == 'cmpl':
         start = tm_tx.thick_start - start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_stop - 3 - start_stop_radius
         stop = tm_tx.thick_start + 3 + start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_stop + start_stop_radius
         c = intervals.ChromosomeInterval(tm_tx.chromosome, start, stop, tm_tx.strand,
                                          data={'score': 0, 'name': 'start'})
         hints.append(c)
-    if psl.is_original_cds_stop(tm_tx, ref_tx, tm_psl):
+    if psl.is_original_cds_stop(tm_tx, ref_tx, tm_psl) and ref_tx.cds_end_stat == 'cmpl':
         start = tm_tx.thick_stop - 3 - start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_start - start_stop_radius
         stop = tm_tx.thick_stop + start_stop_radius if tm_tx.strand == '+' else tm_tx.thick_start + 3 + start_stop_radius
         c = intervals.ChromosomeInterval(tm_tx.chromosome, start, stop, tm_tx.strand,
@@ -95,6 +95,9 @@ def convert_exonpart_to_cdspart_intronpart(hints, tm_tx):
                                                 tm_tx.strand)
     utr_intervals = [intervals.ChromosomeInterval(tm_tx.chromosome, tm_tx.start, tm_tx.thick_start, tm_tx.strand),
                      intervals.ChromosomeInterval(tm_tx.chromosome, tm_tx.thick_stop, tm_tx.stop, tm_tx.strand)]
+    # filter out empty intervals
+    utr_intervals = [x if len(x) > 0 else None for x in utr_intervals]
+    assert len(cds_interval) > 0
     converted_hints = []
     for interval in hints:
         cds_intersection = interval.intersection(cds_interval)
@@ -102,10 +105,11 @@ def convert_exonpart_to_cdspart_intronpart(hints, tm_tx):
             cds_intersection.data = {'score': 0, 'name': 'CDSpart'}
             converted_hints.append(cds_intersection)
         for utr_interval in utr_intervals:
-            utr_intersection = interval.intersection(utr_interval)
-            if utr_intersection is not None:
-                utr_intersection.data = {'score': 0, 'name': 'UTRpart'}
-                converted_hints.append(utr_intersection)
+            if utr_interval is not None:
+                utr_intersection = interval.intersection(utr_interval)
+                if utr_intersection is not None:
+                    utr_intersection.data = {'score': 0, 'name': 'UTRpart'}
+                    converted_hints.append(utr_intersection)
     return converted_hints
 
 
@@ -130,10 +134,10 @@ def generate_fuzzy_hints(converted_hints, exon_part_margin=12):
         fuzzy_hints.append(intervals.ChromosomeInterval(h.chromosome, core_start, core_stop, h.strand,
                                                         data={'name': h.data['name'], 'score': 2}))
         if h.start < core_start:
-            fuzzy_hints.append(intervals.ChromosomeInterval(h.chromosome, h.start, core_start, h.strand,
+            fuzzy_hints.append(intervals.ChromosomeInterval(h.chromosome, h.start, core_start - 1, h.strand,
                                                             data={'name': h.data['name'], 'score': 1}))
         if h.stop > core_stop:
-            fuzzy_hints.append(intervals.ChromosomeInterval(h.chromosome, core_stop, h.stop, h.strand,
+            fuzzy_hints.append(intervals.ChromosomeInterval(h.chromosome, core_stop + 1, h.stop - 1, h.strand,
                                                             data={'name': h.data['name'], 'score': 1}))
     return fuzzy_hints
 
