@@ -2,6 +2,7 @@
 Miscellaneous tools for the pipeline. Some may eventually be refactored into their own modules.
 """
 import pandas as pd
+import procOps
 
 
 def read_attributes_tsv(attrs_path):
@@ -11,3 +12,10 @@ def read_attributes_tsv(attrs_path):
     :return: DataFrame
     """
     return pd.read_csv(attrs_path, sep='\t', header=0, index_col=0)
+
+
+def convert_gtf_gp(out_target, gtf_path):
+    """converts the Augustus output GTF to genePred"""
+    with out_target.open('w') as outf:
+        cmd = ['gtfToGenePred', gtf_path, '/dev/stdout']
+        procOps.run_proc(cmd, stdout=outf)
