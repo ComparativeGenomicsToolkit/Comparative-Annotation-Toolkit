@@ -3,8 +3,10 @@ Provides a simple interface between Toil and Luigi.
 """
 import os
 import tempfile
+import socket
 import luigi
 import fileOps
+import procOps
 from toil.job import Job
 
 
@@ -35,6 +37,8 @@ class ToilTask(luigi.Task):
             toil_args.restart = True
         else:
             fileOps.ensure_file_dir(job_store)
+        # Used to copy files back from a Toil pipeline to the master node
+        toil_args.master_ip = socket.gethostbyname(socket.gethostname())
         return toil_args
 
 
@@ -47,3 +51,18 @@ def get_toil_defaults():
     namespace = parser.parse_args([''])  # empty jobStore attribute
     namespace.jobStore = None  # jobStore attribute will be updated per-batch
     return namespace
+
+
+def export_to_master(local_path, target_path, target_ip):
+    """
+    Convenience function for returning the output from a Toil pipeline to the master.
+    :param local_path: Path to local file in Toil run
+    :param target_path: Path to target file on master machine
+    :param target_ip: IP address of master machine
+    :return:
+    """
+    cmd = ['scp', local_path, '{}:{}'.format(target_ip, target_path + '.tmp')]
+    procOps.run_proc(cmd)
+    cmd = ['ssh', target_ip, 'mv {} {}'.format(target_path + '.tmp', target_path)]
+    procOps.run_proc(cmd)
+
