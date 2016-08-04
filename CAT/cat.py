@@ -25,6 +25,35 @@ class UserException(Exception):
     pass
 
 
+class PipelineParameterMixin(object):
+    """
+    Mixin class for adding extracting the base arguments to the pipeline. Expects that the mixed in class is a 
+    derivative of RunCat.
+    
+    This can't be a classmethod of RunCat due to how Luigi resolves parameters.
+    """
+    def get_pipeline_args(self):
+        """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
+        namespace = argparse.Namespace()
+        namespace.hal = os.path.abspath(self.hal)
+        namespace.ref_genome = self.ref_genome
+        namespace.annotation = os.path.abspath(self.annotation)
+        namespace.out_dir = os.path.abspath(self.out_dir)
+        namespace.work_dir = os.path.abspath(self.work_dir)
+        namespace.augustus = self.augustus
+        namespace.augustus_cgp = self.augustus_cgp
+        namespace.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
+        namespace.tm_cfg = os.path.abspath(self.tm_cfg)
+        namespace.tmr_cfg = os.path.abspath(self.tmr_cfg)
+        if self.target_genomes is None:
+            target_genomes = tools.hal.extract_genomes(self.hal)
+            target_genomes = tuple(set(target_genomes) - {self.ref_genome})
+        else:
+            target_genomes = tuple([x for x in self.target_genomes])
+        namespace.target_genomes = target_genomes
+        return namespace
+
+
 class RunCat(luigi.WrapperTask):
     """
     Task that executes the entire pipeline.
@@ -42,26 +71,11 @@ class RunCat(luigi.WrapperTask):
     tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
     augustus_cgp_cfg = luigi.Parameter(default='augustus_cfgs/cgp.cfg', significant=False)
-
-    def get_pipeline_args(self):
-        """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
-        namespace = argparse.Namespace()
-        namespace.hal = self.hal
-        namespace.ref_genome = self.ref_genome
-        namespace.out_dir = self.out_dir
-        namespace.work_dir = self.work_dir
-        namespace.augustus = self.augustus
-        namespace.augustus_cgp = self.augustus_cgp
-        namespace.augustus_hints_db = self.augustus_hints_db
-        namespace.tm_cfg = self.tm_cfg
-        namespace.tmr_cfg = self.tmr_cfg
-        if self.target_genomes is None:
-            target_genomes = tools.hal.extract_genomes(self.hal)
-            target_genomes = tuple(set(target_genomes) - {self.ref_genome})
-        else:
-            target_genomes = self.target_genomes
-        namespace.target_genomes = target_genomes
-        return namespace
+    # toil parameters, which match tools.toilInterface.ToilTask
+    workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
+    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
+    maxCores = luigi.IntParameter(default=16, significant=False)
+    logLevel = luigi.Parameter(default='WARNING', significant=False)
 
     def requires(self):
         yield self.clone(PrepareFiles)
@@ -93,7 +107,7 @@ class PrepareFiles(luigi.WrapperTask):
 
 
 @inherits(PrepareFiles)
-class GenomeFiles(luigi.WrapperTask):
+class GenomeFiles(luigi.WrapperTask, PipelineParameterMixin):
     """
     WrapperTask for producing all genome files.
 
@@ -108,7 +122,8 @@ class GenomeFiles(luigi.WrapperTask):
                 'two_bit': os.path.join(base_dir, genome + '.2bit'),
                 'fasta_index': os.path.join(base_dir, genome + '.fa.fai'),
                 'sizes': os.path.join(base_dir, genome + '.chrom.sizes'),
-                'flat_fasta': os.path.join(base_dir, genome + '.fa.flat')}
+                'flat_fasta': os.path.join(base_dir, genome + '.fa.flat'),
+                'genome': genome}
         return args
 
     def requires(self):
@@ -201,7 +216,7 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
 
 
 @inherits(PrepareFiles)
-class ReferenceFiles(luigi.WrapperTask):
+class ReferenceFiles(luigi.WrapperTask, PipelineParameterMixin):
     """
     WrapperTask for producing annotation files.
 
@@ -331,17 +346,18 @@ class FakePsl(AbstractAtomicFileTask):
 
 
 @inherits(RunCat)
-class Chaining(luigi.WrapperTask):
+class Chaining(luigi.WrapperTask, PipelineParameterMixin):
     """
     WrapperTask for producing chain files for each combination of ref_genome-target_genome
     """
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'chaining')
-        args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
+        args = {'hal': pipeline_args.hal,
+                'ref_genome': pipeline_args.ref_genome, 'genome': genome,
                 'chain_file': os.path.join(base_dir, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))}
-        ref_files = GenomeFiles.get_args(pipeline_args.work_dir, pipeline_args.ref_genome)
-        tgt_files = GenomeFiles.get_args(pipeline_args.work_dir, genome)
+        ref_files = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)
+        tgt_files = GenomeFiles.get_args(pipeline_args, genome)
         args['query_two_bit'] = ref_files['two_bit']
         args['target_two_bit'] = tgt_files['two_bit']
         args['query_sizes'] = ref_files['sizes']
@@ -355,7 +371,7 @@ class Chaining(luigi.WrapperTask):
         self.validate()
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
-            args = self.get_args(self.work_dir, target_genome)
+            args = self.get_args(pipeline_args, target_genome)
             yield self.clone(PairwiseChaining, chain_args=args, genome=target_genome)
 
 
@@ -374,13 +390,13 @@ class PairwiseChaining(tools.toilInterface.ToilTask):
         return self.clone(GenomeFiles)
 
     def run(self):
-        job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
+        job_store = os.path.join(self.work_dir, 'toil', 'chaining', self.genome)
         toil_options = self.prepare_toil_options(job_store)
-        chaining(self.chain_args, self.hal, toil_options)
+        chaining(self.chain_args, toil_options)
 
 
 @inherits(RunCat)
-class TransMap(luigi.WrapperTask):
+class TransMap(luigi.WrapperTask, PipelineParameterMixin):
     """
     Runs transMap.
     """
@@ -457,7 +473,7 @@ class TransMapGp(AbstractAtomicFileTask):
 
 
 @inherits(RunCat)
-class Augustus(luigi.WrapperTask):
+class Augustus(luigi.WrapperTask, PipelineParameterMixin):
     """
     Runs AugustusTM(R) on the coding output from transMap.
     """
@@ -507,11 +523,11 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
     """
     augustus_args = luigi.DictParameter()  # dict to pass directory to TMR toil module
     genome = luigi.Parameter()
-    
+
     def output(self):
         return (luigi.LocalTarget(self.augustus_args['augustus_gp']),
                 luigi.LocalTarget(self.augustus_args['augustus_gtf']))
-    
+
     def requires(self):
         return self.clone(TransMap)
 
@@ -581,7 +597,7 @@ class AugustusCgp(tools.toilInterface.ToilTask):
         toil_options = self.prepare_toil_options(job_store)
         cgp_args = self.get_args(pipeline_args)
         # instead of having toil return the gff as a string, just have toil write to each member of args['augustus_cgp_gtf']
-        augustus_cgp(cgp_args, toil_options)
+        #augustus_cgp(cgp_args, toil_options)
         # convert each to genePred as well
         for genome in pipeline_args.target_genomes:
             gp_target = luigi.LocalTarget(cgp_args['augustus_cgp_gp'][genome])
@@ -589,7 +605,7 @@ class AugustusCgp(tools.toilInterface.ToilTask):
             tools.misc.convert_gtf_gp(gp_target, gtf_path)
 
 
-class AlignTranscripts(luigi.WrapperTask):
+class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
     """
     Aligns the transcripts from transMap/AugustusTMR/AugustusCGP to the parent transcript.
     For CGP, finds possible parents first and aligns to all of them
@@ -629,7 +645,7 @@ class AlignTranscripts(luigi.WrapperTask):
 
 
 @inherits(RunCat)
-class EvaluateTranscripts(luigi.WrapperTask):
+class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
     """
     Evaluates all transcripts for important features.
     """
