@@ -103,7 +103,7 @@ def setup(job, args, input_file_ids):
                                    tm_psl_dict[tx_id], ref_psl_dict[tools.psl.remove_alignment_number(tx_id)]]
         j = job.addChildJobFn(run_augustus_chunk, i, args, grouped_recs, input_file_ids)
         results.append(j.rv())
-    return job.addFollowOnJobFn(merge, results).rv()
+    return job.addFollowOnJobFn(merge, results, args).rv()
 
 
 def run_augustus_chunk(job, i, args, grouped_recs, input_file_ids, padding=20000):
