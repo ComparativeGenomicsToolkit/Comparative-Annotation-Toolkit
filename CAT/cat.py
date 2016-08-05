@@ -552,7 +552,10 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
         return coding_gp
 
     def run(self):
-        job_store = os.path.join(self.work_dir, 'toil', 'augustus_tmr', self.genome)
+        if self.augustus_args['augustus_hints_db'] is not None:
+            job_store = os.path.join(self.work_dir, 'toil', 'augustus_tmr', self.genome)
+        else:
+            job_store = os.path.join(self.work_dir, 'toil', 'augustus_tm', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         coding_gp = self.extract_coding_genes()
         augustus(self.augustus_args, coding_gp, toil_options)

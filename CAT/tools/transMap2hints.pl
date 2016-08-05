@@ -164,20 +164,20 @@ while (<TRANSMAP>) {
     $numBlocks = scalar @s;
     # start and stop hint
     if ($strand eq '+') {
-	if ($txStart != $cdsStart && $cdsStart > 0) {
+	if ($txStart != $cdsStart && $cdsStart > 0 && $leftcmpl == 'cmpl') {
 	    @hint = ($cdsStart+1-$start_stop_radius, $cdsStart+3+$start_stop_radius, '+', $qname);
 	    addSignalHint(\@starthints, [@hint]);
 	}
-	if ($txEnd != $cdsEnd && $cdsEnd > 0) {
+	if ($txEnd != $cdsEnd && $cdsEnd > 0 && $rightcmpl == 'cmpl') {
 	    @hint = ($cdsEnd-2-$start_stop_radius, $cdsEnd+$start_stop_radius, '+', $qname);
 	    addSignalHint(\@stophints, [@hint]);
 	}
     } else{
-	if ($txStart != $cdsStart && $cdsStart > 0) {
+	if ($txStart != $cdsStart && $cdsStart > 0 && $leftcmpl == 'cmpl') {
 	    @hint = ($cdsStart+1-$start_stop_radius, $cdsStart+3+$start_stop_radius, '-', $qname);
 	    addSignalHint(\@stophints, [@hint]);
 	}
-	if ($txEnd != $cdsEnd && $cdsEnd > 0) {
+	if ($txEnd != $cdsEnd && $cdsEnd > 0 && $rightcmpl == 'cmpl') {
 	    @hint = ($cdsEnd-2-$start_stop_radius, $cdsEnd+$start_stop_radius, '-', $qname);
 	    addSignalHint(\@starthints, [@hint]);
 	}
