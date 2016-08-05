@@ -198,7 +198,7 @@ def merge(job, results, args):
     :param args: arguments to the pipeline
     :return:
     """
-    if args.augustus_hints_db is None:
+    if args['augustus_hints_db'] is None:
         job.fileStore.logToMaster('Merging AugustusTMR output for {}'.format(args['genome']), level=logging.INFO)
     else:
         job.fileStore.logToMaster('Merging AugustusTM output for {}'.format(args['genome']), level=logging.INFO)

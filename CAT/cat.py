@@ -555,11 +555,9 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
         job_store = os.path.join(self.work_dir, 'toil', 'augustus_tmr', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         coding_gp = self.extract_coding_genes()
-        augustus_results = augustus(self.augustus_args, coding_gp, toil_options)
+        augustus(self.augustus_args, coding_gp, toil_options)
         os.remove(coding_gp)
         out_gp, out_gtf = self.output()
-        with out_gtf.open('w') as outf:
-            tools.fileOps.print_rows(outf, augustus_results)
         tools.misc.convert_gtf_gp(out_gp, out_gtf)
 
 
