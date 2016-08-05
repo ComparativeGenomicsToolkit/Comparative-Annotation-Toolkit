@@ -2,8 +2,9 @@
 """
 Wrapper for pipeline.py. Provides a simple interface for complicated unix-style process pipes.
 """
-
+import sys
 import pipeline
+import subprocess
 
 
 def call_proc(cmd, keepLastNewLine=False):
@@ -48,3 +49,19 @@ def run_proc_code(cmd, stdin="/dev/null", stdout=None, stderr=None):
         else:
             raise ex
     return 0
+
+def popen_catch(command, stdin=None):
+    """
+    Runs a command and return standard out. TODO: use Mark's tools. I don't think he has this functionality.
+    """
+    if stdin != None:
+        process = subprocess.Popen(command,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
+        output, nothing = process.communicate(stdin)
+    else:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
+        output, nothing = process.communicate()
+    sts = process.wait()
+    if sts != 0:
+        raise RuntimeError("Command: %s with stdin string '%s' exited with non-zero status %i" % (command, stdin, sts))
+    return output

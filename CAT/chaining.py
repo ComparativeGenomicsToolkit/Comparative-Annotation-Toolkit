@@ -6,30 +6,42 @@ import logging
 import tools.hal
 import tools.procOps
 import tools.fileOps
-import tools.toilInterface
 from toil.job import Job
+from toil.common import Toil
 
 
 def chaining(args, toil_options):
     """entry point to this program"""
-    j = Job.wrapJobFn(setup, args, toil_options)
-    i = Job.Runner.startToil(j, toil_options)
+    with Toil(toil_options) as toil:
+        if not toil.options.restart:
+            hal_file_id = toil.importFile('file:///' + args['hal'])
+            chrom_sizes_file_id = toil.importFile('file:///' + args['query_sizes'])
+            query_two_bit_file_id = toil.importFile('file:///' + args['query_two_bit'])
+            target_two_bit_file_id = toil.importFile('file:///' + args['target_two_bit'])
+            input_file_ids = {'hal': hal_file_id, 'sizes': chrom_sizes_file_id, 'query_two_bit': query_two_bit_file_id,
+                              'target_two_bit': target_two_bit_file_id}
+            job = Job.wrapJobFn(setup, args, input_file_ids)
+            chain_file_id = toil.start(job)
+        else:
+            chain_file_id = toil.restart()
+        tools.fileOps.ensure_file_dir(args['chain_file'])
+        toil.exportFile(chain_file_id, 'file:///' + args['chain_file'])
 
 
-def setup(job, args, toil_options):
+def setup(job, args, input_file_ids):
     """
     Entry function for chaining cactus alignments
     :param args: argument dictionary
-    :return:
+    :param input_file_ids: file ID dictionary of imported files
+    :return: fileStore ID for output chain file
     """
-    input_file_ids = upload_files(job, args)
-    chrom_sizes_local_path = job.fileStore.readGlobalFile(input_file_ids['sizes'])
+    chrom_sizes = job.fileStore.readGlobalFile(input_file_ids['sizes'])
     return_file_ids = []
-    for i, l in enumerate(open(chrom_sizes_local_path)):
+    for i, l in enumerate(open(chrom_sizes)):
         chrom, size = l.split()
         j = job.addChildJobFn(chain_by_chromosome, args, chrom, size, input_file_ids, memory='8G')
         return_file_ids.append(j.rv())
-    job.addFollowOnJobFn(merge, return_file_ids, args, toil_options)
+    return job.addFollowOnJobFn(merge, return_file_ids, args).rv()
 
 
 def chain_by_chromosome(job, args, chrom, size, input_file_ids):
@@ -47,7 +59,15 @@ def chain_by_chromosome(job, args, chrom, size, input_file_ids):
     with open(bed_path, 'w') as outf:
         tools.fileOps.print_row(outf, [chrom, 0, size])
     chain = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
-    hal, target_two_bit, query_two_bit = download_files(job, input_file_ids, args)
+    # load files from jobStore
+    work_dir = job.fileStore.getLocalTempDir()
+    hal = os.path.join(work_dir, os.path.basename(args['hal']))
+    job.fileStore.readGlobalFile(input_file_ids['hal'], hal)
+    target_two_bit = os.path.join(work_dir, os.path.basename(args['target_two_bit']))
+    job.fileStore.readGlobalFile(input_file_ids['target_two_bit'], target_two_bit)
+    query_two_bit = os.path.join(work_dir, os.path.basename(args['query_two_bit']))
+    job.fileStore.readGlobalFile(input_file_ids['query_two_bit'], query_two_bit)
+    # execute liftover
     cmd = [["halLiftover", "--outPSL", hal, args['ref_genome'], bed_path, args['genome'], "/dev/stdout"],
            ["pslPosTarget", "/dev/stdin", "/dev/stdout"],
            ["axtChain", "-psl", "-verbose=0", "-linearGap=medium", "/dev/stdin", target_two_bit, query_two_bit, chain]]
@@ -55,12 +75,11 @@ def chain_by_chromosome(job, args, chrom, size, input_file_ids):
     return job.fileStore.writeGlobalFile(chain)
 
 
-def merge(job, chain_files, args, toil_options):
+def merge(job, chain_files, args):
     """
     Merge together chain files.
     :param chain_files: list of fileStore file_ids
     :param args: argument dictionary
-    :param toil_options: argument namespace for Toil launching
     :return:
     """
     job.fileStore.logToMaster('Merging chains for {}'.format(args['genome']), level=logging.INFO)
@@ -72,26 +91,5 @@ def merge(job, chain_files, args, toil_options):
     cmd = ['chainMergeSort', '-inputList={}'.format(fofn), '-tempDir={}/'.format(job.fileStore.getLocalTempDir())]
     tmp_chain_file = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
     tools.procOps.run_proc(cmd, stdout=tmp_chain_file)
-    tools.toilInterface.export_to_master(tmp_chain_file, args['chain_file'], toil_options.master_ip)
-
-
-def upload_files(job, args):
-    """load files to jobStore"""
-    hal_file_id = job.fileStore.writeGlobalFile(args['hal'])
-    chrom_sizes_file_id = job.fileStore.writeGlobalFile(args['query_sizes'])
-    query_two_bit_file_id = job.fileStore.writeGlobalFile(args['query_two_bit'])
-    target_two_bit_file_id = job.fileStore.writeGlobalFile(args['target_two_bit'])
-    return {'hal': hal_file_id, 'sizes': chrom_sizes_file_id, 'query_two_bit': query_two_bit_file_id,
-            'target_two_bit': target_two_bit_file_id}
-
-
-def download_files(job, input_file_ids, args):
-    """download all files from fileStore for chaining"""
-    work_dir = job.fileStore.getLocalTempDir()
-    hal_local_path = os.path.join(work_dir, os.path.basename(args['hal']))
-    job.fileStore.readGlobalFile(input_file_ids['hal'], hal_local_path)
-    target_two_bit_local_path = os.path.join(work_dir, os.path.basename(args['target_two_bit']))
-    job.fileStore.readGlobalFile(input_file_ids['target_two_bit'], target_two_bit_local_path)
-    query_two_bit_local_path = os.path.join(work_dir, os.path.basename(args['query_two_bit']))
-    job.fileStore.readGlobalFile(input_file_ids['query_two_bit'], query_two_bit_local_path)
-    return hal_local_path, target_two_bit_local_path, query_two_bit_local_path
+    tmp_chain_file_id = job.fileStore.writeGlobalFile(tmp_chain_file)
+    return tmp_chain_file_id

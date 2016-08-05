@@ -42,7 +42,11 @@ class PipelineParameterMixin(object):
         namespace.work_dir = os.path.abspath(self.work_dir)
         namespace.augustus = self.augustus
         namespace.augustus_cgp = self.augustus_cgp
-        namespace.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
+        namespace.tm_to_hints_script = self.tm_to_hints_script
+        if self.augustus_hints_db is not None:
+            namespace.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
+        else:
+            namespace.augustus_hints_db = None
         namespace.tm_cfg = os.path.abspath(self.tm_cfg)
         namespace.tmr_cfg = os.path.abspath(self.tmr_cfg)
         if self.target_genomes is None:
@@ -71,6 +75,7 @@ class RunCat(luigi.WrapperTask):
     tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
     augustus_cgp_cfg = luigi.Parameter(default='augustus_cfgs/cgp.cfg', significant=False)
+    tm_to_hints_script = luigi.Parameter(default='tools/transMap2hints.pl', significant=False)
     # toil parameters, which match tools.toilInterface.ToilTask
     workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
@@ -223,17 +228,17 @@ class ReferenceFiles(luigi.WrapperTask, PipelineParameterMixin):
     ReferenceFiles -> Gff3ToGenePred -> TranscriptBed -> TranscriptFasta -> FlatTranscriptFasta
                             V
                          FakePsl
-
     """
     @staticmethod
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.work_dir, 'reference')
-        args = {'annotation_gp': os.path.join(base_dir, pipeline_args.annotation + '.gp'),
-                'annotation_attrs': os.path.join(base_dir, pipeline_args.annotation + '.attrs.tsv'),
-                'transcript_fasta':  os.path.join(base_dir, pipeline_args.annotation + '.fa'),
-                'transcript_flat_fasta': os.path.join(base_dir, pipeline_args.annotation + '.fa.flat'),
-                'transcript_bed': os.path.join(base_dir, pipeline_args.annotation + '.bed'),
-                'ref_psl': os.path.join(base_dir, pipeline_args.annotation + '.psl')}
+        annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
+        args = {'annotation_gp': os.path.join(base_dir, annotation + '.gp'),
+                'annotation_attrs': os.path.join(base_dir, annotation + '.attrs.tsv'),
+                'transcript_fasta':  os.path.join(base_dir, annotation + '.fa'),
+                'transcript_flat_fasta': os.path.join(base_dir, annotation + '.fa.flat'),
+                'transcript_bed': os.path.join(base_dir, annotation + '.bed'),
+                'ref_psl': os.path.join(base_dir, annotation + '.psl')}
         args.update(GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome))
         return args
 
@@ -482,26 +487,28 @@ class Augustus(luigi.WrapperTask, PipelineParameterMixin):
         tm_args = TransMap.get_args(pipeline_args, genome)
         tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
-        base_dir = os.path.join(pipeline_args.work_dir, 'augustus')
         if pipeline_args.augustus_hints_db is not None:
+            base_dir = os.path.join(pipeline_args.work_dir, 'augustus_tm')
             augustus_gp = os.path.join(base_dir, genome + '.TM.gp')
             augustus_gtf = os.path.join(base_dir, genome + '.TM.gtf')
         else:
+            base_dir = os.path.join(pipeline_args.work_dir, 'augustus_tmr')
             augustus_gp = os.path.join(base_dir, genome + '.TMR.gp')
             augustus_gtf = os.path.join(base_dir, genome + '.TM.gtf')
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
-                'genome_fasta': os.path.abspath(tgt_genome_files['fasta']),
-                'annotation_gp': os.path.abspath(annotation_files['annotation_gp']),
-                'ref_psl': os.path.abspath(tm_args['ref_psl']),
-                'annotation_attrs': os.path.abspath(annotation_files['annotation_attrs']),
-                'tm_gp': os.path.abspath(tm_args['tm_gp']),
-                'tm_psl': os.path.abspath(tm_args['tm_psl']),
+                'genome_fasta': tgt_genome_files['fasta'],
+                'ref_psl': tm_args['ref_psl'],
+                'annotation_attrs': annotation_files['annotation_attrs'],
+                'annotation_gp': annotation_files['annotation_gp'],
+                'tm_gp': tm_args['tm_gp'],
+                'tm_psl': tm_args['tm_psl'],
                 'augustus_gp': os.path.abspath(augustus_gp),
-                'augustsu_gtf': os.path.abspath(augustus_gtf),
+                'augustus_gtf': os.path.abspath(augustus_gtf),
                 'augustus_hints_db': os.path.abspath(pipeline_args.augustus_hints_db) if
                                                      pipeline_args.augustus_hints_db is not None else None,
                 'tm_cfg': os.path.abspath(pipeline_args.tm_cfg),
-                'tmr_cfg': os.path.abspath(pipeline_args.tmr_cfg)}
+                'tmr_cfg': os.path.abspath(pipeline_args.tmr_cfg),
+                'tm_to_hints_script': os.path.abspath(pipeline_args.tm_to_hints_script)}
         return args
 
     def validate(self):
@@ -545,7 +552,7 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
         return coding_gp
 
     def run(self):
-        job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
+        job_store = os.path.join(self.work_dir, 'toil', 'augustus_tmr', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         coding_gp = self.extract_coding_genes()
         augustus_results = augustus(self.augustus_args, coding_gp, toil_options)
@@ -717,6 +724,6 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
 
 
 if __name__ == '__main__':
-    luigi.build([Augustus(hal='1509.hal',
-                target_genomes=('C57BL_6NJ',), work_dir='cat_work', ref_genome='C57B6J', augustus=True,
-                annotation='Mus_musculus.GRCm38.83.gff3')], logging_conf_file='logging.cfg')
+    luigi.build([Augustus(hal='test_data/vertebrates.hal',
+                work_dir='test_work', ref_genome='mm10', augustus=True,
+                annotation='test_data/GRCm38.mm10.gff3')], logging_conf_file='logging.cfg')
