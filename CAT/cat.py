@@ -19,7 +19,7 @@ from tools.luigiAddons import multiple_inherits, multiple_requires, AbstractAtom
 from luigi.util import inherits, requires
 from chaining import chaining
 from augustus import augustus
-
+from augustus_cgp import augustus_cgp
 
 class UserException(Exception):
     pass
@@ -41,14 +41,25 @@ class PipelineParameterMixin(object):
         namespace.out_dir = os.path.abspath(self.out_dir)
         namespace.work_dir = os.path.abspath(self.work_dir)
         namespace.augustus = self.augustus
-        namespace.augustus_cgp = self.augustus_cgp
-        namespace.tm_to_hints_script = self.tm_to_hints_script
+        namespace.augustus_species = self.augustus_species
         if self.augustus_hints_db is not None:
             namespace.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
         else:
             namespace.augustus_hints_db = None
         namespace.tm_cfg = os.path.abspath(self.tm_cfg)
         namespace.tmr_cfg = os.path.abspath(self.tmr_cfg)
+        namespace.tm_to_hints_script = self.tm_to_hints_script
+        namespace.augustus_cgp = self.augustus_cgp
+        namespace.maf_chunksize = self.maf_chunksize
+        namespace.maf_overlap = self.maf_overlap
+        if self.augustus_cgp_cfg is not None:
+            namespace.augustus_cgp_cfg = os.path.abspath(self.augustus_cgp_cfg)
+        else:
+            namespace.augustus_cgp_cfg = None
+        if self.augustus_cgp_param is not None:
+            namespace.augustus_cgp_param = os.path.abspath(self.augustus_cgp_param)
+        else:
+            namespace.augustus_cgp_param = None
         if self.target_genomes is None:
             target_genomes = tools.hal.extract_genomes(self.hal)
             target_genomes = tuple(set(target_genomes) - {self.ref_genome})
@@ -69,18 +80,23 @@ class RunCat(luigi.WrapperTask):
     work_dir = luigi.Parameter(default=tempfile.gettempdir())
     target_genomes = luigi.TupleParameter(default=None)
     augustus = luigi.BoolParameter(default=False)
-    augustus_cgp = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human')
     augustus_hints_db = luigi.Parameter(default=None)
     tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
-    augustus_cgp_cfg = luigi.Parameter(default='augustus_cfgs/cgp.cfg', significant=False)
+    # AugustusCGP parameters
+    augustus_cgp = luigi.BoolParameter(default=False)
+    augustus_cgp_cfg = luigi.Parameter(default=None)
+    augustus_cgp_param = luigi.Parameter(default=None)
+    maf_chunksize = luigi.IntParameter(default=2500000)
+    maf_overlap = luigi.IntParameter(default=500000)
     tm_to_hints_script = luigi.Parameter(default='tools/transMap2hints.pl', significant=False)
     # toil parameters, which match tools.toilInterface.ToilTask
     workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
     logLevel = luigi.Parameter(default='WARNING', significant=False)
+    cleanWorkDir = luigi.Parameter(default=None, significant=False)
 
     def requires(self):
         yield self.clone(PrepareFiles)
@@ -88,8 +104,8 @@ class RunCat(luigi.WrapperTask):
         yield self.clone(TransMap)
         if self.augustus is True:
             yield self.clone(Augustus)
-        #if self.augustus_cgp is True:
-        #    yield self.clone(AugustusCgp)
+        if self.augustus_cgp is True:
+            yield self.clone(AugustusCgp)
         #yield AlignTranscripts()
         #yield EvaluateTranscripts()
         #yield Consensus()
@@ -562,24 +578,34 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
 
 
 @inherits(RunCat)
-class AugustusCgp(tools.toilInterface.ToilTask):
+class AugustusCgp(tools.toilInterface.ToilTask,PipelineParameterMixin):
     """
     Task for launching the AugustusCGP Toil pipeline
     """
+
     @staticmethod
     def get_args(pipeline_args):
-        fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome)['fasta'] for genome in
-                       pipeline_args.target_genomes}
+        # add reference to the target genomes
+        tgt_genomes = list(itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]))
+        fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome)['fasta'] for genome in tgt_genomes}
         base_dir = os.path.join(pipeline_args.work_dir, 'augustus_cgp')
-        gp_files = {genome: os.path.abspath(os.path.join(base_dir, genome + 'augustus_cgp.gp')) for genome in
-                    pipeline_args.target_genomes}
-        gtf_files = {genome: os.path.abspath(os.path.join(base_dir, genome + 'augustus_cgp.gtf')) for genome in
-                     pipeline_args.target_genomes}
+        # output
+        gp_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_augustus_cgp.gp')) for genome in tgt_genomes}
+        gtf_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_augustus_cgp.gtf')) for genome in tgt_genomes}
         args = {'fasta_files': fasta_files,
                 'hal': pipeline_args.hal,
-                'augustus_cgp_cfg': pipeline_args.augustus_cgp_cfg,
+                'ref_genome': pipeline_args.ref_genome,
                 'augustus_cgp_gp': gp_files,
-                'augustus_cgp_gtf': gtf_files}
+                'augustus_cgp_gtf': gtf_files,
+                'species': pipeline_args.augustus_species,
+                'chunksize': pipeline_args.maf_chunksize,
+                'overlap': pipeline_args.maf_overlap,
+                'cgp_cfg': os.path.abspath(pipeline_args.augustus_cgp_cfg) if pipeline_args.augustus_cgp_cfg is not None else None,
+                'hints_db': os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_hints_db is not None else None,
+                'cgp_param': os.path.abspath(pipeline_args.augustus_cgp_param) if pipeline_args.augustus_cgp_param is not None else None}
+        # chromSizes: required for splitting the HAL alignment along the reference genome
+        ref_file = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)
+        args['query_sizes'] = ref_file['sizes']
         return args
 
     def output(self):
@@ -591,20 +617,33 @@ class AugustusCgp(tools.toilInterface.ToilTask):
                 targets.append(luigi.LocalTarget(path))
         return targets
 
+    def validate(self):
+        # make sure that all external tools are executable
+        if not tools.misc.is_exec('joingenes'):
+            raise UserException('auxiliary program joingenes from the Augustus package not in global path.')
+        if not tools.misc.is_exec('augustus'):
+            raise UserException('augustus not in global path.')
+        if not tools.misc.is_exec('hal2maf'):
+            raise UserException('hal2maf from the halTools package not in global path.')
+        # TODO: make sure that all input args exist
+
     def requires(self):
-        return self.clone(TransMap)
+        self.validate()
+        yield self.clone(GenomeFiles)
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
         if pipeline_args.augustus_hints_db is None:
+            # TODO: if no database is given (de novo setting),
+            # create a new DB with the flattened genomes from the HAL alignment
             raise UserException('Cannot run AugustusCGP without a hints database.')
-        job_store = os.path.join(self.work_dir, 'toil', 'augustus_cgp', self.genome)
+        job_store = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(job_store)
         cgp_args = self.get_args(pipeline_args)
         # instead of having toil return the gff as a string, just have toil write to each member of args['augustus_cgp_gtf']
-        #augustus_cgp(cgp_args, toil_options)
+        augustus_cgp(cgp_args, toil_options)
         # convert each to genePred as well
-        for genome in pipeline_args.target_genomes:
+        for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
             gp_target = luigi.LocalTarget(cgp_args['augustus_cgp_gp'][genome])
             gtf_path = cgp_args['augustus_cgp_gtf'][genome]
             tools.misc.convert_gtf_gp(gp_target, gtf_path)

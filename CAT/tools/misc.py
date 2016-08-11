@@ -4,7 +4,6 @@ Miscellaneous tools for the pipeline. Some may eventually be refactored into the
 import pandas as pd
 import procOps
 
-
 def read_attributes_tsv(attrs_path):
     """
     Loads the attributes TSV into a pandas DataFrame
@@ -19,3 +18,11 @@ def convert_gtf_gp(out_target, gtf_path):
     with out_target.open('w') as outf:
         cmd = ['gtfToGenePred', gtf_path, '/dev/stdout']
         procOps.run_proc(cmd, stdout=outf)
+
+def is_exec(program): 
+    """checks if a program is in the global path and executable"""
+    cmd = ['which', program]
+    try:
+        return procOps.call_proc_lines(cmd)[0].endswith(program)
+    except Exception as error:
+        return False
