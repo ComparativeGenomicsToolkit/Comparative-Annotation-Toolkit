@@ -347,6 +347,6 @@ def extract_attrs(gp):
             tx_biotype = tx.attributes['biotype'][0]
             r = {'tx_biotype': tx_biotype, 'gene_id': gene_id, 'gene_name': gene_name, 'gene_biotype': gene_biotype}
             results[tx_id] = r
-    df = pd.DataFrame.from_dict(results)
-    df = df.transpose()
+    df = pd.DataFrame.from_dict(results, orient='index')
+    df.index.rename('tx_id', inplace=True)
     return df

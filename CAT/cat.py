@@ -6,19 +6,23 @@ import argparse
 import itertools
 import os
 import luigi
+import sqlalchemy
 import tempfile
 import tools.fileOps
 import tools.procOps
 import tools.toilInterface
 import tools.hal
 import tools.transcripts
+import tools.sqlInterface
 import tools.psl
 import tools.gff3
 import tools.misc
 from tools.luigiAddons import multiple_inherits, multiple_requires, AbstractAtomicFileTask
 from luigi.util import inherits, requires
+import luigi.contrib.sqla
 from chaining import chaining
 from augustus import augustus
+from align_transcripts import align_transcripts
 
 
 class UserException(Exception):
@@ -42,6 +46,7 @@ class PipelineParameterMixin(object):
         namespace.work_dir = os.path.abspath(self.work_dir)
         namespace.augustus = self.augustus
         namespace.augustus_cgp = self.augustus_cgp
+        namespace.augustus_species = self.augustus_species
         namespace.tm_to_hints_script = self.tm_to_hints_script
         if self.augustus_hints_db is not None:
             namespace.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
@@ -90,7 +95,7 @@ class RunCat(luigi.WrapperTask):
             yield self.clone(Augustus)
         #if self.augustus_cgp is True:
         #    yield self.clone(AugustusCgp)
-        #yield AlignTranscripts()
+        yield self.clone(AlignTranscripts)
         #yield EvaluateTranscripts()
         #yield Consensus()
         #yield Plots()
@@ -234,8 +239,8 @@ class ReferenceFiles(luigi.WrapperTask, PipelineParameterMixin):
         base_dir = os.path.join(pipeline_args.work_dir, 'reference')
         annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
         args = {'annotation_gp': os.path.join(base_dir, annotation + '.gp'),
-                'annotation_attrs': os.path.join(base_dir, annotation + '.attrs.tsv'),
-                'transcript_fasta':  os.path.join(base_dir, annotation + '.fa'),
+                'annotation_db': os.path.join(base_dir, annotation + '.db'),
+                'transcript_fasta': os.path.join(base_dir, annotation + '.fa'),
                 'transcript_flat_fasta': os.path.join(base_dir, annotation + '.fa.flat'),
                 'transcript_bed': os.path.join(base_dir, annotation + '.bed'),
                 'ref_psl': os.path.join(base_dir, annotation + '.psl')}
@@ -272,18 +277,24 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
 @inherits(ReferenceFiles)
 class Gff3ToAttrs(luigi.Task):
     """
-    Uses the gff3 parser to extract the attributes table.
+    Uses the gff3 parser to extract the attributes table, converting the table into a sqlite databse for import
+    and use by downstream tools.
     """
-    annotation_gp = luigi.Parameter()
-    annotation_attrs = luigi.Parameter()
+    annotation_db = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.annotation_attrs)
+        tools.fileOps.ensure_file_dir(self.annotation_db)
+        conn_str = 'sqlite:///{}'.format(self.annotation_db)
+        attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                          target_table=self.ref_genome,
+                                                          update_id=self.task_id)
+        return attrs_table
 
     def run(self):
         results = tools.gff3.extract_attrs(self.annotation)
-        with self.output().open('w') as outf:
-            results.to_csv(outf, sep='\t', index_label='tx_id')
+        engine = sqlalchemy.create_engine('sqlite:///{}'.format(self.annotation_db))
+        results.to_sql(self.ref_genome, engine, if_exists='replace')
+        self.output().touch()
 
 
 @requires(Gff3ToGenePred)
@@ -487,19 +498,19 @@ class Augustus(luigi.WrapperTask, PipelineParameterMixin):
         tm_args = TransMap.get_args(pipeline_args, genome)
         tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
-        if pipeline_args.augustus_hints_db is not None:
+        if pipeline_args.augustus_hints_db is None:
             base_dir = os.path.join(pipeline_args.work_dir, 'augustus_tm')
             augustus_gp = os.path.join(base_dir, genome + '.TM.gp')
             augustus_gtf = os.path.join(base_dir, genome + '.TM.gtf')
         else:
             base_dir = os.path.join(pipeline_args.work_dir, 'augustus_tmr')
             augustus_gp = os.path.join(base_dir, genome + '.TMR.gp')
-            augustus_gtf = os.path.join(base_dir, genome + '.TM.gtf')
+            augustus_gtf = os.path.join(base_dir, genome + '.TMR.gtf')
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
                 'genome_fasta': tgt_genome_files['fasta'],
                 'ref_psl': tm_args['ref_psl'],
-                'annotation_attrs': annotation_files['annotation_attrs'],
                 'annotation_gp': annotation_files['annotation_gp'],
+                'annotation_db': annotation_files['annotation_db'],
                 'tm_gp': tm_args['tm_gp'],
                 'tm_psl': tm_args['tm_psl'],
                 'augustus_gp': os.path.abspath(augustus_gp),
@@ -508,7 +519,8 @@ class Augustus(luigi.WrapperTask, PipelineParameterMixin):
                                                      pipeline_args.augustus_hints_db is not None else None,
                 'tm_cfg': os.path.abspath(pipeline_args.tm_cfg),
                 'tmr_cfg': os.path.abspath(pipeline_args.tmr_cfg),
-                'tm_to_hints_script': os.path.abspath(pipeline_args.tm_to_hints_script)}
+                'tm_to_hints_script': os.path.abspath(pipeline_args.tm_to_hints_script),
+                'augustus_species': pipeline_args.augustus_species}
         return args
 
     def validate(self):
@@ -541,7 +553,7 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
     def extract_coding_genes(self):
         """extracts only coding genes from the input genePred, returning a path to a tmp file"""
         coding_gp = tools.fileOps.get_tmp_file()
-        attrs = tools.misc.read_attributes_tsv(self.augustus_args['annotation_attrs'])
+        attrs = tools.sqlInterface.read_attrs(self.augustus_args['annotation_db'], self.augustus_args['ref_genome'])
         names = set(attrs[attrs.tx_biotype == 'protein_coding'].index)
         with open(coding_gp, 'w') as outf:
             for name, tx in tools.transcripts.gene_pred_iterator(self.augustus_args['tm_gp']):
@@ -610,25 +622,25 @@ class AugustusCgp(tools.toilInterface.ToilTask):
             tools.misc.convert_gtf_gp(gp_target, gtf_path)
 
 
+@inherits(RunCat)
 class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
     """
-    Aligns the transcripts from transMap/AugustusTMR/AugustusCGP to the parent transcript.
-    For CGP, finds possible parents first and aligns to all of them
+    Aligns the transcripts from transMap/AugustusTMR/AugustusCGP to the parent transcript(s).
     """
     @staticmethod
     def get_args(pipeline_args, genome):
-        tm_args = TransMap.get_args(pipeline_args, genome)
-        tgt_genome_files = GenomeFiles.get_args(pipeline_args.work_dir, genome)
+        tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
+        tm_files = TransMap.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         base_dir = os.path.join(pipeline_args.work_dir, 'transcript_alignment')
-        alignment_metrics_db = os.path.join(base_dir, 'alignment_metrics.db')
+        alignment_psl = os.path.join(base_dir, genome + '.psl')
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
-                'genome_fasta': os.path.abspath(tgt_genome_files['fasta']),
-                'annotation_gp': os.path.abspath(annotation_files['annotation_gp']),
-                'ref_psl': os.path.abspath(tm_args['ref_psl']),
-                'annotation_attrs': os.path.abspath(annotation_files['annotation_attrs']),
-                'tm_gp': os.path.abspath(tm_args['tm_gp']),
-                'alignment_metrics_db': alignment_metrics_db}
+                'annotation_fasta': annotation_files['transcript_fasta'],
+                'annotation_gp': annotation_files['annotation_gp'],
+                'annotation_db': annotation_files['annotation_db'],
+                'genome_fasta': tgt_genome_files['fasta'],
+                'tm_gp': tm_files['tm_gp'],
+                'alignment_psl': alignment_psl}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -646,7 +658,35 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
             args = self.get_args(pipeline_args, target_genome)
-            yield self.clone(AugustusDriverTask, augustus_args=args, genome=target_genome)
+            yield self.clone(AlignTranscriptDriverTask, alignment_args=args, genome=target_genome)
+
+
+@inherits(AlignTranscripts)
+class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
+    """
+    Task for per-genome launching of a toil pipeline for aligning all transcripts found back to the reference in
+    transcript space using BLAT.
+
+    Each task returns a PSL of all alignments that will be analyzed next by EvaluateTranscripts. For CGP transcripts,
+    there may be more than one alignment.
+    """
+    alignment_args = luigi.DictParameter()  # dict to pass directory to alignment toil module
+    genome = luigi.Parameter()
+
+    def output(self):
+        return luigi.LocalTarget(self.alignment_args['alignment_psl'])
+
+    def requires(self):
+        if 'augustus_gp' in self.alignment_args:
+            yield self.clone(Augustus)
+        if 'augustus_cgp_gp' in self.alignment_args:
+            yield self.clone(AugustusCgp)
+        yield self.clone(TransMap)
+
+    def run(self):
+        job_store = os.path.join(self.work_dir, 'toil', 'transcript_alignment', self.genome)
+        toil_options = self.prepare_toil_options(job_store)
+        align_transcripts(self.alignment_args, toil_options)
 
 
 @inherits(RunCat)
@@ -668,7 +708,7 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
                 'tm_psl': tm_args['tm_psl'],
                 'tm_gp': tm_args['tm_gp'],
                 'annotation_gp': annotation_files['annotation_gp'],
-                'annotation_attrs': annotation_files['annotation_attrs'],
+                'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'genome': genome,
                 'classify_table': genome + '_Classify',
@@ -692,7 +732,7 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
 @inherits(EvaluateTranscripts)
 class EvaluateDriverTask(tools.toilInterface.ToilTask):
     """
-    Task for per-genome launching of a toil pipeline for running Augustus.
+    Task for per-genome launching of a toil pipeline for aligning transcripts to their parent
     """
     eval_args = luigi.DictParameter()  # dict to pass directory to evaluate toil module
     genome = luigi.Parameter()
@@ -702,12 +742,6 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
 
     def requires(self):
         return self.clone(TransMap)
-
-    def convert_gtf_gp(self, gtf_path):
-        """converts the Augustus output GTF to genePred"""
-        with self.output().open('w') as outf:
-            cmd = ['gtfToGenePred', gtf_path, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf)
 
     def run(self):
         job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)

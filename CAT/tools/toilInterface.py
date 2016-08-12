@@ -4,6 +4,7 @@ Provides a simple interface between Toil and Luigi.
 import os
 import tempfile
 import luigi
+import bio
 import fileOps
 from toil.job import Job
 
@@ -47,3 +48,40 @@ def get_toil_defaults():
     namespace = parser.parse_args([''])  # empty jobStore attribute
     namespace.jobStore = None  # jobStore attribute will be updated per-batch
     return namespace
+
+
+def load_fasta_from_filestore(job, fasta_file_id, fasta_gdx_file_id, fasta_flat_file_id, prefix='genome',
+                             upper=False):
+    """
+    Convenience function that will load a fasta from the fileStore and return the local path to it. This works with
+    the pyfasta module to load all of the required files.
+    :param job: current job.
+    :param fasta_file_id: fileStore file ID for the fasta
+    :param fasta_gdx_file_id: fileStore file ID for the index (gdx)
+    :param fasta_flat_file_id: fileStore file ID for the flat file (sentinel marker)
+    :param prefix: local file path prefix
+    :param upper: force all entries to upper case
+    :return: open pyfasta Fasta record pointing to the file.
+    """
+    work_dir = job.fileStore.getLocalTempDir()
+    fasta_local_path = os.path.join(work_dir, '{}.fasta'.format(prefix))
+    gdx_local_path = os.path.join(work_dir, '{}.fasta.gdx'.format(prefix))
+    flat_local_path = os.path.join(work_dir, '{}.fasta.flat'.format(prefix))
+    job.fileStore.readGlobalFile(fasta_file_id, fasta_local_path)
+    job.fileStore.readGlobalFile(fasta_gdx_file_id, gdx_local_path)
+    job.fileStore.readGlobalFile(fasta_flat_file_id, flat_local_path)
+    return bio.get_sequence_dict(fasta_local_path, upper=upper)
+
+
+def write_fasta_to_filestore(toil, fasta_local_path):
+    """
+    Convenience function that loads a fasta and its associated gdx/flat file into the fileStore.
+    Assumes that the paths are consistent with the requirements (i.e. $path.gdx and $path.flat)
+    :param toil: Toil context manager
+    :param fasta_local_path: Path to local fasta to load.
+    :return: List of fileStore IDs for fasta, fasta_gdx, fasta_flat
+    """
+    fasta_file_id = toil.importFile('file:///' + fasta_local_path)
+    gdx_file_id = toil.importFile('file:///' + fasta_local_path + '.gdx')
+    flat_file_id = toil.importFile('file:///' + fasta_local_path + '.flat')
+    return fasta_file_id, gdx_file_id, flat_file_id

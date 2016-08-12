@@ -58,23 +58,29 @@ def read_fasta(path_or_handle, validate='DNA'):
         fh.close()
 
 
-def write_fasta(path_or_handle, name, seq, chunk_size=100):
+def write_fasta(path_or_handle, name, seq, chunk_size=100, validate=None):
     """Writes out fasta file. if path ends in gz, will be gzipped.
     """
     if isinstance(path_or_handle, str):
         fh = opengz(path_or_handle, 'w')
     else:
         fh = path_or_handle
-    valid_chars = {x for x in string.ascii_letters + "-"}
+    if validate is 'DNA':
+        valid_chars = set('ACGTUYSWKMBDHVNacgtuyswkmbdhvn.-*')
+    elif validate is 'protein':
+        valid_chars = set('ABCDEFGHIKLMPQSRTVWXYZUabcdefghiklmpqsrtvwxyzuNn.-*')
+    else:
+        valid_chars = set()
     try:
         assert any([isinstance(seq, unicode), isinstance(seq, str)])
     except AssertionError:
         raise RuntimeError("Sequence is not unicode or string")
-    try:
-        assert all(x in valid_chars for x in seq)
-    except AssertionError:
-        bad_chars = {x for x in seq if x not in valid_chars}
-        raise RuntimeError("Invalid FASTA character(s) see in fasta sequence: {}".format(bad_chars))
+    if validate is not None:
+        try:
+            assert all(x in valid_chars for x in seq)
+        except AssertionError:
+            bad_chars = {x for x in seq if x not in valid_chars}
+            raise RuntimeError("Invalid FASTA character(s) seen in fasta sequence: {}".format(bad_chars))
     fh.write(">%s\n" % name)
     for i in xrange(0, len(seq), chunk_size):
         fh.write("%s\n" % seq[i:i+chunk_size])
