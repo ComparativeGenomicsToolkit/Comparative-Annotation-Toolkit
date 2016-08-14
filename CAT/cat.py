@@ -92,17 +92,17 @@ class RunCat(luigi.WrapperTask):
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
     # AugustusCGP parameters
     augustus_cgp = luigi.BoolParameter(default=False)
-    augustus_cgp_cfg = luigi.Parameter(default=None)
-    augustus_cgp_param = luigi.Parameter(default=None)
-    maf_chunksize = luigi.IntParameter(default=2500000)
-    maf_overlap = luigi.IntParameter(default=500000)
+    augustus_cgp_cfg = luigi.Parameter(default=None, significant=False)
+    augustus_cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
+    maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
+    maf_overlap = luigi.IntParameter(default=500000, significant=False)
     tm_to_hints_script = luigi.Parameter(default='tools/transMap2hints.pl', significant=False)
     # toil parameters, which match tools.toilInterface.ToilTask
     workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
     logLevel = luigi.Parameter(default='WARNING', significant=False)
-    cleanWorkDir = luigi.Parameter(default=None, significant=False)
+    cleanWorkDir = luigi.Parameter(default=None, significant=False)  # debugging option
 
     def requires(self):
         yield self.clone(PrepareFiles)
@@ -575,7 +575,7 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
         with open(coding_gp, 'w') as outf:
             for name, tx in tools.transcripts.gene_pred_iterator(self.augustus_args['tm_gp']):
                 if tools.psl.strip_alignment_numbers(name) in names:
-                    outf.write(tx.get_gene_pred() + '\n')
+                    tools.fileOps.print_row(outf, tx.get_gene_pred())
         if os.path.getsize(coding_gp) == 0:
             raise RuntimeError('Unable to extract coding transcripts from the transMap genePred.')
         return coding_gp
@@ -594,31 +594,43 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
 
 
 @inherits(RunCat)
-class AugustusCgp(tools.toilInterface.ToilTask,PipelineParameterMixin):
+class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
     """
     Task for launching the AugustusCGP Toil pipeline
     """
-
     @staticmethod
     def get_args(pipeline_args):
         # add reference to the target genomes
-        tgt_genomes = list(itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]))
+        tgt_genomes = list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]
         fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome)['fasta'] for genome in tgt_genomes}
         base_dir = os.path.join(pipeline_args.work_dir, 'augustus_cgp')
         # output
-        gp_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_augustus_cgp.gp')) for genome in tgt_genomes}
-        gtf_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_augustus_cgp.gtf')) for genome in tgt_genomes}
-        args = {'fasta_files': fasta_files,
+        output_gp_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_augustus_cgp.gp'))
+                           for genome in tgt_genomes}
+        gtf_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_augustus_cgp.gtf'))
+                     for genome in tgt_genomes}
+        # transMap files used for assigning parental gene
+        tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome)['tm_gp']
+                       for genome in pipeline_args.target_genomes}
+        ref_files = ReferenceFiles.get_args(pipeline_args)
+        # add the reference annotation as a pseudo-transMap to assign parents in reference
+        tm_gp_files[pipeline_args.ref_genome] = ref_files['annotation_gp']
+        cgp_cfg = os.path.abspath(pipeline_args.augustus_cgp_cfg) if pipeline_args.augustus_cgp_cfg is not None else None
+        hints_db = os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_hints_db is not None else None
+        args = {'genomes': tgt_genomes,
+                'fasta_files': fasta_files,
+                'tm_gps': tm_gp_files,
                 'hal': pipeline_args.hal,
                 'ref_genome': pipeline_args.ref_genome,
-                'augustus_cgp_gp': gp_files,
+                'augustus_cgp_gp': output_gp_files,
                 'augustus_cgp_gtf': gtf_files,
                 'species': pipeline_args.augustus_species,
                 'chunksize': pipeline_args.maf_chunksize,
                 'overlap': pipeline_args.maf_overlap,
-                'cgp_cfg': os.path.abspath(pipeline_args.augustus_cgp_cfg) if pipeline_args.augustus_cgp_cfg is not None else None,
-                'hints_db': os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_hints_db is not None else None,
-                'cgp_param': os.path.abspath(pipeline_args.augustus_cgp_param) if pipeline_args.augustus_cgp_param is not None else None}
+                'cgp_cfg': cgp_cfg,
+                'hints_db': hints_db,
+                'cgp_param': os.path.abspath(pipeline_args.augustus_cgp_param),
+                'annotation_db': ref_files['annotation_db']}
         # chromSizes: required for splitting the HAL alignment along the reference genome
         ref_file = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)
         args['query_sizes'] = ref_file['sizes']
@@ -645,7 +657,7 @@ class AugustusCgp(tools.toilInterface.ToilTask,PipelineParameterMixin):
 
     def requires(self):
         self.validate()
-        yield self.clone(GenomeFiles)
+        yield self.clone(TransMap)
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
@@ -656,13 +668,12 @@ class AugustusCgp(tools.toilInterface.ToilTask,PipelineParameterMixin):
         job_store = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(job_store)
         cgp_args = self.get_args(pipeline_args)
-        # instead of having toil return the gff as a string, just have toil write to each member of args['augustus_cgp_gtf']
         augustus_cgp(cgp_args, toil_options)
         # convert each to genePred as well
         for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
             gp_target = luigi.LocalTarget(cgp_args['augustus_cgp_gp'][genome])
-            gtf_path = cgp_args['augustus_cgp_gtf'][genome]
-            tools.misc.convert_gtf_gp(gp_target, gtf_path)
+            gtf_target = luigi.LocalTarget(cgp_args['augustus_cgp_gtf'][genome])
+            tools.misc.convert_gtf_gp(gp_target, gtf_target)
 
 
 @inherits(RunCat)
@@ -673,12 +684,13 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
     @staticmethod
     def get_args(pipeline_args, genome):
         tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
+        ref_genome_files = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)
         tm_files = TransMap.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         base_dir = os.path.join(pipeline_args.work_dir, 'transcript_alignment')
         alignment_psl = os.path.join(base_dir, genome + '.psl')
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
-                'annotation_fasta': annotation_files['transcript_fasta'],
+                'ref_genome_fasta': ref_genome_files['fasta'],
                 'annotation_gp': annotation_files['annotation_gp'],
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],

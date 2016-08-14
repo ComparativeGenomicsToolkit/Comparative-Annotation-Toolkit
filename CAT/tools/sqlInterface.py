@@ -55,3 +55,15 @@ def get_transcript_biotype_map(db_path, table, index_col='tx_id'):
     """
     df = read_attrs(db_path, table, index_col)
     return dict(zip(df.index, df.tx_biotype))
+
+
+def get_gene_biotype_map(db_path, table, index_col='tx_id'):
+    """
+    Convenience wrapper for read_attrs that returns a dictionary mapping gene IDs to their biotype
+    :param db_path: path to the attributes database
+    :param table: table name. should generally be ref_genome
+    :param index_col: column to index on. should generally be tx_id.
+    :return: dictionary {tx_id: tx_biotype}
+    """
+    df = read_attrs(db_path, table, index_col)
+    return dict(zip(df.gene_id, df.gene_biotype))

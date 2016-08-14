@@ -111,10 +111,10 @@ class Transcript(object):
             block_starts = ",".join(map(str, self.block_starts))
             block_sizes = ",".join(map(str, self.block_sizes))
             return map(str, [self.chromosome, self.start, self.stop, name, self.score, self.strand,
-                       self.thick_start, self.thick_stop, rgb, self.block_count, block_sizes, block_starts])
+                             self.thick_start, self.thick_stop, rgb, self.block_count, block_sizes, block_starts])
         elif new_start == new_stop:
             return map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand,
-                       new_start, new_stop, rgb, 1, 0, 0])
+                             new_start, new_stop, rgb, 1, 0, 0])
 
         def _move_start(exon_intervals, block_count, block_starts, block_sizes, start, new_start):
             to_remove = len([x for x in exon_intervals if x.start <= new_start and x.stop <= new_start])
@@ -176,8 +176,8 @@ class Transcript(object):
             thick_stop = 0
         block_starts = ",".join(map(str, block_starts))
         block_sizes = ",".join(map(str, block_sizes))
-        return '\t'.join(map(str, [self.chromosome, start, stop, name, self.score, self.strand, thick_start, thick_stop,
-                                   rgb, block_count, block_sizes, block_starts]))
+        return map(str, [self.chromosome, start, stop, name, self.score, self.strand, thick_start, thick_stop,
+                         rgb, block_count, block_sizes, block_starts])
 
     def chromosome_coordinate_to_mrna(self, coord):
         if not (self.start <= coord < self.stop):
@@ -397,9 +397,9 @@ class GenePredTranscript(Transcript):
         # change names if desired
         name2 = self.name2 if name2 is None else name2
         uid = self.id if uid is None else uid
-        return '\t'.join(map(str, [name, chrom, strand, start, stop, thick_start, thick_stop, block_count,
-                                   exon_starts, exon_ends, uid, name2, self.cds_start_stat, self.cds_end_stat,
-                                   exon_frames]))
+        return map(str, [name, chrom, strand, start, stop, thick_start, thick_stop, block_count,
+                         exon_starts, exon_ends, uid, name2, self.cds_start_stat, self.cds_end_stat,
+                         exon_frames])
 
 
 def get_gene_pred_dict(gp_file):

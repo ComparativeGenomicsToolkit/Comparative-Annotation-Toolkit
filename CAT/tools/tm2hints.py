@@ -23,5 +23,6 @@ def tm_to_hints(tm_tx, tm_psl, ref_psl, tm_to_hints_script):
     cmd.insert(1, tm_to_hints_script)
     ref_starts = psl.fix_ref_q_starts(ref_psl)
     intron_vector = ['1' if psl.is_fuzzy_intron(i, tm_psl, ref_starts) else '0' for i in tm_tx.intron_intervals]
-    tm_rec = ''.join([tm_tx.get_gene_pred(), '\t', ','.join(intron_vector), '\n'])
+    tm_gp = '\t'.join(tm_tx.get_gene_pred())
+    tm_rec = ''.join([tm_gp, '\t', ','.join(intron_vector), '\n'])
     return tools.procOps.popen_catch(cmd, tm_rec)

@@ -17,6 +17,7 @@ class ToilTask(luigi.Task):
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
     logLevel = luigi.Parameter(default='WARNING', significant=False)
+    cleanWorkDir = luigi.Parameter(default=None, significant=False)
 
     def prepare_toil_options(self, job_store=None):
         """
