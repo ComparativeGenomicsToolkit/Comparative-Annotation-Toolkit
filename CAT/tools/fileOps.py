@@ -10,7 +10,8 @@ import errno
 import socket
 import shutil
 import gzip
-import itertools
+import string
+import random
 import tempfile
 
 
@@ -144,8 +145,9 @@ def get_tmp_file(prefix=None, suffix="tmp", tmp_dir=None):
         base_path = os.path.join(tmp_dir, '.'.join([socket.gethostname(), str(os.getpid())]))
     else:
         base_path = os.path.join(tmp_dir, '.'.join([prefix, socket.gethostname(), str(os.getpid())]))
-    for i in itertools.count():
-        path = '.'.join([base_path, str(i), suffix])
+    while True:
+        rand = ''.join([random.choice(string.digits) for _ in xrange(10)])
+        path = '.'.join([base_path, rand, suffix])
         if not os.path.exists(path):
             return path
 
@@ -180,7 +182,7 @@ def print_rows(file_handle, item_iter, sep='\t'):
     """
     Convenience function that writes a iterable of lines to file_handle
     :param file_handle: A open file_handle
-    :param items: One or more things to write. Must be convertible to strings.
+    :param item_iter: One or more things to write. Must be convertible to strings.
     :param sep: separator to use
     """
     for line in item_iter:

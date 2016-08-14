@@ -25,6 +25,8 @@ import tools.procOps
 import tools.psl
 import tools.tm2hints
 import tools.transcripts
+import tools.intervals
+import tools.toilInterface
 from tools.hintsDatabaseInterface import reflect_hints_db, get_rnaseq_hints
 
 
@@ -34,14 +36,12 @@ def augustus(args, coding_gp, toil_options):
     :param args: dictionary of arguments from CAT
     :param coding_gp: genePred with only coding transcripts
     :param toil_options: toil options Namespace object
-    :return: GTF formatted string of output
     """
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            fasta_file_id = toil.importFile('file:///' + args['genome_fasta'])
             # assume that this fasta has been flattened
-            gdx_file_id = toil.importFile('file:///' + args['genome_fasta'] + '.gdx')
-            flat_file_id = toil.importFile('file:///' + args['genome_fasta'] + '.flat')
+            fasta_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args['genome_fasta'])
+            fasta_file_id, gdx_file_id, flat_file_id = fasta_file_ids
             coding_gp_file_id = toil.importFile('file:///' + coding_gp)
             tm_cfg_file_id = toil.importFile('file:///' + args['tm_cfg'])
             ref_psl_file_id = toil.importFile('file:///' + args['ref_psl'])
@@ -75,7 +75,7 @@ def setup(job, args, input_file_ids):
     :return: completed GTF format results for all jobs
     """
     job.fileStore.logToMaster('Beginning Augustus run on {}'.format(args['genome']), level=logging.INFO)
-    chunk_size = 2 if args['augustus_hints_db'] is None else 2
+    chunk_size = 1 if args['augustus_hints_db'] is None else 1  # TODO: fix these debug values
     # load all fileStore files necessary
     work_dir = job.fileStore.getLocalTempDir()
     ref_psl = os.path.join(work_dir, os.path.basename(args['ref_psl']))
@@ -91,9 +91,9 @@ def setup(job, args, input_file_ids):
     tm_psl_dict = tools.psl.get_alignment_dict(tm_psl)
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     if args['augustus_hints_db'] is not None:
-        job.fileStore.logToMaster('AugustusTMR loaded reference and transMap PSLs and reference genePred')
+        job.fileStore.logToMaster('AugustusTMR loaded reference, transMap PSLs and reference genePred')
     else:
-        job.fileStore.logToMaster('AugustusTM loaded reference and transMap PSLs and reference genePred')
+        job.fileStore.logToMaster('AugustusTM loaded reference, transMap PSLs and reference genePred')
     results = []
     gp_iter = tools.transcripts.gene_pred_iterator(coding_gp)
     for i, chunk in enumerate(tools.dataOps.grouper(gp_iter, chunk_size)):
@@ -118,17 +118,11 @@ def run_augustus_chunk(job, i, args, grouped_recs, input_file_ids, padding=20000
     """
     genome = args['genome']
     job.fileStore.logToMaster('Beginning chunk {} for genome {}'.format(i, genome))
-    # we have to explicitly place fasta, flat file and  gdx with the correct naming scheme for pyfasta
-    work_dir = job.fileStore.getLocalTempDir()
-    fasta_local_path = os.path.join(work_dir, 'genome.fasta')
-    gdx_local_path = os.path.join(work_dir, 'genome.fasta.gdx')
-    flat_local_path = os.path.join(work_dir, 'genome.fasta.flat')
-    tm_to_hints_script_local_path = os.path.join(work_dir, 'tm2hints.pl')
-    job.fileStore.readGlobalFile(input_file_ids['genome_fasta'], fasta_local_path)
-    job.fileStore.readGlobalFile(input_file_ids['genome_gdx'], gdx_local_path)
-    job.fileStore.readGlobalFile(input_file_ids['genome_flat'], flat_local_path)
-    job.fileStore.readGlobalFile(input_file_ids['tm_to_hints_script'], tm_to_hints_script_local_path)
-    fasta = tools.bio.get_sequence_dict(fasta_local_path, upper=False)  # maintain softmasking
+    tm_to_hints_script_local_path = job.fileStore.readGlobalFile(input_file_ids['tm_to_hints_script'])
+    genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['genome_fasta'],
+                                                                 input_file_ids['genome_gdx'],
+                                                                 input_file_ids['genome_flat'],
+                                                                 prefix='genome', upper=False)
     job.fileStore.logToMaster('Chunk {} successfully loaded the fasta for genome {}'.format(i, genome))
 
     tm_cfg_file = job.fileStore.readGlobalFile(input_file_ids['tm_cfg'])
@@ -148,25 +142,26 @@ def run_augustus_chunk(job, i, args, grouped_recs, input_file_ids, padding=20000
             continue
         chromosome = tm_tx.chromosome
         start = max(tm_tx.start - padding, 0)
-        stop = min(tm_tx.stop + padding, len(fasta[chromosome]))
-        assert start <= stop, ('wtf2', tm_tx.get_bed(), ref_tx.get_bed(), genome)
+        stop = min(tm_tx.stop + padding, len(genome_fasta[chromosome]))
         tm_hints = tools.tm2hints.tm_to_hints(tm_tx, tm_psl, ref_psl, tm_to_hints_script_local_path)
         if args['augustus_hints_db'] is not None:
             rnaseq_hints = get_rnaseq_hints(args['genome'], chromosome, start, stop, speciesnames, seqnames, hints,
                                             featuretypes, session)
             hint = ''.join([tm_hints, rnaseq_hints])
-            transcripts = run_augustus(job, hint, fasta, tm_tx, tmr_cfg_file, start, stop, cfg_version=2)
+            transcripts = run_augustus(job, hint, genome_fasta, tm_tx, tmr_cfg_file, start, stop,
+                                       args['augustus_species'], cfg_version=2)
             if transcripts is not None:
                 results.append(transcripts)
         else:
             hint = tm_hints
-        transcripts = run_augustus(job, hint, fasta, tm_tx, tm_cfg_file, start, stop, cfg_version=1)
+        transcripts = run_augustus(job, hint, genome_fasta, tm_tx, tm_cfg_file, start, stop,
+                                   args['augustus_species'], cfg_version=1)
         if transcripts is not None:  # we may not have found anything
             results.append(transcripts)
     return results
 
 
-def run_augustus(job, hint, fasta, tm_tx, cfg_file, start, stop, cfg_version=1):
+def run_augustus(job, hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_version):
     """
     Runs Augustus.
     :param job: job instance
@@ -174,6 +169,7 @@ def run_augustus(job, hint, fasta, tm_tx, cfg_file, start, stop, cfg_version=1):
     :param fasta: Pyfasta object
     :param tm_tx: GenePredTranscript object
     :param cfg_file: config file
+    :param species: species parameter to pass to Augustus
     :param cfg_version: config file version
     :return: GTF formatted output from Augustus or None if nothing was produced
     """
@@ -184,7 +180,7 @@ def run_augustus(job, hint, fasta, tm_tx, cfg_file, start, stop, cfg_version=1):
             tools.bio.write_fasta(fasta_out_handle, tm_tx.chromosome, fasta[tm_tx.chromosome][start:stop])
             cmd = ['augustus', fasta_out, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
                    '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR=on',
-                   '--alternatives-from-evidence=0', '--species=human', '--allow_hinted_splicesites=atac',
+                   '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
                    '--protein=0', '--softmasking=1']
         aug_output = tools.procOps.call_proc_lines(cmd)
     transcripts = munge_augustus_output(aug_output, cfg_version, tm_tx)
@@ -221,11 +217,13 @@ def munge_augustus_output(aug_output, cfg_version, tm_tx):
     # extract the transcript lines
     tx_entries = [x.split() for x in aug_output if "\ttranscript\t" in x]
     # filter out transcripts that do not overlap the alignment range
-    valid_txs = [x[-1] for x in tx_entries if not (int(x[4]) < tm_tx.start or int(x[3]) > tm_tx.stop)]
+    valid_txs = [x[-1] for x in tx_entries if tm_tx.interval.overlap(tools.intervals.ChromosomeInterval(x[0], x[3],
+                                                                                                        x[4], x[6]))]
     if len(valid_txs) != 1:
         return None
+    valid_tx = valid_txs[0]
     tx_id = 'aug-I{}-{}'.format(cfg_version, tm_tx.name)
-    tx_lines = [x.split('\t') for x in aug_output if 'AUGUSTUS' in x and not x.startswith('#')]
+    tx_lines = [x.split('\t') for x in aug_output if valid_tx in x]
     features = {"exon", "CDS", "start_codon", "stop_codon", "tts", "tss"}
     gtf = []
     for chrom, source, feature, start, stop, score, strand, frame, attributes in tx_lines:
