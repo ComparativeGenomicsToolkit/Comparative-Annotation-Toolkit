@@ -43,20 +43,20 @@ def augustus_cgp(args, toil_options):
     """
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            hal_file_id = toil.importFile('file:///' + args['hal'])
-            chrom_sizes_file_id = toil.importFile('file:///' + args['query_sizes'])
-            hints_db_file_id = toil.importFile('file:///' + args['hints_db'])
-            cgp_param_file_id = toil.importFile('file:///' + args['cgp_param'])
-            annotation_db_file_id = toil.importFile('file:///' + args['annotation_db'])
-            fasta_file_ids = {genome: toil.importFile('file:///' + fasta)
+            hal_file_id = toil.importFile('file://' + args['hal'])
+            chrom_sizes_file_id = toil.importFile('file://' + args['query_sizes'])
+            hints_db_file_id = toil.importFile('file://' + args['hints_db'])
+            cgp_param_file_id = toil.importFile('file://' + args['cgp_param'])
+            annotation_db_file_id = toil.importFile('file://' + args['annotation_db'])
+            fasta_file_ids = {genome: toil.importFile('file://' + fasta)
                               for genome, fasta in args['fasta_files'].iteritems()}
-            tm_gp_file_ids = {genome: toil.importFile('file:///' + tm_gp)
+            tm_gp_file_ids = {genome: toil.importFile('file://' + tm_gp)
                               for genome, tm_gp in args['tm_gps'].iteritems()}
             input_file_ids = {'hal': hal_file_id, 'sizes': chrom_sizes_file_id, 'hints_db': hints_db_file_id,
                               'cgp_param': cgp_param_file_id, 'fasta_files': fasta_file_ids,
                               'tm_gps': tm_gp_file_ids, 'annotation_db': annotation_db_file_id}
             if args['cgp_cfg'] is not None:
-                cgp_cfg_file_id = toil.importFile('file:///' + args['cgp_cfg'])
+                cgp_cfg_file_id = toil.importFile('file://' + args['cgp_cfg'])
                 input_file_ids['cgp_cfg'] = cgp_cfg_file_id
             job = Job.wrapJobFn(setup, args, input_file_ids)
             results = toil.start(job)
@@ -64,7 +64,7 @@ def augustus_cgp(args, toil_options):
             results = toil.restart()
         for genome in results:
             tools.fileOps.ensure_file_dir(args['augustus_cgp_gtf'][genome])
-            toil.exportFile(results[genome], 'file:///' + args['augustus_cgp_gtf'][genome])
+            toil.exportFile(results[genome], 'file://' + args['augustus_cgp_gtf'][genome])
 
 
 def setup(job, args, input_file_ids):
@@ -121,7 +121,7 @@ def hal2maf(job, input_file_ids, refGenome, chrom, start, chunkSize, genomic_reg
     """
     job.fileStore.logToMaster('Running hal2maf on {}'.format(genomic_region), level=logging.INFO)
     hal = job.fileStore.readGlobalFile(input_file_ids['hal'])
-    mafChunk = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
+    mafChunk = tools.fileOps.get_tmp_toil_file()
     cmd = ['hal2maf', '--noAncestors', '--noDupes', '--refGenome', refGenome,
            '--refSequence', chrom, '--start', start, '--length', chunkSize, hal, mafChunk]
     tools.procOps.run_proc(cmd)
@@ -134,8 +134,6 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
     """
     job.fileStore.logToMaster('Running AugustusCGP on {}'.format(genomic_region), level=logging.INFO)
 
-    work_dir = job.fileStore.getLocalTempDir()
-    cgp_dir = os.path.join(work_dir, 'cgp')  # where all the AugustusCGP output goes
     genomeFofn = writeGenomeFofn(job, input_file_ids['fasta_files'])
 
     opt_param = []  # optional AugustusCGP parameters
@@ -159,12 +157,11 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
                                       '--alternatives-from-evidence=0',
                                       '--/CompPred/logreg=on',
                                       '--printOEs=false',
-                                      '--/CompPred/outdir={}'.format(cgp_dir),
+                                      '--/CompPred/outdir={}'.format(os.getcwd()),
                                       '--optCfgFile={}'.format(job.fileStore.readGlobalFile(args['cgp_param']))]
 
     tools.procOps.run_proc(cmd)
-    return {genome: job.fileStore.writeGlobalFile(os.path.join(cgp_dir, genome + '.cgp.gff'))
-            for genome in args['genomes']}
+    return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args['genomes']}
 
 
 def merge_results(job, args, input_file_ids, gffChunks):
@@ -194,8 +191,8 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
     Calls out to the parental gene assignment pipeline
     """
     job.fileStore.logToMaster('Merging GFFs for {}'.format(genome), level=logging.INFO)
-    jg = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
-    chunks = ",".join(map(job.fileStore.readGlobalFile,gffChunks))
+    jg = tools.fileOps.get_tmp_toil_file()
+    chunks = ','.join(map(job.fileStore.readGlobalFile, gffChunks))
     cmd = [['joingenes', '-g', chunks, '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
     tools.procOps.run_proc(cmd, stdout=jg)
@@ -210,7 +207,7 @@ def writeTree(job,input_file_ids):
     """
     hal = job.fileStore.readGlobalFile(input_file_ids['hal']) 
     cmd = ['halStats', '--tree', hal]
-    tree = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
+    tree = tools.fileOps.get_tmp_toil_file()
     tools.procOps.run_proc(cmd, stdout=tree)
     return job.fileStore.writeGlobalFile(tree)
 
@@ -227,7 +224,7 @@ def writeGenomeFofn(job, fasta_file_ids):
 
     These files are loaded from the fileStore
     """
-    genomeFofn = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
+    genomeFofn = tools.fileOps.get_tmp_toil_file()
     with open(genomeFofn, 'w') as outf:
         for genome, file_id in fasta_file_ids.iteritems():
             local_path = job.fileStore.readGlobalFile(file_id)
@@ -259,7 +256,7 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
     tm_gp_file_id = job.fileStore.readGlobalFile(input_file_ids['tm_gps'][genome])
     transmap_dict = tools.transcripts.get_gene_pred_dict(tm_gp_file_id)
     # convert GFF to genePred
-    cgp_gp = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
+    cgp_gp = tools.fileOps.get_tmp_toil_file()
     joined_gff = job.fileStore.readGlobalFile(joined_gff_file_id)
     cmd = ['gtfToGenePred', '-genePredExt', joined_gff, cgp_gp]
     tools.procOps.run_proc(cmd)
@@ -281,8 +278,8 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
                 cgp_tx.name2 = gene_name
                 final_gps.append(cgp_tx)
     # convert back to GFF...
-    out_gp = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
-    out_gff = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
+    out_gp = tools.fileOps.get_tmp_toil_file()
+    out_gff = tools.fileOps.get_tmp_toil_file()
     with open(out_gp, 'w') as outf:
         for rec in final_gps:
             tools.fileOps.print_row(outf, rec.get_gene_pred())

@@ -4,7 +4,6 @@ this can be determined by using tools.nameConversions.strip_alignment_numbers() 
 which have new IDs, we use the name2 field which will have assigned a gene ID to try and align to all protein coding
 transcripts associated with that gene ID.
 """
-import os
 import logging
 import itertools
 
@@ -35,9 +34,9 @@ def align_transcripts(args, toil_options):
             ref_genome_fasta_file_id, ref_genome_fasta_gdx_file_id, ref_genome_fasta_flat_file_id = tx_file_ids
             genome_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args['genome_fasta'])
             genome_fasta_file_id, genome_fasta_gdx_file_id, genome_fasta_flat_file_id = genome_file_ids
-            tm_gp_file_id = toil.importFile('file:///' + args['tm_gp'])
-            annotation_gp_file_id = toil.importFile('file:///' + args['annotation_gp'])
-            annotation_db_file_id = toil.importFile('file:///' + args['annotation_db'])
+            tm_gp_file_id = toil.importFile('file://' + args['tm_gp'])
+            annotation_gp_file_id = toil.importFile('file://' + args['annotation_gp'])
+            annotation_db_file_id = toil.importFile('file://' + args['annotation_db'])
             input_file_ids = {'ref_genome_fasta': ref_genome_fasta_file_id,
                               'ref_genome_gdx': ref_genome_fasta_gdx_file_id,
                               'ref_genome_flat': ref_genome_fasta_flat_file_id,
@@ -48,17 +47,17 @@ def align_transcripts(args, toil_options):
                               'annotation_gp': annotation_gp_file_id,
                               'annotation_db': annotation_db_file_id}
             if 'augustus_gp' in args:
-                augustus_gp_file_id = toil.importFile('file:///' + args['augustus_gp'])
+                augustus_gp_file_id = toil.importFile('file://' + args['augustus_gp'])
                 input_file_ids['augustus_gp'] = augustus_gp_file_id
             if 'augustus_cgp_gp' in args:
-                augustus_cgp_gp_file_id = toil.importFile('file:///' + args['augustus_cgp_gp'])
+                augustus_cgp_gp_file_id = toil.importFile('file://' + args['augustus_cgp_gp'])
                 input_file_ids['augustus_cgp_gp'] = augustus_cgp_gp_file_id
             job = Job.wrapJobFn(setup, args, input_file_ids)
             results_file_id = toil.start(job)
         else:
             results_file_id = toil.restart()
         tools.fileOps.ensure_file_dir(args['alignment_psl'])
-        toil.exportFile(results_file_id, 'file:///' + args['alignment_psl'])
+        toil.exportFile(results_file_id, 'file://' + args['alignment_psl'])
 
 
 def setup(job, args, input_file_ids):
@@ -72,13 +71,9 @@ def setup(job, args, input_file_ids):
     chunk_size = 100
     cgp_chunk_size = 20  # CGP will have multiple alignments per transcript
     # load all fileStore files necessary
-    work_dir = job.fileStore.getLocalTempDir()
-    tm_gp = os.path.join(work_dir, os.path.basename(args['tm_gp']))
-    job.fileStore.readGlobalFile(input_file_ids['tm_gp'], tm_gp)
-    annotation_gp = os.path.join(work_dir, os.path.basename(args['annotation_gp']))
-    job.fileStore.readGlobalFile(input_file_ids['annotation_gp'], annotation_gp)
-    annotation_db = os.path.join(work_dir, os.path.basename(args['annotation_db']))
-    job.fileStore.readGlobalFile(input_file_ids['annotation_db'], annotation_db)
+    tm_gp = job.fileStore.readGlobalFile(input_file_ids['tm_gp'])
+    annotation_gp = job.fileStore.readGlobalFile(input_file_ids['annotation_gp'])
+    annotation_db = job.fileStore.readGlobalFile(input_file_ids['annotation_db'])
     # we have to explicitly place fasta, flat file and gdx with the correct naming scheme for pyfasta
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['genome_fasta'],
                                                                  input_file_ids['genome_gdx'],
@@ -93,8 +88,7 @@ def setup(job, args, input_file_ids):
     results = []
     gp_file_handles = [open(tm_gp)]
     if 'augustus_gp' in args:
-        augustus_gp = os.path.join(work_dir, os.path.basename(args['augustus_gp']))
-        job.fileStore.readGlobalFile(input_file_ids['augustus_gp'], augustus_gp)
+        augustus_gp = job.fileStore.readGlobalFile(input_file_ids['augustus_gp'])
         gp_file_handles.append(open(augustus_gp))
     gp_iter = itertools.chain.from_iterable(gp_file_handles)
     transcript_dict = tools.transcripts.get_gene_pred_dict(gp_iter)
@@ -108,8 +102,7 @@ def setup(job, args, input_file_ids):
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
         gene_tx_map = tools.sqlInterface.get_gene_transcript_map(annotation_db, args['ref_genome'])
         tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args['ref_genome'])
-        augustus_cgp_gp = os.path.join(work_dir, os.path.basename(args['augustus_cgp_gp']))
-        job.fileStore.readGlobalFile(input_file_ids['augustus_cgp_gp'], augustus_cgp_gp)
+        augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids['augustus_cgp_gp'])
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
@@ -159,10 +152,9 @@ def run_alignment_chunk(job, i, args, chunk):
     """
     job.fileStore.logToMaster('Beginning transcript alignment chunk {} for genome {}'.format(i, args['genome']))
     # temporary file paths
-    work_dir = job.fileStore.getLocalTempDir()
-    ref_tmp_fasta = tools.fileOps.get_tmp_file(tmp_dir=work_dir)
-    tgt_tmp_fasta = tools.fileOps.get_tmp_file(tmp_dir=work_dir)
-    tmp_psl = tools.fileOps.get_tmp_file(tmp_dir=work_dir)  # simpleChain does not like pipes
+    ref_tmp_fasta = tools.fileOps.get_tmp_toil_file()
+    tgt_tmp_fasta = tools.fileOps.get_tmp_toil_file()
+    tmp_psl = tools.fileOps.get_tmp_toil_file()  # simpleChain does not like pipes
     blat_cmd = ['blat', '-noHead', '-extendThroughN', '-mask=lower', '-minIdentity=50', '-oneOff=1',
                 ref_tmp_fasta, tgt_tmp_fasta, tmp_psl]
     chain_cmd = ['simpleChain', '-outPsl', tmp_psl, '/dev/stdout']

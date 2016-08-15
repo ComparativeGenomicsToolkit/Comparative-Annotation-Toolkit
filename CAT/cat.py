@@ -25,6 +25,7 @@ from augustus import augustus
 from augustus_cgp import augustus_cgp
 from align_transcripts import align_transcripts
 
+
 class UserException(Exception):
     pass
 

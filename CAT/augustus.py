@@ -75,17 +75,12 @@ def setup(job, args, input_file_ids):
     :return: completed GTF format results for all jobs
     """
     job.fileStore.logToMaster('Beginning Augustus run on {}'.format(args['genome']), level=logging.INFO)
-    chunk_size = 1 if args['augustus_hints_db'] is None else 1  # TODO: fix these debug values
+    chunk_size = 100 if args['augustus_hints_db'] is None else 50
     # load all fileStore files necessary
-    work_dir = job.fileStore.getLocalTempDir()
-    ref_psl = os.path.join(work_dir, os.path.basename(args['ref_psl']))
-    job.fileStore.readGlobalFile(input_file_ids['ref_psl'], ref_psl)
-    tm_psl = os.path.join(work_dir, os.path.basename(args['tm_psl']))
-    job.fileStore.readGlobalFile(input_file_ids['tm_psl'], tm_psl)
-    annotation_gp = os.path.join(work_dir, os.path.basename(args['annotation_gp']))
-    job.fileStore.readGlobalFile(input_file_ids['annotation_gp'], annotation_gp)
-    coding_gp = os.path.join(work_dir, 'coding.gp')
-    job.fileStore.readGlobalFile(input_file_ids['coding_gp'], coding_gp)
+    ref_psl = job.fileStore.readGlobalFile(input_file_ids['ref_psl'])
+    tm_psl = job.fileStore.readGlobalFile(input_file_ids['tm_psl'])
+    annotation_gp = job.fileStore.readGlobalFile(input_file_ids['annotation_gp'])
+    coding_gp = job.fileStore.readGlobalFile(input_file_ids['coding_gp'])
     # create dictionaries of input files to split up
     ref_psl_dict = tools.psl.get_alignment_dict(ref_psl)
     tm_psl_dict = tools.psl.get_alignment_dict(tm_psl)
@@ -148,23 +143,22 @@ def run_augustus_chunk(job, i, args, grouped_recs, input_file_ids, padding=20000
             rnaseq_hints = get_rnaseq_hints(args['genome'], chromosome, start, stop, speciesnames, seqnames, hints,
                                             featuretypes, session)
             hint = ''.join([tm_hints, rnaseq_hints])
-            transcripts = run_augustus(job, hint, genome_fasta, tm_tx, tmr_cfg_file, start, stop,
+            transcripts = run_augustus(hint, genome_fasta, tm_tx, tmr_cfg_file, start, stop,
                                        args['augustus_species'], cfg_version=2)
             if transcripts is not None:
                 results.append(transcripts)
         else:
             hint = tm_hints
-        transcripts = run_augustus(job, hint, genome_fasta, tm_tx, tm_cfg_file, start, stop,
+        transcripts = run_augustus(hint, genome_fasta, tm_tx, tm_cfg_file, start, stop,
                                    args['augustus_species'], cfg_version=1)
         if transcripts is not None:  # we may not have found anything
             results.append(transcripts)
     return results
 
 
-def run_augustus(job, hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_version):
+def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_version):
     """
     Runs Augustus.
-    :param job: job instance
     :param hint: GFF formatted hint string
     :param fasta: Pyfasta object
     :param tm_tx: GenePredTranscript object
@@ -173,16 +167,16 @@ def run_augustus(job, hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_ve
     :param cfg_version: config file version
     :return: GTF formatted output from Augustus or None if nothing was produced
     """
-    with tools.fileOps.TemporaryFilePath(tmp_dir=job.fileStore.getLocalTempDir()) as hints_out, \
-            tools.fileOps.TemporaryFilePath(tmp_dir=job.fileStore.getLocalTempDir()) as fasta_out:
-        with open(hints_out, 'w') as hints_out_handle, open(fasta_out, 'w') as fasta_out_handle:
-            hints_out_handle.write(hint)
-            tools.bio.write_fasta(fasta_out_handle, tm_tx.chromosome, fasta[tm_tx.chromosome][start:stop])
-            cmd = ['augustus', fasta_out, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
-                   '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR=on',
-                   '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
-                   '--protein=0', '--softmasking=1']
-        aug_output = tools.procOps.call_proc_lines(cmd)
+    tmp_fasta = tools.fileOps.get_tmp_toil_file()
+    tools.bio.write_fasta(tmp_fasta, tm_tx.chromosome, fasta[tm_tx.chromosome][start:stop])
+    hints_out = tools.fileOps.get_tmp_toil_file()
+    with open(hints_out, 'w') as outf:
+        outf.write(hint)
+    cmd = ['augustus', tmp_fasta, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
+           '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR=on',
+           '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
+           '--protein=0', '--softmasking=1']
+    aug_output = tools.procOps.call_proc_lines(cmd)
     transcripts = munge_augustus_output(aug_output, cfg_version, tm_tx)
     return transcripts
 
@@ -199,8 +193,7 @@ def merge(job, results, args):
     else:
         job.fileStore.logToMaster('Merging AugustusTM output for {}'.format(args['genome']), level=logging.INFO)
     tmp_results_file = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
-    with open(tmp_results_file, 'w') as outf:
-        tools.fileOps.print_rows(outf, results)
+    tools.fileOps.print_rows(tmp_results_file, results)
     results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
     return results_file_id
 
