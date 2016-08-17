@@ -78,7 +78,8 @@ def ensure_file_dir(file_path):
     :param file_path: Path of file to ensure a parent directory of.
     """
     d = os.path.dirname(file_path)
-    ensure_dir(d)
+    if d != '':
+        ensure_dir(d)
 
 
 def opengz(file, mode="r"):
@@ -152,6 +153,20 @@ def get_tmp_file(prefix=None, suffix="tmp", tmp_dir=None):
             return path
 
 
+def get_tmp_toil_file(prefix=None, suffix="tmp"):
+    """
+    Returns the path to a temporary file. This is a convenience wrapper for get_tmp_file that sets tmp_dir to
+    os.getcwd().
+    This is useful because of how toil caching works.
+    It also returns the absolute path.
+
+    :param prefix: Prefix to add to file path.
+    :param suffix: Suffix to add to file path.
+    :return: A file path.
+    """
+    return os.path.abspath(get_tmp_file(prefix=prefix, suffix=suffix, tmp_dir=os.getcwd()))
+
+
 def atomic_install(tmp_path, final_path):
     """
     Atomically install a file from tmp_path to final_path. Handles crossing file system boundaries.
@@ -168,22 +183,30 @@ def atomic_install(tmp_path, final_path):
         os.remove(tmp_path)
 
 
-def print_row(file_handle, line, sep='\t'):
+def print_row(fspec, line, sep='\t'):
     """
-    Convenience function that writes a delimited line to file_handle
-    :param file_handle: A open file_handle
+    Convenience function that writes a delimited line to file_handle or file
+    :param fspec: A open file_handle or file path
     :param line: One or more things to write. Must be convertible to strings.
     :param sep: separator to use
     """
-    file_handle.write(sep.join(map(str, line)) + '\n')
+    if isinstance(fspec, str):
+        fh = opengz(fspec, 'w')
+    else:
+        fh = fspec
+    fh.write(sep.join(map(str, line)) + '\n')
 
 
-def print_rows(file_handle, item_iter, sep='\t'):
+def print_rows(fspec, item_iter, sep='\t'):
     """
-    Convenience function that writes a iterable of lines to file_handle
-    :param file_handle: A open file_handle
+    Convenience function that writes a iterable of lines to file_handle or file
+    :param fspec: A open file_handle or file path
     :param item_iter: One or more things to write. Must be convertible to strings.
     :param sep: separator to use
     """
+    if isinstance(fspec, str):
+        fh = opengz(fspec, 'w')
+    else:
+        fh = fspec
     for line in item_iter:
-        print_row(file_handle, line, sep)
+        print_row(fh, line, sep)

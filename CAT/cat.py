@@ -15,6 +15,7 @@ import tools.hal
 import tools.transcripts
 import tools.sqlInterface
 import tools.psl
+import tools.bio
 import tools.gff3
 import tools.misc
 from tools.luigiAddons import multiple_inherits, multiple_requires, AbstractAtomicFileTask
@@ -24,6 +25,7 @@ from chaining import chaining
 from augustus import augustus
 from augustus_cgp import augustus_cgp
 from align_transcripts import align_transcripts
+
 
 class UserException(Exception):
     pass
@@ -334,6 +336,9 @@ class TranscriptBed(AbstractAtomicFileTask):
 class TranscriptFasta(AbstractAtomicFileTask):
     """
     Produces a fasta for each transcript. Requires bedtools.
+
+    TODO: bedtools 2.26 broke this. -name now does not just provide the sequence name. I have to use my transcript
+    library.
     """
     transcript_fasta = luigi.Parameter()
 
@@ -341,9 +346,16 @@ class TranscriptFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.transcript_fasta)
 
     def run(self):
-        cmd = ['bedtools', 'getfasta', '-fi', self.fasta, '-bed', self.transcript_bed, '-fo', '/dev/stdout',
-               '-name', '-split', '-s']
-        self.run_cmd(cmd)
+        #cmd = ['bedtools', 'getfasta', '-fi', self.fasta, '-bed', self.transcript_bed, '-fo', '/dev/stdout',
+        #       '-name', '-split', '-s']
+        #self.run_cmd(cmd)
+        seq_dict = tools.bio.get_sequence_dict(self.fasta, upper=False)
+        seqs = {name: tx.get_mrna(seq_dict) for name, tx in tools.transcripts.transcript_iterator(self.transcript_bed)}
+        with self.output().open('w') as outf:
+            for name, seq in seqs.iteritems():
+                tools.bio.write_fasta(outf, name, seq)
+
+
 
 
 @requires(TranscriptFasta)

@@ -64,13 +64,10 @@ def load_fasta_from_filestore(job, fasta_file_id, fasta_gdx_file_id, fasta_flat_
     :param upper: force all entries to upper case
     :return: open pyfasta Fasta record pointing to the file.
     """
-    work_dir = job.fileStore.getLocalTempDir()
-    fasta_local_path = os.path.join(work_dir, '{}.fasta'.format(prefix))
-    gdx_local_path = os.path.join(work_dir, '{}.fasta.gdx'.format(prefix))
-    flat_local_path = os.path.join(work_dir, '{}.fasta.flat'.format(prefix))
+    fasta_local_path = '{}.fasta'.format(prefix)
     job.fileStore.readGlobalFile(fasta_file_id, fasta_local_path)
-    job.fileStore.readGlobalFile(fasta_gdx_file_id, gdx_local_path)
-    job.fileStore.readGlobalFile(fasta_flat_file_id, flat_local_path)
+    job.fileStore.readGlobalFile(fasta_gdx_file_id, '{}.fasta.gdx'.format(prefix))
+    job.fileStore.readGlobalFile(fasta_flat_file_id, '{}.fasta.flat'.format(prefix))
     return bio.get_sequence_dict(fasta_local_path, upper=upper)
 
 
