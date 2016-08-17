@@ -103,7 +103,7 @@ class RunCat(luigi.WrapperTask):
     workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='WARNING', significant=False)
+    logLevel = luigi.Parameter(default='ERROR', significant=False)  # this is passed to toil.
     cleanWorkDir = luigi.Parameter(default=None, significant=False)  # debugging option
 
     def requires(self):
