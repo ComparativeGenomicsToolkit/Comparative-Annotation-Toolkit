@@ -13,7 +13,7 @@ Transcripts are evaluated for the following features to help decide how they are
 
 """
 import logging
-import os
+import itertools
 
 from toil.job import Job
 from toil.common import Toil
@@ -75,7 +75,7 @@ def setup(job, args, input_file_ids):
     :return: completed GTF format results for all jobs
     """
     job.fileStore.logToMaster('Beginning Augustus run on {}'.format(args['genome']), level=logging.INFO)
-    chunk_size = 100 if args['augustus_hints_db'] is None else 50
+    chunk_size = 100 if args['augustus_hints_db'] is None else 50  # RNAseq slows things down a bit
     # load all fileStore files necessary
     ref_psl = job.fileStore.readGlobalFile(input_file_ids['ref_psl'])
     tm_psl = job.fileStore.readGlobalFile(input_file_ids['tm_psl'])
@@ -143,16 +143,16 @@ def run_augustus_chunk(job, i, args, grouped_recs, input_file_ids, padding=20000
             rnaseq_hints = get_rnaseq_hints(args['genome'], chromosome, start, stop, speciesnames, seqnames, hints,
                                             featuretypes, session)
             hint = ''.join([tm_hints, rnaseq_hints])
-            transcripts = run_augustus(hint, genome_fasta, tm_tx, tmr_cfg_file, start, stop,
+            transcript = run_augustus(hint, genome_fasta, tm_tx, tmr_cfg_file, start, stop,
                                        args['augustus_species'], cfg_version=2)
-            if transcripts is not None:
-                results.append(transcripts)
+            if transcript is not None:
+                results.extend(transcript)
         else:
             hint = tm_hints
-        transcripts = run_augustus(hint, genome_fasta, tm_tx, tm_cfg_file, start, stop,
+        transcript = run_augustus(hint, genome_fasta, tm_tx, tm_cfg_file, start, stop,
                                    args['augustus_species'], cfg_version=1)
-        if transcripts is not None:  # we may not have found anything
-            results.append(transcripts)
+        if transcript is not None:  # we may not have found anything
+            results.extend(transcript)
     return results
 
 
@@ -177,8 +177,8 @@ def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_version
            '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
            '--protein=0', '--softmasking=1']
     aug_output = tools.procOps.call_proc_lines(cmd)
-    transcripts = munge_augustus_output(aug_output, cfg_version, tm_tx)
-    return transcripts
+    transcript = munge_augustus_output(aug_output, cfg_version, tm_tx)
+    return transcript
 
 
 def merge(job, results, args):
@@ -193,7 +193,8 @@ def merge(job, results, args):
     else:
         job.fileStore.logToMaster('Merging AugustusTM output for {}'.format(args['genome']), level=logging.INFO)
     tmp_results_file = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
-    tools.fileOps.print_rows(tmp_results_file, results)
+    # I have no idea why I have to wrap this in a list() call. Some edge case bug with print_rows()?
+    tools.fileOps.print_rows(tmp_results_file, list(itertools.chain.from_iterable(results)))
     results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
     return results_file_id
 
@@ -223,5 +224,5 @@ def munge_augustus_output(aug_output, cfg_version, tm_tx):
         if feature not in features:
             continue
         new_attributes = 'transcript_id "{}"; gene_id "{}";'.format(tx_id, tm_tx.name2)
-        gtf.append('\t'.join([chrom, source, feature, start, stop, score, strand, frame, new_attributes]))
-    return '\n'.join(gtf)
+        gtf.append([chrom, source, feature, start, stop, score, strand, frame, new_attributes])
+    return gtf
