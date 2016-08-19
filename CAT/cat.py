@@ -2,6 +2,7 @@
 """
 Comparative Annotation Toolkit.
 """
+import logging
 import argparse
 import itertools
 import os
@@ -25,6 +26,9 @@ from chaining import chaining
 from augustus import augustus
 from augustus_cgp import augustus_cgp
 from align_transcripts import align_transcripts
+
+
+logger = logging.getLogger('CAT')
 
 
 class UserException(Exception):
@@ -178,6 +182,7 @@ class GenomeFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.fasta)
 
     def run(self):
+        logger.info('Extracting fasta for genome {}.'.format(self.genome))
         cmd = ['hal2fasta', self.hal, self.genome]
         self.run_cmd(cmd)
 
@@ -194,6 +199,7 @@ class GenomeTwoBit(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.two_bit)
 
     def run(self):
+        logger.info('Converting fasta for genome {} to twobit.'.format(self.genome))
         cmd = ['faToTwoBit', self.fasta, '/dev/stdout']
         self.run_cmd(cmd)
 
@@ -210,6 +216,7 @@ class GenomeSizes(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.sizes)
 
     def run(self):
+        logger.info('Extracting chromosome sizes for genome {}.'.format(self.genome))
         cmd = ['halStats', '--chromSizes', self.genome, self.hal]
         self.run_cmd(cmd)
 
@@ -225,6 +232,7 @@ class GenomeFlatFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.flat_fasta)
 
     def run(self):
+        logger.info('Flattening fasta for genome {}.'.format(self.genome))
         cmd = ['pyfasta', 'flatten', self.fasta]
         tools.procOps.run_proc(cmd)
 
@@ -240,6 +248,7 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.fasta_index)
 
     def run(self):
+        logger.info('Generating fasta index for genome {}.'.format(self.genome))
         cmd = ['samtools', 'faidx', self.fasta]
         tools.procOps.run_proc(cmd)
 
@@ -288,6 +297,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.annotation_gp)
 
     def run(self):
+        logger.info('Converting annotation gff3 to genePred.')
         cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
                self.annotation, '/dev/stdout']
         self.run_cmd(cmd)
@@ -310,6 +320,7 @@ class Gff3ToAttrs(luigi.Task):
         return attrs_table
 
     def run(self):
+        logger.info('Extracting gff3 attributes to sqlite database.')
         results = tools.gff3.extract_attrs(self.annotation)
         engine = sqlalchemy.create_engine('sqlite:///{}'.format(self.annotation_db))
         results.to_sql(self.ref_genome, engine, if_exists='replace')
@@ -328,6 +339,7 @@ class TranscriptBed(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.transcript_bed)
 
     def run(self):
+        logger.info('Converting annotation genePred to BED.')
         cmd = ['genePredToBed', self.annotation_gp, '/dev/stdout']
         self.run_cmd(cmd)
 
@@ -346,6 +358,7 @@ class TranscriptFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.transcript_fasta)
 
     def run(self):
+        logger.info('Extracting reference annotation fasta.')
         #cmd = ['bedtools', 'getfasta', '-fi', self.fasta, '-bed', self.transcript_bed, '-fo', '/dev/stdout',
         #       '-name', '-split', '-s']
         #self.run_cmd(cmd)
@@ -354,8 +367,6 @@ class TranscriptFasta(AbstractAtomicFileTask):
         with self.output().open('w') as outf:
             for name, seq in seqs.iteritems():
                 tools.bio.write_fasta(outf, name, seq)
-
-
 
 
 @requires(TranscriptFasta)
@@ -370,6 +381,7 @@ class FlatTranscriptFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.transcript_flat_fasta)
 
     def run(self):
+        logger.info('Flattening reference annotation fasta.')
         cmd = ['pyfasta', 'flatten', self.transcript_fasta]
         tools.procOps.run_proc(cmd)
 
@@ -385,6 +397,7 @@ class FakePsl(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.ref_psl)
 
     def run(self):
+        logger.info('Generating annotation fake PSL.')
         cmd = ['genePredToFakePsl', '-chromSize={}'.format(self.sizes), 'noDB',
                self.annotation_gp, '/dev/stdout', '/dev/null']
         self.run_cmd(cmd)
@@ -435,9 +448,11 @@ class PairwiseChaining(tools.toilInterface.ToilTask):
         return self.clone(GenomeFiles)
 
     def run(self):
+        logger.info('Launching Pairwise Chaining Toil pipeline for {}.'.format(self.genome))
         job_store = os.path.join(self.work_dir, 'toil', 'chaining', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         chaining(self.chain_args, toil_options)
+        logger.info('Pairwise Chaining for {} is complete.'.format(self.genome))
 
 
 @inherits(RunCat)
@@ -486,6 +501,7 @@ class TransMapPsl(luigi.Task):
         return self.clone(PrepareFiles), self.clone(Chaining)
 
     def run(self):
+        logger.info('Running transMap for genome {}'.format(self.genome))
         tools.fileOps.ensure_file_dir(self.output().path)
         psl_cmd = ['pslMap', '-chainMapFile', self.tm_args['ref_psl'],
                    self.tm_args['chain_file'], '/dev/stdout']
@@ -495,6 +511,7 @@ class TransMapPsl(luigi.Task):
                       'stdout']
         cmd_list = [psl_cmd, post_chain_cmd, sort_cmd, recalc_cmd]
         # hacky way to make unique - capture output to a file, then process
+        logger.info('Writing transMap results to file for genome {}.'.format(self.genome))
         tmp_file = luigi.LocalTarget(is_tmp=True)
         with tmp_file.open('w') as tmp_fh:
             tools.procOps.run_proc(cmd_list, stdout=tmp_fh)
@@ -512,6 +529,7 @@ class TransMapGp(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.tm_args['tm_gp'])
 
     def run(self):
+        logger.info('Converting transMap PSL to genePred for genome {}.'.format(self.genome))
         cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
                self.tm_args['annotation_gp'], self.tm_args['tm_psl'], '/dev/stdout']
         self.run_cmd(cmd)
@@ -593,13 +611,13 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
         return coding_gp
 
     def run(self):
-        if self.augustus_args['augustus_hints_db'] is not None:
-            job_store = os.path.join(self.work_dir, 'toil', 'augustus_tmr', self.genome)
-        else:
-            job_store = os.path.join(self.work_dir, 'toil', 'augustus_tm', self.genome)
+        mode = 'tmr' if self.augustus_args['augustus_hints_db'] is not None else 'tm'
+        job_store = os.path.join(self.work_dir, 'toil', 'augustus_' + mode, self.genome)
+        logger.info('Launching Augustus{} Toil pipeline on genome {}'.format(mode.upper(), self.genome))
         toil_options = self.prepare_toil_options(job_store)
         coding_gp = self.extract_coding_genes()
         augustus(self.augustus_args, coding_gp, toil_options)
+        logger.info('Augustus{} Toil pipeline for genome {} completed.'.format(mode, self.genome))
         os.remove(coding_gp)
         out_gp, out_gtf = self.output()
         tools.misc.convert_gtf_gp(out_gp, out_gtf)
@@ -679,13 +697,16 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
             raise UserException('Cannot run AugustusCGP without a hints database.')
         job_store = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(job_store)
+        logger.info('Beginning AugustusCGP Toil pipeline.')
         cgp_args = self.get_args(pipeline_args)
         augustus_cgp(cgp_args, toil_options)
+        logger.info('AugustusCGP Toil pipeline completed.')
         # convert each to genePred as well
         for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
             gp_target = luigi.LocalTarget(cgp_args['augustus_cgp_gp'][genome])
             gtf_target = luigi.LocalTarget(cgp_args['augustus_cgp_gtf'][genome])
             tools.misc.convert_gtf_gp(gp_target, gtf_target)
+        logger.info('Finished converting AugustusCGP output.')
 
 
 @inherits(RunCat)
@@ -751,9 +772,11 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
         yield self.clone(TransMap)
 
     def run(self):
+        logger.info('Beginning Align Transcript Toil pipeline for genome {}.'.format(self.genome))
         job_store = os.path.join(self.work_dir, 'toil', 'transcript_alignment', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         align_transcripts(self.alignment_args, toil_options)
+        logger.info('Align Transcript Toil pipeline for {} completed'.fomat(self.genome))
 
 
 @inherits(RunCat)
