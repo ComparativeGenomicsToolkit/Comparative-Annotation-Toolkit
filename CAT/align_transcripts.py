@@ -56,8 +56,8 @@ def align_transcripts(args, toil_options):
             results_file_id = toil.start(job)
         else:
             results_file_id = toil.restart()
-        tools.fileOps.ensure_file_dir(args['alignment_psl'])
-        toil.exportFile(results_file_id, 'file://' + args['alignment_psl'])
+        tools.fileOps.ensure_file_dir(args['transcript_psl'])
+        toil.exportFile(results_file_id, 'file://' + args['transcript_psl'])
 
 
 def setup(job, args, input_file_ids):
@@ -155,7 +155,7 @@ def run_alignment_chunk(job, i, args, chunk):
     ref_tmp_fasta = tools.fileOps.get_tmp_toil_file()
     tgt_tmp_fasta = tools.fileOps.get_tmp_toil_file()
     tmp_psl = tools.fileOps.get_tmp_toil_file()  # simpleChain does not like pipes
-    blat_cmd = ['blat', '-noHead', '-extendThroughN', '-mask=lower', '-minIdentity=50', '-oneOff=1',
+    blat_cmd = ['blat', '-noHead', '-extendThroughN', '-mask=lower', '-minIdentity=50', '-oneOff=1', '-fine',
                 ref_tmp_fasta, tgt_tmp_fasta, tmp_psl]
     chain_cmd = ['simpleChain', '-outPsl', tmp_psl, '/dev/stdout']
     results = []

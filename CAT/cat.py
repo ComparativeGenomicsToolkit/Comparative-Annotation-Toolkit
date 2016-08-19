@@ -107,7 +107,7 @@ class RunCat(luigi.WrapperTask):
     workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='ERROR', significant=False)  # this is passed to toil.
+    logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil.
     cleanWorkDir = luigi.Parameter(default=None, significant=False)  # debugging option
 
     def requires(self):
@@ -182,7 +182,7 @@ class GenomeFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.fasta)
 
     def run(self):
-        logger.info('Extracting fasta for genome {}.'.format(self.genome))
+        logger.info('Extracting fasta for {}.'.format(self.genome))
         cmd = ['hal2fasta', self.hal, self.genome]
         self.run_cmd(cmd)
 
@@ -199,7 +199,7 @@ class GenomeTwoBit(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.two_bit)
 
     def run(self):
-        logger.info('Converting fasta for genome {} to twobit.'.format(self.genome))
+        logger.info('Converting fasta for {} to 2bit.'.format(self.genome))
         cmd = ['faToTwoBit', self.fasta, '/dev/stdout']
         self.run_cmd(cmd)
 
@@ -216,7 +216,7 @@ class GenomeSizes(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.sizes)
 
     def run(self):
-        logger.info('Extracting chromosome sizes for genome {}.'.format(self.genome))
+        logger.info('Extracting chromosome sizes for {}.'.format(self.genome))
         cmd = ['halStats', '--chromSizes', self.genome, self.hal]
         self.run_cmd(cmd)
 
@@ -232,7 +232,7 @@ class GenomeFlatFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.flat_fasta)
 
     def run(self):
-        logger.info('Flattening fasta for genome {}.'.format(self.genome))
+        logger.info('Flattening fasta for {}.'.format(self.genome))
         cmd = ['pyfasta', 'flatten', self.fasta]
         tools.procOps.run_proc(cmd)
 
@@ -248,7 +248,7 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.fasta_index)
 
     def run(self):
-        logger.info('Generating fasta index for genome {}.'.format(self.genome))
+        logger.info('Generating fasta index for {}.'.format(self.genome))
         cmd = ['samtools', 'faidx', self.fasta]
         tools.procOps.run_proc(cmd)
 
@@ -448,7 +448,7 @@ class PairwiseChaining(tools.toilInterface.ToilTask):
         return self.clone(GenomeFiles)
 
     def run(self):
-        logger.info('Launching Pairwise Chaining Toil pipeline for {}.'.format(self.genome))
+        logger.info('Launching Pairwise Chaining toil pipeline for {}.'.format(self.genome))
         job_store = os.path.join(self.work_dir, 'toil', 'chaining', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         chaining(self.chain_args, toil_options)
@@ -501,7 +501,7 @@ class TransMapPsl(luigi.Task):
         return self.clone(PrepareFiles), self.clone(Chaining)
 
     def run(self):
-        logger.info('Running transMap for genome {}'.format(self.genome))
+        logger.info('Running transMap for {}'.format(self.genome))
         tools.fileOps.ensure_file_dir(self.output().path)
         psl_cmd = ['pslMap', '-chainMapFile', self.tm_args['ref_psl'],
                    self.tm_args['chain_file'], '/dev/stdout']
@@ -511,7 +511,7 @@ class TransMapPsl(luigi.Task):
                       'stdout']
         cmd_list = [psl_cmd, post_chain_cmd, sort_cmd, recalc_cmd]
         # hacky way to make unique - capture output to a file, then process
-        logger.info('Writing transMap results to file for genome {}.'.format(self.genome))
+        logger.info('Writing transMap results to file for {}.'.format(self.genome))
         tmp_file = luigi.LocalTarget(is_tmp=True)
         with tmp_file.open('w') as tmp_fh:
             tools.procOps.run_proc(cmd_list, stdout=tmp_fh)
@@ -529,7 +529,7 @@ class TransMapGp(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.tm_args['tm_gp'])
 
     def run(self):
-        logger.info('Converting transMap PSL to genePred for genome {}.'.format(self.genome))
+        logger.info('Converting transMap PSL to genePred for {}.'.format(self.genome))
         cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
                self.tm_args['annotation_gp'], self.tm_args['tm_psl'], '/dev/stdout']
         self.run_cmd(cmd)
@@ -613,11 +613,11 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
     def run(self):
         mode = 'tmr' if self.augustus_args['augustus_hints_db'] is not None else 'tm'
         job_store = os.path.join(self.work_dir, 'toil', 'augustus_' + mode, self.genome)
-        logger.info('Launching Augustus{} Toil pipeline on genome {}'.format(mode.upper(), self.genome))
+        logger.info('Launching Augustus{} toil pipeline on genome {}'.format(mode.upper(), self.genome))
         toil_options = self.prepare_toil_options(job_store)
         coding_gp = self.extract_coding_genes()
         augustus(self.augustus_args, coding_gp, toil_options)
-        logger.info('Augustus{} Toil pipeline for genome {} completed.'.format(mode, self.genome))
+        logger.info('Augustus{} toil pipeline for {} completed.'.format(mode, self.genome))
         os.remove(coding_gp)
         out_gp, out_gtf = self.output()
         tools.misc.convert_gtf_gp(out_gp, out_gtf)
@@ -626,7 +626,7 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
 @inherits(RunCat)
 class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
     """
-    Task for launching the AugustusCGP Toil pipeline
+    Task for launching the AugustusCGP toil pipeline
     """
     @staticmethod
     def get_args(pipeline_args):
@@ -697,10 +697,10 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
             raise UserException('Cannot run AugustusCGP without a hints database.')
         job_store = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(job_store)
-        logger.info('Beginning AugustusCGP Toil pipeline.')
+        logger.info('Beginning AugustusCGP toil pipeline.')
         cgp_args = self.get_args(pipeline_args)
         augustus_cgp(cgp_args, toil_options)
-        logger.info('AugustusCGP Toil pipeline completed.')
+        logger.info('AugustusCGP toil pipeline completed.')
         # convert each to genePred as well
         for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
             gp_target = luigi.LocalTarget(cgp_args['augustus_cgp_gp'][genome])
@@ -721,14 +721,14 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         tm_files = TransMap.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         base_dir = os.path.join(pipeline_args.work_dir, 'transcript_alignment')
-        alignment_psl = os.path.join(base_dir, genome + '.psl')
+        transcript_psl = os.path.join(base_dir, genome + '.psl')
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
                 'ref_genome_fasta': ref_genome_files['fasta'],
                 'annotation_gp': annotation_files['annotation_gp'],
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'tm_gp': tm_files['tm_gp'],
-                'alignment_psl': alignment_psl}
+                'transcript_psl': transcript_psl}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -762,7 +762,7 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
     genome = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.alignment_args['alignment_psl'])
+        return luigi.LocalTarget(self.alignment_args['transcript_psl'])
 
     def requires(self):
         if 'augustus_gp' in self.alignment_args:
@@ -772,37 +772,36 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
         yield self.clone(TransMap)
 
     def run(self):
-        logger.info('Beginning Align Transcript Toil pipeline for genome {}.'.format(self.genome))
+        logger.info('Beginning Align Transcript toil pipeline for {}.'.format(self.genome))
         job_store = os.path.join(self.work_dir, 'toil', 'transcript_alignment', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         align_transcripts(self.alignment_args, toil_options)
-        logger.info('Align Transcript Toil pipeline for {} completed'.fomat(self.genome))
+        logger.info('Align Transcript toil pipeline for {} completed'.format(self.genome))
 
 
 @inherits(RunCat)
 class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
     """
-    Evaluates all transcripts for important features.
+    Evaluates all transcripts for important features. See the classify.py module for details on how this works.
+
+    Each task will generate a genome-specific sqlite database with 3 tables.
     """
-    def validate(self):
-        # TODO: make sure that all input args exist
-        pass
 
     @staticmethod
     def get_args(pipeline_args, genome):
         tm_args = TransMap.get_args(pipeline_args, genome)
         tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
-        base_dir = os.path.join(pipeline_args.work_dir, 'tm_eval')
-        args = {'db': os.path.join(base_dir, 'evaluations.db'),
+        transcript_alignment_files = AlignTranscripts.get_args(pipeline_args, genome)
+        base_dir = os.path.join(pipeline_args.work_dir, 'transcript_eval')
+        args = {'db': os.path.join(base_dir, '{}.db'.format(genome)),
                 'tm_psl': tm_args['tm_psl'],
                 'tm_gp': tm_args['tm_gp'],
                 'annotation_gp': annotation_files['annotation_gp'],
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'genome': genome,
-                'classify_table': genome + '_Classify',
-                'details_table': genome + '_Details'}
+                'transcript_psl': transcript_alignment_files['transcript_psl']}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -810,6 +809,10 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
             cgp_args = AugustusCgp.get_args(pipeline_args)
             args['augustus_cgp_gp'] = cgp_args['augustus_cgp_gp']
         return args
+
+    def validate(self):
+        # TODO: make sure that all input args exist
+        pass
 
     def requires(self):
         self.validate()
@@ -828,7 +831,17 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
     genome = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.augustus_args['augustus_gp'])
+        conn_str = 'sqlite:///{}'.format(self.args['db'])
+        alignment_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                              target_table='Alignment',
+                                                              update_id=self.task_id)
+        metrics_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                            target_table='Metrics',
+                                                            update_id=self.task_id)
+        evaluation_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                               target_table='Evaluation',
+                                                               update_id=self.task_id)
+        return alignment_table, metrics_table, evaluation_table
 
     def requires(self):
         return self.clone(TransMap)
@@ -843,9 +856,3 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
             with open(tmp_gtf, 'w') as outf:
                 tools.fileOps.print_rows(outf, augustus_results)
             self.convert_gtf_gp(tmp_gtf)
-
-
-if __name__ == '__main__':
-    luigi.build([Augustus(hal='test_data/vertebrates.hal',
-                work_dir='test_work', ref_genome='mm10', augustus=True,
-                annotation='test_data/GRCm38.mm10.gff3')], logging_conf_file='logging.cfg')
