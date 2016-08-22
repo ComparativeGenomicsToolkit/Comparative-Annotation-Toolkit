@@ -28,7 +28,7 @@ from augustus_cgp import augustus_cgp
 from align_transcripts import align_transcripts
 
 
-logger = logging.getLogger('CAT')
+logger = logging.getLogger(__name__)
 
 
 class UserException(Exception):
@@ -669,11 +669,9 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         cgp_args = self.get_args(pipeline_args)
-        targets = []
         for cat in ['augustus_cgp_gp', 'augustus_cgp_gtf']:
             for path in cgp_args[cat].itervalues():
-                targets.append(luigi.LocalTarget(path))
-        return targets
+                yield luigi.LocalTarget(path)
 
     def validate(self):
         # make sure that all external tools are executable
@@ -721,14 +719,14 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         tm_files = TransMap.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         base_dir = os.path.join(pipeline_args.work_dir, 'transcript_alignment')
-        transcript_psl = os.path.join(base_dir, genome + '.psl')
+        transcript_alignment_fasta = os.path.join(base_dir, genome + '.fasta.gz')  # gzip because it'll be huge
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
                 'ref_genome_fasta': ref_genome_files['fasta'],
                 'annotation_gp': annotation_files['annotation_gp'],
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'tm_gp': tm_files['tm_gp'],
-                'transcript_psl': transcript_psl}
+                'transcript_alignment_fasta': transcript_alignment_fasta}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -762,7 +760,7 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
     genome = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.alignment_args['transcript_psl'])
+        return luigi.LocalTarget(self.alignment_args['transcript_alignment_fasta'])
 
     def requires(self):
         if 'augustus_gp' in self.alignment_args:
@@ -801,7 +799,7 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'genome': genome,
-                'transcript_psl': transcript_alignment_files['transcript_psl']}
+                'transcript_alignment_fasta': transcript_alignment_files['transcript_alignment_fasta']}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']

@@ -16,6 +16,7 @@ The annotation field is optional, but will help AugustusCGP make better predicti
 
 """
 import os
+import logging
 import shutil
 import luigi
 import pysam
@@ -29,9 +30,13 @@ import tools.toilInterface
 import tools.fileOps
 import tools.procOps
 import tools.mathOps
+import tools.misc
 import tools.transcripts
 import luigi.contrib.sqla
 from luigi.util import inherits, requires
+
+
+logger = logging.getLogger(__name__)
 
 
 class UserException(Exception):
@@ -59,8 +64,14 @@ class BuildHints(luigi.WrapperTask):
         parser = ConfigObj(self.config, configspec=configspec)
         # if a given genome only has one BAM, it is a string. Fix this.
         for genome in parser['BAM']:
-            if isinstance(parser['BAM'][genome], str):
-                parser['BAM'][genome] = [parser['BAM'][genome]]
+            path = parser['BAM'][genome]
+            if isinstance(path, str):
+                if not tools.misc.is_bam(path):
+                    # this is a fofn
+                    parser['BAM'][genome] = [x.rstrip() for x in open(path)]
+                else:
+                    # this is a single BAM
+                    parser['BAM'][genome] = [path]
         # do some input validation
         for genome in parser['BAM']:
             for bam in parser['BAM'][genome]:
@@ -99,6 +110,7 @@ class GenomeFlatFasta(luigi.Task):
         return luigi.LocalTarget(path)
 
     def run(self):
+        logger.info('Flattening fasta for {}.'.format(self.genome))
         shutil.copyfile(self.cfg['FASTA'][self.genome], self.output().path)
         cmd = ['pyfasta', 'flatten', self.output().path]
         tools.procOps.run_proc(cmd)
@@ -119,13 +131,17 @@ class GenerateHints(tools.toilInterface.ToilTask):
         return luigi.LocalTarget(hints)
 
     def run(self):
+        logger.info('Beginning GenerateHints toil pipeline for {}.'.format(self.genome))
         job_store = os.path.join(self.work_dir, 'toil', self.genome)
         toil_options = self.prepare_toil_options(job_store)
         toil_options.defaultMemory = '8G'  # TODO: don't hardcode this.
         completed = generate_hints(self.genome, self.flat_fasta, self.cfg, self.annotation, self.output().path,
                                    toil_options)
         if completed is False:  # we did not have any hints to generate for this genome
+            logger.info('Did not generate hints for {} due to a lack of BAMs/annotation'.format(self.genome))
             self.output().open('w').close()
+        else:
+            logger.info('Finished generating hints for {}.'.format(self.genome))
 
 
 @inherits(BuildHints)
@@ -156,11 +172,13 @@ class BuildDb(luigi.Task):
 
     def run(self):
         for genome in self.cfg['FASTA']:
+            logger.info('Loading finished hints for {} into database.'.format(self.genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(self.augustus_hints_db)]
             tools.procOps.run_proc(base_cmd + [self.flat_fasta_paths[genome]])
             if genome in self.hint_paths and os.path.getsize(self.hint_paths[genome]) > 0:
                 tools.procOps.run_proc(base_cmd + [self.hint_paths[genome]])
+        logger.info('Indexing database.')
         cmd = ['load2sqlitedb', '--makeIdx', '--clean', '--dbaccess={}'.format(self.augustus_hints_db)]
         tools.procOps.run_proc(cmd)
 

@@ -50,11 +50,12 @@ def run_proc_code(cmd, stdin="/dev/null", stdout=None, stderr=None):
             raise ex
     return 0
 
+
 def popen_catch(command, stdin=None):
     """
     Runs a command and return standard out. TODO: use Mark's tools. I don't think he has this functionality.
     """
-    if stdin != None:
+    if stdin is not None:
         process = subprocess.Popen(command,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
         output, nothing = process.communicate(stdin)

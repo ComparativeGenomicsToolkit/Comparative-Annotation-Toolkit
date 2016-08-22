@@ -56,8 +56,8 @@ def align_transcripts(args, toil_options):
             results_file_id = toil.start(job)
         else:
             results_file_id = toil.restart()
-        tools.fileOps.ensure_file_dir(args['transcript_psl'])
-        toil.exportFile(results_file_id, 'file://' + args['transcript_psl'])
+        tools.fileOps.ensure_file_dir(args['transcript_alignment_fasta'])
+        toil.exportFile(results_file_id, 'file://' + args['transcript_alignment_fasta'])
 
 
 def setup(job, args, input_file_ids):
@@ -151,24 +151,15 @@ def run_alignment_chunk(job, i, args, chunk):
     :return: List of PSL output
     """
     job.fileStore.logToMaster('Beginning transcript alignment chunk {} for genome {}'.format(i, args['genome']))
-    # temporary file paths
-    ref_tmp_fasta = tools.fileOps.get_tmp_toil_file()
-    tgt_tmp_fasta = tools.fileOps.get_tmp_toil_file()
-    tmp_psl = tools.fileOps.get_tmp_toil_file()  # simpleChain does not like pipes
-    blat_cmd = ['blat', '-noHead', '-extendThroughN', '-mask=lower', '-minIdentity=50', '-oneOff=1', '-fine',
-                ref_tmp_fasta, tgt_tmp_fasta, tmp_psl]
-    chain_cmd = ['simpleChain', '-outPsl', tmp_psl, '/dev/stdout']
+    tmp_fasta = tools.fileOps.get_tmp_toil_file()
     results = []
+    cmd = ['muscle', '-in', tmp_fasta]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
-        tools.bio.write_fasta(ref_tmp_fasta, ref_tx_id, ref_tx_seq)
-        tools.bio.write_fasta(tgt_tmp_fasta, tx_id, tx_seq)
-        tools.procOps.run_proc(blat_cmd)
-        chained_psl_strings = tools.procOps.call_proc_lines(chain_cmd)
-        if len(chained_psl_strings) == 0:
-            continue
-        psl_recs = [tools.psl.PslRow(x.split()) for x in chained_psl_strings]
-        best_psl_rec = sorted(psl_recs, key=lambda psl: psl.coverage)[-1]
-        results.append(best_psl_rec.psl_string())
+        with open(tmp_fasta, 'w') as outf:
+            tools.bio.write_fasta(outf, ref_tx_id, ref_tx_seq)
+            tools.bio.write_fasta(outf, tx_id, tx_seq)
+        r = tools.procOps.call_proc(cmd, keepLastNewLine=True)
+        results.append(r)
     return results
 
 
@@ -180,9 +171,9 @@ def merge(job, results, args):
     :return:
     """
     job.fileStore.logToMaster('Merging Alignment output for {}'.format(args['genome']), level=logging.INFO)
-    tmp_results_file = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
+    tmp_results_file = tools.fileOps.get_tmp_toil_file(suffix='gz')
     results_iter = itertools.chain.from_iterable(results)  # results is list of lists
-    with open(tmp_results_file, 'w') as outf:
+    with tools.fileOps.opengz(tmp_results_file, 'w') as outf:
         for line in results_iter:
             outf.write(line + '\n')
     results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)

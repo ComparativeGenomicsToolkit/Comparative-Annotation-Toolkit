@@ -1,6 +1,7 @@
 """
 Miscellaneous tools for the pipeline. Some may eventually be refactored into their own modules.
 """
+import pysam
 import procOps
 
 
@@ -18,3 +19,14 @@ def is_exec(program):
         return procOps.call_proc_lines(cmd)[0].endswith(program)
     except Exception as error:
         return False
+
+
+def is_bam(path):
+    """Checks if a path is a BAMfile"""
+    try:
+        pysam.Samfile(path)
+    except IOError:
+        raise RuntimeError('Path {} does not exist'.format(path))
+    except ValueError:
+        return False
+    return True
