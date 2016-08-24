@@ -8,6 +8,7 @@ import itertools
 import os
 import luigi
 import sqlalchemy
+import sqlite3 as sql
 import tempfile
 import tools.fileOps
 import tools.procOps
@@ -26,6 +27,7 @@ from chaining import chaining
 from augustus import augustus
 from augustus_cgp import augustus_cgp
 from align_transcripts import align_transcripts
+from classify import classify
 
 
 logger = logging.getLogger(__name__)
@@ -719,14 +721,14 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         tm_files = TransMap.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         base_dir = os.path.join(pipeline_args.work_dir, 'transcript_alignment')
-        transcript_alignment_fasta = os.path.join(base_dir, genome + '.fasta.gz')  # gzip because it'll be huge
+        tx_aligment_fasta = os.path.join(base_dir, genome + '.fasta.gz')  # gzip because it'll be huge
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
                 'ref_genome_fasta': ref_genome_files['fasta'],
                 'annotation_gp': annotation_files['annotation_gp'],
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'tm_gp': tm_files['tm_gp'],
-                'transcript_alignment_fasta': transcript_alignment_fasta}
+                'tx_aligment_fasta': tx_aligment_fasta}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -760,7 +762,7 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
     genome = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.alignment_args['transcript_alignment_fasta'])
+        return luigi.LocalTarget(self.alignment_args['tx_aligment_fasta'])
 
     def requires(self):
         if 'augustus_gp' in self.alignment_args:
@@ -782,7 +784,7 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
     """
     Evaluates all transcripts for important features. See the classify.py module for details on how this works.
 
-    Each task will generate a genome-specific sqlite database with 3 tables.
+    Each task will generate a genome-specific sqlite database. See the classify.py docstring for details.
     """
 
     @staticmethod
@@ -791,15 +793,15 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         transcript_alignment_files = AlignTranscripts.get_args(pipeline_args, genome)
-        base_dir = os.path.join(pipeline_args.work_dir, 'transcript_eval')
-        args = {'db': os.path.join(base_dir, '{}.db'.format(genome)),
+        base_out_dir = os.path.join(pipeline_args.out_dir, 'databases')
+        args = {'db': os.path.join(base_out_dir, '{}.db'.format(genome)),
                 'tm_psl': tm_args['tm_psl'],
                 'tm_gp': tm_args['tm_gp'],
                 'annotation_gp': annotation_files['annotation_gp'],
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'genome': genome,
-                'transcript_alignment_fasta': transcript_alignment_files['transcript_alignment_fasta']}
+                'tx_aligment_fasta': transcript_alignment_files['tx_aligment_fasta']}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -823,34 +825,58 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
 @inherits(EvaluateTranscripts)
 class EvaluateDriverTask(tools.toilInterface.ToilTask):
     """
-    Task for per-genome launching of a toil pipeline for aligning transcripts to their parent
+    Task for per-genome launching of a toil pipeline for aligning transcripts to their parent.
     """
     eval_args = luigi.DictParameter()  # dict to pass directory to evaluate toil module
     genome = luigi.Parameter()
 
+    def build_table_names(self):
+        """construct table names based on input arguments"""
+        pipeline_args = self.get_pipeline_args()
+        tables = ['Alignment', 'transMapMetrics', 'transMapEvaluation']
+        if pipeline_args.augustus is True:
+            tables.extend(['augTmMetrics', 'augTmEvaluation'])
+        if pipeline_args.augustus is True and pipeline_args.augustus_hints_db is not None:
+            tables.extend(['augTmrMetrics', 'augTmrEvaluation'])
+        if pipeline_args.augustus_cgp is True:
+            tables.extend(['augCgpMetrics', 'augCgpEvaluation'])
+        return tables
+
+    def pair_table_output(self):
+        """return dict of {table_name: SQLAlchemyTarget} for final writing"""
+        return dict(zip(*[self.build_table_names(), self.output()]))
+
+    def write_to_sql(self, results):
+        """Load the results into the SQLite database"""
+        # TODO: sqlalchemy can't write hierarchical indices. See this:
+        # http://stackoverflow.com/questions/39089513/pandas-sqlalchemy-engine-does-not-produce-hierarchical-index-but-legacy-mode-do
+        #engine = sqlalchemy.create_engine('sqlite:///{}'.format(self.eval_args['db']))
+        engine = sql.connect(self.eval_args['db'])
+        for table, target in self.pair_table_output().iteritems():
+            if table not in results:
+                continue
+            else:
+                logger.info('Loading Evaluate Transcript results for {} to database {}'.format(table, self.genome))
+                df = results[table]
+                df.to_sql(table, engine, if_exists='replace')
+                target.touch()
+        engine.close()
+
     def output(self):
-        conn_str = 'sqlite:///{}'.format(self.args['db'])
-        alignment_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
-                                                              target_table='Alignment',
-                                                              update_id=self.task_id)
-        metrics_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
-                                                            target_table='Metrics',
-                                                            update_id=self.task_id)
-        evaluation_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
-                                                               target_table='Evaluation',
-                                                               update_id=self.task_id)
-        return alignment_table, metrics_table, evaluation_table
+        conn_str = 'sqlite:///{}'.format(self.eval_args['db'])
+        for table in self.build_table_names():
+            yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                      target_table=table,
+                                                      update_id=self.task_id)
 
     def requires(self):
-        return self.clone(TransMap)
+        return self.clone(AlignTranscripts)
 
     def run(self):
-        job_store = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
+        job_store = os.path.join(self.work_dir, 'toil', 'transcript_evaluation', self.genome)
+        logger.info('Beginning Evaluate Transcript toil pipeline for {}.'.format(self.genome))
         toil_options = self.prepare_toil_options(job_store)
-        coding_gp = self.extract_coding_genes()
-        augustus_results = augustus(self.augustus_args, coding_gp, toil_options)
-        os.remove(coding_gp)
-        with tools.fileOps.TemporaryFilePath() as tmp_gtf:
-            with open(tmp_gtf, 'w') as outf:
-                tools.fileOps.print_rows(outf, augustus_results)
-            self.convert_gtf_gp(tmp_gtf)
+        results = classify(self.eval_args, toil_options)
+        # results should be a dictionary of {table: dataframe}
+        logger.info('Evaluate Transcript toil pipeline for {} completed'.format(self.genome))
+        self.write_to_sql(results)

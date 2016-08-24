@@ -42,28 +42,24 @@ def augustus(args, coding_gp, toil_options):
             # assume that this fasta has been flattened
             fasta_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args['genome_fasta'])
             fasta_file_id, gdx_file_id, flat_file_id = fasta_file_ids
-            coding_gp_file_id = toil.importFile('file:///' + coding_gp)
-            tm_cfg_file_id = toil.importFile('file:///' + args['tm_cfg'])
-            ref_psl_file_id = toil.importFile('file:///' + args['ref_psl'])
-            tm_psl_file_id = toil.importFile('file:///' + args['tm_psl'])
-            annotation_gp_file_id = toil.importFile('file:///' + args['annotation_gp'])
-            tm_to_hints_script_file_id = toil.importFile('file:///' + args['tm_to_hints_script'])
-            input_file_ids = {'genome_fasta': fasta_file_id, 'genome_gdx': gdx_file_id, 'genome_flat': flat_file_id,
-                              'tm_cfg': tm_cfg_file_id, 'coding_gp': coding_gp_file_id,
-                              'ref_psl': ref_psl_file_id, 'tm_psl': tm_psl_file_id,
-                              'annotation_gp': annotation_gp_file_id,
-                              'tm_to_hints_script': tm_to_hints_script_file_id}
+            input_file_ids = {'genome_fasta': fasta_file_id,
+                              'genome_gdx': gdx_file_id,
+                              'genome_flat': flat_file_id,
+                              'tm_cfg': toil.importFile('file://' + args['tm_cfg']),
+                              'coding_gp': toil.importFile('file://' + coding_gp),
+                              'ref_psl': toil.importFile('file://' + args['ref_psl']),
+                              'tm_psl': toil.importFile('file://' + args['tm_psl']),
+                              'annotation_gp': toil.importFile('file://' + args['annotation_gp']),
+                              'tm_to_hints_script': toil.importFile('file://' + args['tm_to_hints_script'])}
             if args['augustus_hints_db'] is not None:
-                hints_db_file_id = toil.importFile('file:///' + args['augustus_hints_db'])
-                tmr_cfg_file_id = toil.importFile('file:///' + args['tmr_cfg'])
-                input_file_ids['augustus_hints_db'] = hints_db_file_id
-                input_file_ids['tmr_cfg'] = tmr_cfg_file_id
+                input_file_ids['augustus_hints_db'] = toil.importFile('file://' + args['augustus_hints_db'])
+                input_file_ids['tmr_cfg'] = toil.importFile('file://' + args['tmr_cfg'])
             job = Job.wrapJobFn(setup, args, input_file_ids)
             results_file_id = toil.start(job)
         else:
             results_file_id = toil.restart()
         tools.fileOps.ensure_file_dir(args['augustus_gtf'])
-        toil.exportFile(results_file_id, 'file:///' + args['augustus_gtf'])
+        toil.exportFile(results_file_id, 'file://' + args['augustus_gtf'])
 
 
 def setup(job, args, input_file_ids):

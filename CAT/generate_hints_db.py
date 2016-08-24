@@ -18,6 +18,8 @@ The annotation field is optional, but will help AugustusCGP make better predicti
 import os
 import logging
 import shutil
+import collections
+import pyfasta
 import luigi
 import pysam
 import itertools
@@ -29,6 +31,7 @@ from toil.common import Toil
 import tools.toilInterface
 import tools.fileOps
 import tools.procOps
+import tools.dataOps
 import tools.mathOps
 import tools.misc
 import tools.transcripts
@@ -132,7 +135,7 @@ class GenerateHints(tools.toilInterface.ToilTask):
 
     def run(self):
         logger.info('Beginning GenerateHints toil pipeline for {}.'.format(self.genome))
-        job_store = os.path.join(self.work_dir, 'toil', self.genome)
+        job_store = os.path.abspath(os.path.join(self.work_dir, 'toil', self.genome))
         toil_options = self.prepare_toil_options(job_store)
         toil_options.defaultMemory = '8G'  # TODO: don't hardcode this.
         completed = generate_hints(self.genome, self.flat_fasta, self.cfg, self.annotation, self.output().path,
@@ -172,7 +175,7 @@ class BuildDb(luigi.Task):
 
     def run(self):
         for genome in self.cfg['FASTA']:
-            logger.info('Loading finished hints for {} into database.'.format(self.genome))
+            logger.info('Loading finished hints for {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(self.augustus_hints_db)]
             tools.procOps.run_proc(base_cmd + [self.flat_fasta_paths[genome]])
@@ -192,23 +195,32 @@ def generate_hints(genome, flat_fasta, cfg, annotation, out_gff_path, toil_optio
     """
     Entry point for hints database Toil pipeline.
     """
+    if genome in cfg['BAM'] and cfg['BAM'][genome] is not None:
+        logger.info('Validating BAMs for {}.'.format(genome))
+        # validate BAMs
+        fasta = pyfasta.Fasta(flat_fasta)
+        fasta_sequences = {x.split()[0] for x in fasta.keys()}
+        for bam_path in cfg['BAM'][genome]:
+            validate_bam_fasta_pairs(bam_path, fasta_sequences, genome)
+            logger.info('BAM {} for {} is valid.'.format(bam_path, genome))
+        logger.info('All BAMs valid for {}, beginning Toil hints pipeline.'.format(genome))
+    # start pipeline
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            fasta_file_id = toil.importFile('file://' + flat_fasta)
-            fasta_gdx_file_id = toil.importFile('file://' + flat_fasta + '.gdx')
-            fasta_flat_file_id = toil.importFile('file://' + flat_fasta + '.flat')
             if genome in cfg['BAM'] and cfg['BAM'][genome] is not None:
                 bam_file_ids = {}
                 for bam_path in cfg['BAM'][genome]:
+                    is_paired = bam_is_paired(bam_path)
                     bam_file_ids[os.path.basename(bam_path)] = (toil.importFile('file://' + bam_path),
-                                                                toil.importFile('file://' + bam_path + '.bai'))
+                                                                toil.importFile('file://' + bam_path + '.bai'),
+                                                                is_paired)
+                    is_paired_str = 'paired' if is_paired else 'not paired'
+                    logger.info('BAM {} was inferred to be {}.'.format(os.path.basename(bam_path), is_paired_str))
             else:
                 bam_file_ids = None
-            annotation_file_id = toil.importFile('file://' + annotation) if annotation is not None else None
-            input_file_ids = {'genome_fasta': fasta_file_id, 'genome_gdx': fasta_gdx_file_id,
-                              'genome_flat': fasta_flat_file_id,
-                              'bams': bam_file_ids, 'annotation': annotation_file_id}
-            job = Job.wrapJobFn(setup_hints, genome, input_file_ids)
+            input_file_ids = {'bams': bam_file_ids,
+                              'annotation': toil.importFile('file://' + annotation) if annotation is not None else None}
+            job = Job.wrapJobFn(setup_hints, input_file_ids, genome)
             combined_hints = toil.start(job)
         else:
             combined_hints = toil.restart()
@@ -220,43 +232,49 @@ def generate_hints(genome, flat_fasta, cfg, annotation, out_gff_path, toil_optio
             return False
 
 
-def setup_hints(job, genome, input_file_ids):
+def setup_hints(job, input_file_ids, genome):
     """
     Generates hints for a given genome with a list of BAMs. Will add annotation if it exists.
+
+    Pipeline structure:
+      filter_bam    cat_sort_bams    (build_intron_hints, build_exon_hints)
+        ^  V           ^ V                 ^  V
+    setup_hints -> merge_bams -------> build_hints -------> cat_hints
+          V generate_annotation_hints ------------------------^
+
+    Each main step (filter_bam, cat_sort_bams, build_intron_hints, build_exon_hints) are done on a subset of references
+    and then combined at the cat step.
     """
-    # import FASTA, flatten it, export flattened fasta
-    genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['genome_fasta'],
-                                                                 input_file_ids['genome_gdx'],
-                                                                 input_file_ids['genome_flat'],
-                                                                 prefix='genome', upper=False)
+    job.fileStore.logToMaster('Beginning hints production for {}'.format(genome), level=logging.INFO)
+    # If we have no BAMs, we skip this step
     if input_file_ids['bams'] is not None:
-        # validate BAMs
-        fasta_sequences = {x.split()[0] for x in genome_fasta.keys()}
-        filtered_bam_file_ids = []
-        for original_path, (bam_file_id, bai_file_id) in input_file_ids['bams'].iteritems():
-            bam_path = job.fileStore.readGlobalFile(bam_file_id)
-            validate_bam_fasta_pairs(original_path, bam_path, fasta_sequences, genome)
-            sam_handle = pysam.Samfile(bam_path)
-            paired = ['--paired', '--pairwiseAlignments'] if bam_is_paired(original_path, bam_path) is True else []
-            for reference_subset in group_references(sam_handle):
-                j = job.addChildJobFn(sort_by_name, bam_file_id, bai_file_id, reference_subset, paired)
-                filtered_bam_file_ids.append(j.rv())
+        # Since BAMs are valid, we can assume that they all share the same header
+        bam_file_id, bai_file_id, is_paired = input_file_ids['bams'].values()[0]
+        sam_handle = pysam.Samfile(job.fileStore.readGlobalFile(bam_file_id))
+        # generate reference grouping that will be used downstream until final cat step
+        grouped_references = [tuple(x) for x in group_references(sam_handle)]
+        filtered_bam_file_ids = collections.defaultdict(list)
+        for original_path, (bam_file_id, bai_file_id, is_paired) in input_file_ids['bams'].iteritems():
+            for reference_subset in grouped_references:
+                j = job.addChildJobFn(filter_bam, bam_file_id, bai_file_id, reference_subset, is_paired)
+                filtered_bam_file_ids[reference_subset].append(j.rv())
     else:
-        filtered_bam_file_ids = []
+        filtered_bam_file_ids = {}
     if input_file_ids['annotation'] is not None:
-        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'])
-        annotation_hints = j.rv()
+        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'], genome)
+        annotation_hints_file_id = j.rv()
     else:
-        annotation_hints = None
+        annotation_hints_file_id = None
     # returns path to filtered GFF output
-    return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints).rv()
+    return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints_file_id, genome).rv()
 
 
-def sort_by_name(job, bam_file_id, bai_file_id, reference_subset, paired):
+def filter_bam(job, bam_file_id, bai_file_id, reference_subset, is_paired):
     """
     Slices out a chromosome from a BAM, re-sorts by name, filters the reads, then re-sorts by position.
     filterBam does weird things when piped to stdout, so I don't do that.
     """
+    job.fileStore.logToMaster('Name-sorting and filtering {}'.format(bam_file_id), level=logging.INFO)
     tmp_filtered = tools.fileOps.get_tmp_toil_file(suffix='filtered.bam')
     bam_path = job.fileStore.readGlobalFile(bam_file_id)
     job.fileStore.readGlobalFile(bai_file_id, bam_path + '.bai')
@@ -264,89 +282,110 @@ def sort_by_name(job, bam_file_id, bai_file_id, reference_subset, paired):
     cmd = [['samtools', 'view', '-b', bam_path],
            ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, '-n', '-l', '0', '-'],
            ['filterBam', '--uniq', '--in', '/dev/stdin', '--out', tmp_filtered]]
-    cmd[-1].extend(paired)
+    if is_paired is True:
+        cmd[-1].extend(['--paired', '--pairwiseAlignments'])
     cmd[0].extend(reference_subset)
     tools.procOps.run_proc(cmd)
     out_filter = tools.fileOps.get_tmp_toil_file(suffix='sorted.filtered.bam')
     sort_cmd = ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, tmp_filtered]
     tools.procOps.run_proc(sort_cmd, stdout=out_filter)
-    tools.procOps.run_proc(['samtools', 'index', out_filter])
     filtered_bam_file_id = job.fileStore.writeGlobalFile(out_filter)
-    filtered_bam_index_file_id = job.fileStore.writeGlobalFile(out_filter + '.bai')
-    return filtered_bam_file_id, filtered_bam_index_file_id
+    return filtered_bam_file_id
 
 
-def merge_bams(job, filtered_bam_file_ids, annotation_hints):
+def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, genome):
     """
-    Takes the filtered BAMs that were split up by sequences and merges them into one mega-BAM.
-    TODO: this could probably be made faster through a hierarchical merging process. Not sure how samtools merge
-    sorts in the back end.
-    TODO: this should probably request a sizeable amount of HDD space, that scales based on input data.
+    Takes a dictionary mapping reference chunks to filtered BAMs. For each reference chunk, these BAMs will be
+    first concatenated then sorted, then passed off to hint building.
     """
+    job.fileStore.logToMaster('Merging BAMs for {}.'.format(genome), level=logging.INFO)
+    # filtered_bam_file_ids may be empty, which signifies that for this genome we have no BAMs
     if len(filtered_bam_file_ids) > 0:
-        # import every single BAM
-        bam_paths = []
-        for filtered_bam_file_id, filtered_bam_index_file_id in filtered_bam_file_ids:
-            bam = tools.fileOps.get_tmp_toil_file()
-            bai = bam + '.bai'
-            job.fileStore.readGlobalFile(filtered_bam_file_id, bam)
-            job.fileStore.readGlobalFile(filtered_bam_index_file_id, bai)
-            bam_paths.append(bam)
-        # write a fofn
-        fofn = tools.fileOps.get_tmp_toil_file()
-        tools.fileOps.print_rows(fofn, bam_paths, sep='')
-        # generate output
-        merged_path = tools.fileOps.get_tmp_toil_file(suffix='bam')
-        cmd = ['samtools', 'merge', '-b', fofn, merged_path]
-        tools.procOps.run_proc(cmd)
-        merged_bam_file_id = job.fileStore.writeGlobalFile(merged_path)
+        merged_bam_file_ids = {}
+        for ref_group, file_ids in filtered_bam_file_ids.iteritems():
+            merged_bam_file_ids[ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, ref_group, genome).rv()
     else:
-        merged_bam_file_id = None
-    return job.addFollowOnJobFn(build_hints, merged_bam_file_id, annotation_hints).rv()
+        merged_bam_file_ids = None
+    return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, genome).rv()
 
 
-def build_hints(job, merged_bam_file_id, annotation_hints):
+def cat_sort_bams(job, bam_file_ids, ref_group, genome):
+    """
+    Takes a list of bam file IDs and combines/sorts them.
+
+    TODO: the 4096 file hack below is hacky. Should only be a problem for very fragmented references.
+    """
+    job.fileStore.logToMaster('{}: Concatenating and sorting bams for references: {}'.format(genome,
+                                                                                             ','.join(ref_group)),
+                              level=logging.INFO)
+    bamfiles = [job.fileStore.readGlobalFile(x) for x in bam_file_ids]
+    # cat only 4095 bams at a time to avoid bash command length problems
+    catfile = tools.fileOps.get_tmp_toil_file()
+    sam_iter = tools.dataOps.grouper(bamfiles, 4095)
+    # do the first one
+    cmd = ['samtools', 'cat', '-o', catfile]
+    cmd.extend(sam_iter.next())
+    tools.procOps.run_proc(cmd)
+    # do any subsequent ones left, creating a new file each time
+    for more in sam_iter:
+        old_catfile = catfile
+        catfile = tools.fileOps.get_tmp_toil_file()
+        cmd = ['samtools', 'cat', '-o', catfile, old_catfile]
+        cmd.extend(more)
+        tools.procOps.run_proc(cmd)
+    # combine and merge
+    merged = tools.fileOps.get_tmp_toil_file()
+    sort_tmp = tools.fileOps.get_tmp_toil_file()
+    cmd = ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, catfile]
+    tools.procOps.run_proc(cmd, stdout=merged)
+    return job.fileStore.writeGlobalFile(merged)
+
+
+def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, genome):
     """
     Takes the merged BAM for a genome and produces both intron and exon hints.
     """
-    intron_hints = job.addChildJobFn(build_intron_hints, merged_bam_file_id).rv()
-    exon_hints = job.addChildJobFn(build_exon_hints, merged_bam_file_id).rv()
-    return job.addFollowOnJobFn(cat_hints, intron_hints, exon_hints, annotation_hints).rv()
+    job.fileStore.logToMaster('Building hints for {}'.format(genome))
+    if merged_bam_file_ids is None:
+        intron_hints_file_ids = exon_hints_file_ids = None
+    else:
+        exon_hints_file_ids = {}
+        intron_hints_file_ids = {}
+        for ref_group, file_ids in merged_bam_file_ids.iteritems():
+            intron_hints_file_ids[ref_group] = job.addChildJobFn(build_intron_hints, file_ids).rv()
+            exon_hints_file_ids[ref_group] = job.addChildJobFn(build_exon_hints, file_ids).rv()
+    return job.addFollowOnJobFn(cat_hints, intron_hints_file_ids, exon_hints_file_ids,
+                                annotation_hints_file_id, genome).rv()
 
 
 def build_intron_hints(job, merged_bam_file_id):
     """Builds intronhints from a BAM. Returns a fileID to the hints."""
-    if merged_bam_file_id is not None:
-        bam_file = job.fileStore.readGlobalFile(merged_bam_file_id)
-        intron_gff_path = tools.fileOps.get_tmp_toil_file(suffix='intron_hints.gff')
-        cmd = ['bam2hints', '--intronsonly', '--in', bam_file, '--out', intron_gff_path]
-        tools.procOps.run_proc(cmd)
-        return job.fileStore.writeGlobalFile(intron_gff_path)
-    else:
-        return None
+    bam_file = job.fileStore.readGlobalFile(merged_bam_file_id)
+    intron_gff_path = tools.fileOps.get_tmp_toil_file()
+    cmd = ['bam2hints', '--intronsonly', '--in', bam_file, '--out', intron_gff_path]
+    tools.procOps.run_proc(cmd)
+    return job.fileStore.writeGlobalFile(intron_gff_path)
 
 
 def build_exon_hints(job, merged_bam_file_id):
     """Builds exonhints from a BAM Returns a fileID to the hints."""
-    if merged_bam_file_id is not None:
-        bam_file = job.fileStore.readGlobalFile(merged_bam_file_id)
-        cmd = [['bam2wig', bam_file],
-               ['wig2hints.pl', '--width=10', '--margin=10', '--minthresh=2', '--minscore=4', '--prune=0.1', '--src=W',
-                '--type=ep', '--UCSC=/dev/null', '--radius=4.5', '--pri=4', '--strand="."']]
-        exon_gff_path = tools.fileOps.get_tmp_toil_file(suffix='exon_hints.gff')
-        tools.procOps.run_proc(cmd, stdout=exon_gff_path)
-        return job.fileStore.writeGlobalFile(exon_gff_path)
-    else:
-        return None
+    bam_file = job.fileStore.readGlobalFile(merged_bam_file_id)
+    cmd = [['bam2wig', bam_file],
+           ['wig2hints.pl', '--width=10', '--margin=10', '--minthresh=2', '--minscore=4', '--prune=0.1', '--src=W',
+            '--type=ep', '--UCSC=/dev/null', '--radius=4.5', '--pri=4', '--strand=.']]
+    exon_gff_path = tools.fileOps.get_tmp_toil_file()
+    tools.procOps.run_proc(cmd, stdout=exon_gff_path)
+    return job.fileStore.writeGlobalFile(exon_gff_path)
 
 
-def generate_annotation_hints(job, annotation_hints_file_id):
+def generate_annotation_hints(job, annotation_hints_file_id, genome):
     """
     Converts the annotation file into hints. First converts the gff3 directly to genePred so we can make use
     of the transcript library.
 
     Hints are derived from both CDS exonic intervals and intron intervals
     """
+    job.fileStore.logToMaster('Generating annotation hints for {}'.format(genome), level=logging.INFO)
     annotation_gff3 = job.fileStore.readGlobalFile(annotation_hints_file_id)
     tm_gp = tools.fileOps.get_tmp_toil_file()
     cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
@@ -372,20 +411,35 @@ def generate_annotation_hints(job, annotation_hints_file_id):
     return job.fileStore.writeGlobalFile(annotation_hints_gff)
 
 
-def cat_hints(job, intron_hints, exon_hints, annotation_hints):
+def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints, genome):
     """Returns file ID to combined, sorted hints"""
-    if all(x is None for x in (intron_hints, exon_hints, annotation_hints)):
+    if all(x is None for x in (intron_hints_file_ids, exon_hints_file_ids, annotation_hints)):
         return None  # we are just loading the genome
-    cmd = [['cat'],
-           ['sort', '-n', '-k4,4'],
+    # load every hint file to this job
+    job.fileStore.logToMaster('Concatenating final hints for {}'.format(genome))
+    if intron_hints_file_ids is not None:
+        intron_hints = [job.fileStore.readGlobalFile(x) for x in intron_hints_file_ids.itervalues()]
+    else:
+        intron_hints = []
+    if exon_hints_file_ids is not None:
+        exon_hints = [job.fileStore.readGlobalFile(x) for x in exon_hints_file_ids.itervalues()]
+    else:
+        exon_hints = []
+    if annotation_hints is not None:
+        annotation_hints = [job.fileStore.readGlobalFile(annotation_hints)]
+    else:
+        annotation_hints = []
+    # generate a temporary file we will cat everything to.
+    cat_hints = tools.fileOps.get_tmp_toil_file()
+    with open(cat_hints, 'w') as outf:
+        for file in itertools.chain(intron_hints, exon_hints, annotation_hints):
+            for line in open(file):
+                outf.write(line)
+    cmd = [['sort', '-n', '-k4,4', cat_hints],
            ['sort', '-s', '-n', '-k5,5'],
            ['sort', '-s', '-n', '-k3,3'],
            ['sort', '-s', '-k1,1'],
            ['join_mult_hints.pl']]
-    for hint_file_id in [intron_hints, exon_hints, annotation_hints]:
-        if hint_file_id is not None:
-            hints_path = job.fileStore.readGlobalFile(hint_file_id)
-            cmd[0].append(hints_path)
     combined_hints = tools.fileOps.get_tmp_toil_file()
     tools.procOps.run_proc(cmd, stdout=combined_hints)
     return job.fileStore.writeGlobalFile(combined_hints)
@@ -396,34 +450,32 @@ def cat_hints(job, intron_hints, exon_hints, annotation_hints):
 ###
 
 
-def validate_bam_fasta_pairs(original_path, bam_path, fasta_sequences, genome):
+def validate_bam_fasta_pairs(bam_path, fasta_sequences, genome):
     """
     Make sure that this BAM is actually aligned to this fasta
     """
     handle = pysam.Samfile(bam_path, 'rb')
     if set(handle.references) != fasta_sequences:
         base_err = 'Error: BAM {} does not have the same sequences as the FASTA for genome {}'
-        err = base_err.format(original_path, genome)
+        err = base_err.format(bam_path, genome)
         raise UserException(err)
 
 
-def bam_is_paired(original_path, bam_path, num_reads=100000, paired_cutoff=0.75):
+def bam_is_paired(bam_path, num_reads=20000, paired_cutoff=0.75):
     """
     Infers the paired-ness of a bam file.
     """
     sam = pysam.Samfile(bam_path)
     count = 0
-    for i, rec in enumerate(sam):
+    for rec in itertools.islice(sam, num_reads):
         if rec.is_paired:
             count += 1
-        if i == num_reads:
-            break
     if tools.mathOps.format_ratio(count, num_reads) > 0.75:
         return True
     elif tools.mathOps.format_ratio(count, num_reads) < 1 - paired_cutoff:
         return False
     else:
-        raise UserException("Unable to infer pairing from bamfile {}".format(original_path))
+        raise UserException("Unable to infer pairing from bamfile {}".format(bam_path))
 
 
 def group_references(sam_handle, num_bases=10 ** 6, max_seqs=100):

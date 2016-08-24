@@ -102,4 +102,17 @@ def parse_paired_fasta(fasta_path):
     :return: iterable of (ref_id, ref_seq, tgt_id, tgt_seq) tuples
     """
     for (ref_id, ref_seq), (tgt_id, tgt_seq) in dataOps.grouper(bio.read_fasta(fasta_path), 2):
-        yield ref_id, ref_seq, tgt_id, tgt_seq
+        yield AlignmmentRecord(ref_id, ref_seq, tgt_id, tgt_seq)
+
+
+def get_alignment_record_dict(fasta_path):
+    """
+    Wrapper for parse_paired_fasta that returns it as a dictionary
+    :param fasta_path: Path to transcript FASTA
+    :return: dictionary of {(ref_id, tgt_id): AlignmentRecord)}
+    """
+    r = {}
+    for aln_rec in parse_paired_fasta(fasta_path):
+        assert (aln_rec.query_name, aln_rec.target_name) not in r
+        r[(aln_rec.query_name, aln_rec.target_name)] = aln_rec
+    return r

@@ -30,10 +30,11 @@ class ToilTask(luigi.Task):
             job_store = os.path.abspath(os.path.join(self.workDir, tempfile.gettempdir()))
         else:
             job_store = os.path.abspath(job_store)
+        fileOps.ensure_file_dir(job_store)
         toil_args = get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.jobStore = job_store
-        if os.path.exists(job_store):
+        if os.path.exists(job_store) and len(os.listdir(job_store)) != 0:
             toil_args.restart = True
         else:
             fileOps.ensure_file_dir(job_store)

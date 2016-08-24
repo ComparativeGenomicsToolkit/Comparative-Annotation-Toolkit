@@ -13,12 +13,10 @@ def chaining(args, toil_options):
     """entry point to this program"""
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            hal_file_id = toil.importFile('file://' + args['hal'])
-            chrom_sizes_file_id = toil.importFile('file://' + args['query_sizes'])
-            query_two_bit_file_id = toil.importFile('file://' + args['query_two_bit'])
-            target_two_bit_file_id = toil.importFile('file://' + args['target_two_bit'])
-            input_file_ids = {'hal': hal_file_id, 'sizes': chrom_sizes_file_id, 'query_two_bit': query_two_bit_file_id,
-                              'target_two_bit': target_two_bit_file_id}
+            input_file_ids = {'hal': toil.importFile('file://' + args['hal']),
+                              'sizes': toil.importFile('file://' + args['query_sizes']),
+                              'query_two_bit': toil.importFile('file://' + args['query_two_bit']),
+                              'target_two_bit': toil.importFile('file://' + args['target_two_bit'])}
             job = Job.wrapJobFn(setup, args, input_file_ids)
             chain_file_id = toil.start(job)
         else:
