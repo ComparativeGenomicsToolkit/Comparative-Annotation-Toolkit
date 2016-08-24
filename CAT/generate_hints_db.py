@@ -24,6 +24,7 @@ import luigi
 import pysam
 import itertools
 import tempfile
+import sqlite3
 from configobj import ConfigObj
 from toil.job import Job
 from toil.common import Toil
@@ -46,20 +47,14 @@ class UserException(Exception):
     pass
 
 
-class BuildHints(luigi.WrapperTask):
+class BuildHints(luigi.WrapperTask, tools.toilInterface.ToilOptionsMixin):
     """
     Main entry point. Parses input files, and launches the next task.
     """
     # path to config file
     config = luigi.Parameter(default='hints_cfg.cfg')
     augustus_hints_db = luigi.Parameter(default='augustus_hints.db')
-    work_dir = luigi.Parameter(default='hints_work')
-    # toil parameters, which match tools.toilInterface.ToilTask
-    workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
-    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
-    maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='WARNING', significant=False)
-    cleanWorkDir = luigi.Parameter(default=None, significant=False)  # debugging option
+    work_dir = luigi.Parameter(default=os.path.join(tempfile.gettempdir(), __name__))
 
     def parse_cfg(self):
         # configspec validates the input config file
@@ -135,8 +130,8 @@ class GenerateHints(tools.toilInterface.ToilTask):
 
     def run(self):
         logger.info('Beginning GenerateHints toil pipeline for {}.'.format(self.genome))
-        job_store = os.path.abspath(os.path.join(self.work_dir, 'toil', self.genome))
-        toil_options = self.prepare_toil_options(job_store)
+        work_dir = os.path.abspath(os.path.join(self.work_dir, 'toil', self.genome))
+        toil_options = self.prepare_toil_options(work_dir)
         toil_options.defaultMemory = '8G'  # TODO: don't hardcode this.
         completed = generate_hints(self.genome, self.flat_fasta, self.cfg, self.annotation, self.output().path,
                                    toil_options)
@@ -152,8 +147,7 @@ class BuildDb(luigi.Task):
     """
     Constructs the hints database from a series of reduced hints GFFs
 
-    TODO: output() should be way smarter than this. Stefanie is going to work on flags that modify the load2sqlite
-    program
+    TODO: output() should be way smarter than this. Currently, it only checks if the indices have been created.
     """
     cfg = luigi.Parameter()
     hint_paths = luigi.Parameter()
@@ -169,9 +163,7 @@ class BuildDb(luigi.Task):
 
     def output(self):
         tools.fileOps.ensure_file_dir(self.augustus_hints_db)
-        # check first if each genome is in speciesnames
-        # then check if # of hints for the genome matches the # of hints in the gff
-        return luigi.LocalTarget('/thisfiledoesnotexist')  # TODO: this will just always run now.
+        return IndexTarget(self.augustus_hints_db)
 
     def run(self):
         for genome in self.cfg['FASTA']:
@@ -184,6 +176,28 @@ class BuildDb(luigi.Task):
         logger.info('Indexing database.')
         cmd = ['load2sqlitedb', '--makeIdx', '--clean', '--dbaccess={}'.format(self.augustus_hints_db)]
         tools.procOps.run_proc(cmd)
+
+
+class IndexTarget(luigi.Target):
+    """
+    luigi target that determines if the indices have been built on a hints database.
+    """
+    def __init__(self, db):
+        self.db = db
+
+    def exists(self, timeout=6000):
+        con = sqlite3.connect(self.db, timeout=timeout)
+        cur = con.cursor()
+        r = []
+        for idx in ['gidx', 'hidx']:
+            query = 'PRAGMA index_info("{}")'.format(idx)
+            try:
+                v = cur.execute(query).fetchall()
+            except sqlite3.OperationalError, exc:
+                raise RuntimeError("query failed: {}\nOriginal error message: {}".format(query, exc))
+            if len(v) > 0:
+                r.append(v)
+        return len(r) == 2
 
 
 ###

@@ -2,42 +2,43 @@
 Provides a simple interface between Toil and Luigi.
 """
 import os
-import tempfile
 import luigi
 import bio
 import fileOps
 from toil.job import Job
 
 
-class ToilTask(luigi.Task):
+class ToilOptionsMixin(object):
+    """
+    Add to a luigi WrapperTask that will be a entry point so that toil options can propagate downwards.
+    """
+    workDir = luigi.Parameter(default=None, significant=False)  # set up before use
+    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
+    maxCores = luigi.IntParameter(default=16, significant=False)
+    logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
+    cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
+
+
+class ToilTask(luigi.Task, ToilOptionsMixin):
     """
     Task for launching toil pipelines from within luigi.
     """
-    workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
-    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
-    maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='WARNING', significant=False)
-    cleanWorkDir = luigi.Parameter(default=None, significant=False)
-
-    def prepare_toil_options(self, job_store=None):
+    def prepare_toil_options(self, work_dir):
         """
         Prepares a Namespace object for Toil which has all defaults, overridden as specified
         Will see if the jobStore path exists, and if it does, assume that we need to add --restart
-        :param job_store: path to jobStore. Will use default if not set.
+        :param work_dir: Parent directory where toil work will be done. jobStore will be placed inside. Will be used
+        to fill in the workDir class variable.
         :return: Namespace
         """
-        if job_store is None:
-            job_store = os.path.abspath(os.path.join(self.workDir, tempfile.gettempdir()))
-        else:
-            job_store = os.path.abspath(job_store)
+        self.workDir = os.path.abspath(work_dir)
+        job_store = os.path.join(self.workDir, 'jobStore')
         fileOps.ensure_file_dir(job_store)
         toil_args = get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.jobStore = job_store
         if os.path.exists(job_store) and len(os.listdir(job_store)) != 0:
             toil_args.restart = True
-        else:
-            fileOps.ensure_file_dir(job_store)
         return toil_args
 
 
@@ -52,8 +53,12 @@ def get_toil_defaults():
     return namespace
 
 
-def load_fasta_from_filestore(job, fasta_file_id, fasta_gdx_file_id, fasta_flat_file_id, prefix='genome',
-                             upper=False):
+###
+# Helper functions for luigi-toil pipelines
+###
+
+
+def load_fasta_from_filestore(job, fasta_file_id, fasta_gdx_file_id, fasta_flat_file_id, prefix='genome', upper=False):
     """
     Convenience function that will load a fasta from the fileStore and return the local path to it. This works with
     the pyfasta module to load all of the required files.

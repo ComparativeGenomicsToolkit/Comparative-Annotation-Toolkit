@@ -83,7 +83,7 @@ class PipelineParameterMixin(object):
         return namespace
 
 
-class RunCat(luigi.WrapperTask):
+class RunCat(luigi.WrapperTask, tools.toilInterface.ToilOptionsMixin):
     """
     Task that executes the entire pipeline.
     """
@@ -105,12 +105,6 @@ class RunCat(luigi.WrapperTask):
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     tm_to_hints_script = luigi.Parameter(default='tools/transMap2hints.pl', significant=False)
-    # toil parameters, which match tools.toilInterface.ToilTask
-    workDir = luigi.Parameter(default=tempfile.gettempdir(), significant=False)
-    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
-    maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil.
-    cleanWorkDir = luigi.Parameter(default=None, significant=False)  # debugging option
 
     def requires(self):
         yield self.clone(PrepareFiles)
@@ -451,8 +445,8 @@ class PairwiseChaining(tools.toilInterface.ToilTask):
 
     def run(self):
         logger.info('Launching Pairwise Chaining toil pipeline for {}.'.format(self.genome))
-        job_store = os.path.join(self.work_dir, 'toil', 'chaining', self.genome)
-        toil_options = self.prepare_toil_options(job_store)
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'chaining', self.genome)
+        toil_options = self.prepare_toil_options(toil_work_dir)
         chaining(self.chain_args, toil_options)
         logger.info('Pairwise Chaining for {} is complete.'.format(self.genome))
 
@@ -614,9 +608,9 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
 
     def run(self):
         mode = 'tmr' if self.augustus_args['augustus_hints_db'] is not None else 'tm'
-        job_store = os.path.join(self.work_dir, 'toil', 'augustus_' + mode, self.genome)
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_' + mode, self.genome)
         logger.info('Launching Augustus{} toil pipeline on genome {}'.format(mode.upper(), self.genome))
-        toil_options = self.prepare_toil_options(job_store)
+        toil_options = self.prepare_toil_options(toil_work_dir)
         coding_gp = self.extract_coding_genes()
         augustus(self.augustus_args, coding_gp, toil_options)
         logger.info('Augustus{} toil pipeline for {} completed.'.format(mode, self.genome))
@@ -695,9 +689,9 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
             # TODO: if no database is given (de novo setting),
             # create a new DB with the flattened genomes from the HAL alignment
             raise UserException('Cannot run AugustusCGP without a hints database.')
-        job_store = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
-        toil_options = self.prepare_toil_options(job_store)
         logger.info('Beginning AugustusCGP toil pipeline.')
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
+        toil_options = self.prepare_toil_options(toil_work_dir)
         cgp_args = self.get_args(pipeline_args)
         augustus_cgp(cgp_args, toil_options)
         logger.info('AugustusCGP toil pipeline completed.')
@@ -721,14 +715,14 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         tm_files = TransMap.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         base_dir = os.path.join(pipeline_args.work_dir, 'transcript_alignment')
-        tx_aligment_fasta = os.path.join(base_dir, genome + '.fasta.gz')  # gzip because it'll be huge
+        tx_alignment_fasta = os.path.join(base_dir, genome + '.fasta.gz')  # gzip because it'll be huge
         args = {'ref_genome': pipeline_args.ref_genome, 'genome': genome,
                 'ref_genome_fasta': ref_genome_files['fasta'],
                 'annotation_gp': annotation_files['annotation_gp'],
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'tm_gp': tm_files['tm_gp'],
-                'tx_aligment_fasta': tx_aligment_fasta}
+                'tx_alignment_fasta': tx_alignment_fasta}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -762,7 +756,7 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
     genome = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.alignment_args['tx_aligment_fasta'])
+        return luigi.LocalTarget(self.alignment_args['tx_alignment_fasta'])
 
     def requires(self):
         if 'augustus_gp' in self.alignment_args:
@@ -773,8 +767,8 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
 
     def run(self):
         logger.info('Beginning Align Transcript toil pipeline for {}.'.format(self.genome))
-        job_store = os.path.join(self.work_dir, 'toil', 'transcript_alignment', self.genome)
-        toil_options = self.prepare_toil_options(job_store)
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'transcript_alignment', self.genome)
+        toil_options = self.prepare_toil_options(toil_work_dir)
         align_transcripts(self.alignment_args, toil_options)
         logger.info('Align Transcript toil pipeline for {} completed'.format(self.genome))
 
@@ -801,7 +795,7 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
                 'annotation_db': annotation_files['annotation_db'],
                 'genome_fasta': tgt_genome_files['fasta'],
                 'genome': genome,
-                'tx_aligment_fasta': transcript_alignment_files['tx_aligment_fasta']}
+                'tx_alignment_fasta': transcript_alignment_files['tx_alignment_fasta']}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args['augustus_gp'] = aug_args['augustus_gp']
@@ -873,9 +867,9 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
         return self.clone(AlignTranscripts)
 
     def run(self):
-        job_store = os.path.join(self.work_dir, 'toil', 'transcript_evaluation', self.genome)
         logger.info('Beginning Evaluate Transcript toil pipeline for {}.'.format(self.genome))
-        toil_options = self.prepare_toil_options(job_store)
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'transcript_evaluation', self.genome)
+        toil_options = self.prepare_toil_options(toil_work_dir)
         results = classify(self.eval_args, toil_options)
         # results should be a dictionary of {table: dataframe}
         logger.info('Evaluate Transcript toil pipeline for {} completed'.format(self.genome))

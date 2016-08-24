@@ -34,30 +34,25 @@ def align_transcripts(args, toil_options):
             ref_genome_fasta_file_id, ref_genome_fasta_gdx_file_id, ref_genome_fasta_flat_file_id = tx_file_ids
             genome_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args['genome_fasta'])
             genome_fasta_file_id, genome_fasta_gdx_file_id, genome_fasta_flat_file_id = genome_file_ids
-            tm_gp_file_id = toil.importFile('file://' + args['tm_gp'])
-            annotation_gp_file_id = toil.importFile('file://' + args['annotation_gp'])
-            annotation_db_file_id = toil.importFile('file://' + args['annotation_db'])
             input_file_ids = {'ref_genome_fasta': ref_genome_fasta_file_id,
                               'ref_genome_gdx': ref_genome_fasta_gdx_file_id,
                               'ref_genome_flat': ref_genome_fasta_flat_file_id,
                               'genome_fasta': genome_fasta_file_id,
                               'genome_gdx': genome_fasta_gdx_file_id,
                               'genome_flat': genome_fasta_flat_file_id,
-                              'tm_gp': tm_gp_file_id,
-                              'annotation_gp': annotation_gp_file_id,
-                              'annotation_db': annotation_db_file_id}
+                              'tm_gp': toil.importFile('file://' + args['tm_gp']),
+                              'annotation_gp': toil.importFile('file://' + args['annotation_gp']),
+                              'annotation_db': toil.importFile('file://' + args['annotation_db'])}
             if 'augustus_gp' in args:
-                augustus_gp_file_id = toil.importFile('file://' + args['augustus_gp'])
-                input_file_ids['augustus_gp'] = augustus_gp_file_id
+                input_file_ids['augustus_gp'] = toil.importFile('file://' + args['augustus_gp'])
             if 'augustus_cgp_gp' in args:
-                augustus_cgp_gp_file_id = toil.importFile('file://' + args['augustus_cgp_gp'])
-                input_file_ids['augustus_cgp_gp'] = augustus_cgp_gp_file_id
+                input_file_ids['augustus_cgp_gp'] = toil.importFile('file://' + args['augustus_cgp_gp'])
             job = Job.wrapJobFn(setup, args, input_file_ids)
             results_file_id = toil.start(job)
         else:
             results_file_id = toil.restart()
-        tools.fileOps.ensure_file_dir(args['transcript_alignment_fasta'])
-        toil.exportFile(results_file_id, 'file://' + args['transcript_alignment_fasta'])
+        tools.fileOps.ensure_file_dir(args['tx_alignment_fasta'])
+        toil.exportFile(results_file_id, 'file://' + args['tx_alignment_fasta'])
 
 
 def setup(job, args, input_file_ids):
