@@ -2,12 +2,13 @@
 Miscellaneous tools for the pipeline. Some may eventually be refactored into their own modules.
 """
 import pysam
+import itertools
 import procOps
 
 
-def convert_gtf_gp(out_target, gtf_target):
+def convert_gtf_gp(gp_target, gtf_target):
     """converts the Augustus output GTF to genePred"""
-    with out_target.open('w') as outf:
+    with gp_target.open('w') as outf:
         cmd = ['gtfToGenePred', '-genePredExt', gtf_target.path, '/dev/stdout']
         procOps.run_proc(cmd, stdout=outf)
 
@@ -30,3 +31,9 @@ def is_bam(path):
     except ValueError:
         return False
     return True
+
+
+def pairwise(iterable):
+    """s -> (s0, s1), (s2, s3), (s4, s5), ..."""
+    a = iter(iterable)
+    return itertools.izip(a, a)

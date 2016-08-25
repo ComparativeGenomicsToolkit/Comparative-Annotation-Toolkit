@@ -150,7 +150,7 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
     cmd = ['augustus'] + opt_param + ['--species={}'.format(args['species']),
                                       '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
                                       '--alnfile={}'.format(job.fileStore.readGlobalFile(mafChunk)),
-                                      '--dbaccess={}'.format(job.fileStore.readGlobalFile(args['hints_db'])),
+                                      '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids['hints_db'])),
                                       '--speciesfilenames={}'.format(genomeFofn),
                                       '--softmasking=1',
                                       '--exoncands=0',
@@ -158,7 +158,7 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
                                       '--/CompPred/logreg=on',
                                       '--printOEs=false',
                                       '--/CompPred/outdir={}'.format(os.getcwd()),
-                                      '--optCfgFile={}'.format(job.fileStore.readGlobalFile(args['cgp_param']))]
+                                      '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids['cgp_param']))]
 
     tools.procOps.run_proc(cmd)
     return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args['genomes']}

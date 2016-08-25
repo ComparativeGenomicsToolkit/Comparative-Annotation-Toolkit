@@ -5,6 +5,7 @@ which have new IDs, we use the name2 field which will have assigned a gene ID to
 transcripts associated with that gene ID.
 """
 import logging
+import collections
 import itertools
 
 from toil.job import Job
@@ -43,16 +44,19 @@ def align_transcripts(args, toil_options):
                               'tm_gp': toil.importFile('file://' + args['tm_gp']),
                               'annotation_gp': toil.importFile('file://' + args['annotation_gp']),
                               'annotation_db': toil.importFile('file://' + args['annotation_db'])}
-            if 'augustus_gp' in args:
-                input_file_ids['augustus_gp'] = toil.importFile('file://' + args['augustus_gp'])
+            if 'augustus_tm_gp' in args:
+                input_file_ids['augustus_tm_gp'] = toil.importFile('file://' + args['augustus_tm_gp'])
+            if 'augustus_tmr_gp' in args:
+                input_file_ids['augustus_tmr_gp'] = toil.importFile('file://' + args['augustus_tmr_gp'])
             if 'augustus_cgp_gp' in args:
                 input_file_ids['augustus_cgp_gp'] = toil.importFile('file://' + args['augustus_cgp_gp'])
             job = Job.wrapJobFn(setup, args, input_file_ids)
-            results_file_id = toil.start(job)
+            results_file_ids = toil.start(job)
         else:
-            results_file_id = toil.restart()
-        tools.fileOps.ensure_file_dir(args['tx_alignment_fasta'])
-        toil.exportFile(results_file_id, 'file://' + args['tx_alignment_fasta'])
+            results_file_ids = toil.restart()
+        for file_path, file_id in results_file_ids.iteritems():
+            tools.fileOps.ensure_file_dir(args[file_path])
+            toil.exportFile(file_id, 'file://' + args[file_path])
 
 
 def setup(job, args, input_file_ids):
@@ -62,11 +66,10 @@ def setup(job, args, input_file_ids):
     :param args: dictionary of arguments from CAT
     :param input_file_ids: dictionary of fileStore file IDs for the inputs to this pipeline
     """
-    job.fileStore.logToMaster('Beginning AlignTranscripts run on {}'.format(args['genome']), level=logging.INFO)
+    job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args['genome']), level=logging.INFO)
     chunk_size = 100
-    cgp_chunk_size = 20  # CGP will have multiple alignments per transcript
+    cgp_chunk_size = 20  # cgp has multiple alignments
     # load all fileStore files necessary
-    tm_gp = job.fileStore.readGlobalFile(input_file_ids['tm_gp'])
     annotation_gp = job.fileStore.readGlobalFile(input_file_ids['annotation_gp'])
     annotation_db = job.fileStore.readGlobalFile(input_file_ids['annotation_db'])
     # we have to explicitly place fasta, flat file and gdx with the correct naming scheme for pyfasta
@@ -78,22 +81,23 @@ def setup(job, args, input_file_ids):
                                                                      input_file_ids['ref_genome_gdx'],
                                                                      input_file_ids['ref_genome_flat'],
                                                                      prefix='ref_genome', upper=False)
-    # start generating chunks of the transMap/Augustus genePreds which we know the 1-1 alignment for
+    # load required reference data into memory
     tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args['ref_genome'])
-    results = []
-    gp_file_handles = [open(tm_gp)]
-    if 'augustus_gp' in args:
-        augustus_gp = job.fileStore.readGlobalFile(input_file_ids['augustus_gp'])
-        gp_file_handles.append(open(augustus_gp))
-    gp_iter = itertools.chain.from_iterable(gp_file_handles)
-    transcript_dict = tools.transcripts.get_gene_pred_dict(gp_iter)
     ref_transcript_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
-    transcript_seq_iter = get_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta,
-                                        tx_biotype_map)
-    for i, chunk in enumerate(tools.dataOps.grouper(transcript_seq_iter, chunk_size)):
-        j = job.addChildJobFn(run_alignment_chunk, i, args, chunk)
-        results.append(j.rv())
-    if 'augustus_cgp_gp' in args:
+    results = collections.defaultdict(list)
+    # start generating chunks of the transMap/Augustus genePreds which we know the 1-1 alignment for
+    for gp, out_path in zip(*[['tm_gp', 'augustus_tm_gp', 'augustus_tmr_gp'],
+                              ['tm_alignment_fasta', 'aug_tm_alignment_fasta', 'aug_tmr_alignment_fasta']]):
+        if gp not in input_file_ids:
+            continue
+        gp_path = job.fileStore.readGlobalFile(input_file_ids[gp])
+        transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
+        transcript_seq_iter = get_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta,
+                                            tx_biotype_map)
+        for chunk in tools.dataOps.grouper(transcript_seq_iter, chunk_size):
+            j = job.addChildJobFn(run_alignment_chunk, chunk)
+            results[out_path].append(j.rv())
+    if 'augustus_cgp_gp' in input_file_ids:
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
         gene_tx_map = tools.sqlInterface.get_gene_transcript_map(annotation_db, args['ref_genome'])
         tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args['ref_genome'])
@@ -101,9 +105,12 @@ def setup(job, args, input_file_ids):
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
-        for i, chunk in enumerate(tools.dataOps.grouper(cgp_transcript_seq_iter, cgp_chunk_size), start=i):
-            j = job.addChildJobFn(run_alignment_chunk, i, args, chunk)
-            results.append(j.rv())
+        for chunk in tools.dataOps.grouper(cgp_transcript_seq_iter, cgp_chunk_size):
+            j = job.addChildJobFn(run_alignment_chunk, chunk)
+            results['aug_cgp_alignment_fasta'].append(j.rv())
+    if len(results) == 0:
+        err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args['genome'])
+        raise RuntimeError(err_msg)
     return job.addFollowOnJobFn(merge, results, args).rv()
 
 
@@ -137,15 +144,12 @@ def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_ge
             yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
-def run_alignment_chunk(job, i, args, chunk):
+def run_alignment_chunk(job, chunk):
     """
     Runs an alignment chunk through the blat/simpleChain pipeline
-    :param i: # of chunk, for logging
-    :param args: arguments to the pipeline
     :param chunk: List of (tx_id, tx_seq, ref_tx_id, ref_tx_seq) tuples
     :return: List of PSL output
     """
-    job.fileStore.logToMaster('Beginning transcript alignment chunk {} for genome {}'.format(i, args['genome']))
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     results = []
     cmd = ['muscle', '-in', tmp_fasta]
@@ -161,15 +165,16 @@ def run_alignment_chunk(job, i, args, chunk):
 def merge(job, results, args):
     """
     Merge together chain files.
-    :param results: list of promises from each alignment chunk
+    :param results: dict of list of promises from each alignment chunk for each category
     :param args: arguments to the pipeline
     :return:
     """
     job.fileStore.logToMaster('Merging Alignment output for {}'.format(args['genome']), level=logging.INFO)
-    tmp_results_file = tools.fileOps.get_tmp_toil_file(suffix='gz')
-    results_iter = itertools.chain.from_iterable(results)  # results is list of lists
-    with tools.fileOps.opengz(tmp_results_file, 'w') as outf:
-        for line in results_iter:
-            outf.write(line + '\n')
-    results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
-    return results_file_id
+    results_file_ids = {}
+    for gp_category, result_list in results.iteritems():
+        tmp_results_file = tools.fileOps.get_tmp_toil_file(suffix='gz')
+        with tools.fileOps.opengz(tmp_results_file, 'w') as outf:
+            for line in itertools.chain.from_iterable(result_list):  # results is list of lists
+                outf.write(line + '\n')
+        results_file_ids[gp_category] = job.fileStore.writeGlobalFile(tmp_results_file)
+    return results_file_ids

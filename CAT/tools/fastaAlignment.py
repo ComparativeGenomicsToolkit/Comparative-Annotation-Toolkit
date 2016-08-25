@@ -48,9 +48,6 @@ class AlignmmentRecord(object):
         self.target_insert = target_insert
         self.query_size = len(ref_seq)
         self.target_size = len(tgt_seq)
-        # calculate total alignment sizes
-        if ref_seq[0] == '-':
-            self.query_start = ref_seq.find('-')
         self.query_name = ref_id
         self.target_name = tgt_id
         self.ref_seq = ref_seq

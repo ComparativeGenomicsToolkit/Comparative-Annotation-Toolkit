@@ -147,54 +147,6 @@ def get_alignment_dict(psl_file, make_unique=False):
         return {aln_id: aln for aln_id, aln in psl_iterator(psl_file, make_unique)}
 
 
-def remove_alignment_number(aln_id, aln_re=re.compile("-[0-9]+$")):
-    """
-    If the name of the transcript ends with -d as in
-    ENSMUST00000169901.2-1, return ENSMUST00000169901.2
-    :param aln_id: name string
-    :param aln_re: compiled regular expression
-    :return: string
-    """
-    return aln_re.split(aln_id)[0]
-
-
-def remove_augustus_alignment_number(aln_id, aug_re=re.compile("^((augI[0-9]+-[0-9]+)|(augI[0-9]+))-")):
-    """
-    removes the alignment numbers prepended by augustus
-    :param aln_id: name string
-    :param aug_re: compiled regular expression
-    :return: string
-    """
-    return aug_re.split(aln_id)[-1]
-
-
-def strip_alignment_numbers(aln_id):
-    """
-    Convenience function for stripping both Augustus and transMap alignment IDs from a aln_id
-    :param aln_id: name string
-    :return: string
-    """
-    return remove_alignment_number(remove_augustus_alignment_number(aln_id))
-
-
-def aln_id_is_augustus(aln_id):
-    """
-    Uses remove_augustus_alignment_number to determine if this transcript is an Augustus transcript
-    :param aln_id: name string
-    :return: boolean
-    """
-    return True if remove_augustus_alignment_number(aln_id) != aln_id else False
-
-
-def aln_id_is_transmap(aln_id):
-    """
-    Uses remove_augustus_alignment_number to determine if this transcript is an Augustus transcript
-    :param aln_id: name string
-    :return: boolean
-    """
-    return True if remove_alignment_number(aln_id) != aln_id else False
-
-
 def fix_ref_q_starts(ref_psl):
     """
     Inverts a negative strand reference psl. Needed for fuzzy intron determination.

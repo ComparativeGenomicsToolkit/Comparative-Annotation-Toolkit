@@ -3,6 +3,7 @@ Provides a simple interface between Toil and Luigi.
 """
 import os
 import luigi
+import shutil
 import bio
 import fileOps
 from toil.job import Job
@@ -37,8 +38,15 @@ class ToilTask(luigi.Task, ToilOptionsMixin):
         toil_args = get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.jobStore = job_store
-        if os.path.exists(job_store) and len(os.listdir(job_store)) != 0:
-            toil_args.restart = True
+        if os.path.exists(job_store):
+            try:
+                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
+                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
+                    shutil.rmtree(job_store)
+                else:
+                    toil_args.restart = True
+            except OSError:
+                toil_args.restart = True
         return toil_args
 
 

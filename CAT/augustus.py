@@ -8,9 +8,6 @@ Transcripts are evaluated for the following features to help decide how they are
 
     1) OriginalIntrons. If any new gaps are not within a wiggle distance (in transcript space) of original introns,
         do not provide them as hints to Augustus.
-    2) Original thick_start/thick_stop. If we did not map over the original start/stop, do not provide them as hints.
-    3) Original tss/tts. If we did not map over the original transcription start/stop, do not provide them as hints.
-
 """
 import logging
 import itertools
@@ -24,6 +21,7 @@ import tools.fileOps
 import tools.procOps
 import tools.psl
 import tools.tm2hints
+import tools.nameConversions
 import tools.transcripts
 import tools.intervals
 import tools.toilInterface
@@ -55,11 +53,14 @@ def augustus(args, coding_gp, toil_options):
                 input_file_ids['augustus_hints_db'] = toil.importFile('file://' + args['augustus_hints_db'])
                 input_file_ids['tmr_cfg'] = toil.importFile('file://' + args['tmr_cfg'])
             job = Job.wrapJobFn(setup, args, input_file_ids)
-            results_file_id = toil.start(job)
+            tm_file_id, tmr_file_id = toil.start(job)
         else:
-            results_file_id = toil.restart()
-        tools.fileOps.ensure_file_dir(args['augustus_gtf'])
-        toil.exportFile(results_file_id, 'file://' + args['augustus_gtf'])
+            tm_file_id, tmr_file_id = toil.restart()
+        tools.fileOps.ensure_file_dir(args['augustus_tm_gtf'])
+        toil.exportFile(tm_file_id, 'file://' + args['augustus_tm_gtf'])
+        if tmr_file_id is not None:
+            tools.fileOps.ensure_file_dir(args['augustus_tmr_gtf'])
+            toil.exportFile(tmr_file_id, 'file://' + args['augustus_tmr_gtf'])
 
 
 def setup(job, args, input_file_ids):
@@ -70,8 +71,20 @@ def setup(job, args, input_file_ids):
     :param input_file_ids: file ID dictionary of imported files
     :return: completed GTF format results for all jobs
     """
-    job.fileStore.logToMaster('Beginning Augustus run on {}'.format(args['genome']), level=logging.INFO)
-    chunk_size = 100 if args['augustus_hints_db'] is None else 50  # RNAseq slows things down a bit
+    def start_jobs(mode, chunk_size, cfg_file_id):
+        """loop wrapper that starts jobs for both TM and TMR modes"""
+        results = []
+        for chunk in tools.dataOps.grouper(gp_list, chunk_size):
+            grouped_recs = {}
+            for tx_id, tx in chunk:
+                grouped_recs[tx_id] = [tx,
+                                       ref_tx_dict[tools.nameConversions.remove_alignment_number(tx_id)],
+                                       tm_psl_dict[tx_id],
+                                       ref_psl_dict[tools.nameConversions.remove_alignment_number(tx_id)]]
+            j = job.addChildJobFn(run_augustus_chunk, args, grouped_recs, input_file_ids, mode, cfg_file_id)
+            results.append(j.rv())
+        return results
+    job.fileStore.logToMaster('Beginning Augustus run on {}.'.format(args['genome']), level=logging.INFO)
     # load all fileStore files necessary
     ref_psl = job.fileStore.readGlobalFile(input_file_ids['ref_psl'])
     tm_psl = job.fileStore.readGlobalFile(input_file_ids['tm_psl'])
@@ -81,51 +94,37 @@ def setup(job, args, input_file_ids):
     ref_psl_dict = tools.psl.get_alignment_dict(ref_psl)
     tm_psl_dict = tools.psl.get_alignment_dict(tm_psl)
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
+    gp_list = list(tools.transcripts.gene_pred_iterator(coding_gp))
+    tm_results = start_jobs('TM', 100, input_file_ids['tm_cfg'])
     if args['augustus_hints_db'] is not None:
-        job.fileStore.logToMaster('AugustusTMR loaded reference, transMap PSLs and reference genePred')
+        log_msg = 'Augustus run on {} has a hints database and will run both transMap and transMap-RNAseq modes.'
+        job.fileStore.logToMaster(log_msg.format(args['genome']), level=logging.INFO)
+        tmr_results = start_jobs('TMR', 50, input_file_ids['tmr_cfg'])
     else:
-        job.fileStore.logToMaster('AugustusTM loaded reference, transMap PSLs and reference genePred')
-    results = []
-    gp_iter = tools.transcripts.gene_pred_iterator(coding_gp)
-    for i, chunk in enumerate(tools.dataOps.grouper(gp_iter, chunk_size)):
-        grouped_recs = {}
-        for tx_id, tx in chunk:
-            grouped_recs[tx_id] = [tx, ref_tx_dict[tools.psl.remove_alignment_number(tx_id)],
-                                   tm_psl_dict[tx_id], ref_psl_dict[tools.psl.remove_alignment_number(tx_id)]]
-        j = job.addChildJobFn(run_augustus_chunk, i, args, grouped_recs, input_file_ids)
-        results.append(j.rv())
-    return job.addFollowOnJobFn(merge, results, args).rv()
+        tmr_results = None
+    return job.addFollowOnJobFn(merge, tm_results, tmr_results).rv()
 
 
-def run_augustus_chunk(job, i, args, grouped_recs, input_file_ids, padding=20000):
+def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_id, padding=20000):
     """
     Runs augustus on a chunk of genePred objects.
-    :param i: chunk ID. for logging.
     :param args: Arguments passed by Luigi
     :param grouped_recs: Chunk of (tx_id, GenePredTranscript) tuples
     :param input_file_ids: file ID dictionary of imported files
+    :param mode: Are we running in TM (1) or TMR (2)?
     :param padding: Number of bases on both side to add to Augustus run
+    :param cfg_file_id: File ID for the Augustus cfg file based on if we are in TM or TMR mode
     :return: Augustus output for this chunk
     """
-    genome = args['genome']
-    job.fileStore.logToMaster('Beginning chunk {} for genome {}'.format(i, genome))
     tm_to_hints_script_local_path = job.fileStore.readGlobalFile(input_file_ids['tm_to_hints_script'])
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['genome_fasta'],
                                                                  input_file_ids['genome_gdx'],
                                                                  input_file_ids['genome_flat'],
                                                                  prefix='genome', upper=False)
-    job.fileStore.logToMaster('Chunk {} successfully loaded the fasta for genome {}'.format(i, genome))
-
-    tm_cfg_file = job.fileStore.readGlobalFile(input_file_ids['tm_cfg'])
-    if args['augustus_hints_db'] is not None:  # we are running TMR mode as well
-        job.fileStore.logToMaster('Chunk {} is in TMR mode for genome {}'.format(i, genome))
-        tmr_cfg_file = job.fileStore.readGlobalFile(input_file_ids['tmr_cfg'])
+    cfg_file = job.fileStore.readGlobalFile(cfg_file_id)
+    if args['augustus_hints_db'] is not None:
         hints_db_file = job.fileStore.readGlobalFile(input_file_ids['augustus_hints_db'])
         speciesnames, seqnames, hints, featuretypes, session = reflect_hints_db(hints_db_file)
-        job.fileStore.logToMaster('Chunk {} successfully loaded the hints database for genome {}'.format(i, genome))
-    else:
-        job.fileStore.logToMaster('Chunk {} is in TM mode for genome {}'.format(i, genome))
-
     # start iteratively running Augustus on this chunk
     results = []
     for tm_tx, ref_tx, tm_psl, ref_psl in grouped_recs.itervalues():
@@ -139,20 +138,15 @@ def run_augustus_chunk(job, i, args, grouped_recs, input_file_ids, padding=20000
             rnaseq_hints = get_rnaseq_hints(args['genome'], chromosome, start, stop, speciesnames, seqnames, hints,
                                             featuretypes, session)
             hint = ''.join([tm_hints, rnaseq_hints])
-            transcript = run_augustus(hint, genome_fasta, tm_tx, tmr_cfg_file, start, stop,
-                                       args['augustus_species'], cfg_version=2)
-            if transcript is not None:
-                results.extend(transcript)
         else:
             hint = tm_hints
-        transcript = run_augustus(hint, genome_fasta, tm_tx, tm_cfg_file, start, stop,
-                                   args['augustus_species'], cfg_version=1)
-        if transcript is not None:  # we may not have found anything
+        transcript = run_augustus(hint, genome_fasta, tm_tx, cfg_file, start, stop, args['augustus_species'], mode)
+        if transcript is not None:
             results.extend(transcript)
     return results
 
 
-def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_version):
+def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, mode):
     """
     Runs Augustus.
     :param hint: GFF formatted hint string
@@ -160,7 +154,7 @@ def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_version
     :param tm_tx: GenePredTranscript object
     :param cfg_file: config file
     :param species: species parameter to pass to Augustus
-    :param cfg_version: config file version
+    :param mode: 1 for TM, 2 for TMR
     :return: GTF formatted output from Augustus or None if nothing was produced
     """
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
@@ -173,32 +167,34 @@ def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, cfg_version
            '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
            '--protein=0', '--softmasking=1']
     aug_output = tools.procOps.call_proc_lines(cmd)
-    transcript = munge_augustus_output(aug_output, cfg_version, tm_tx)
+    transcript = munge_augustus_output(aug_output, mode, tm_tx)
     return transcript
 
 
-def merge(job, results, args):
+def merge(job, tm_results, tmr_results):
     """
     Merge together chain files.
-    :param results: list of promises from each augustus chunk
-    :param args: arguments to the pipeline
+    :param tm_results: list of promises from each TM augustus chunk
+    :param tmr_results: list of promises from each TMR augustus chunk (if it exists)
     :return:
     """
-    if args['augustus_hints_db'] is None:
-        job.fileStore.logToMaster('Merging AugustusTMR output for {}'.format(args['genome']), level=logging.INFO)
-    else:
-        job.fileStore.logToMaster('Merging AugustusTM output for {}'.format(args['genome']), level=logging.INFO)
-    tmp_results_file = tools.fileOps.get_tmp_file(tmp_dir=job.fileStore.getLocalTempDir())
+    tmp_results_file = tools.fileOps.get_tmp_toil_file()
     # I have no idea why I have to wrap this in a list() call. Some edge case bug with print_rows()?
-    tools.fileOps.print_rows(tmp_results_file, list(itertools.chain.from_iterable(results)))
-    results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
-    return results_file_id
+    tools.fileOps.print_rows(tmp_results_file, list(itertools.chain.from_iterable(tm_results)))
+    tm_results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
+    if tmr_results is not None:
+        tmp_results_file = tools.fileOps.get_tmp_toil_file()
+        tools.fileOps.print_rows(tmp_results_file, list(itertools.chain.from_iterable(tmr_results)))
+        tmr_results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
+    else:
+        tmr_results_file_id = None
+    return tm_results_file_id, tmr_results_file_id
 
 
 # Convenience functions
 
 
-def munge_augustus_output(aug_output, cfg_version, tm_tx):
+def munge_augustus_output(aug_output, mode, tm_tx):
     """
     Extracts transcripts from raw augustus output. If Augustus produces more than one transcript, discard all.
     Renames overlapping transcripts augIX-ID, where X is the index of the extrinsic.cfg file, e.g. 1 or 2 and where
@@ -212,7 +208,7 @@ def munge_augustus_output(aug_output, cfg_version, tm_tx):
     if len(valid_txs) != 1:
         return None
     valid_tx = valid_txs[0]
-    tx_id = 'aug-I{}-{}'.format(cfg_version, tm_tx.name)
+    tx_id = 'aug{}-{}'.format(mode, tm_tx.name)
     tx_lines = [x.split('\t') for x in aug_output if valid_tx in x]
     features = {"exon", "CDS", "start_codon", "stop_codon", "tts", "tss"}
     gtf = []
