@@ -330,35 +330,38 @@ def extract_attrs(gff3):
     parser = Gff3Parser(gff3)
     tree = parser.parse()
     for gene in tree.roots:
-        if gene.type not in valid_gene_types:
-            continue
-        assert len(gene.attributes['gene_id']) == 1, len(gene.attributes['gene_id'])
-        gene_id = gene.attributes['gene_id'][0]
         try:
-            assert len(gene.attributes['biotype']) == 1, len(gene.attributes['biotype'])
-            gene_biotype = gene.attributes['biotype'][0]
-        except KeyError:  # attempt Gencode naming scheme
-            assert len(gene.attributes['gene_type']) == 1, len(gene.attributes['gene_type'])
-            gene_biotype = gene.attributes['gene_type'][0]
-        try:
-            assert len(gene.attributes['Name']) == 1, len(gene.attributes['Name'])
-            gene_name = gene.attributes['Name'][0]
-        except KeyError:  # attempt Gencode naming scheme
-            assert len(gene.attributes['gene_name']) == 1, len(gene.attributes['gene_name'])
-            gene_name = gene.attributes['gene_name'][0]
-        for tx in gene.children:
-            if tx.type not in valid_tx_types:
+            if gene.type not in valid_gene_types:
                 continue
-            assert len(tx.attributes['transcript_id']) == 1, len(tx.attributes['transcript_id'])
-            tx_id = tx.attributes['transcript_id'][0]
+            gene_id = gene.attributes['gene_id'][0]
             try:
-                assert len(tx.attributes['biotype']) == 1, len(tx.attributes['biotype'])
-                tx_biotype = tx.attributes['biotype'][0]
+                gene_biotype = gene.attributes['biotype'][0]
             except KeyError:  # attempt Gencode naming scheme
-                assert len(tx.attributes['transcript_type']) == 1, len(tx.attributes['transcript_type'])
-                tx_biotype = tx.attributes['transcript_type'][0]
-            r = {'tx_biotype': tx_biotype, 'gene_id': gene_id, 'gene_name': gene_name, 'gene_biotype': gene_biotype}
-            results[tx_id] = r
+                gene_biotype = gene.attributes['gene_type'][0]
+            try:
+                gene_name = gene.attributes['Name'][0]
+            except KeyError:  # attempt Gencode naming scheme
+                try:
+                    gene_name = gene.attributes['gene_name'][0]
+                except KeyError:
+                    # this record lacks a common name field. Probably from Ensembl
+                    gene_name = gene.attributes['gene_id'][0]
+            for tx in gene.children:
+                try:
+                    if tx.type not in valid_tx_types:
+                        continue
+                    tx_id = tx.attributes['transcript_id'][0]
+                    try:
+                        tx_biotype = tx.attributes['biotype'][0]
+                    except KeyError:  # attempt Gencode naming scheme
+                        tx_biotype = tx.attributes['transcript_type'][0]
+                    r = {'tx_biotype': tx_biotype, 'gene_id': gene_id,
+                         'gene_name': gene_name, 'gene_biotype': gene_biotype}
+                    results[tx_id] = r
+                except KeyError, e:
+                    raise RuntimeError('Unable to parse field {} from the input gff3 on line'.format(e, tx.lineNumber))
+        except KeyError, e:
+            raise RuntimeError('Unable to parse field {} from the input gff3 on line'.format(e, gene.lineNumber))
     df = pd.DataFrame.from_dict(results, orient='index')
     df.index.rename('tx_id', inplace=True)
     return df

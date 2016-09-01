@@ -212,10 +212,10 @@ class ChromosomeInterval(object):
         :param stranded: Should we reverse complement negative strand sequences?
         :return: A sequence string.
         """
-        if stranded is False or self.strand is True:
-            return seq_dict[self.chromosome][self.start:self.stop]
-        if self.strand is False:
-            return reverse_complement(seq_dict[self.chromosome][self.start:self.stop])
+        if stranded is False or self.strand is '+':
+            return seq_dict[self.chromosome][self.start: self.stop]
+        elif self.strand is '-':
+            return reverse_complement(seq_dict[self.chromosome][self.start: self.stop])
 
 
 def gap_merge_intervals(intervals, gap):
@@ -255,6 +255,8 @@ def interval_not_within_wiggle_room_intervals(intervals, interval, wiggle_room=0
     intersection. Wiggle room can exist on either side.
     :param intervals: iterable of ChromosomeIntervals
     :param interval: one ChromosomeInterval
+    :param wiggle_room: How many bases of wiggle are allowed. This number is for one side only, and so will be
+        multiplied by 2.
     :return: boolean
     """
     try:

@@ -151,13 +151,14 @@ def translate_sequence(sequence):
     """
     result = []
     sequence = sequence.upper()
+    i = 0
     for i in xrange(0, len(sequence) - len(sequence) % 3, 3):
         result.append(codon_to_amino_acid(sequence[i: i + 3]))
     if len(sequence) % 3 == 2:
-        c = codon_to_amino_acid(sequence[i + 3:] + "N")
-        if c != "?":
+        c = codon_to_amino_acid(sequence[i + 3:] + 'N')
+        if c != '?':
             result.append(c)
-    return "".join(result)
+    return ''.join(result)
 
 
 def read_codons(seq, offset=0, skip_last=True):

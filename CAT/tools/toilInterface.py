@@ -18,6 +18,7 @@ class ToilOptionsMixin(object):
     maxCores = luigi.IntParameter(default=16, significant=False)
     logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
+    parasolCommand = luigi.Parameter(default=None, significant=False)
 
 
 class ToilTask(luigi.Task, ToilOptionsMixin):
@@ -37,7 +38,6 @@ class ToilTask(luigi.Task, ToilOptionsMixin):
         fileOps.ensure_file_dir(job_store)
         toil_args = get_toil_defaults()
         toil_args.__dict__.update(vars(self))
-        toil_args.jobStore = job_store
         if os.path.exists(job_store):
             try:
                 root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
@@ -47,6 +47,10 @@ class ToilTask(luigi.Task, ToilOptionsMixin):
                     toil_args.restart = True
             except OSError:
                 toil_args.restart = True
+            except IOError:
+                shutil.rmtree(job_store)
+        job_store = 'file:' + job_store
+        toil_args.jobStore = job_store
         return toil_args
 
 

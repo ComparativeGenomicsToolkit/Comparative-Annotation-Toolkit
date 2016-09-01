@@ -2,6 +2,7 @@
 Classes and methods for parsing a pairwise FASTA alignment file. Expects that each pair of FASTA records will be a
 pairwise alignment. Used for transcript-space evaluations.
 """
+import collections
 import itertools
 import mathOps
 import dataOps
@@ -12,55 +13,41 @@ class AlignmmentRecord(object):
     """
     Parses a pairwise FASTA alignment. Has methods to access the records within.
     """
-    def __init__(self, ref_id, ref_seq, tgt_id, tgt_seq):
+    def __init__(self, ref_id, ref_aln, tgt_id, tgt_aln):
         """
         Calculates alignment metrics from a pairwise FASTA alignment.
         :param ref_id: reference sequence name
-        :param ref_seq: string of reference sequence
-        :param tgt_id: target sequence name
-        :param tgt_seq: string of the target sequence
+        :param ref_aln: string of reference sequence
+        :param tgt_id: tgt sequence name
+        :param tgt_aln: string of the tgt sequence
         :return: an AlignmentMetrics object
         """
-        match = 0
-        repmatch = 0
-        mismatch = 0
-        query_insert = 0
-        target_insert = 0
-        n_count = 0
-        for ref_col, tgt_col in itertools.izip(ref_seq, tgt_seq):
-            if ref_col == '-':
-                query_insert += 1
-            elif tgt_col == '-':
-                target_insert += 1
-            elif ref_col == 'N' or tgt_col == 'N':
-                n_count += 1
-            elif ref_col == tgt_col and ref_col.islower() or tgt_col.islower():
-                repmatch += 1
-            elif ref_col == tgt_col:
-                match += 1
-            else:
-                mismatch += 1
+        self.ref_name = ref_id
+        self.tgt_name = tgt_id
+        self.ref_aln = ref_aln
+        self.tgt_aln = tgt_aln
+        self.ref_seq = ref_aln.replace('-', '')
+        self.tgt_seq = tgt_aln.replace('-', '')
+        self.ref_size = len(self.ref_seq)
+        self.tgt_size = len(self.tgt_seq)
+        match, repmatch, mismatch, ref_insert, tgt_insert, n_count = self._calculate_metrics()
         self.match = match
         self.mismatch = mismatch
         self.repmatch = repmatch
         self.n_count = n_count
-        self.query_insert = query_insert
-        self.target_insert = target_insert
-        self.query_size = len(ref_seq)
-        self.target_size = len(tgt_seq)
-        self.query_name = ref_id
-        self.target_name = tgt_id
-        self.ref_seq = ref_seq
-        self.tgt_seq = tgt_seq
+        self.ref_insert = ref_insert
+        self.tgt_insert = tgt_insert
+        self.ref_pos_map, self.tgt_pos_map = self._generate_position_map()
+        self.ref_inverse_pos_map, self.tgt_inverse_pos_map = self._generate_inverse_position_map()
 
     @property
     def coverage(self):
         """
-        Coverage is defined as (matches + repmatches + mismatches + n_count) / (query_size)
+        Coverage is defined as (matches + repmatches + mismatches + n_count) / (ref_size)
         :return: A float between 0-100
         """
         return 100.0 * mathOps.format_ratio(self.match + self.repmatch + self.mismatch + self.n_count,
-                                            self.query_size)
+                                            self.ref_size)
 
     @property
     def identity(self):
@@ -77,12 +64,74 @@ class AlignmmentRecord(object):
         Related to the Jim Kent Badness score, attempts to calculate how bad this alignment is by looking at how
         much of it is insertions
 
-        100 * (mismatch + query_insert + target_insert) / query_size
+        100 * (mismatch + ref_insert + tgt_insert) / ref_size
 
         :return: A float between 0-100
         """
-        return 100 - 100.0 * mathOps.format_ratio(self.mismatch + self.query_insert + self.target_insert,
-                                                  self.query_size)
+        return 100 - 100.0 * mathOps.format_ratio(self.mismatch + self.ref_insert + self.tgt_insert,
+                                                  self.ref_size)
+    
+    @property
+    def percent_n(self):
+        """
+        Calculates the percent N of the tgt sequence
+        :return: A float between 0-100
+        """
+        n_count = self.tgt_aln.count('N')
+        return 100.0 * mathOps.format_ratio(n_count, self.tgt_size)
+
+    def _calculate_metrics(self):
+        """
+        Calculate alignment metrics
+        :return: integer values representing match, repmatch, mismatch, ref_insert, tgt_insert, n_count
+        """
+        match = 0
+        repmatch = 0
+        mismatch = 0
+        ref_insert = 0
+        tgt_insert = 0
+        n_count = 0
+        for ref_col, tgt_col in itertools.izip(self.ref_aln, self.tgt_aln):
+            if ref_col == '-':
+                ref_insert += 1
+            elif tgt_col == '-':
+                tgt_insert += 1
+            elif ref_col == 'N' or tgt_col == 'N':
+                n_count += 1
+            elif ref_col == tgt_col and ref_col.islower() or tgt_col.islower():
+                repmatch += 1
+            elif ref_col == tgt_col:
+                match += 1
+            else:
+                mismatch += 1
+        return match, repmatch, mismatch, ref_insert, tgt_insert, n_count
+
+    def _generate_position_map(self):
+        """
+        Convert the gapped alignment into a map of positions that map the alignment position to the input cDNA position
+
+        :return: Dictionary mapping alignment positions to sequence positions for both sequences in an AlignmentRecord
+        """
+        pos_map = collections.defaultdict(dict)
+        names = [self.ref_name, self.tgt_name]
+        seqs = [self.ref_aln, self.tgt_aln]
+        tgt_is = {n: 0 for n in [self.ref_name, self.tgt_name]}
+        for ref_i, cs in enumerate(itertools.izip(*seqs)):
+            for name, tgt_i in tgt_is.iteritems():
+                pos_map[name][ref_i] = tgt_i
+            for name, c in itertools.izip(*[names, cs]):
+                if c != '-':
+                    tgt_is[name] += 1
+        return pos_map[self.ref_name], pos_map[self.tgt_name]
+    
+    def _generate_inverse_position_map(self):
+        """
+        Calculate the positions within the gapped alignment that correspond to cDNA positions
+        :return: Dictionary mapping sequence positions to alignment positions for both sequences in an AlignmentRecord
+        """
+        ref = {y: x for x, y in self.ref_pos_map.iteritems()}
+        tgt = {y: x for x, y in self.tgt_pos_map.iteritems()}
+        return ref, tgt
 
 
 def parse_paired_fasta(fasta_path):
@@ -96,10 +145,10 @@ def parse_paired_fasta(fasta_path):
     ATGG
     <newline>
     :param fasta_path: Path to transcript FASTA
-    :return: iterable of (ref_id, ref_seq, tgt_id, tgt_seq) tuples
+    :return: iterable of (ref_id, ref_aln, tgt_id, tgt_aln) tuples
     """
-    for (ref_id, ref_seq), (tgt_id, tgt_seq) in dataOps.grouper(bio.read_fasta(fasta_path), 2):
-        yield AlignmmentRecord(ref_id, ref_seq, tgt_id, tgt_seq)
+    for (ref_id, ref_aln), (tgt_id, tgt_aln) in dataOps.grouper(bio.read_fasta(fasta_path), 2):
+        yield AlignmmentRecord(ref_id, ref_aln, tgt_id, tgt_aln)
 
 
 def get_alignment_record_dict(fasta_path):
@@ -110,6 +159,6 @@ def get_alignment_record_dict(fasta_path):
     """
     r = {}
     for aln_rec in parse_paired_fasta(fasta_path):
-        assert (aln_rec.query_name, aln_rec.target_name) not in r
-        r[(aln_rec.query_name, aln_rec.target_name)] = aln_rec
+        assert (aln_rec.ref_name, aln_rec.tgt_name) not in r
+        r[(aln_rec.ref_name, aln_rec.tgt_name)] = aln_rec
     return r

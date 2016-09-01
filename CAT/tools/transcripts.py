@@ -262,7 +262,7 @@ class Transcript(object):
             mrna = ''.join(s)
         else:
             mrna = reverse_complement(''.join(s))
-        return mrna
+        return str(mrna)
 
     def get_sequence(self, seq_dict):
         """
@@ -301,7 +301,7 @@ class Transcript(object):
             cds = reverse_complement(''.join(s))
         else:
             cds = ''.join(s)
-        return cds
+        return str(cds)
 
     def get_protein_sequence(self, seq_dict):
         """
@@ -369,6 +369,18 @@ class GenePredTranscript(Transcript):
         if len(cds) < 3:
             return ""
         return translate_sequence(cds[self.offset:].upper())
+
+    def get_cds(self, seq_dict, in_frame=False):
+        """
+        Returns the CDS sequence. Overrides the parental get_cds function to provide frame-corrected sequence.
+        Note that if a in-frame sequence is requested, it will no longer correspond with internal coordinates.
+        """
+        cds = super(GenePredTranscript, self).get_cds(seq_dict)
+        if in_frame is False:
+            return cds
+        else:
+            offset = self.offset
+            return cds[offset:len(cds) - ((len(cds) - offset) % 3)]
 
     def get_gene_pred(self, name=None, start_offset=None, stop_offset=None, name2=None, uid=None):
         """
