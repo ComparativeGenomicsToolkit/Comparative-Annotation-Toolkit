@@ -571,16 +571,20 @@ def find_indels(tx, aln_rec, aln_mode):
             left_chrom_pos, right_chrom_pos = right_chrom_pos, left_chrom_pos
         return left_chrom_pos, right_chrom_pos
 
+    # depending on mode, we convert the coordinates from either CDS or mRNA
+    # we also have a different position cutoff to make sure we are not evaluating terminal gaps
     if aln_mode == 'PRANK':
         coordinate_fn = tx.cds_coordinate_to_chromosome
+        right_cutoff = tx.cds_size
     else:
         coordinate_fn = tx.mrna_coordinate_to_chromosome
+        right_cutoff = len(tx)
 
     r = []
     for mode, pos_map in zip(*[['Insertion', 'Deletion'], [aln_rec.ref_pos_map, aln_rec.tgt_pos_map]]):
         for left_aln_pos, right_aln_pos in group_pos_map(pos_map):
             left_tx_pos, right_tx_pos = convert_alignment_to_transcript(left_aln_pos, right_aln_pos, aln_rec)
-            if left_tx_pos == 0 or right_tx_pos == 0 or left_tx_pos == len(tx) or right_tx_pos == len(tx):
+            if left_tx_pos == 0 or right_tx_pos == 0 or left_tx_pos == right_cutoff or right_tx_pos == right_cutoff:
                 continue  # we don't count terminal gaps as indels
             left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(left_tx_pos, right_tx_pos,
                                                                                 coordinate_fn, tx.strand)

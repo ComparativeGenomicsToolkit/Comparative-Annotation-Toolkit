@@ -835,7 +835,7 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
         for table, target in self.pair_table_output().iteritems():
             if table not in results:
                 continue
-            logger.info('Loading Evaluate Transcript results for {} to database {}'.format(table, self.genome))
+            logger.info('Loading table: {}.{}'.format(self.genome, table))
             df = results[table]
             df.to_sql(table, engine, if_exists='replace')
             target.touch()

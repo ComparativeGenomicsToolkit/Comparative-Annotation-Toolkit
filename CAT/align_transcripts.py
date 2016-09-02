@@ -115,7 +115,7 @@ def setup(job, args, input_file_ids):
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
         gene_tx_map = tools.sqlInterface.get_gene_transcript_map(annotation_db, args['ref_genome'])
         tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args['ref_genome'])
-        augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids['augustus_cgp_gp'])
+        augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids['modes']['augCGP'])
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
