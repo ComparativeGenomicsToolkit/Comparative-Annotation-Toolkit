@@ -8,7 +8,7 @@
 
           hgm_info "16E-27,0E-13,1,2E-13,3E-1,4,5,6E-48,7E-30,8E-1,9,10E-1,11,12E-19,13E-27,14E-46,15E-6,17E-4";
           
-          that encodes genome name, type of evicence and multiplicity, e.g.
+          that encodes genome name, type of evidence and multiplicity, e.g.
           in the example above, the intron has RNA-Seq SJ support in species 16 (with mult=26),
           in species 0 (with mult=13), in species 2 (with mult=13), in species 3 (with mult=1), etc.
           The header in the gtf, gives a list of species numbers and corresponding names, e.g.
@@ -32,6 +32,7 @@ from toil.common import Toil
 import logging
 import os
 import collections
+import multiprocessing
 
 import tools.fileOps
 import tools.procOps
@@ -48,19 +49,24 @@ def hgm(args, toil_options):
     :param toil_options: toil options Namespace object
     :return: a dictionary with one gtf file per genome
     """
+    # we decide to either use toil_options.maxCores or the # of CPU on the leader node
+    # this could lock up if the leader has more power than the children
+    # we pass this along in the args for homGeneMapping to make use of
+    num_cpu = min(multiprocessing.cpu_count(), toil_options.maxCores)
     with Toil(toil_options) as toil:
         if not toil.options.restart:
             hal_file_id = toil.importFile('file://' + args['hal'])
             hints_db_file_id = toil.importFile('file://' + args['hints_db'])
             gtf_file_ids = {genome: toil.importFile('file://' + gtf) for genome, gtf in args['in_gtf'].iteritems()}
             input_file_ids = {'hal': hal_file_id, 'hints_db': hints_db_file_id, 'gtfs': gtf_file_ids}
-            job = Job.wrapJobFn(setup, args, input_file_ids, toil.options.maxCores)
+            job = Job.wrapJobFn(setup, args, input_file_ids, num_cpu, cores=num_cpu)
             results = toil.start(job)
         else:
             results = toil.restart()
         for genome in results:
             tools.fileOps.ensure_file_dir(args['hgm_gtf'][genome])
             toil.exportFile(results[genome], 'file://' + args['hgm_gtf'][genome])
+
 
 def writeGtfFofn(job, gtf_file_ids):
     """
@@ -80,23 +86,24 @@ def writeGtfFofn(job, gtf_file_ids):
     return gtfFofn
 
 
-def setup(job, args, input_file_ids, cores=1):
+def setup(job, args, input_file_ids, num_cpu):
     """
     runs homGeneMapping on a set of input gtf files from different genomes and
     returns one gtf file for each genome
     containing the "hgm_info" string in the last column
     """
-    job.fileStore.logToMaster('Running homGeneMapping with {} cores'.format(cores), level=logging.INFO)
+    job.fileStore.logToMaster('Running homGeneMapping with {} cores'.format(num_cpu), level=logging.INFO)
     gtfFofn = writeGtfFofn(job, input_file_ids['gtfs'])
 
     cmd = ['homGeneMapping',
            '--halfile={}'.format(job.fileStore.readGlobalFile(input_file_ids['hal'])),
            '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids['hints_db'])),
            '--gtfs={}'.format(gtfFofn),
-           '--cpus={}'.format(cores),
+           '--cpus={}'.format(num_cpu),
            '--outdir={}'.format(os.getcwd())]
     tools.procOps.run_proc(cmd)
     return {genome: job.fileStore.writeGlobalFile(genome + '.gtf') for genome in args['genomes']}    
+
 
 def parse_hgm_gtf(hgm_out):
     """

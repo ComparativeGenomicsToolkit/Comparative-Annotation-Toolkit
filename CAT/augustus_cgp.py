@@ -2,7 +2,7 @@
  file:    augustus_cgp.py
  descr.:  runs AugustusCGP on input HAL file
           optionally, a database with extrinsic evidence can be provided
-          for parallel computing the HAL alignment is splitted into overlapping alignment chunks.
+          for parallel computing the HAL alignment is split into overlapping alignment chunks.
           Gene prediction chunks are merged with the auxiliary tool 'joingenes' from the
           Augustus package. The output is one gff file for each species in the clade
           (or the set of target genomes)
