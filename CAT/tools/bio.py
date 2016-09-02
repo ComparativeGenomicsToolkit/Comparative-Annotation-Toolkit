@@ -188,6 +188,7 @@ def get_sequence_dict(file_path, upper=True):
     """
     Returns a dictionary of fasta records. If upper is true, all bases will be uppercased.
     """
+    assert os.path.exists(file_path), ('Error: FASTA file {} does not exist'.format(file_path))
     gdx_path = file_path + ".gdx"
     assert os.path.exists(gdx_path), ("Error: gdx does not exist for this fasta. We need the fasta files to be "
                                       "flattened in place prior to running the pipeline because of concurrency issues.")

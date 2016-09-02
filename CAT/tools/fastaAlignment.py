@@ -7,6 +7,7 @@ import itertools
 import mathOps
 import dataOps
 import bio
+import math
 
 
 class AlignmmentRecord(object):
@@ -40,6 +41,7 @@ class AlignmmentRecord(object):
         self.ref_pos_map, self.tgt_pos_map = self._generate_position_map()
         self.ref_inverse_pos_map, self.tgt_inverse_pos_map = self._generate_inverse_position_map()
 
+
     @property
     def coverage(self):
         """
@@ -47,7 +49,8 @@ class AlignmmentRecord(object):
         :return: A float between 0-100
         """
         return 100.0 * mathOps.format_ratio(self.match + self.repmatch + self.mismatch + self.n_count,
-                                            self.ref_size)
+                                            self.ref_size,
+                                            num_digits=5)
 
     @property
     def identity(self):
@@ -56,20 +59,23 @@ class AlignmmentRecord(object):
         :return: A float between 0-100
         """
         return 100.0 * mathOps.format_ratio(self.match + self.repmatch,
-                                            self.match + self.mismatch + self.repmatch)
+                                            self.match + self.mismatch + self.repmatch,
+                                            num_digits=5)
     
     @property
-    def goodness(self):
+    def badness(self):
         """
-        Related to the Jim Kent Badness score, attempts to calculate how bad this alignment is by looking at how
-        much of it is insertions
+        The Jim Kent Badness score, attempts to calculate how bad this alignment is
 
-        100 * (mismatch + ref_insert + tgt_insert) / ref_size
+        https://github.com/ucscGenomeBrowser/kent/blob/fb80e018778062c49021f2c35607868df1054e8e/src/hg/pslCDnaFilter/cDnaAligns.c#L52-L70
 
-        :return: A float between 0-100
+        (mismatch + ref_insert + 3 * log(1 + max(ref_size - tgt_size, 0))) / (match + mismatch + repmatch)
+
+        :return: A float
         """
-        return 100 - 100.0 * mathOps.format_ratio(self.mismatch + self.ref_insert + self.tgt_insert,
-                                                  self.ref_size)
+        num = self.mismatch + self.ref_insert + 3 * math.log(1 + max(self.ref_size - self.tgt_size, 0))
+        denom = self.match + self.mismatch + self.repmatch
+        return mathOps.format_ratio(num, denom, num_digits=5)
     
     @property
     def percent_n(self):
@@ -78,7 +84,7 @@ class AlignmmentRecord(object):
         :return: A float between 0-100
         """
         n_count = self.tgt_aln.count('N')
-        return 100.0 * mathOps.format_ratio(n_count, self.tgt_size)
+        return 100.0 * mathOps.format_ratio(n_count, self.tgt_size, num_digits=5)
 
     def _calculate_metrics(self):
         """
@@ -114,12 +120,12 @@ class AlignmmentRecord(object):
         """
         pos_map = collections.defaultdict(dict)
         names = [self.ref_name, self.tgt_name]
-        seqs = [self.ref_aln, self.tgt_aln]
+        alns = [self.ref_aln, self.tgt_aln]
         tgt_is = {n: 0 for n in [self.ref_name, self.tgt_name]}
-        for ref_i, cs in enumerate(itertools.izip(*seqs)):
+        for aln_pos, chars in enumerate(itertools.izip(*alns)):
             for name, tgt_i in tgt_is.iteritems():
-                pos_map[name][ref_i] = tgt_i
-            for name, c in itertools.izip(*[names, cs]):
+                pos_map[name][aln_pos] = tgt_i
+            for name, c in itertools.izip(*[names, chars]):
                 if c != '-':
                     tgt_is[name] += 1
         return pos_map[self.ref_name], pos_map[self.tgt_name]
