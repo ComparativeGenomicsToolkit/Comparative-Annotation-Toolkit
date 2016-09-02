@@ -58,7 +58,7 @@ def augustus_cgp(args, toil_options):
             if args['cgp_cfg'] is not None:
                 cgp_cfg_file_id = toil.importFile('file://' + args['cgp_cfg'])
                 input_file_ids['cgp_cfg'] = cgp_cfg_file_id
-            job = Job.wrapJobFn(setup, args, input_file_ids)
+            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G')
             results = toil.start(job)
         else:
             results = toil.restart()
@@ -105,13 +105,16 @@ def setup(job, args, input_file_ids):
         # string "genome.chrom:start-end"
         genomic_region = '{}.{}:{}-{}'.format(args['ref_genome'], chrom, start, start + end - 1)
         # export alignment chunks from hal to maf
-        j = job.addChildJobFn(hal2maf, input_file_ids, args['ref_genome'], chrom, start, end, genomic_region)
+        j = job.addChildJobFn(hal2maf, input_file_ids, args['ref_genome'], chrom, start, end, genomic_region,
+                              memory='8G')
         mafChunk = j.rv()
         # run AugustusCGP on alignment chunk
-        gffChunks.append(j.addFollowOnJobFn(cgp, tree, mafChunk, args, input_file_ids, genomic_region).rv())
+        cgp_job = j.addFollowOnJobFn(cgp, tree, mafChunk, args, input_file_ids, genomic_region, memory='8G')
+        gffChunk = cgp_job.rv()
+        gffChunks.append(gffChunk)
 
     # merge all gff files for alignment chunks to one gff for each species
-    mergedGffs = job.addFollowOnJobFn(merge_results, args, input_file_ids, gffChunks).rv()
+    mergedGffs = job.addFollowOnJobFn(merge_results, args, input_file_ids, gffChunks, memory='8G').rv()
     return mergedGffs
 
 
@@ -172,7 +175,7 @@ def merge_results(job, args, input_file_ids, gffChunks):
     for genome in args['genomes']:
         # merge all gffChunks of one genome
         genome_gffChunks = [d[genome] for d in gffChunks]
-        j = job.addChildJobFn(joinGenes, genome, args, input_file_ids, genome_gffChunks)
+        j = job.addChildJobFn(joinGenes, genome, args, input_file_ids, genome_gffChunks, memory='8G')
         mergedGffs[genome] = j.rv()
     return mergedGffs
 
@@ -197,7 +200,7 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
     tools.procOps.run_proc(cmd, stdout=jg)
     joined_file_id = job.fileStore.writeGlobalFile(jg)
-    j = job.addFollowOnJobFn(assign_parents, args, genome, input_file_ids, joined_file_id)
+    j = job.addFollowOnJobFn(assign_parents, args, genome, input_file_ids, joined_file_id, memory='8G')
     return j.rv()
 
 
