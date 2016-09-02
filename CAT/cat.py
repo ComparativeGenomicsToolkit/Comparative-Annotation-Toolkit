@@ -27,6 +27,7 @@ import luigi.contrib.sqla
 from chaining import chaining
 from augustus import augustus
 from augustus_cgp import augustus_cgp
+from hgm import hgm, parse_hgm_gtf
 from align_transcripts import align_transcripts
 from classify import classify
 
@@ -116,6 +117,7 @@ class RunCat(luigi.WrapperTask, tools.toilInterface.ToilOptionsMixin):
             yield self.clone(Augustus)
         if self.augustus_cgp is True:
             yield self.clone(AugustusCgp)
+        yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         #yield self.clone(Consensus)
@@ -683,6 +685,83 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
             gtf_target = luigi.LocalTarget(cgp_args['augustus_cgp_gtf'][genome])
             tools.misc.convert_gtf_gp(gp_target, gtf_target)
         logger.info('Finished converting AugustusCGP output.')
+
+
+@inherits(RunCat)
+class Hgm(tools.toilInterface.ToilTask, PipelineParameterMixin):
+    """
+    Task for launching the HomGeneMapping toil pipeline
+    """
+    @staticmethod
+    def get_args(pipeline_args):
+        # add reference to the target genomes
+        tgt_genomes = list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]
+        # input (needs to be changed to the concatenated gene sets from AugustusTM(R), AugustusCgp (and TransMap?))
+        gtf_in_files = {genome: AugustusCgp.get_args(pipeline_args)['augustus_cgp_gtf'][genome]
+                     for genome in tgt_genomes}
+        base_dir = os.path.join(pipeline_args.work_dir, 'hgm')
+        # output (only temporary for debugging)
+        gtf_out_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_hgm.gtf'))
+                     for genome in tgt_genomes}
+        gp_out_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_hgm.gp'))
+                     for genome in tgt_genomes}
+        hints_db = os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_hints_db is not None else None
+        args = {'genomes': tgt_genomes,
+                'hal': pipeline_args.hal,
+                'hgm_gtf': gtf_out_files,
+                'hgm_gp': gp_out_files,
+                'in_gtf': gtf_in_files,
+                'hints_db': hints_db}
+        return args
+
+    def output(self):
+        pipeline_args = self.get_pipeline_args()
+        hgm_args = self.get_args(pipeline_args)
+        for cat in ['hgm_gp', 'hgm_gtf']:
+            for path in hgm_args[cat].itervalues():
+                yield luigi.LocalTarget(path)
+
+    def validate(self):
+        # make sure that all external tools are executable
+        if not tools.misc.is_exec('homGeneMapping'):
+            raise UserException('auxiliary program homGeneMapping from the Augustus package not in global path.')
+        if not tools.misc.is_exec('halLiftover'):
+            raise UserException('halLiftover from the halTools package not in global path.')
+
+    def requires(self):
+        self.validate()
+        yield self.clone(AugustusCgp) # add AugustusTM(R)/TransMap if necessary
+
+    def appendSJSupportToGp(self, gp, intron_support_counts):
+        """
+        appends a column with the intron support counts to a genePred file
+        """
+        out_lines = []
+        with open(gp) as inf:
+                for line in inf:
+                    txid = line.split()[0]
+                    counts = intron_support_counts.get(txid, "") # empty string for single exon genes
+                    out_lines.append("\t".join([line.strip(),counts]))
+        with open(gp, "w") as outf:
+            outf.write("\n".join(out_lines))
+
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        logger.info('Beginning Hgm toil pipeline.')
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'hgm')
+        toil_options = self.prepare_toil_options(toil_work_dir)
+        hgm_args = self.get_args(pipeline_args)
+        hgm(hgm_args, toil_options)
+        logger.info('Hgm toil pipeline completed.')
+        # this will be the 
+        intron_support_counts = {genome: parse_hgm_gtf(path) for genome,path in hgm_args['hgm_gtf'].iteritems()}
+        # convert input gtf to gp and add a column with the intron support counts to th gp (only temporary for debugging)
+        for genome in itertools.chain(hgm_args['genomes']):
+            gtf = luigi.LocalTarget(hgm_args['in_gtf'][genome])
+            gp = luigi.LocalTarget(hgm_args['hgm_gp'][genome])
+            tools.misc.convert_gtf_gp(gp, gtf)
+            self.appendSJSupportToGp(hgm_args['hgm_gp'][genome], intron_support_counts[genome])
+        logger.info('Finished converting Hgm output.')   
 
 
 @inherits(RunCat)
