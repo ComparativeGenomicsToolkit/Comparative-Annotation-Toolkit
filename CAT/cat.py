@@ -753,7 +753,8 @@ class Hgm(tools.toilInterface.ToilTask, PipelineParameterMixin):
         hgm_args = self.get_args(pipeline_args)
         hgm(hgm_args, toil_options)
         logger.info('Hgm toil pipeline completed.')
-        # this will be the 
+        # Ian, use this variable for your downstream analysis:
+        # it stores for each genome a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
         intron_support_counts = {genome: parse_hgm_gtf(path) for genome,path in hgm_args['hgm_gtf'].iteritems()}
         # convert input gtf to gp and add a column with the intron support counts to th gp (only temporary for debugging)
         for genome in itertools.chain(hgm_args['genomes']):
