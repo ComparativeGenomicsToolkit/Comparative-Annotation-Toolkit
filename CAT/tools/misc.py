@@ -7,9 +7,16 @@ import procOps
 
 
 def convert_gtf_gp(gp_target, gtf_target):
-    """converts the Augustus output GTF to genePred"""
+    """converts a GTF to genePred"""
+    cmd = ['gtfToGenePred', '-genePredExt', gtf_target.path, '/dev/stdout']
     with gp_target.open('w') as outf:
-        cmd = ['gtfToGenePred', '-genePredExt', gtf_target.path, '/dev/stdout']
+        procOps.run_proc(cmd, stdout=outf)
+
+
+def convert_gp_gtf(gtf_target, gp_target, source='CAT'):
+    """Converts a genePred to GTF"""
+    cmd = ['genePredToGtf', 'file', gp_target.path, '-utr', '-honorCdsStat', '-source={}'.format(source), '/dev/stdout']
+    with gtf_target.open('w') as outf:
         procOps.run_proc(cmd, stdout=outf)
 
 

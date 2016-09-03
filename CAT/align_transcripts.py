@@ -15,6 +15,7 @@ then the transcript will also undergo in-frame CDS alignment via PRANK.
 import logging
 import collections
 import os
+import time
 import itertools
 
 from toil.job import Job
@@ -23,6 +24,7 @@ from toil.common import Toil
 import tools.bio
 import tools.psl
 import tools.dataOps
+import tools.pipeline
 import tools.fileOps
 import tools.procOps
 import tools.transcripts
@@ -192,13 +194,28 @@ def run_prank_chunk(job, chunk):
         with open(tmp_fasta, 'w') as outf:
             tools.bio.write_fasta(outf, ref_tx_id, ref_tx_seq)
             tools.bio.write_fasta(outf, tx_id, tx_seq)
-        tools.procOps.run_proc(cmd)
+        # there is a weird bug with prank failing with SIGSEGV: Error deleting file: No such file or directory
+        # it is some sort of race condition, because it happens randomly and works on restart
+        # therefore, we try running prank up to 5 times
+        for i in xrange(5):
+            try:
+                tools.procOps.run_proc(cmd)
+            except tools.pipeline.ProcException, e:
+                job.fileStore.logToMaster('PRANK attempt {} failed. Error:\n{}'.format(i, e), level=logging.ERROR)
+            else:
+                break
+            if i == 4:
+                cmd = ' '.join(cmd)
+                raise RuntimeError('PRANK command {} failed {} times. '
+                                   'Try rerunning the pipeline, this is a weird race condition.'.format(cmd, i))
+            time.sleep(0.25)
         # prank may fail to find any alignments
         if not os.path.exists(prank_out_file):
             continue
         r = parse_prank_output(prank_out_file, tx_seq, ref_tx_seq)
         results.append(r)
-        os.remove(prank_out_file)  # we need to remove this file in case the next iteration fails
+        if os.path.exists(prank_out_file):
+            os.remove(prank_out_file)  # we need to remove this file in case the next iteration fails
     return results
 
 

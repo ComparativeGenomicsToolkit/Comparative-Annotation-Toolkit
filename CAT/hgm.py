@@ -123,10 +123,10 @@ def parse_hgm_gtf(hgm_out):
             count = 0
             for a in attributes.split(';'):
                 if "hgm_info" in a:                
-                    count = a.count("E") # count number of occurences of 'E'
+                    count = a.count("E")  # count number of occurrences of 'E'
                 if "transcript_id" in a:
-                    txid = a.split()[-1].strip('"') # parse transcript id
+                    txid = a.split()[-1].strip('"')  # parse transcript id
             if txid is None:
                 raise RuntimeError("Internal error in parse_hgm_gtf. Missing transcript_id in file {}".format(hgm_out))
             d[txid].append(count)
-    return {k: ','.join(map(str,v)) for k,v in d.items()} # convert list of intron counts to comma-separated string
+    return {k: ','.join(map(str, v)) for k, v in d.items()}  # convert list of intron counts to comma-separated string

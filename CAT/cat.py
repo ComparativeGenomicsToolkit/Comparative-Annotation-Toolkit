@@ -8,6 +8,7 @@ import itertools
 import os
 import luigi
 import sqlalchemy
+import pandas as pd
 import sqlite3 as sql
 import tempfile
 import tools.fileOps
@@ -60,6 +61,7 @@ class PipelineParameterMixin(object):
         args.tm_to_hints_script = self.tm_to_hints_script
         if self.augustus_hints_db is not None:
             args.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
+            args.augustus_tmr = True
         else:
             args.augustus_hints_db = None
         args.tm_cfg = os.path.abspath(self.tm_cfg)
@@ -82,7 +84,19 @@ class PipelineParameterMixin(object):
         else:
             target_genomes = tuple([x for x in self.target_genomes])
         args.target_genomes = target_genomes
+        args.modes = self.get_modes(args)
         return args
+
+    def get_modes(self, pipeline_args):
+        """Convenience function that reports the modes we are operating in as a list"""
+        modes = ['transMap']
+        if pipeline_args.augustus is True:
+            modes.append('augTM')
+            if pipeline_args.augustus_hints_db is not None:
+                modes.append('augTMR')
+        if pipeline_args.augustus_cgp is True:
+            modes.append('augCGP')
+        return modes
 
 
 class RunCat(luigi.WrapperTask, tools.toilInterface.ToilOptionsMixin):
@@ -451,9 +465,12 @@ class TransMap(luigi.WrapperTask, PipelineParameterMixin):
         chain_args = Chaining.get_args(pipeline_args, genome)
         args = {'two_bit': tgt_genome_files['two_bit'],
                 'chain_file': chain_args['chain_file'],
-                'transcript_fasta': ref_files['transcript_fasta'], 'ref_psl': ref_files['ref_psl'],
+                'transcript_fasta': ref_files['transcript_fasta'],
+                'ref_psl': ref_files['ref_psl'],
                 'annotation_gp': ref_files['annotation_gp'],
-                'tm_psl': os.path.join(base_dir, genome + '.psl'), 'tm_gp': os.path.join(base_dir, genome + '.gp')}
+                'tm_psl': os.path.join(base_dir, genome + '.psl'),
+                'tm_gp': os.path.join(base_dir, genome + '.gp'),
+                'tm_gtf': os.path.join(base_dir, genome + '.gtf')}
         return args
 
     def validate(self):
@@ -467,6 +484,7 @@ class TransMap(luigi.WrapperTask, PipelineParameterMixin):
             args = self.get_args(pipeline_args, target_genome)
             yield self.clone(TransMapPsl, tm_args=args, genome=target_genome)
             yield self.clone(TransMapGp, tm_args=args, genome=target_genome)
+            yield self.clone(TransMapGtf, tm_args=args, genome=target_genome)
 
 
 @inherits(RunCat)
@@ -518,6 +536,19 @@ class TransMapGp(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
+@requires(TransMapGp)
+class TransMapGtf(AbstractAtomicFileTask):
+    """
+    Converts the transMap genePred to GTF
+    """
+    def output(self):
+        return luigi.LocalTarget(self.tm_args['tm_gtf'])
+
+    def run(self):
+        logger.info('Converting transMap genePred to GTF for {}.'.format(self.genome))
+        tools.misc.convert_gp_gtf(self.output(), luigi.LocalTarget(self.tm_args['tm_gp']))
+
+
 @inherits(RunCat)
 class Augustus(luigi.WrapperTask, PipelineParameterMixin):
     """
@@ -538,7 +569,7 @@ class Augustus(luigi.WrapperTask, PipelineParameterMixin):
                 'tm_psl': tm_args['tm_psl'],
                 'augustus_tm_gp': os.path.join(base_dir, genome + '.TM.gp'),
                 'augustus_tm_gtf': os.path.join(base_dir, genome + '.TM.gtf'),
-                'augustus_hints_db': pipeline_args.augustus_hints_db if pipeline_args.augustus_hints_db is not None else None,
+                'augustus_hints_db': pipeline_args.augustus_hints_db if pipeline_args.augustus_tmr else None,
                 'tm_cfg': pipeline_args.tm_cfg,
                 'tmr_cfg': pipeline_args.tmr_cfg,
                 'tm_to_hints_script': pipeline_args.tm_to_hints_script,
@@ -626,7 +657,7 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
         # add the reference annotation as a pseudo-transMap to assign parents in reference
         tm_gp_files[pipeline_args.ref_genome] = ref_files['annotation_gp']
         cgp_cfg = os.path.abspath(pipeline_args.augustus_cgp_cfg) if pipeline_args.augustus_cgp_cfg is not None else None
-        hints_db = os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_hints_db is not None else None
+        hints_db = os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_tmr else None
         args = {'genomes': tgt_genomes,
                 'fasta_files': fasta_files,
                 'tm_gps': tm_gp_files,
@@ -673,7 +704,7 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
             # TODO: if no database is given (de novo setting),
             # create a new DB with the flattened genomes from the HAL alignment
             raise UserException('Cannot run AugustusCGP without a hints database.')
-        logger.info('Beginning AugustusCGP toil pipeline.')
+        logger.info('Launching AugustusCGP toil pipeline.')
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(toil_work_dir)
         cgp_args = self.get_args(pipeline_args)
@@ -688,81 +719,108 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
 
 
 @inherits(RunCat)
-class Hgm(tools.toilInterface.ToilTask, PipelineParameterMixin):
+class Hgm(luigi.WrapperTask, PipelineParameterMixin):
     """
-    Task for launching the HomGeneMapping toil pipeline
+    Task for launching the HomGeneMapping toil pipeline. This pipeline finds the intron support vector across all
+    species in the alignment with RNAseq in the database. It will be launched once for each of transMap, AugustusTM,
+    AugustusTMR, AugustusCGP
     """
     @staticmethod
-    def get_args(pipeline_args):
-        # add reference to the target genomes
-        tgt_genomes = list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]
-        # input (needs to be changed to the concatenated gene sets from AugustusTM(R), AugustusCgp (and TransMap?))
-        gtf_in_files = {genome: AugustusCgp.get_args(pipeline_args)['augustus_cgp_gtf'][genome]
-                     for genome in tgt_genomes}
-        base_dir = os.path.join(pipeline_args.work_dir, 'hgm')
-        # output (only temporary for debugging)
-        gtf_out_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_hgm.gtf'))
-                     for genome in tgt_genomes}
-        gp_out_files = {genome: os.path.abspath(os.path.join(base_dir, genome + '_hgm.gp'))
-                     for genome in tgt_genomes}
-        hints_db = os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_hints_db is not None else None
+    def get_args(pipeline_args, mode):
+        base_dir = os.path.join(pipeline_args.work_dir, 'hgm', mode)
+        if mode == 'augCGP':
+            # add reference to the target genomes
+            tgt_genomes = list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]
+            gtf_in_files = {genome: AugustusCgp.get_args(pipeline_args)['augustus_cgp_gtf'][genome]
+                            for genome in tgt_genomes}
+        elif mode == 'augTM':
+            tgt_genomes = pipeline_args.target_genomes
+            gtf_in_files = {genome: Augustus.get_args(pipeline_args, genome)['augustus_tm_gtf']
+                            for genome in tgt_genomes}
+        elif mode == 'augTMR':
+            tgt_genomes = pipeline_args.target_genomes
+            gtf_in_files = {genome: Augustus.get_args(pipeline_args, genome)['augustus_tmr_gtf']
+                            for genome in tgt_genomes}
+        elif mode == 'transMap':
+            tgt_genomes = pipeline_args.target_genomes
+            gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome)['tm_gtf']
+                            for genome in tgt_genomes}
+        else:
+            raise RuntimeError('Invalid mode was passed to Hgm module: {}.'.format(mode))
+        gtf_out_files = {genome: os.path.join(base_dir, genome + '_hgm.gtf') for genome in tgt_genomes}
         args = {'genomes': tgt_genomes,
                 'hal': pipeline_args.hal,
-                'hgm_gtf': gtf_out_files,
-                'hgm_gp': gp_out_files,
                 'in_gtf': gtf_in_files,
-                'hints_db': hints_db}
+                'hgm_gtf': gtf_out_files,
+                'table': '_'.join([mode, 'HgmIntronVector']),
+                'hints_db': pipeline_args.augustus_hints_db}
         return args
 
-    def output(self):
-        pipeline_args = self.get_pipeline_args()
-        hgm_args = self.get_args(pipeline_args)
-        for cat in ['hgm_gp', 'hgm_gtf']:
-            for path in hgm_args[cat].itervalues():
-                yield luigi.LocalTarget(path)
-
-    def validate(self):
+    def validate(self, pipeline_args):
         # make sure that all external tools are executable
         if not tools.misc.is_exec('homGeneMapping'):
             raise UserException('auxiliary program homGeneMapping from the Augustus package not in global path.')
         if not tools.misc.is_exec('halLiftover'):
             raise UserException('halLiftover from the halTools package not in global path.')
+        if pipeline_args.augustus_hints_db is None:
+            raise UserException('Cannot run homGeneMapping module without a hints database.')
 
     def requires(self):
-        self.validate()
-        yield self.clone(AugustusCgp) # add AugustusTM(R)/TransMap if necessary
+        pipeline_args = self.get_pipeline_args()
+        self.validate(pipeline_args)
+        for mode in pipeline_args.modes:
+            args = self.get_args(pipeline_args, mode)
+            yield self.clone(HgmDriverTask, hgm_args=args, mode=mode)
 
-    def appendSJSupportToGp(self, gp, intron_support_counts):
-        """
-        appends a column with the intron support counts to a genePred file
-        """
-        out_lines = []
-        with open(gp) as inf:
-                for line in inf:
-                    txid = line.split()[0]
-                    counts = intron_support_counts.get(txid, "") # empty string for single exon genes
-                    out_lines.append("\t".join([line.strip(),counts]))
-        with open(gp, "w") as outf:
-            outf.write("\n".join(out_lines))
+
+@inherits(Hgm)
+class HgmDriverTask(tools.toilInterface.ToilTask, PipelineParameterMixin):
+    """
+    Task for running each individual instance of the Hgm pipeline. Dumps the results into a sqlite database
+    table HgmIntronVector: two columns, TranscriptId and IntronVector
+    Also produces a GTF file that is parsed into this database, but this file is not explicitly tracked by Luigi.
+    """
+    hgm_args = luigi.DictParameter()
+    mode = luigi.Parameter()
+    
+    def output(self):
+        pipeline_args = self.get_pipeline_args()
+        for genome in self.hgm_args['genomes']:
+            db = EvaluateTranscripts.get_args(pipeline_args, genome)['db']
+            tools.fileOps.ensure_file_dir(db)
+            conn_str = 'sqlite:///{}'.format(db)
+            yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str, target_table=self.hgm_args['table'],
+                                                      update_id=self.task_id)
+
+    def requires(self):
+        if self.mode == 'augCGP':
+            yield self.clone(AugustusCgp)
+        elif self.mode == 'augTM' or self.mode == 'augTMR':
+            yield self.clone(Augustus)
+        elif self.mode == 'transMap':
+            yield self.clone(TransMap)
+        else:
+            raise RuntimeError('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
 
     def run(self):
-        pipeline_args = self.get_pipeline_args()
-        logger.info('Beginning Hgm toil pipeline.')
-        toil_work_dir = os.path.join(self.work_dir, 'toil', 'hgm')
+        logger.info('Launching homGeneMapping toil pipeline for {}.'.format(self.mode))
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'hgm', self.mode)
         toil_options = self.prepare_toil_options(toil_work_dir)
-        hgm_args = self.get_args(pipeline_args)
-        hgm(hgm_args, toil_options)
-        logger.info('Hgm toil pipeline completed.')
-        # Ian, use this variable for your downstream analysis:
-        # it stores for each genome a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
-        intron_support_counts = {genome: parse_hgm_gtf(path) for genome,path in hgm_args['hgm_gtf'].iteritems()}
-        # convert input gtf to gp and add a column with the intron support counts to th gp (only temporary for debugging)
-        for genome in itertools.chain(hgm_args['genomes']):
-            gtf = luigi.LocalTarget(hgm_args['in_gtf'][genome])
-            gp = luigi.LocalTarget(hgm_args['hgm_gp'][genome])
-            tools.misc.convert_gtf_gp(gp, gtf)
-            self.appendSJSupportToGp(hgm_args['hgm_gp'][genome], intron_support_counts[genome])
-        logger.info('Finished converting Hgm output.')   
+        hgm(self.hgm_args, toil_options)
+        logger.info('homGeneMapping toil pipeline for {} completed.'.format(self.mode))
+        # convert the output to a dataframe and write to the genome database
+        pipeline_args = self.get_pipeline_args()
+        for genome, sqla_target in itertools.izip(*[self.hgm_args['genomes'], self.output()]):
+            db = EvaluateTranscripts.get_args(pipeline_args, genome)['db']
+            # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
+            intron_counts = parse_hgm_gtf(self.hgm_args['hgm_gtf'][genome])
+            df = pd.DataFrame.from_dict(intron_counts, orient='index')
+            df.index.name = 'TranscriptId'
+            df.columns = ['IntronVector']
+            engine = sqlalchemy.create_engine('sqlite:///{}'.format(db))
+            df.to_sql('HgmIntronVector', engine, if_exists='replace')
+            sqla_target.touch()
+            logger.info('Loaded homGeneMapping intron vector to table: {}.{}'.format(genome, self.hgm_args['table']))
 
 
 @inherits(RunCat)
@@ -791,10 +849,11 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
             args['modes']['augTM'] = {'gp': aug_args['augustus_tm_gp'],
                                       'MUSCLE': os.path.join(base_dir, genome + '.augTM.MUSCLE.fasta.gz'),
                                       'PRANK': os.path.join(base_dir, genome + '.augTM.PRANK.fasta.gz')}
-            if pipeline_args.augustus_hints_db is not None:
-                args['modes']['augTMR'] = {'gp': aug_args['augustus_tmr_gp'],
-                                           'MUSCLE': os.path.join(base_dir, genome + '.augTMR.MUSCLE.fasta.gz'),
-                                           'PRANK': os.path.join(base_dir, genome + '.augTMR.PRANK.fasta.gz')}
+        if pipeline_args.augustus_tmr is True:
+            aug_args = Augustus.get_args(pipeline_args, genome)
+            args['modes']['augTMR'] = {'gp': aug_args['augustus_tmr_gp'],
+                                       'MUSCLE': os.path.join(base_dir, genome + '.augTMR.MUSCLE.fasta.gz'),
+                                       'PRANK': os.path.join(base_dir, genome + '.augTMR.PRANK.fasta.gz')}
         if pipeline_args.augustus_cgp is True:
             cgp_args = AugustusCgp.get_args(pipeline_args)
             args['modes']['augCGP'] = {'gp': cgp_args['augustus_cgp_gp'][genome],
@@ -839,7 +898,7 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
         yield self.clone(TransMap)
 
     def run(self):
-        logger.info('Beginning Align Transcript toil pipeline for {}.'.format(self.genome))
+        logger.info('Launching Align Transcript toil pipeline for {}.'.format(self.genome))
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'transcript_alignment', self.genome)
         toil_options = self.prepare_toil_options(toil_work_dir)
         align_transcripts(self.alignment_args, toil_options)
@@ -915,10 +974,10 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
         for table, target in self.pair_table_output().iteritems():
             if table not in results:
                 continue
-            logger.info('Loading table: {}.{}'.format(self.genome, table))
             df = results[table]
             df.to_sql(table, engine, if_exists='replace')
             target.touch()
+            logger.info('Loaded table: {}.{}'.format(self.genome, table))
         engine.close()
 
     def output(self):
@@ -933,7 +992,7 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
         return self.clone(AlignTranscripts)
 
     def run(self):
-        logger.info('Beginning Evaluate Transcript toil pipeline for {}.'.format(self.genome))
+        logger.info('Launching Evaluate Transcript toil pipeline for {}.'.format(self.genome))
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'transcript_evaluation', self.genome)
         toil_options = self.prepare_toil_options(toil_work_dir)
         results = classify(self.eval_args, toil_options)
@@ -944,7 +1003,7 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
 
 def parse_args():
     """
-    If we are running from a local scheduler, we need to parse the arguments.
+    Provides the ability to run directly from this script, bypassing the luigi wrapper.
     :return: argparse.Namespace
     """
     parser = argparse.ArgumentParser()
