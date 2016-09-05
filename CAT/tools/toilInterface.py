@@ -33,8 +33,7 @@ class ToilTask(luigi.Task, ToilOptionsMixin):
         to fill in the workDir class variable.
         :return: Namespace
         """
-        self.workDir = os.path.abspath(work_dir)
-        job_store = os.path.join(self.workDir, 'jobStore')
+        job_store = os.path.join(work_dir, 'jobStore')
         fileOps.ensure_file_dir(job_store)
         toil_args = get_toil_defaults()
         toil_args.__dict__.update(vars(self))

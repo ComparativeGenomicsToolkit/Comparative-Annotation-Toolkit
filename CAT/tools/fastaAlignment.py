@@ -41,7 +41,6 @@ class AlignmmentRecord(object):
         self.ref_pos_map, self.tgt_pos_map = self._generate_position_map()
         self.ref_inverse_pos_map, self.tgt_inverse_pos_map = self._generate_inverse_position_map()
 
-
     @property
     def coverage(self):
         """
