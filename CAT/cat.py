@@ -861,8 +861,10 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         return args
 
     def validate(self):
-        # TODO: make sure that all input args exist
-        pass
+        if not tools.misc.is_exec('prank'):
+            raise UserException('prank alignment tool not in global path.')
+        if not tools.misc.is_exec('mafft'):
+            raise UserException('mafft alignment tool not in global path.')
 
     def requires(self):
         self.validate()
@@ -1027,7 +1029,6 @@ def parse_args():
     parser.add_argument('--maf-overlap', default=500000, type=int)
     parser.add_argument('--tm-to-hints-script', default='tools/transMap2hints.pl')
     # toil options
-    parser.add_argument('--workDir', default=None)
     parser.add_argument('--batchSystem', default='singleMachine')
     parser.add_argument('--maxCores', default=16, type=int)
     parser.add_argument('--logLevel', default='WARNING')

@@ -13,7 +13,6 @@ class ToilOptionsMixin(object):
     """
     Add to a luigi WrapperTask that will be a entry point so that toil options can propagate downwards.
     """
-    workDir = luigi.Parameter(default=None, significant=False)  # set up before use
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
     logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil

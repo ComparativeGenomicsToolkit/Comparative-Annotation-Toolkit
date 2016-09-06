@@ -201,7 +201,7 @@ def run_prank_chunk(job, chunk):
             try:
                 tools.procOps.run_proc(cmd)
             except tools.pipeline.ProcException, e:
-                job.fileStore.logToMaster('PRANK attempt {} failed. Error:\n{}'.format(i, e), level=logging.ERROR)
+                job.fileStore.logToMaster('PRANK attempt {} failed. Error:\n{}'.format(i, e), level=logging.WARNING)
             else:
                 break
             if i == 4:
