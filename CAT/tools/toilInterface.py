@@ -18,6 +18,7 @@ class ToilOptionsMixin(object):
     logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
     parasolCommand = luigi.Parameter(default=None, significant=False)
+    defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
 
 
 class ToilTask(luigi.Task, ToilOptionsMixin):

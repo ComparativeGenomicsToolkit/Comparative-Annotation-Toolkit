@@ -7,7 +7,6 @@ import argparse
 import itertools
 import os
 import luigi
-import sqlalchemy
 import pandas as pd
 import tempfile
 import tools.fileOps
@@ -37,6 +36,12 @@ logger = logging.getLogger(__name__)
 
 
 class UserException(Exception):
+    """generic exception to use when a user makes a mistake"""
+    pass
+
+
+class ToolMissingException(UserException):
+    """exception to use when a tool is missing, usually checked in a task validate() method"""
     pass
 
 
@@ -60,10 +65,7 @@ class PipelineParameterMixin(object):
         args.augustus_species = self.augustus_species
         if self.augustus_hints_db is not None:
             args.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
-            if self.augustus is True:
-                args.augustus_tmr = True
-            else:
-                args.augustus_tmr = False
+            args.augustus_tmr = True if self.augustus else False
         else:
             args.augustus_hints_db = None
         args.tm_cfg = os.path.abspath(self.tm_cfg)
@@ -80,8 +82,8 @@ class PipelineParameterMixin(object):
         else:
             args.augustus_cgp_param = None
         if self.target_genomes is None:
-            target_genomes = tools.hal.extract_genomes(self.hal)
-            target_genomes = tuple(set(target_genomes) - {self.ref_genome})
+            args.hal_genomes = tools.hal.extract_genomes(self.hal)
+            target_genomes = tuple(set(args.hal_genomes) - {self.ref_genome})
         else:
             target_genomes = tuple([x for x in self.target_genomes])
         args.target_genomes = target_genomes
@@ -93,14 +95,14 @@ class PipelineParameterMixin(object):
         modes = ['transMap']
         if pipeline_args.augustus is True:
             modes.append('augTM')
-            if pipeline_args.augustus_hints_db is not None:
-                modes.append('augTMR')
+        if pipeline_args.augustus_tmr is True:
+            modes.append('augTMR')
         if pipeline_args.augustus_cgp is True:
             modes.append('augCGP')
         return modes
 
 
-class RunCat(luigi.WrapperTask, tools.toilInterface.ToilOptionsMixin):
+class RunCat(luigi.WrapperTask, PipelineParameterMixin, tools.toilInterface.ToilOptionsMixin):
     """
     Task that executes the entire pipeline.
     """
@@ -123,7 +125,32 @@ class RunCat(luigi.WrapperTask, tools.toilInterface.ToilOptionsMixin):
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
 
+    def validate(self):
+        """General input validation"""
+        pipeline_args = self.get_pipeline_args()
+        if not os.path.exists(pipeline_args.hal):
+            raise UserException('HAL file not found at {}.'.format(pipeline_args.hal))
+        for d in [pipeline_args.out_dir, pipeline_args.work_dir]:
+            if not os.path.exists(d):
+                if not tools.fileOps.dir_is_writeable(os.path.dirname(d)):
+                    raise UserException('Cannot create directory {}.'.format(d))
+            else:
+                if not tools.fileOps.dir_is_writeable(d):
+                    raise UserException('Directory {} is not writeable.'.format(d))
+        if not os.path.exists(pipeline_args.annotation):
+            raise UserException('Annotation file {} not found.'.format(pipeline_args.annotation))
+        if pipeline_args.augustus_hints_db is not None and not os.path.exists(pipeline_args.augustus_hints_db):
+            raise UserException('Augustus hints DB {} not found.'.format(pipeline_args.augustus_hints_db))
+        # TODO: validate augustus species, tm/tmr/cgp/param files.
+        if pipeline_args.ref_genome not in pipeline_args.hal_genomes:
+            raise UserException('Reference genome {} not present in HAL.'.format(pipeline_args.ref_genome))
+        missing_genomes = {g for g in pipeline_args.target_genomes if g not in pipeline_args.hal_genomes}
+        if len(missing_genomes) > 0:
+            missing_genomes = ','.join(missing_genomes)
+            raise UserException('Target genomes {} not present in HAL.'.format(missing_genomes))
+
     def requires(self):
+        self.validate()
         yield self.clone(PrepareFiles)
         yield self.clone(Chaining)
         yield self.clone(TransMap)
@@ -143,12 +170,7 @@ class PrepareFiles(luigi.WrapperTask):
     """
     Wrapper for file preparation tasks GenomeFiles and ReferenceFiles
     """
-    def validate(self):
-        # TODO: make sure that all input args exist
-        pass
-
     def requires(self):
-        self.validate()
         yield self.clone(GenomeFiles)
         yield self.clone(ReferenceFiles)
 
@@ -173,7 +195,17 @@ class GenomeFiles(luigi.WrapperTask, PipelineParameterMixin):
                 'genome': genome}
         return args
 
+    def validate(self):
+        for haltool in ['hal2fasta', 'halStats']:
+            if not tools.misc.is_exec(haltool):
+                    raise ToolMissingException('{} from the HAL tools package not in global path'.format(haltool))
+        if not tools.misc.is_exec('faToTwoBit'):
+            raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
+        if not tools.misc.is_exec('pyfasta'):
+            raise ToolMissingException('pyfasta wrapper not found in global path.')
+
     def requires(self):
+        self.validate()
         pipeline_args = self.get_pipeline_args()
         for genome in itertools.chain(pipeline_args.target_genomes, [self.ref_genome]):
             args = self.get_args(pipeline_args, genome)
@@ -272,7 +304,13 @@ class ReferenceFiles(luigi.WrapperTask, PipelineParameterMixin):
         args.update(GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome))
         return args
 
+    def validate(self):
+        for tool in ['gff3ToGenePred', 'genePredToBed', 'genePredToFakePsl']:
+            if not tools.misc.is_exec(tool):
+                    raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
+
     def requires(self):
+        self.validate()
         pipeline_args = self.get_pipeline_args()
         args = self.get_args(pipeline_args)
         yield self.clone(Gff3ToGenePred, **args)
@@ -344,10 +382,7 @@ class TranscriptBed(AbstractAtomicFileTask):
 @multiple_requires(GenomeFlatFasta, TranscriptBed)
 class TranscriptFasta(AbstractAtomicFileTask):
     """
-    Produces a fasta for each transcript. Requires bedtools.
-
-    TODO: bedtools 2.26 broke this. -name now does not just provide the sequence name. I have to use my transcript
-    library.
+    Produces a fasta for each transcript.
     """
     transcript_fasta = luigi.Parameter()
 
@@ -356,9 +391,6 @@ class TranscriptFasta(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting reference annotation fasta.')
-        #cmd = ['bedtools', 'getfasta', '-fi', self.fasta, '-bed', self.transcript_bed, '-fo', '/dev/stdout',
-        #       '-name', '-split', '-s']
-        #self.run_cmd(cmd)
         seq_dict = tools.bio.get_sequence_dict(self.fasta, upper=False)
         seqs = {name: tx.get_mrna(seq_dict) for name, tx in tools.transcripts.transcript_iterator(self.transcript_bed)}
         with self.output().open('w') as outf:
@@ -401,55 +433,54 @@ class FakePsl(AbstractAtomicFileTask):
 
 
 @inherits(RunCat)
-class Chaining(luigi.WrapperTask, PipelineParameterMixin):
+class Chaining(tools.toilInterface.ToilTask, PipelineParameterMixin):
     """
-    WrapperTask for producing chain files for each combination of ref_genome-target_genome
+    Task that launches the Chaining toil pipeline. This pipeline operates on all genomes at once to reduce the
+    repeated downloading of the HAL file.
     """
+    resources = {'toil': 1}  # all toil pipelines use 1 toil
+    
     @staticmethod
-    def get_args(pipeline_args, genome):
+    def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.work_dir, 'chaining')
-        args = {'hal': pipeline_args.hal,
-                'ref_genome': pipeline_args.ref_genome, 'genome': genome,
-                'chain_file': os.path.join(base_dir, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))}
         ref_files = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)
-        tgt_files = GenomeFiles.get_args(pipeline_args, genome)
-        args['query_two_bit'] = ref_files['two_bit']
-        args['target_two_bit'] = tgt_files['two_bit']
-        args['query_sizes'] = ref_files['sizes']
+        tgt_files = {genome: GenomeFiles.get_args(pipeline_args, genome) for genome in pipeline_args.target_genomes}
+        tgt_two_bits = {genome: tgt_files[genome]['two_bit'] for genome in pipeline_args.target_genomes}
+        chain_files = {genome: os.path.join(base_dir, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))
+                       for genome in pipeline_args.target_genomes}
+        args = {'hal': pipeline_args.hal,
+                'ref_genome': pipeline_args.ref_genome,
+                'query_two_bit': ref_files['two_bit'],
+                'query_sizes': ref_files['sizes'],
+                'target_two_bits': tgt_two_bits,
+                'chain_files': chain_files}
         return args
 
-    def validate(self):
-        # TODO: make sure that all input args exist
-        pass
-
-    def requires(self):
-        self.validate()
-        pipeline_args = self.get_pipeline_args()
-        for target_genome in pipeline_args.target_genomes:
-            args = self.get_args(pipeline_args, target_genome)
-            yield self.clone(PairwiseChaining, chain_args=args, genome=target_genome)
-
-
-@inherits(Chaining)
-class PairwiseChaining(tools.toilInterface.ToilTask):
-    """
-    Executes Kent-style genomic chaining on a pair of genomes, producing a chain file.
-    """
-    chain_args = luigi.DictParameter()  # dict to pass directly to chaining toil module
-    genome = luigi.Parameter()
-
     def output(self):
-        return luigi.LocalTarget(self.chain_args['chain_file'])
+        pipeline_args = self.get_pipeline_args()
+        chain_args = self.get_args(pipeline_args)
+        for path in chain_args['chain_files'].itervalues():
+            yield luigi.LocalTarget(path)
+
+    def validate(self):
+        if not tools.misc.is_exec('halLiftover'):
+            raise ToolMissingException('halLiftover from the halTools package not in global path.')
+        for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort']:
+            if not tools.misc.is_exec(tool):
+                    raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
 
     def requires(self):
-        return self.clone(GenomeFiles)
+        yield self.clone(PrepareFiles)
 
     def run(self):
-        logger.info('Launching Pairwise Chaining toil pipeline for {}.'.format(self.genome))
-        toil_work_dir = os.path.join(self.work_dir, 'toil', 'chaining', self.genome)
+        self.validate()
+        pipeline_args = self.get_pipeline_args()
+        logger.info('Launching Pairwise Chaining toil pipeline.')
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'chaining')
         toil_options = self.prepare_toil_options(toil_work_dir)
-        chaining(self.chain_args, toil_options)
-        logger.info('Pairwise Chaining for {} is complete.'.format(self.genome))
+        chain_args = self.get_args(pipeline_args)
+        chaining(chain_args, toil_options)
+        logger.info('Pairwise Chaining toil pipeline is complete.')
 
 
 @inherits(RunCat)
@@ -462,9 +493,9 @@ class TransMap(luigi.WrapperTask, PipelineParameterMixin):
         base_dir = os.path.join(pipeline_args.work_dir, 'transMap')
         ref_files = ReferenceFiles.get_args(pipeline_args)
         tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
-        chain_args = Chaining.get_args(pipeline_args, genome)
+        chain_args = Chaining.get_args(pipeline_args)
         args = {'two_bit': tgt_genome_files['two_bit'],
-                'chain_file': chain_args['chain_file'],
+                'chain_file': chain_args['chain_files'][genome],
                 'transcript_fasta': ref_files['transcript_fasta'],
                 'ref_psl': ref_files['ref_psl'],
                 'annotation_gp': ref_files['annotation_gp'],
@@ -474,8 +505,9 @@ class TransMap(luigi.WrapperTask, PipelineParameterMixin):
         return args
 
     def validate(self):
-        # TODO: make sure that all input args exist
-        pass
+        for tool in ['pslMap', 'pslRecalcMatch', 'transMapPslToGenePred']:
+            if not tools.misc.is_exec(tool):
+                    raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
 
     def requires(self):
         self.validate()
@@ -579,11 +611,10 @@ class Augustus(luigi.WrapperTask, PipelineParameterMixin):
         return args
 
     def validate(self):
-        # make sure that all external tools are executable
         if not tools.misc.is_exec('augustus'):
-            raise UserException('auxiliary program augustus not in global path.')
+            raise ToolMissingException('auxiliary program augustus not in global path.')
         if not tools.misc.is_exec('transMap2hints.pl'):
-            raise UserException('auxiliary program transMap2hints.pl from the Augustus package not in global path.')
+            raise ToolMissingException('auxiliary program transMap2hints.pl from the Augustus package not in global path.')
 
     def requires(self):
         self.validate()
@@ -641,6 +672,8 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
     """
     Task for launching the AugustusCGP toil pipeline
     """
+    resources = {'toil': 1}  # all toil pipelines use 1 toil
+
     @staticmethod
     def get_args(pipeline_args):
         # add reference to the target genomes
@@ -687,19 +720,18 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
                 yield luigi.LocalTarget(path)
 
     def validate(self):
-        # make sure that all external tools are executable
         if not tools.misc.is_exec('joingenes'):
-            raise UserException('auxiliary program joingenes from the Augustus package not in global path.')
+            raise ToolMissingException('auxiliary program joingenes from the Augustus package not in global path.')
         if not tools.misc.is_exec('augustus'):
-            raise UserException('augustus not in global path.')
+            raise ToolMissingException('augustus not in global path.')
         if not tools.misc.is_exec('hal2maf'):
-            raise UserException('hal2maf from the halTools package not in global path.')
+            raise ToolMissingException('hal2maf from the halTools package not in global path.')
         if not tools.misc.is_exec('gtfToGenePred'):
-            raise UserException('gtfToGenePred from the Kent package not in global path.')
+            raise ToolMissingException('gtfToGenePred from the Kent package not in global path.')
         if not tools.misc.is_exec('genePredToGtf'):
-            raise UserException('genePredToGtf from the Kent package not in global path.')
+            raise ToolMissingException('genePredToGtf from the Kent package not in global path.')
         if not tools.misc.is_exec('bedtools'):
-            raise UserException('bedtools package not in global path.')
+            raise ToolMissingException('bedtools package not in global path.')
 
     def requires(self):
         self.validate()
@@ -710,7 +742,7 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
         if pipeline_args.augustus_hints_db is None:
             # TODO: if no database is given (de novo setting),
             # create a new DB with the flattened genomes from the HAL alignment
-            raise UserException('Cannot run AugustusCGP without a hints database.')
+            raise ToolMissingException('Cannot run AugustusCGP without a hints database.')
         logger.info('Launching AugustusCGP toil pipeline.')
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(toil_work_dir)
@@ -764,13 +796,12 @@ class Hgm(luigi.WrapperTask, PipelineParameterMixin):
         return args
 
     def validate(self, pipeline_args):
-        # make sure that all external tools are executable
         if not tools.misc.is_exec('homGeneMapping'):
-            raise UserException('auxiliary program homGeneMapping from the Augustus package not in global path.')
+            raise ToolMissingException('auxiliary program homGeneMapping from the Augustus package not in global path.')
         if not tools.misc.is_exec('halLiftover'):
-            raise UserException('halLiftover from the halTools package not in global path.')
+            raise ToolMissingException('halLiftover from the halTools package not in global path.')
         if pipeline_args.augustus_hints_db is None:
-            raise UserException('Cannot run homGeneMapping module without a hints database.')
+            raise ToolMissingException('Cannot run homGeneMapping module without a hints database.')
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
@@ -789,6 +820,7 @@ class HgmDriverTask(tools.toilInterface.ToilTask, PipelineParameterMixin):
     """
     hgm_args = luigi.DictParameter()
     mode = luigi.Parameter()
+    resources = {'toil': 1}  # all toil pipelines use 1 toil
     
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -827,7 +859,7 @@ class HgmDriverTask(tools.toilInterface.ToilTask, PipelineParameterMixin):
             with tools.sqlite.ExclusiveSqlConnection(db) as engine:
                 df.to_sql('HgmIntronVector', engine, if_exists='replace')
             sqla_target.touch()
-            logger.info('Loaded homGeneMapping intron vector to table: {}.{}'.format(genome, self.hgm_args['table']))
+            logger.info('Loaded table: {}.{}'.format(genome, self.hgm_args['table']))
 
 
 @inherits(RunCat)
@@ -869,9 +901,9 @@ class AlignTranscripts(luigi.WrapperTask, PipelineParameterMixin):
 
     def validate(self):
         if not tools.misc.is_exec('prank'):
-            raise UserException('prank alignment tool not in global path.')
+            raise ToolMissingException('prank alignment tool not in global path.')
         if not tools.misc.is_exec('mafft'):
-            raise UserException('mafft alignment tool not in global path.')
+            raise ToolMissingException('mafft alignment tool not in global path.')
 
     def requires(self):
         self.validate()
@@ -892,6 +924,7 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
     """
     alignment_args = luigi.DictParameter()  # dict to pass directly to alignment toil module
     genome = luigi.Parameter()
+    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     def output(self):
         for mode, paths in self.alignment_args['modes'].iteritems():
@@ -940,7 +973,6 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         return args
 
     def validate(self):
-        # TODO: make sure that all input args exist
         pass
 
     def requires(self):
@@ -958,6 +990,7 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
     """
     eval_args = luigi.DictParameter()  # dict to pass directly to evaluate toil module
     genome = luigi.Parameter()
+    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     def build_table_names(self):
         """construct table names based on input arguments"""
@@ -976,9 +1009,6 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
 
     def write_to_sql(self, results):
         """Load the results into the SQLite database"""
-        # TODO: sqlalchemy can't write hierarchical indices. See this:
-        # http://stackoverflow.com/questions/39089513/pandas-sqlalchemy-engine-does-not-produce-hierarchical-index-but-legacy-mode-do
-        #engine = sqlalchemy.create_engine('sqlite:///{}'.format(self.eval_args['db']))
         with tools.sqlite.ExclusiveSqlConnection(self.eval_args['db']) as engine:
             for table, target in self.pair_table_output().iteritems():
                 if table not in results:
@@ -1011,7 +1041,8 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
 
 def parse_args():
     """
-    Provides the ability to run directly from this script, bypassing the luigi wrapper.
+    Provides the ability to run directly from this script, bypassing the luigi wrapper. If you go this route, you
+    cannot control the number of concurrent toil pipelines.
     :return: argparse.Namespace
     """
     parser = argparse.ArgumentParser()
@@ -1021,6 +1052,8 @@ def parse_args():
     parser.add_argument('--out-dir', default='./cat_output')
     parser.add_argument('--work-dir', default=tempfile.gettempdir())
     parser.add_argument('--target-genomes', nargs='+', default=None)
+    # parallelism
+    parser.add_argument('--workers', default=10)
     # augustus TM(R) options
     parser.add_argument('--augustus', action='store_true')
     parser.add_argument('--augustus-species', default='human')
@@ -1039,9 +1072,13 @@ def parse_args():
     parser.add_argument('--logLevel', default='WARNING')
     parser.add_argument('--cleanWorkDir', default='onSuccess')
     parser.add_argument('--parasolCommand', default=None)
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.target_genomes = tuple(args.target_genomes) if args.target_genomes is not None else None
+    return args
 
 
 if __name__ == '__main__':
     args = parse_args()
-    luigi.build([RunCat(**vars(args))], logging_conf_file='logging.cfg')
+    workers = args.workers
+    del args.workers  # hack because workers is actually a argument to luigi, not RunCat
+    luigi.build([RunCat(**vars(args))], logging_conf_file='logging.cfg', workers=workers)
