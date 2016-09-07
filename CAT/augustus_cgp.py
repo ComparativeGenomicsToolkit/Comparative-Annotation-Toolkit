@@ -188,9 +188,6 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
     - removes duplicated Txs or truncated Txs that are contained in other Txs (trivial)
     - fixes truncated Txs at alignment boundaries,
       e.g. by merging them with other Txs (non trivial, introduces new Txs)
-    Note: the 'grep' command removes transcript/gene features that are not
-    supported by the GTF format. This is only a temporary fix and can be removed,
-    once the gff files are processed downstream 'pythonicly'.
     
     Calls out to the parental gene assignment pipeline
 
@@ -212,12 +209,19 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
         return recs
 
     job.fileStore.logToMaster('Merging GFFs for {}'.format(genome), level=logging.INFO)
+
+    fofn = tools.fileOps.get_tmp_toil_file()
+    with open(fofn, 'w') as outf:
+        for chunk in gffChunks:
+            local_path = job.fileStore.readGlobalFile(chunk)
+            outf.write(local_path + '\n')
+
     jg = tools.fileOps.get_tmp_toil_file()
-    parsed_gff = parse_gff_chunks(gffChunks)
-    tmp_out = tools.fileOps.get_tmp_toil_file()
-    tools.fileOps.print_iterable(tmp_out, parsed_gff)
-    cmd = [['joingenes', '-g', tmp_out, '-o', '/dev/stdout'],
-           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
+    #parsed_gff = parse_gff_chunks(gffChunks)
+    #tmp_out = tools.fileOps.get_tmp_toil_file()
+    #tools.fileOps.print_iterable(tmp_out, parsed_gff)
+    cmd = [['joingenes', '-f', fofn, '-o', '/dev/stdout'],
+       ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
     tools.procOps.run_proc(cmd, stdout=jg)
     joined_file_id = job.fileStore.writeGlobalFile(jg)
     j = job.addFollowOnJobFn(assign_parents, args, genome, input_file_ids, joined_file_id, memory='8G')
