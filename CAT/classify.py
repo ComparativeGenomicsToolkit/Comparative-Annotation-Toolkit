@@ -114,7 +114,7 @@ def setup_classify(job, args, input_file_ids):
     :return: tuples of (tablename: pandas DataFrame)
     """
     job.fileStore.logToMaster('Beginning Transcript Evaluation run on {}'.format(args['genome']), level=logging.INFO)
-    aln_df = job.addChildJobFn(aln_classify, args, input_file_ids).rv()
+    aln_df = job.addChildJobFn(aln_classify, args, input_file_ids, memory='8G').rv()
     # nested inner list to deal with paired tables coming out of metrics_evaluation_classify
     dfs = [[('Alignment', aln_df)]]
     for tx_mode, aln_file_ids in input_file_ids['modes'].iteritems():

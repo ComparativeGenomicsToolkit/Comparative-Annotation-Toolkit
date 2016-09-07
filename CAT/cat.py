@@ -5,6 +5,7 @@ Comparative Annotation Toolkit.
 import logging
 import argparse
 import itertools
+import frozendict
 import os
 import luigi
 import pandas as pd
@@ -88,6 +89,7 @@ class PipelineParameterMixin(object):
             target_genomes = tuple([x for x in self.target_genomes])
         args.target_genomes = target_genomes
         args.modes = self.get_modes(args)
+        args.dbs = self.get_databases(args)
         return args
 
     def get_modes(self, pipeline_args):
@@ -100,6 +102,12 @@ class PipelineParameterMixin(object):
         if pipeline_args.augustus_cgp is True:
             modes.append('augCGP')
         return modes
+
+    def get_databases(self, pipeline_args):
+        """database paths must be resolved here to handle multiple programs accessing them"""
+        base_out_dir = os.path.join(pipeline_args.out_dir, 'databases')
+        dbs = {genome: os.path.join(base_out_dir, '{}.db'.format(genome)) for genome in pipeline_args.hal_genomes}
+        return frozendict.frozendict(dbs)
 
 
 class RunCat(luigi.WrapperTask, PipelineParameterMixin, tools.toilInterface.ToilOptionsMixin):
@@ -692,7 +700,7 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
         # add the reference annotation as a pseudo-transMap to assign parents in reference
         tm_gp_files[pipeline_args.ref_genome] = ref_files['annotation_gp']
         cgp_cfg = os.path.abspath(pipeline_args.augustus_cgp_cfg) if pipeline_args.augustus_cgp_cfg is not None else None
-        hints_db = os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_tmr else None
+        hints_db = os.path.abspath(pipeline_args.augustus_hints_db) if pipeline_args.augustus_hints_db else None
         args = {'genomes': tgt_genomes,
                 'fasta_files': fasta_files,
                 'tm_gps': tm_gp_files,
@@ -742,7 +750,7 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
         if pipeline_args.augustus_hints_db is None:
             # TODO: if no database is given (de novo setting),
             # create a new DB with the flattened genomes from the HAL alignment
-            raise ToolMissingException('Cannot run AugustusCGP without a hints database.')
+            raise UserException('Cannot run AugustusCGP without a hints database.')
         logger.info('Launching AugustusCGP toil pipeline.')
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(toil_work_dir)
@@ -825,7 +833,7 @@ class HgmDriverTask(tools.toilInterface.ToilTask, PipelineParameterMixin):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         for genome in self.hgm_args['genomes']:
-            db = EvaluateTranscripts.get_args(pipeline_args, genome)['db']
+            db = pipeline_args.dbs[genome]
             tools.fileOps.ensure_file_dir(db)
             conn_str = 'sqlite:///{}'.format(db)
             yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str, target_table=self.hgm_args['table'],
@@ -960,8 +968,7 @@ class EvaluateTranscripts(luigi.WrapperTask, PipelineParameterMixin):
         tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
         annotation_files = ReferenceFiles.get_args(pipeline_args)
         tx_alignment_args = AlignTranscripts.get_args(pipeline_args, genome)
-        base_out_dir = os.path.join(pipeline_args.out_dir, 'databases')
-        args = {'db': os.path.join(base_out_dir, '{}.db'.format(genome)),
+        args = {'db': pipeline_args.dbs[genome],
                 'tm_psl': tm_args['tm_psl'],
                 'tm_gp': tm_args['tm_gp'],
                 'annotation_gp': annotation_files['annotation_gp'],
