@@ -47,8 +47,7 @@ def augustus(args, coding_gp, toil_options):
                               'coding_gp': toil.importFile('file://' + coding_gp),
                               'ref_psl': toil.importFile('file://' + args['ref_psl']),
                               'tm_psl': toil.importFile('file://' + args['tm_psl']),
-                              'annotation_gp': toil.importFile('file://' + args['annotation_gp']),
-                              'tm_to_hints_script': toil.importFile('file://' + args['tm_to_hints_script'])}
+                              'annotation_gp': toil.importFile('file://' + args['annotation_gp'])}
             if args['augustus_hints_db'] is not None:
                 input_file_ids['augustus_hints_db'] = toil.importFile('file://' + args['augustus_hints_db'])
                 input_file_ids['tmr_cfg'] = toil.importFile('file://' + args['tmr_cfg'])
@@ -116,7 +115,6 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
     :param cfg_file_id: File ID for the Augustus cfg file based on if we are in TM or TMR mode
     :return: Augustus output for this chunk
     """
-    tm_to_hints_script_local_path = job.fileStore.readGlobalFile(input_file_ids['tm_to_hints_script'])
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['genome_fasta'],
                                                                  input_file_ids['genome_gdx'],
                                                                  input_file_ids['genome_flat'],
@@ -133,7 +131,7 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
         chromosome = tm_tx.chromosome
         start = max(tm_tx.start - padding, 0)
         stop = min(tm_tx.stop + padding, len(genome_fasta[chromosome]))
-        tm_hints = tools.tm2hints.tm_to_hints(tm_tx, tm_psl, ref_psl, tm_to_hints_script_local_path)
+        tm_hints = tools.tm2hints.tm_to_hints(tm_tx, tm_psl, ref_psl)
         if args['augustus_hints_db'] is not None:
             rnaseq_hints = get_rnaseq_hints(args['genome'], chromosome, start, stop, speciesnames, seqnames, hints,
                                             featuretypes, session)

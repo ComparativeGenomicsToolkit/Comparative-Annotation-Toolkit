@@ -9,7 +9,6 @@ import os
 import luigi
 import sqlalchemy
 import pandas as pd
-import sqlite3 as sql
 import tempfile
 import tools.fileOps
 import tools.procOps
@@ -22,6 +21,7 @@ import tools.psl
 import tools.bio
 import tools.gff3
 import tools.misc
+import tools.sqlite
 from tools.luigiAddons import multiple_inherits, multiple_requires, AbstractAtomicFileTask
 from luigi.util import inherits, requires
 import luigi.contrib.sqla
@@ -58,15 +58,16 @@ class PipelineParameterMixin(object):
         args.augustus = self.augustus
         args.augustus_cgp = self.augustus_cgp
         args.augustus_species = self.augustus_species
-        args.tm_to_hints_script = self.tm_to_hints_script
         if self.augustus_hints_db is not None:
             args.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
-            args.augustus_tmr = True
+            if self.augustus is True:
+                args.augustus_tmr = True
+            else:
+                args.augustus_tmr = False
         else:
             args.augustus_hints_db = None
         args.tm_cfg = os.path.abspath(self.tm_cfg)
         args.tmr_cfg = os.path.abspath(self.tmr_cfg)
-        args.tm_to_hints_script = os.path.abspath(self.tm_to_hints_script)
         args.augustus_cgp = self.augustus_cgp
         args.maf_chunksize = self.maf_chunksize
         args.maf_overlap = self.maf_overlap
@@ -121,7 +122,6 @@ class RunCat(luigi.WrapperTask, tools.toilInterface.ToilOptionsMixin):
     augustus_cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
-    tm_to_hints_script = luigi.Parameter(default='tools/transMap2hints.pl', significant=False)
 
     def requires(self):
         yield self.clone(PrepareFiles)
@@ -319,8 +319,8 @@ class Gff3ToAttrs(luigi.Task):
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         results = tools.gff3.extract_attrs(self.annotation)
-        engine = sqlalchemy.create_engine('sqlite:///{}'.format(self.annotation_db))
-        results.to_sql(self.ref_genome, engine, if_exists='replace')
+        with tools.sqlite.ExclusiveSqlConnection(self.annotation_db) as engine:
+            results.to_sql(self.ref_genome, engine, if_exists='replace')
         self.output().touch()
 
 
@@ -572,7 +572,6 @@ class Augustus(luigi.WrapperTask, PipelineParameterMixin):
                 'augustus_hints_db': pipeline_args.augustus_hints_db if pipeline_args.augustus_tmr else None,
                 'tm_cfg': pipeline_args.tm_cfg,
                 'tmr_cfg': pipeline_args.tmr_cfg,
-                'tm_to_hints_script': pipeline_args.tm_to_hints_script,
                 'augustus_species': pipeline_args.augustus_species}
         if pipeline_args.augustus_hints_db is not None:
             args['augustus_tmr_gp'] = os.path.join(base_dir, genome + '.TMR.gp')
@@ -580,8 +579,11 @@ class Augustus(luigi.WrapperTask, PipelineParameterMixin):
         return args
 
     def validate(self):
-        # TODO: make sure that all input args exist
-        pass
+        # make sure that all external tools are executable
+        if not tools.misc.is_exec('augustus'):
+            raise UserException('auxiliary program augustus not in global path.')
+        if not tools.misc.is_exec('transMap2hints.pl'):
+            raise UserException('auxiliary program transMap2hints.pl from the Augustus package not in global path.')
 
     def requires(self):
         self.validate()
@@ -692,7 +694,12 @@ class AugustusCgp(tools.toilInterface.ToilTask, PipelineParameterMixin):
             raise UserException('augustus not in global path.')
         if not tools.misc.is_exec('hal2maf'):
             raise UserException('hal2maf from the halTools package not in global path.')
-        # TODO: make sure that all input args exist
+        if not tools.misc.is_exec('gtfToGenePred'):
+            raise UserException('gtfToGenePred from the Kent package not in global path.')
+        if not tools.misc.is_exec('genePredToGtf'):
+            raise UserException('genePredToGtf from the Kent package not in global path.')
+        if not tools.misc.is_exec('bedtools'):
+            raise UserException('bedtools package not in global path.')
 
     def requires(self):
         self.validate()
@@ -811,14 +818,14 @@ class HgmDriverTask(tools.toilInterface.ToilTask, PipelineParameterMixin):
         # convert the output to a dataframe and write to the genome database
         pipeline_args = self.get_pipeline_args()
         for genome, sqla_target in itertools.izip(*[self.hgm_args['genomes'], self.output()]):
-            db = EvaluateTranscripts.get_args(pipeline_args, genome)['db']
             # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
             intron_counts = parse_hgm_gtf(self.hgm_args['hgm_gtf'][genome])
             df = pd.DataFrame.from_dict(intron_counts, orient='index')
             df.index.name = 'TranscriptId'
             df.columns = ['IntronVector']
-            engine = sqlalchemy.create_engine('sqlite:///{}'.format(db))
-            df.to_sql('HgmIntronVector', engine, if_exists='replace')
+            db = EvaluateTranscripts.get_args(pipeline_args, genome)['db']
+            with tools.sqlite.ExclusiveSqlConnection(db) as engine:
+                df.to_sql('HgmIntronVector', engine, if_exists='replace')
             sqla_target.touch()
             logger.info('Loaded homGeneMapping intron vector to table: {}.{}'.format(genome, self.hgm_args['table']))
 
@@ -972,15 +979,14 @@ class EvaluateDriverTask(tools.toilInterface.ToilTask):
         # TODO: sqlalchemy can't write hierarchical indices. See this:
         # http://stackoverflow.com/questions/39089513/pandas-sqlalchemy-engine-does-not-produce-hierarchical-index-but-legacy-mode-do
         #engine = sqlalchemy.create_engine('sqlite:///{}'.format(self.eval_args['db']))
-        engine = sql.connect(self.eval_args['db'])
-        for table, target in self.pair_table_output().iteritems():
-            if table not in results:
-                continue
-            df = results[table]
-            df.to_sql(table, engine, if_exists='replace')
-            target.touch()
-            logger.info('Loaded table: {}.{}'.format(self.genome, table))
-        engine.close()
+        with tools.sqlite.ExclusiveSqlConnection(self.eval_args['db']) as engine:
+            for table, target in self.pair_table_output().iteritems():
+                if table not in results:
+                    continue
+                df = results[table]
+                df.to_sql(table, engine, if_exists='replace')
+                target.touch()
+                logger.info('Loaded table: {}.{}'.format(self.genome, table))
 
     def output(self):
         tools.fileOps.ensure_file_dir(self.eval_args['db'])
@@ -1027,7 +1033,6 @@ def parse_args():
     parser.add_argument('--augustus-cgp-param', default='augustus_cfgs/log_reg_parameters_default.cfg')
     parser.add_argument('--maf-chunksize', default=2500000, type=int)
     parser.add_argument('--maf-overlap', default=500000, type=int)
-    parser.add_argument('--tm-to-hints-script', default='tools/transMap2hints.pl')
     # toil options
     parser.add_argument('--batchSystem', default='singleMachine')
     parser.add_argument('--maxCores', default=16, type=int)

@@ -115,10 +115,7 @@ def iter_lines(fspec, skip_lines=0, sep='\t', skip_comments=True, comment_char='
     :param skip_comments: Set to True to skip lines that start with comment_char
     :param comment_char: Starting character used by skip_comments.
     :return: Iterator of lines"""
-    if isinstance(fspec, str):
-        fh = opengz(fspec)
-    else:
-        fh = fspec
+    fh = _resolve_fspec(fspec, 'r')
     try:
         _ = [fh.next() for _ in range(skip_lines)]
         for line in fh:
@@ -185,28 +182,45 @@ def atomic_install(tmp_path, final_path):
 
 def print_row(fspec, line, sep='\t'):
     """
-    Convenience function that writes a delimited line to file_handle or file
-    :param fspec: A open file_handle or file path
+    Convenience function that writes a delimited line to fspec (file handle or file)
+    :param fspec: A open file handle or file path
     :param line: One or more things to write. Must be convertible to strings.
     :param sep: separator to use
     """
-    if isinstance(fspec, str):
-        fh = opengz(fspec, 'w')
-    else:
-        fh = fspec
+    fh = _resolve_fspec(fspec, 'w')
     fh.write(sep.join(map(str, line)) + '\n')
 
 
 def print_rows(fspec, item_iter, sep='\t'):
     """
-    Convenience function that writes a iterable of lines to file_handle or file
-    :param fspec: A open file_handle or file path
+    Convenience function that writes a iterable of lines to fspec (file handle or file)
+    :param fspec: A open file handle or file path
     :param item_iter: One or more things to write. Must be convertible to strings.
     :param sep: separator to use
     """
-    if isinstance(fspec, str):
-        fh = opengz(fspec, 'w')
-    else:
-        fh = fspec
+    fh = _resolve_fspec(fspec, 'w')
     for line in item_iter:
         print_row(fh, line, sep)
+
+
+def print_iterable(fspec, item_iter):
+    """
+    Convenience function that simply writes an iterable of lines to afspec (file handle or file)
+    :param fspec: A open file handle or file path
+    :param item_iter: One or more things to write. Assumed to be fully formatted strings with newlines
+    """
+    fh = _resolve_fspec(fspec, 'w')
+    for line in item_iter:
+        fh.write(line)
+
+
+def _resolve_fspec(fspec, mode='r'):
+    """
+    Determine if this is a file or a handle, passing a file name to opengz()
+    :param fspec: A open file handle or file path
+    :return: a open file handle
+    """
+    if isinstance(fspec, str):
+        return opengz(fspec, mode)
+    else:
+        return fspec

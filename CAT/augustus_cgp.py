@@ -18,6 +18,7 @@ from toil.job import Job
 from toil.common import Toil
 
 import logging
+import re
 import os
 import collections
 
@@ -192,11 +193,30 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
     once the gff files are processed downstream 'pythonicly'.
     
     Calls out to the parental gene assignment pipeline
+
+    TODO: Because of the large number of chunks, this needs to be done on a stream of chunks. We do this by parsing
+    the entire set of GFF subsets, incrementing the transcript numbers because they cannot be the same.
     """
+    def parse_gff_chunks(chunks):
+        """parses a gff file, globally incrementing the gene count"""
+        r = re.compile('g[0-9]+')
+        i = 0
+        recs = []
+        for chunk in chunks:
+            for line in open(job.fileStore.readGlobalFile(chunk)):
+                if '\tAUGUSTUS\t' in line or 'prediction on sequence range' in line:
+                    if '\tgene\t' in line:
+                        i += 1
+                    line = r.sub('g{}'.format(i), line)
+                    recs.append(line)
+        return recs
+
     job.fileStore.logToMaster('Merging GFFs for {}'.format(genome), level=logging.INFO)
     jg = tools.fileOps.get_tmp_toil_file()
-    chunks = ','.join(map(job.fileStore.readGlobalFile, gffChunks))
-    cmd = [['joingenes', '-g', chunks, '-o', '/dev/stdout'],
+    parsed_gff = parse_gff_chunks(gffChunks)
+    tmp_out = tools.fileOps.get_tmp_toil_file()
+    tools.fileOps.print_iterable(tmp_out, parsed_gff)
+    cmd = [['joingenes', '-g', tmp_out, '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
     tools.procOps.run_proc(cmd, stdout=jg)
     joined_file_id = job.fileStore.writeGlobalFile(jg)
@@ -256,8 +276,8 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
     job.fileStore.logToMaster('Assigning parental genes for {}'.format(genome), level=logging.INFO)
     annotation_db = job.fileStore.readGlobalFile(input_file_ids['annotation_db'])
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(annotation_db, args['ref_genome'])
-    tm_gp_file_id = job.fileStore.readGlobalFile(input_file_ids['tm_gps'][genome])
-    transmap_dict = tools.transcripts.get_gene_pred_dict(tm_gp_file_id)
+    tm_gp_file = job.fileStore.readGlobalFile(input_file_ids['tm_gps'][genome])
+    transmap_dict = tools.transcripts.get_gene_pred_dict(tm_gp_file)
     # convert GFF to genePred
     cgp_gp = tools.fileOps.get_tmp_toil_file()
     joined_gff = job.fileStore.readGlobalFile(joined_gff_file_id)
