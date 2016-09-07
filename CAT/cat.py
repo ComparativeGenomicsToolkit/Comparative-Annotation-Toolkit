@@ -81,8 +81,8 @@ class PipelineParameterMixin(object):
             args.augustus_cgp_param = os.path.abspath(self.augustus_cgp_param)
         else:
             args.augustus_cgp_param = None
+        args.hal_genomes = tools.hal.extract_genomes(self.hal)
         if self.target_genomes is None:
-            args.hal_genomes = tools.hal.extract_genomes(self.hal)
             target_genomes = tuple(set(args.hal_genomes) - {self.ref_genome})
         else:
             target_genomes = tuple([x for x in self.target_genomes])
