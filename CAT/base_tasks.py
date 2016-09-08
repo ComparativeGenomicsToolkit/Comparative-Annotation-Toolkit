@@ -140,6 +140,8 @@ class ToilTask(PipelineTask):
     """
     Task for launching toil pipelines from within luigi.
     """
+    resources = {'toil': 1}  # all toil pipelines use 1 toil
+
     def prepare_toil_options(self, work_dir):
         """
         Prepares a Namespace object for Toil which has all defaults, overridden as specified

@@ -375,7 +375,6 @@ class Chaining(ToilTask):
     Task that launches the Chaining toil pipeline. This pipeline operates on all genomes at once to reduce the
     repeated downloading of the HAL file.
     """
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     @staticmethod
     def get_args(pipeline_args):
@@ -568,7 +567,6 @@ class AugustusDriverTask(ToilTask):
     Task for per-genome launching of a toil pipeline for running Augustus.
     """
     genome = luigi.Parameter()
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -612,7 +610,6 @@ class AugustusCgp(ToilTask):
     """
     Task for launching the AugustusCGP toil pipeline
     """
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     @staticmethod
     def get_args(pipeline_args):
@@ -754,7 +751,6 @@ class HgmDriverTask(ToilTask):
     Also produces a GTF file that is parsed into this database, but this file is not explicitly tracked by Luigi.
     """
     mode = luigi.Parameter()
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -858,7 +854,6 @@ class AlignTranscriptDriverTask(ToilTask):
     there may be more than one alignment.
     """
     genome = luigi.Parameter()
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     def output(self):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
@@ -923,7 +918,6 @@ class EvaluateDriverTask(ToilTask):
     Task for per-genome launching of a toil pipeline for aligning transcripts to their parent.
     """
     genome = luigi.Parameter()
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     def build_table_names(self, eval_args):
         """construct table names based on input arguments"""
