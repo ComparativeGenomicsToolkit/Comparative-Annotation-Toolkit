@@ -36,6 +36,16 @@ class PipelineTask(luigi.Task):
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
 
+    def __repr__(self):
+        """override the repr to make logging cleaner"""
+        # we are in a genome-specific task, so say so
+        if hasattr(self, 'genome'):
+            return 'Task: {} for {}'.format(self.__class__.__name__, self.genome)
+        elif hasattr(self, 'mode'):
+            return 'Task: {} for {}'.format(self.__class__.__name__, self.mode)
+        else:
+            return 'Task: {}'.format(self.__class__.__name__)
+
     def get_pipeline_args(self):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
         args = argparse.Namespace()
