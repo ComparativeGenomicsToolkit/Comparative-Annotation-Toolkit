@@ -11,7 +11,6 @@ import pandas as pd
 import tempfile
 import tools.fileOps
 import tools.procOps
-import tools.toilInterface
 import tools.nameConversions
 import tools.hal
 import tools.transcripts
@@ -21,10 +20,10 @@ import tools.bio
 import tools.gff3
 import tools.misc
 import tools.sqlite
-from tools.luigiAddons import multiple_inherits, multiple_requires, AbstractAtomicFileTask, PipelineWrapperTask, \
-    PipelineTask
-from luigi.util import inherits, requires
+from tools.luigiAddons import multiple_requires
+from luigi.util import requires
 import luigi.contrib.sqla
+from base_tasks import PipelineTask, PipelineWrapperTask, ToilTask, ToilOptionsMixin, AbstractAtomicFileTask
 from chaining import chaining
 from augustus import augustus
 from augustus_cgp import augustus_cgp
@@ -34,6 +33,11 @@ from classify import classify
 
 
 logger = logging.getLogger(__name__)
+
+
+###
+# Pipeline exceptions
+###
 
 
 class UserException(Exception):
@@ -56,29 +60,15 @@ class InvalidInputException(UserException):
     pass
 
 
-class RunCat(PipelineWrapperTask, tools.toilInterface.ToilOptionsMixin):
+###
+# pipeline tasks
+###
+
+
+class RunCat(PipelineWrapperTask, ToilOptionsMixin):
     """
     Task that executes the entire pipeline.
     """
-    hal = luigi.Parameter()
-    ref_genome = luigi.Parameter()
-    annotation = luigi.Parameter()
-    out_dir = luigi.Parameter(default='./cat_output')
-    work_dir = luigi.Parameter(default=tempfile.gettempdir())
-    target_genomes = luigi.TupleParameter(default=None)
-    # AugustusTM(R) parameters
-    augustus = luigi.BoolParameter(default=False)
-    augustus_species = luigi.Parameter(default='human', significant=False)
-    augustus_hints_db = luigi.Parameter(default=None)
-    tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
-    tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
-    # AugustusCGP parameters
-    augustus_cgp = luigi.BoolParameter(default=False)
-    augustus_cgp_cfg = luigi.Parameter(default=None, significant=False)
-    augustus_cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
-    maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
-    maf_overlap = luigi.IntParameter(default=500000, significant=False)
-
     def validate(self):
         """General input validation"""
         pipeline_args = self.get_pipeline_args()
@@ -119,7 +109,6 @@ class RunCat(PipelineWrapperTask, tools.toilInterface.ToilOptionsMixin):
         #yield self.clone(Plots)
 
 
-@inherits(RunCat)
 class PrepareFiles(PipelineWrapperTask):
     """
     Wrapper for file preparation tasks GenomeFiles and ReferenceFiles
@@ -129,7 +118,6 @@ class PrepareFiles(PipelineWrapperTask):
         yield self.clone(ReferenceFiles)
 
 
-@inherits(PrepareFiles)
 class GenomeFiles(PipelineWrapperTask):
     """
     WrapperTask for producing all genome files.
@@ -169,7 +157,6 @@ class GenomeFiles(PipelineWrapperTask):
             yield self.clone(GenomeFlatFasta, **vars(args))
 
 
-@inherits(PrepareFiles)
 class GenomeFasta(AbstractAtomicFileTask):
     """
     Produce a fasta file from a hal file. Requires hal2fasta.
@@ -203,7 +190,6 @@ class GenomeTwoBit(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@inherits(PrepareFiles)
 class GenomeSizes(AbstractAtomicFileTask):
     """
     Produces a genome chromosome sizes file. Requires halStats.
@@ -236,7 +222,6 @@ class GenomeFlatFasta(AbstractAtomicFileTask):
         tools.procOps.run_proc(cmd)
 
 
-@inherits(PrepareFiles)
 class ReferenceFiles(PipelineWrapperTask):
     """
     WrapperTask for producing annotation files.
@@ -276,7 +261,6 @@ class ReferenceFiles(PipelineWrapperTask):
         yield self.clone(FakePsl, **vars(args))
 
 
-@inherits(ReferenceFiles)
 class Gff3ToGenePred(AbstractAtomicFileTask):
     """
     Generates a genePred from a gff3 file.
@@ -293,7 +277,6 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@inherits(ReferenceFiles)
 class Gff3ToAttrs(PipelineTask):
     """
     Uses the gff3 parser to extract the attributes table, converting the table into a sqlite databse for import
@@ -387,8 +370,7 @@ class FakePsl(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@inherits(RunCat)
-class Chaining(tools.toilInterface.ToilTask):
+class Chaining(ToilTask):
     """
     Task that launches the Chaining toil pipeline. This pipeline operates on all genomes at once to reduce the
     repeated downloading of the HAL file.
@@ -439,7 +421,6 @@ class Chaining(tools.toilInterface.ToilTask):
         logger.info('Pairwise Chaining toil pipeline is complete.')
 
 
-@inherits(RunCat)
 class TransMap(PipelineWrapperTask):
     """
     Runs transMap.
@@ -475,7 +456,6 @@ class TransMap(PipelineWrapperTask):
             yield self.clone(TransMapGtf, genome=target_genome)
 
 
-@inherits(RunCat)
 class TransMapPsl(PipelineTask):
     """
     Runs transMap. Requires Kent tools pslMap, postTransMapChain, pslRecalcMatch
@@ -538,7 +518,6 @@ class TransMapGtf(AbstractAtomicFileTask):
         tools.misc.convert_gp_gtf(self.output(), luigi.LocalTarget(tm_args.tm_gp))
 
 
-@inherits(RunCat)
 class Augustus(PipelineWrapperTask):
     """
     Runs AugustusTM(R) on the coding output from transMap.
@@ -584,8 +563,7 @@ class Augustus(PipelineWrapperTask):
             yield self.clone(AugustusDriverTask, genome=target_genome)
 
 
-@inherits(Augustus)
-class AugustusDriverTask(tools.toilInterface.ToilTask):
+class AugustusDriverTask(ToilTask):
     """
     Task for per-genome launching of a toil pipeline for running Augustus.
     """
@@ -630,8 +608,7 @@ class AugustusDriverTask(tools.toilInterface.ToilTask):
             tools.misc.convert_gtf_gp(out_gp, out_gtf)
 
 
-@inherits(RunCat)
-class AugustusCgp(tools.toilInterface.ToilTask):
+class AugustusCgp(ToilTask):
     """
     Task for launching the AugustusCGP toil pipeline
     """
@@ -718,7 +695,6 @@ class AugustusCgp(tools.toilInterface.ToilTask):
         logger.info('Finished converting AugustusCGP output.')
 
 
-@inherits(RunCat)
 class Hgm(PipelineWrapperTask):
     """
     Task for launching the HomGeneMapping toil pipeline. This pipeline finds the intron support vector across all
@@ -771,8 +747,7 @@ class Hgm(PipelineWrapperTask):
             yield self.clone(HgmDriverTask, mode=mode)
 
 
-@inherits(Hgm)
-class HgmDriverTask(tools.toilInterface.ToilTask):
+class HgmDriverTask(ToilTask):
     """
     Task for running each individual instance of the Hgm pipeline. Dumps the results into a sqlite database
     table HgmIntronVector: two columns, TranscriptId and IntronVector
@@ -823,7 +798,6 @@ class HgmDriverTask(tools.toilInterface.ToilTask):
             logger.info('Loaded table: {}.{}'.format(genome, hgm_args['table']))
 
 
-@inherits(RunCat)
 class AlignTranscripts(PipelineWrapperTask):
     """
     Aligns the transcripts from transMap/AugustusTMR/AugustusCGP to the parent transcript(s).
@@ -875,8 +849,7 @@ class AlignTranscripts(PipelineWrapperTask):
             yield self.clone(AlignTranscriptDriverTask, genome=target_genome)
 
 
-@inherits(AlignTranscripts)
-class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
+class AlignTranscriptDriverTask(ToilTask):
     """
     Task for per-genome launching of a toil pipeline for aligning all transcripts found back to the reference in
     transcript space using BLAT.
@@ -911,7 +884,6 @@ class AlignTranscriptDriverTask(tools.toilInterface.ToilTask):
         logger.info('Align Transcript toil pipeline for {} completed.'.format(self.genome))
 
 
-@inherits(RunCat)
 class EvaluateTranscripts(PipelineWrapperTask):
     """
     Evaluates all transcripts for important features. See the classify.py module for details on how this works.
@@ -946,8 +918,7 @@ class EvaluateTranscripts(PipelineWrapperTask):
             yield self.clone(EvaluateDriverTask, genome=target_genome)
 
 
-@multiple_inherits(EvaluateTranscripts)
-class EvaluateDriverTask(tools.toilInterface.ToilTask):
+class EvaluateDriverTask(ToilTask):
     """
     Task for per-genome launching of a toil pipeline for aligning transcripts to their parent.
     """

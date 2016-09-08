@@ -1,69 +1,7 @@
 """
-Provides a simple interface between Toil and Luigi.
+Helper functions for toil-luigi interfacing
 """
-import os
-import luigi
-import shutil
 import bio
-import fileOps
-import luigiAddons
-from toil.job import Job
-
-
-class ToilOptionsMixin(object):
-    """
-    Add to a luigi Task to provide Toil arguments. Has to be its own mixin in order to allow base wrapper classes
-    like RunCat to have the ability to pass along the toil options.
-    """
-    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
-    maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
-    cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
-    parasolCommand = luigi.Parameter(default=None, significant=False)
-    defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
-
-
-class ToilTask(luigiAddons.PipelineTask):
-    """
-    Task for launching toil pipelines from within luigi.
-    """
-    def prepare_toil_options(self, work_dir):
-        """
-        Prepares a Namespace object for Toil which has all defaults, overridden as specified
-        Will see if the jobStore path exists, and if it does, assume that we need to add --restart
-        :param work_dir: Parent directory where toil work will be done. jobStore will be placed inside. Will be used
-        to fill in the workDir class variable.
-        :return: Namespace
-        """
-        job_store = os.path.join(work_dir, 'jobStore')
-        fileOps.ensure_file_dir(job_store)
-        toil_args = self.get_toil_defaults()
-        toil_args.__dict__.update(vars(self))
-        if os.path.exists(job_store):
-            try:
-                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
-                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
-                    shutil.rmtree(job_store)
-                else:
-                    toil_args.restart = True
-            except OSError:
-                toil_args.restart = True
-            except IOError:
-                shutil.rmtree(job_store)
-        job_store = 'file:' + job_store
-        toil_args.jobStore = job_store
-        return toil_args
-
-    def get_toil_defaults(self):
-        """
-        Extracts the default toil options as a dictionary, setting jobStore to None
-        :return: dict
-        """
-        parser = Job.Runner.getDefaultArgumentParser()
-        namespace = parser.parse_args([''])  # empty jobStore attribute
-        namespace.jobStore = None  # jobStore attribute will be updated per-batch
-        return namespace
-
 
 ###
 # Helper functions for luigi-toil pipelines
