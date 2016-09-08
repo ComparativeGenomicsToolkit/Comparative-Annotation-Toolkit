@@ -37,7 +37,7 @@ class ToilTask(luigiAddons.PipelineTask):
         """
         job_store = os.path.join(work_dir, 'jobStore')
         fileOps.ensure_file_dir(job_store)
-        toil_args = get_toil_defaults()
+        toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         if os.path.exists(job_store):
             try:
@@ -54,16 +54,15 @@ class ToilTask(luigiAddons.PipelineTask):
         toil_args.jobStore = job_store
         return toil_args
 
-
-def get_toil_defaults():
-    """
-    Extracts the default toil options as a dictionary, setting jobStore to None
-    :return: dict
-    """
-    parser = Job.Runner.getDefaultArgumentParser()
-    namespace = parser.parse_args([''])  # empty jobStore attribute
-    namespace.jobStore = None  # jobStore attribute will be updated per-batch
-    return namespace
+    def get_toil_defaults(self):
+        """
+        Extracts the default toil options as a dictionary, setting jobStore to None
+        :return: dict
+        """
+        parser = Job.Runner.getDefaultArgumentParser()
+        namespace = parser.parse_args([''])  # empty jobStore attribute
+        namespace.jobStore = None  # jobStore attribute will be updated per-batch
+        return namespace
 
 
 ###
@@ -71,22 +70,21 @@ def get_toil_defaults():
 ###
 
 
-def load_fasta_from_filestore(job, fasta_file_id, fasta_gdx_file_id, fasta_flat_file_id, prefix='genome', upper=False):
+def load_fasta_from_filestore(job, fasta_file_ids, prefix='genome', upper=False):
     """
     Convenience function that will load a fasta from the fileStore and return the local path to it. This works with
     the pyfasta module to load all of the required files.
     :param job: current job.
-    :param fasta_file_id: fileStore file ID for the fasta
-    :param fasta_gdx_file_id: fileStore file ID for the index (gdx)
-    :param fasta_flat_file_id: fileStore file ID for the flat file (sentinel marker)
+    :param fasta_file_ids: list of fileStore file ID for the fasta, gdx, and flat file.
     :param prefix: local file path prefix
     :param upper: force all entries to upper case
     :return: open pyfasta Fasta record pointing to the file.
     """
     fasta_local_path = '{}.fasta'.format(prefix)
+    fasta_file_id, gdx_file_id, flat_file_id = fasta_file_ids
     job.fileStore.readGlobalFile(fasta_file_id, fasta_local_path)
-    job.fileStore.readGlobalFile(fasta_gdx_file_id, '{}.fasta.gdx'.format(prefix))
-    job.fileStore.readGlobalFile(fasta_flat_file_id, '{}.fasta.flat'.format(prefix))
+    job.fileStore.readGlobalFile(gdx_file_id, '{}.fasta.gdx'.format(prefix))
+    job.fileStore.readGlobalFile(flat_file_id, '{}.fasta.flat'.format(prefix))
     return bio.get_sequence_dict(fasta_local_path, upper=upper)
 
 

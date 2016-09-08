@@ -52,6 +52,7 @@ alnMode:
 2) MUSCLE
 
 """
+import argparse
 import operator
 import logging
 import bisect
@@ -74,32 +75,30 @@ from toil.job import Job
 from toil.common import Toil
 
 
-def classify(cfg, toil_options):
+def classify(args, toil_options):
     """
     Entry point for Transcript Classification Toil pipeline.
     """
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            fasta_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, cfg['genome_fasta'])
-            fasta_file_id, gdx_file_id, flat_file_id = fasta_file_ids
-            input_file_ids = {'fasta': fasta_file_id,
-                              'fasta_gdx': gdx_file_id,
-                              'fasta_flat': flat_file_id,
-                              'tm_psl': toil.importFile('file://' + cfg['tm_psl']),
-                              'tm_gp': toil.importFile('file://' + cfg['tm_gp']),
-                              'annotation_gp': toil.importFile('file://' + cfg['annotation_gp']),
-                              'annotation_db': toil.importFile('file://' + cfg['annotation_db']),
-                              'modes': {},  # modes will hold the file IDs broken down by mode
-                              'gps': {}}  # gps will hold input genePred file IDs
-            for tx_mode, path_dict in cfg['modes'].iteritems():
+            fasta_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
+            input_file_ids = argparse.Namespace()
+            input_file_ids.fasta = fasta_file_ids
+            input_file_ids.tm_psl = toil.importFile('file://' + args.tm_psl)
+            input_file_ids.tm_gp = toil.importFile('file://' + args.tm_gp)
+            input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
+            input_file_ids.annotation_db = toil.importFile('file://' + args.annotation_db)
+            input_file_ids.modes = {}  # modes will hold the file IDs broken down by mode
+            input_file_ids.gps = {}  # gps will hold input genePred file IDs
+            for tx_mode, path_dict in args.alignment_modes.iteritems():
                 aln_file_ids = {}
                 gp_file_id = toil.importFile('file://' + path_dict['gp'])
                 for aln_mode in ['MUSCLE', 'PRANK']:
                     if aln_mode in path_dict:
                         aln_file_ids[aln_mode] = toil.importFile('file://' + path_dict[aln_mode])
-                input_file_ids['modes'][tx_mode] = aln_file_ids
-                input_file_ids['gps'][tx_mode] = gp_file_id
-            job = Job.wrapJobFn(setup_classify, cfg, input_file_ids)
+                input_file_ids.modes[tx_mode] = aln_file_ids
+                input_file_ids.gps[tx_mode] = gp_file_id
+            job = Job.wrapJobFn(setup_classify, args, input_file_ids)
             results = toil.start(job)
         else:
             results = toil.restart()
@@ -113,13 +112,13 @@ def setup_classify(job, args, input_file_ids):
     :param input_file_ids: Dictionary of fileStore IDs
     :return: tuples of (tablename: pandas DataFrame)
     """
-    job.fileStore.logToMaster('Beginning Transcript Evaluation run on {}'.format(args['genome']), level=logging.INFO)
+    job.fileStore.logToMaster('Beginning Transcript Evaluation run on {}'.format(args.genome), level=logging.INFO)
     aln_df = job.addChildJobFn(aln_classify, args, input_file_ids, memory='8G').rv()
     # nested inner list to deal with paired tables coming out of metrics_evaluation_classify
     dfs = [[('Alignment', aln_df)]]
-    for tx_mode, aln_file_ids in input_file_ids['modes'].iteritems():
+    for tx_mode, aln_file_ids in input_file_ids.modes.iteritems():
         for aln_mode, aln_fasta_file_id in aln_file_ids.iteritems():
-            gp_file_id = input_file_ids['gps'][tx_mode]
+            gp_file_id = input_file_ids.gps[tx_mode]
             mc_job = job.addChildJobFn(metrics_evaluation_classify, tx_mode, aln_mode, gp_file_id, aln_fasta_file_id,
                                        input_file_ids, args)
             dfs.append(mc_job.rv())
@@ -133,11 +132,10 @@ def aln_classify(job, args, input_file_ids):
     :param input_file_ids: Dictionary of fileStore IDs
     :return: DataFrame
     """
-    job.fileStore.logToMaster('Beginning Alignment Evaluation run on {}'.format(args['genome']), level=logging.INFO)
-    psl_dict = tools.psl.get_alignment_dict(job.fileStore.readGlobalFile(args['tm_psl']))
-    gp_dict = tools.transcripts.get_gene_pred_dict(job.fileStore.readGlobalFile(args['tm_gp']))
-    fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['fasta'], input_file_ids['fasta_gdx'],
-                                                          input_file_ids['fasta_flat'])
+    job.fileStore.logToMaster('Beginning Alignment Evaluation run on {}'.format(args.genome), level=logging.INFO)
+    psl_dict = tools.psl.get_alignment_dict(job.fileStore.readGlobalFile(args.tm_psl))
+    gp_dict = tools.transcripts.get_gene_pred_dict(job.fileStore.readGlobalFile(args.tm_gp))
+    fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.fasta)
     r = []
     paralog_count = paralogy(psl_dict)  # we have to count paralogs globally
     for aln_id, tx in gp_dict.iteritems():
@@ -190,8 +188,8 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, aln_fasta_fi
 
     # load files
     tx_aln_fasta = job.fileStore.readGlobalFile(aln_fasta_file_id)
-    ref_gp = job.fileStore.readGlobalFile(input_file_ids['annotation_gp'])
-    annotation_db = job.fileStore.readGlobalFile(input_file_ids['annotation_db'])
+    ref_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
+    annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
     gp = job.fileStore.readGlobalFile(gp_file_id)
 
     # parse files
@@ -200,7 +198,7 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, aln_fasta_fi
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(ref_gp)
 
     # load transcript biotype map
-    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args['ref_genome'])
+    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args.ref_genome)
 
     # start the classification process
     # mc_r/ec_r will contain uncollapsed result Promises that will be resolved before merge_metrics_results
@@ -325,7 +323,7 @@ def alignment_partial_map(aln):
     Does the query sequence not map entirely?
 
     a.q_size != a.q_end - a.q_start
-    
+
     :param aln: PslRow object
     :return: boolean
     """
@@ -419,7 +417,7 @@ def calculate_num_missing_introns(ref_tx, tx, aln_rec, aln_mode, wiggle_distance
     # calculate the intron coordinates in alignment space
     ref_introns = get_intron_coordinates(ref_tx, aln_mode)
     tgt_introns = get_intron_coordinates(tx, aln_mode)
-    
+
     # sort to handle negative strand and make searchable
     # use the position map to convert, which deals with missing end information and indels
     # note that we pass the reference position map to the target and vice versa in order to properly translate

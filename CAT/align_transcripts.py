@@ -16,6 +16,7 @@ import logging
 import collections
 import os
 import time
+import argparse
 import itertools
 
 from toil.job import Job
@@ -41,22 +42,14 @@ def align_transcripts(args, toil_options):
     """
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            # assume that both fasta's have been flattened
-            tx_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args['ref_genome_fasta'])
-            ref_genome_fasta_file_id, ref_genome_fasta_gdx_file_id, ref_genome_fasta_flat_file_id = tx_file_ids
-            genome_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args['genome_fasta'])
-            genome_fasta_file_id, genome_fasta_gdx_file_id, genome_fasta_flat_file_id = genome_file_ids
-            input_file_ids = {'ref_genome_fasta': ref_genome_fasta_file_id,
-                              'ref_genome_gdx': ref_genome_fasta_gdx_file_id,
-                              'ref_genome_flat': ref_genome_fasta_flat_file_id,
-                              'genome_fasta': genome_fasta_file_id,
-                              'genome_gdx': genome_fasta_gdx_file_id,
-                              'genome_flat': genome_fasta_flat_file_id,
-                              'annotation_gp': toil.importFile('file://' + args['annotation_gp']),
-                              'annotation_db': toil.importFile('file://' + args['annotation_db']),
-                              'modes': {}}
-            for mode in args['modes']:
-                input_file_ids['modes'][mode] = toil.importFile('file://' + args['modes'][mode]['gp'])
+            input_file_ids = argparse.Namespace()
+            input_file_ids.ref_genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.ref_genome_fasta)
+            input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
+            input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
+            input_file_ids.annotation_db = toil.importFile('file://' + args.annotation_db)
+            input_file_ids.modes = {}
+            for mode in args.alignment_modes:
+                input_file_ids.modes[mode] = toil.importFile('file://' + args.alignment_modes[mode]['gp'])
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='16G')
             results_file_ids = toil.start(job)
         else:
@@ -73,35 +66,31 @@ def setup(job, args, input_file_ids):
     :param args: dictionary of arguments from CAT
     :param input_file_ids: dictionary of fileStore file IDs for the inputs to this pipeline
     """
-    job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args['genome']), level=logging.INFO)
-    chunk_size = 100
-    cgp_chunk_size = 20  # cgp has multiple alignments
+    job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args.genome), level=logging.INFO)
+    chunk_size = 200
+    cgp_chunk_size = 50  # cgp has multiple alignments
     # load all fileStore files necessary
-    annotation_gp = job.fileStore.readGlobalFile(input_file_ids['annotation_gp'])
-    annotation_db = job.fileStore.readGlobalFile(input_file_ids['annotation_db'])
+    annotation_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
+    annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
     # we have to explicitly place fasta, flat file and gdx with the correct naming scheme for pyfasta
-    genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['genome_fasta'],
-                                                                 input_file_ids['genome_gdx'],
-                                                                 input_file_ids['genome_flat'],
+    genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
-    ref_genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids['ref_genome_fasta'],
-                                                                     input_file_ids['ref_genome_gdx'],
-                                                                     input_file_ids['ref_genome_flat'],
+    ref_genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.ref_genome_fasta,
                                                                      prefix='ref_genome', upper=False)
     # load required reference data into memory
-    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args['ref_genome'])
+    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args.ref_genome)
     ref_transcript_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     # will hold a mapping of output file paths to lists of Promise objects containing output
     results = collections.defaultdict(list)
     # start generating chunks of the transMap/Augustus genePreds which we know the 1-1 alignment for
     for mode in ['transMap', 'augTM', 'augTMR']:
-        if mode not in args['modes']:
+        if mode not in args.alignment_modes:
             continue
         # output file paths
-        muscle_path = args['modes'][mode]['MUSCLE']
-        prank_path = args['modes'][mode]['PRANK']
+        muscle_path = args.alignment_modes[mode]['MUSCLE']
+        prank_path = args.alignment_modes[mode]['PRANK']
         # begin loading transcripts and sequences
-        gp_path = job.fileStore.readGlobalFile(input_file_ids['modes'][mode])
+        gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
         muscle_seq_iter = get_muscle_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta)
         for chunk in tools.dataOps.grouper(muscle_seq_iter, chunk_size):
@@ -112,12 +101,12 @@ def setup(job, args, input_file_ids):
         for chunk in tools.dataOps.grouper(prank_seq_iter, chunk_size):
             j = job.addChildJobFn(run_prank_chunk, chunk)
             results[prank_path].append(j.rv())
-    if 'augCGP' in args['modes']:
-        cgp_prank_path = args['modes']['augCGP']['PRANK']
+    if 'augCGP' in args.alignment_modes:
+        cgp_prank_path = args.alignment_modes['augCGP']['PRANK']
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
-        gene_tx_map = tools.sqlInterface.get_gene_transcript_map(annotation_db, args['ref_genome'])
-        tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args['ref_genome'])
-        augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids['modes']['augCGP'])
+        gene_tx_map = tools.sqlInterface.get_gene_transcript_map(annotation_db, args.ref_genome)
+        tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args.ref_genome)
+        augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids.modes['augCGP'])
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
@@ -125,7 +114,7 @@ def setup(job, args, input_file_ids):
             j = job.addChildJobFn(run_prank_chunk, chunk)
             results[cgp_prank_path].append(j.rv())
     if len(results) == 0:
-        err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args['genome'])
+        err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
         raise RuntimeError(err_msg)
     # convert the results Promises into resolved values
     return job.addFollowOnJobFn(merge, results, args).rv()
@@ -244,7 +233,7 @@ def merge(job, results, args):
     :param args: arguments to the pipeline
     :return:
     """
-    job.fileStore.logToMaster('Merging Alignment output for {}'.format(args['genome']), level=logging.INFO)
+    job.fileStore.logToMaster('Merging Alignment output for {}'.format(args.genome), level=logging.INFO)
     results_file_ids = {}
     for gp_category, result_list in results.iteritems():
         tmp_results_file = tools.fileOps.get_tmp_toil_file(suffix='gz')
@@ -369,6 +358,7 @@ def parse_prank_output(prank_out_file, tx_seq, ref_tx_seq):
         new_tgt_aln.extend(['-'] * (len(new_ref_aln) - len(new_tgt_aln)))
     new_ref_aln = ''.join(new_ref_aln)
     new_tgt_aln = ''.join(new_tgt_aln)
+    # sanity checks, probably can remove one day
     assert new_ref_aln.replace('-', '') == ref_tx_seq, (new_ref_aln, ref_tx_seq, new_tgt_aln, tx_seq)
     assert new_tgt_aln.replace('-', '') == tx_seq, (new_ref_aln, ref_tx_seq, new_tgt_aln, tx_seq)
     assert len(new_ref_aln) == len(new_tgt_aln)

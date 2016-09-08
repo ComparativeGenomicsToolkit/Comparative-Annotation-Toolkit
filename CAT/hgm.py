@@ -60,7 +60,7 @@ def hgm(args, toil_options):
             hints_db_file_id = toil.importFile('file://' + args['hints_db'])
             gtf_file_ids = {genome: toil.importFile('file://' + gtf) for genome, gtf in args['in_gtf'].iteritems()}
             input_file_ids = {'hal': hal_file_id, 'hints_db': hints_db_file_id, 'gtfs': gtf_file_ids}
-            job = Job.wrapJobFn(setup, args, input_file_ids, num_cpu, cores=num_cpu)
+            job = Job.wrapJobFn(setup, args, input_file_ids, num_cpu, cores=num_cpu, memory='256G')
             results = toil.start(job)
         else:
             results = toil.restart()

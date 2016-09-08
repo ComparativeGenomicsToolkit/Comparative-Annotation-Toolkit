@@ -4,7 +4,7 @@ Converts transMap genePred entries into Augustus hints
 import psl
 import tools.procOps
 
-cmd = ['perl', 'transMap2hints.pl', '--ep_cutoff=0', '--ep_margin=12', '--min_intron_len=50', '--start_stop_radius=5',
+cmd = ['transMap2hints.pl', '--ep_cutoff=0', '--ep_margin=12', '--min_intron_len=50', '--start_stop_radius=5',
        '--tss_tts_radius=10', '--utrend_cutoff=10', '--in=/dev/stdin', '--out=/dev/stdout']
 
 

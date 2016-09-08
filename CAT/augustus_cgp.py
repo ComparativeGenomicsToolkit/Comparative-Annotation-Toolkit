@@ -18,7 +18,7 @@ from toil.job import Job
 from toil.common import Toil
 
 import logging
-import re
+import argparse
 import os
 import collections
 
@@ -44,28 +44,26 @@ def augustus_cgp(args, toil_options):
     """
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            hal_file_id = toil.importFile('file://' + args['hal'])
-            chrom_sizes_file_id = toil.importFile('file://' + args['query_sizes'])
-            hints_db_file_id = toil.importFile('file://' + args['hints_db'])
-            cgp_param_file_id = toil.importFile('file://' + args['cgp_param'])
-            annotation_db_file_id = toil.importFile('file://' + args['annotation_db'])
-            fasta_file_ids = {genome: toil.importFile('file://' + fasta)
-                              for genome, fasta in args['fasta_files'].iteritems()}
-            tm_gp_file_ids = {genome: toil.importFile('file://' + tm_gp)
-                              for genome, tm_gp in args['tm_gps'].iteritems()}
-            input_file_ids = {'hal': hal_file_id, 'sizes': chrom_sizes_file_id, 'hints_db': hints_db_file_id,
-                              'cgp_param': cgp_param_file_id, 'fasta_files': fasta_file_ids,
-                              'tm_gps': tm_gp_file_ids, 'annotation_db': annotation_db_file_id}
-            if args['cgp_cfg'] is not None:
-                cgp_cfg_file_id = toil.importFile('file://' + args['cgp_cfg'])
-                input_file_ids['cgp_cfg'] = cgp_cfg_file_id
+            input_file_ids = argparse.Namespace()
+            input_file_ids.hal = toil.importFile('file://' + args.hal)
+            input_file_ids.chrom_sizes = toil.importFile('file://' + args.query_sizes)
+            input_file_ids.hints_db = toil.importFile('file://' + args.hints_db)
+            input_file_ids.cgp_param = toil.importFile('file://' + args.augustus_cgp_param)
+            input_file_ids.annotation_db = toil.importFile('file://' + args.annotation_db)
+            input_file_ids.fasta = {genome: toil.importFile('file://' + fasta)
+                                    for genome, fasta in args.fasta_files.iteritems()}
+            input_file_ids.tm_gps = {genome: toil.importFile('file://' + tm_gp)
+                                     for genome, tm_gp in args.tm_gps.iteritems()}
+            if args.augustus_cgp_cfg is not None:
+                cgp_cfg_file_id = toil.importFile('file://' + args.augustus_cgp_cfg)
+                input_file_ids.cgp_cfg = cgp_cfg_file_id
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G')
             results = toil.start(job)
         else:
             results = toil.restart()
         for genome in results:
-            tools.fileOps.ensure_file_dir(args['augustus_cgp_gtf'][genome])
-            toil.exportFile(results[genome], 'file://' + args['augustus_cgp_gtf'][genome])
+            tools.fileOps.ensure_file_dir(args.augustus_cgp_gtf[genome])
+            toil.exportFile(results[genome], 'file://' + args.augustus_cgp_gtf[genome])
 
 
 def setup(job, args, input_file_ids):
@@ -89,12 +87,12 @@ def setup(job, args, input_file_ids):
     # TODO: do not split within genic regions of the reference genome
 
     # overlap length between two consecutive alignment chunks
-    overlap = args['overlap']
+    overlap = args.overlap
     # length of alignment chunk with respect to the reference genome
-    chunkSize = args['chunksize']
+    chunkSize = args.chunksize
 
     aliChunks = []  # stores all alignment chunks as tuples [chrom, start, chunkSize]
-    chromSizes = job.fileStore.readGlobalFile(input_file_ids['sizes'])
+    chromSizes = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
     for i, (chrom, chromSize) in enumerate(tools.fileOps.iter_lines(chromSizes)):
         start = 0
         while start + chunkSize < int(chromSize):
@@ -104,9 +102,9 @@ def setup(job, args, input_file_ids):
 
     for chrom, start, end in aliChunks:
         # string "genome.chrom:start-end"
-        genomic_region = '{}.{}:{}-{}'.format(args['ref_genome'], chrom, start, start + end - 1)
+        genomic_region = '{}.{}:{}-{}'.format(args.ref_genome, chrom, start, start + end - 1)
         # export alignment chunks from hal to maf
-        j = job.addChildJobFn(hal2maf, input_file_ids, args['ref_genome'], chrom, start, end, genomic_region,
+        j = job.addChildJobFn(hal2maf, input_file_ids, args.ref_genome, chrom, start, end, genomic_region,
                               memory='8G')
         mafChunk = j.rv()
         # run AugustusCGP on alignment chunk
@@ -124,7 +122,7 @@ def hal2maf(job, input_file_ids, refGenome, chrom, start, chunkSize, genomic_reg
     exports hal to maf on a genomic region specified by (genome, seq, start, len)
     """
     job.fileStore.logToMaster('Running hal2maf on {}'.format(genomic_region), level=logging.INFO)
-    hal = job.fileStore.readGlobalFile(input_file_ids['hal'])
+    hal = job.fileStore.readGlobalFile(input_file_ids.hal)
     mafChunk = tools.fileOps.get_tmp_toil_file()
     cmd = ['hal2maf', '--noAncestors', '--noDupes', '--refGenome', refGenome,
            '--refSequence', chrom, '--start', start, '--length', chunkSize, hal, mafChunk]
@@ -138,23 +136,23 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
     """
     job.fileStore.logToMaster('Running AugustusCGP on {}'.format(genomic_region), level=logging.INFO)
 
-    genomeFofn = writeGenomeFofn(job, input_file_ids['fasta_files'])
+    genomeFofn = writeGenomeFofn(job, input_file_ids.fasta)
 
     opt_param = []  # optional AugustusCGP parameters
-    if args['cgp_cfg'] is not None:
+    if args.augustus_cgp_cfg is not None:
         # extrinsic config file
         # for now, let's assume RNA-Seq evidence whenever an extrinsic
         # config file is given, e.g. by default we turn on
         # --UTR=1
         # --allow_hinted_splicesites=atac
-        cgp_cfg = job.fileStore.readGlobalFile(args['cgp_cfg'])
+        cgp_cfg = job.fileStore.readGlobalFile(args.cgp_cfg)
         opt_param += ['--extrinsicCfgFile={}'.format(cgp_cfg),
                       '--dbhints=1', '--UTR=1', '--allow_hinted_splicesites=atac']
 
-    cmd = ['augustus'] + opt_param + ['--species={}'.format(args['species']),
+    cmd = ['augustus'] + opt_param + ['--species={}'.format(args.species),
                                       '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
                                       '--alnfile={}'.format(job.fileStore.readGlobalFile(mafChunk)),
-                                      '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids['hints_db'])),
+                                      '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
                                       '--speciesfilenames={}'.format(genomeFofn),
                                       '--softmasking=1',
                                       '--exoncands=0',
@@ -162,10 +160,10 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
                                       '--/CompPred/logreg=on',
                                       '--printOEs=false',
                                       '--/CompPred/outdir={}'.format(os.getcwd()),
-                                      '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids['cgp_param']))]
+                                      '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param))]
 
     tools.procOps.run_proc(cmd)
-    return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args['genomes']}
+    return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}
 
 
 def merge_results(job, args, input_file_ids, gffChunks):
@@ -173,7 +171,7 @@ def merge_results(job, args, input_file_ids, gffChunks):
     Merges the results using joinGenes. The results have parental genes assigned.
     """
     mergedGffs = {}
-    for genome in args['genomes']:
+    for genome in args.genomes:
         # merge all gffChunks of one genome
         genome_gffChunks = [d[genome] for d in gffChunks]
         j = job.addChildJobFn(joinGenes, genome, args, input_file_ids, genome_gffChunks, memory='8G')
@@ -190,24 +188,7 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
       e.g. by merging them with other Txs (non trivial, introduces new Txs)
     
     Calls out to the parental gene assignment pipeline
-
-    TODO: Because of the large number of chunks, this needs to be done on a stream of chunks. We do this by parsing
-    the entire set of GFF subsets, incrementing the transcript numbers because they cannot be the same.
     """
-    def parse_gff_chunks(chunks):
-        """parses a gff file, globally incrementing the gene count"""
-        r = re.compile('g[0-9]+')
-        i = 0
-        recs = []
-        for chunk in chunks:
-            for line in open(job.fileStore.readGlobalFile(chunk)):
-                if '\tAUGUSTUS\t' in line or 'prediction on sequence range' in line:
-                    if '\tgene\t' in line:
-                        i += 1
-                    line = r.sub('g{}'.format(i), line)
-                    recs.append(line)
-        return recs
-
     job.fileStore.logToMaster('Merging GFFs for {}'.format(genome), level=logging.INFO)
 
     fofn = tools.fileOps.get_tmp_toil_file()
@@ -217,9 +198,6 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
             outf.write(local_path + '\n')
 
     jg = tools.fileOps.get_tmp_toil_file()
-    #parsed_gff = parse_gff_chunks(gffChunks)
-    #tmp_out = tools.fileOps.get_tmp_toil_file()
-    #tools.fileOps.print_iterable(tmp_out, parsed_gff)
     cmd = [['joingenes', '-f', fofn, '-o', '/dev/stdout'],
        ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
     tools.procOps.run_proc(cmd, stdout=jg)
@@ -232,7 +210,7 @@ def writeTree(job,input_file_ids):
     """
     writes a file with the phylogenetic tree in NEWICK format
     """
-    hal = job.fileStore.readGlobalFile(input_file_ids['hal']) 
+    hal = job.fileStore.readGlobalFile(input_file_ids.hal) 
     cmd = ['halStats', '--tree', hal]
     tree = tools.fileOps.get_tmp_toil_file()
     tools.procOps.run_proc(cmd, stdout=tree)
@@ -278,10 +256,11 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
     errors. The better way would be a proper GFF parser. Mark's Gff3 parser does not work.
     """
     job.fileStore.logToMaster('Assigning parental genes for {}'.format(genome), level=logging.INFO)
-    annotation_db = job.fileStore.readGlobalFile(input_file_ids['annotation_db'])
-    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(annotation_db, args['ref_genome'])
-    tm_gp_file = job.fileStore.readGlobalFile(input_file_ids['tm_gps'][genome])
+    annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
+    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(annotation_db, args.ref_genome)
+    tm_gp_file = job.fileStore.readGlobalFile(input_file_ids.tm_gps[genome])
     transmap_dict = tools.transcripts.get_gene_pred_dict(tm_gp_file)
+
     # convert GFF to genePred
     cgp_gp = tools.fileOps.get_tmp_toil_file()
     joined_gff = job.fileStore.readGlobalFile(joined_gff_file_id)
@@ -290,6 +269,7 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
     cgp_dict = tools.transcripts.get_gene_pred_dict(cgp_gp)
     tm_chrom_dict = create_chrom_dict(transmap_dict)
     cgp_chrom_dict = create_chrom_dict(cgp_dict)
+
     final_gps = []
     for chrom, tm_tx_dict in tm_chrom_dict.iteritems():
         for cgp_tx_id, cgp_tx in cgp_chrom_dict[chrom].iteritems():
@@ -304,6 +284,7 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
             if gene_name is not None:  # we can resolve this transcript
                 cgp_tx.name2 = gene_name
                 final_gps.append(cgp_tx)
+
     # convert back to GFF...
     out_gp = tools.fileOps.get_tmp_toil_file()
     out_gff = tools.fileOps.get_tmp_toil_file()

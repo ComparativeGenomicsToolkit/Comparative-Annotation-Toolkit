@@ -1,6 +1,7 @@
 """"
 Toil program to generate UCSC chains and nets between two genomes in a HAL file.
 """
+import argparse
 import logging
 import collections
 import tools.hal
@@ -15,11 +16,12 @@ def chaining(args, toil_options):
     with Toil(toil_options) as toil:
         if not toil.options.restart:
             target_two_bit_file_ids = {genome: toil.importFile('file://' + f) for genome, f
-                                       in args['target_two_bits'].iteritems()}
-            input_file_ids = {'hal': toil.importFile('file://' + args['hal']),
-                              'query_sizes': toil.importFile('file://' + args['query_sizes']),
-                              'query_two_bit': toil.importFile('file://' + args['query_two_bit']),
-                              'target_two_bits': target_two_bit_file_ids}
+                                       in args.target_two_bits.iteritems()}
+            input_file_ids = argparse.Namespace()
+            input_file_ids.hal = toil.importFile('file://' + args.hal)
+            input_file_ids.query_sizes = toil.importFile('file://' + args.query_sizes)
+            input_file_ids.query_two_bit = toil.importFile('file://' + args.query_two_bit)
+            input_file_ids.target_two_bits = target_two_bit_file_ids
             job = Job.wrapJobFn(setup, args, input_file_ids)
             chain_file_ids = toil.start(job)
         else:
@@ -36,16 +38,16 @@ def setup(job, args, input_file_ids):
     :param input_file_ids: file ID dictionary of imported files
     :return: fileStore ID for output chain file
     """
-    chrom_sizes = job.fileStore.readGlobalFile(input_file_ids['query_sizes'])
+    chrom_sizes = job.fileStore.readGlobalFile(input_file_ids.query_sizes)
     tmp_chain_file_ids = collections.defaultdict(list)
     for i, l in enumerate(open(chrom_sizes)):
         chrom, size = l.split()
-        for target_genome, target_two_bit_file_id in input_file_ids['target_two_bits'].iteritems():
+        for target_genome, target_two_bit_file_id in input_file_ids.target_two_bits.iteritems():
             j = job.addChildJobFn(chain_by_chromosome, args, chrom, size, input_file_ids, target_genome,
                                   target_two_bit_file_id, memory='8G')
             tmp_chain_file_ids[target_genome].append(j.rv())
     return_file_ids = {}
-    for genome, chain_file in args['chain_files'].iteritems():
+    for genome, chain_file in args.chain_files.iteritems():
         chain_files = tmp_chain_file_ids[genome]
         j = job.addFollowOnJobFn(merge, chain_files, genome)
         return_file_ids[chain_file] = j.rv()
@@ -70,11 +72,11 @@ def chain_by_chromosome(job, args, chrom, size, input_file_ids, target_genome, t
         tools.fileOps.print_row(outf, [chrom, 0, size])
     chain = tools.fileOps.get_tmp_toil_file()
     # load files from jobStore
-    hal = job.fileStore.readGlobalFile(input_file_ids['hal'])
+    hal = job.fileStore.readGlobalFile(input_file_ids.hal)
     target_two_bit = job.fileStore.readGlobalFile(target_two_bit_file_id)
-    query_two_bit = job.fileStore.readGlobalFile(input_file_ids['query_two_bit'])
+    query_two_bit = job.fileStore.readGlobalFile(input_file_ids.query_two_bit)
     # execute liftover
-    cmd = [['halLiftover', '--outPSL', hal, args['ref_genome'], bed_path, target_genome, '/dev/stdout'],
+    cmd = [['halLiftover', '--outPSL', hal, args.ref_genome, bed_path, target_genome, '/dev/stdout'],
            ['pslPosTarget', '/dev/stdin', '/dev/stdout'],
            ['axtChain', '-psl', '-verbose=0', '-linearGap=medium', '/dev/stdin', target_two_bit, query_two_bit, chain]]
     tools.procOps.run_proc(cmd)

@@ -16,9 +16,8 @@ class PipelineTask(luigi.Task):
     Base class for all tasks in this pipeline. Provides useful methods for handling parameters being passed between
     modules.
     """
-
     def get_pipeline_args(self):
-        """returns a args of all of the arguments to the pipeline. Resolves the target genomes variable"""
+        """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
         args = argparse.Namespace()
         args.hal = os.path.abspath(self.hal)
         args.ref_genome = self.ref_genome
