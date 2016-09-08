@@ -7,6 +7,7 @@ import luigi
 import shutil
 import tempfile
 import tools.fileOps
+import tools.procOps
 from toil.job import Job
 
 
@@ -146,7 +147,7 @@ class ToilOptionsMixin(object):
     defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
 
 
-class ToilTask(PipelineTask):
+class ToilTask(PipelineTask, ToilOptionsMixin):
     """
     Task for launching toil pipelines from within luigi.
     """
@@ -188,3 +189,8 @@ class ToilTask(PipelineTask):
         namespace = parser.parse_args([''])  # empty jobStore attribute
         namespace.jobStore = None  # jobStore attribute will be updated per-batch
         return namespace
+
+    def __repr__(self):
+        """override the PipelineTask repr to report the batch system being used"""
+        base_repr = super(ToilTask, self).__repr__()
+        return 'Toil' + base_repr + ' using batchSystem {}'.format(self.batchSystem)
