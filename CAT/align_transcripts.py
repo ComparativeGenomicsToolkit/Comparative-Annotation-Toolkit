@@ -57,7 +57,7 @@ def align_transcripts(args, toil_options):
                               'modes': {}}
             for mode in args['modes']:
                 input_file_ids['modes'][mode] = toil.importFile('file://' + args['modes'][mode]['gp'])
-            job = Job.wrapJobFn(setup, args, input_file_ids)
+            job = Job.wrapJobFn(setup, args, input_file_ids, memory='16G')
             results_file_ids = toil.start(job)
         else:
             results_file_ids = toil.restart()

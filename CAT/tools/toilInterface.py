@@ -6,12 +6,14 @@ import luigi
 import shutil
 import bio
 import fileOps
+import luigiAddons
 from toil.job import Job
 
 
 class ToilOptionsMixin(object):
     """
-    Add to a luigi WrapperTask that will be a entry point so that toil options can propagate downwards.
+    Add to a luigi Task to provide Toil arguments. Has to be its own mixin in order to allow base wrapper classes
+    like RunCat to have the ability to pass along the toil options.
     """
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
@@ -21,7 +23,7 @@ class ToilOptionsMixin(object):
     defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
 
 
-class ToilTask(luigi.Task, ToilOptionsMixin):
+class ToilTask(luigiAddons.PipelineTask):
     """
     Task for launching toil pipelines from within luigi.
     """
