@@ -5,8 +5,8 @@ which have new IDs, we use the name2 field which will have assigned a gene ID to
 transcripts associated with that gene ID.
 
 Alignment is performed in a few different ways:
-1. For each CGP transcript, the in-frame CDS will be aligned using PRANK to the in-frame CDS of each protein-coding
-transcript of the assigned parental gene.
+1. For each CGP transcript, the in-frame CDS will be aligned using PRANK and MUSCLE to the in-frame CDS of each
+protein-coding transcript of the assigned parental gene.
 2. For each transMap transcript, it will be aligned via MUSCLE to the assigned parent. If the parent is protein coding
 then the transcript will also undergo in-frame CDS alignment via PRANK.
 3. For each AugustusTM(R) transcript, it will be aligned both via MUSCLE and PRANK.
