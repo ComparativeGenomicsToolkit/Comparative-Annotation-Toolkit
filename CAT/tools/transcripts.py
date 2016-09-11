@@ -363,12 +363,15 @@ class GenePredTranscript(Transcript):
     def get_protein_sequence(self, seq_dict):
         """
         Returns the translated protein sequence for this transcript in single
-        character space. Overrides this function in the Transcript class to make use of frame information.
+        character space.
         """
-        cds = self.get_cds(seq_dict)
+        cds = self.get_cds(seq_dict, in_frame=True)
         if len(cds) < 3:
             return ""
-        return translate_sequence(cds[self.offset:].upper())
+        try:
+            return translate_sequence(cds.upper())
+        except AssertionError:
+            raise RuntimeError('Failed to translate transcript {} with sequence {}'.format(self.name, cds))
 
     def get_cds(self, seq_dict, in_frame=False):
         """
