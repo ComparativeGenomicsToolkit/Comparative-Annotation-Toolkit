@@ -228,11 +228,13 @@ def gap_merge_intervals(intervals, gap):
     new_intervals = []
     for interval in sorted(intervals):
         if not new_intervals:
-            new_intervals.append(ChromosomeInterval(**vars(interval)))
+            new_intervals.append(ChromosomeInterval(interval.chromosome, interval.start, interval.stop,
+                                                    interval.strand, interval.data))
         elif interval.separation(new_intervals[-1]) <= gap:
             new_intervals[-1] = new_intervals[-1].hull(interval)
         else:
-            new_intervals.append(ChromosomeInterval(**vars(interval)))
+            new_intervals.append(ChromosomeInterval(interval.chromosome, interval.start, interval.stop,
+                                                    interval.strand, interval.data))
     return new_intervals
 
 
