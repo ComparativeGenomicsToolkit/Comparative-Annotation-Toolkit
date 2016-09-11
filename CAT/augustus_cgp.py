@@ -19,6 +19,7 @@ from toil.common import Toil
 
 import logging
 import argparse
+import itertools
 import os
 import collections
 
@@ -271,29 +272,56 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
     cgp_chrom_dict = create_chrom_dict(cgp_dict)
 
     final_gps = []
-    for chrom, tm_tx_dict in tm_chrom_dict.iteritems():
-        for cgp_tx_id, cgp_tx in cgp_chrom_dict[chrom].iteritems():
-            overlapping_tm_txs = find_tm_overlaps(cgp_tx, tm_tx_dict)
-            gene_ids = {tx.name2 for tx in overlapping_tm_txs}
-            if len(gene_ids) == 0:
-                gene_name = cgp_tx.name.split('.')[0]
-            elif len(gene_ids) == 1:
-                gene_name = list(gene_ids)[0]
-            else:
-                gene_name = resolve_multiple_genes(cgp_tx, overlapping_tm_txs, gene_biotype_map)
-            if gene_name is not None:  # we can resolve this transcript
-                cgp_tx.name2 = gene_name
-                final_gps.append(cgp_tx)
+    for chrom, tm_tx_by_chromosome in tm_chrom_dict.iteritems():
+        for cgp_chunk in tools.dataOps.grouper(cgp_chrom_dict[chrom].iteritems(), 70):
+            j = job.addChildJobFn(assign_parent_chunk, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map)
+            final_gps.append(j.rv())
+    return job.addFollowOnJobFn(merge_parent_assignment_chunks, final_gps).rv()
 
-    # convert back to GFF...
+
+def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map):
+    """
+    Runs a chunk of CGP transcripts on the same chromosome as all transMap transcripts in tm_tx_by_chromosome
+    :param tm_tx_by_chromosome: dictionary of GenePredTranscript objects all on the same chromosome
+    :param cgp_chunk: Iterable of (cgp_tx_id, cgp_tx) tuples to be analyzed
+    :param gene_biotype_map: dictionary mapping gene IDs to biotype
+    :return: list of GenePredTranscript objects which have been resolved
+    """
+    resolved_txs = []
+    for cgp_tx_id, cgp_tx in cgp_chunk:
+        overlapping_tm_txs = find_tm_overlaps(cgp_tx, tm_tx_by_chromosome)
+        gene_ids = {tx.name2 for tx in overlapping_tm_txs}
+        if len(gene_ids) == 0:
+            gene_name = cgp_tx.name.split('.')[0]
+        elif len(gene_ids) == 1:
+            gene_name = list(gene_ids)[0]
+        else:
+            gene_name = resolve_multiple_genes(cgp_tx, overlapping_tm_txs, gene_biotype_map)
+        if gene_name is not None:  # we can resolve this transcript
+            cgp_tx.name2 = gene_name
+            resolved_txs.append(cgp_tx)
+    return resolved_txs
+
+
+def merge_parent_assignment_chunks(job, final_gps):
+    """
+    Merge the chunks of transcripts produced by assign_parent_chunk, converting back to GFF
+    :param final_gps: list of lists of GenePredTranscript objects
+    :return: fileStore ID to a output GFF
+    """
     out_gp = tools.fileOps.get_tmp_toil_file()
     out_gff = tools.fileOps.get_tmp_toil_file()
     with open(out_gp, 'w') as outf:
-        for rec in final_gps:
+        for rec in itertools.chain.from_iterable(final_gps):
             tools.fileOps.print_row(outf, rec.get_gene_pred())
     cmd = ['genePredToGtf', '-utr', '-honorCdsStat', '-source=AugustusCGP', 'file', out_gp, out_gff]
     tools.procOps.run_proc(cmd)
     return job.fileStore.writeGlobalFile(out_gff)
+
+
+###
+# Parent gene assignment functions
+###
 
 
 def create_chrom_dict(tx_dict):
