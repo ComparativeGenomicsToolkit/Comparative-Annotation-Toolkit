@@ -833,10 +833,8 @@ class AlignTranscripts(PipelineWrapperTask):
         return args
 
     def validate(self):
-        if not tools.misc.is_exec('prank'):
-            raise ToolMissingException('prank alignment tool not in global path.')
-        if not tools.misc.is_exec('mafft'):
-            raise ToolMissingException('mafft alignment tool not in global path.')
+        if not tools.misc.is_exec('muscle'):
+            raise ToolMissingException('muscle alignment tool not in global path.')
 
     def requires(self):
         self.validate()
