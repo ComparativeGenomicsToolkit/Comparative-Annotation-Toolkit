@@ -38,10 +38,8 @@ def augustus(args, coding_gp, toil_options):
     """
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            # assume that this fasta has been flattened
-            fasta_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
             input_file_ids = argparse.Namespace()
-            input_file_ids.genome_fasta = fasta_file_ids
+            input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
             input_file_ids.tm_cfg = toil.importFile('file://' + args.tm_cfg)
             input_file_ids.coding_gp = toil.importFile('file://' + coding_gp)
             input_file_ids.ref_psl = toil.importFile('file://' + args.ref_psl)

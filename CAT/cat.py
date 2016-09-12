@@ -23,7 +23,7 @@ import tools.sqlite
 from tools.luigiAddons import multiple_requires
 from luigi.util import requires
 import luigi.contrib.sqla
-from base_tasks import PipelineTask, PipelineWrapperTask, ToilTask, ToilOptionsMixin, AbstractAtomicFileTask
+from base_tasks import PipelineTask, PipelineWrapperTask, ToilTask, AbstractAtomicFileTask
 from chaining import chaining
 from augustus import augustus
 from augustus_cgp import augustus_cgp
@@ -65,7 +65,7 @@ class InvalidInputException(UserException):
 ###
 
 
-class RunCat(PipelineWrapperTask, ToilOptionsMixin):
+class RunCat(PipelineWrapperTask):
     """
     Task that executes the entire pipeline.
     """

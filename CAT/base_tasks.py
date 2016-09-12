@@ -36,6 +36,13 @@ class PipelineTask(luigi.Task):
     augustus_cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
+    # Toil options
+    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
+    maxCores = luigi.IntParameter(default=16, significant=False)
+    logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
+    cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
+    parasolCommand = luigi.Parameter(default=None, significant=False)
+    defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -134,20 +141,7 @@ class AbstractAtomicFileTask(PipelineTask):
             tools.procOps.run_proc(cmd, stdout=outf)
 
 
-class ToilOptionsMixin(object):
-    """
-    Add to a luigi Task to provide Toil arguments. Has to be its own mixin in order to allow base wrapper classes
-    like RunCat to have the ability to pass along the toil options.
-    """
-    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
-    maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
-    cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
-    parasolCommand = luigi.Parameter(default=None, significant=False)
-    defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
-
-
-class ToilTask(PipelineTask, ToilOptionsMixin):
+class ToilTask(PipelineTask):
     """
     Task for launching toil pipelines from within luigi.
     """
