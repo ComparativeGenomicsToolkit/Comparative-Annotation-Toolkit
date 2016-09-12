@@ -67,8 +67,6 @@ def setup(job, args, input_file_ids):
     :param input_file_ids: dictionary of fileStore file IDs for the inputs to this pipeline
     """
     job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args.genome), level=logging.INFO)
-    chunk_size = 200
-    cgp_chunk_size = 50  # cgp has multiple alignments
     # load all fileStore files necessary
     annotation_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
     annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
@@ -93,12 +91,12 @@ def setup(job, args, input_file_ids):
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
         muscle_seq_iter = get_muscle_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta)
-        for chunk in tools.dataOps.grouper(muscle_seq_iter, chunk_size):
+        for chunk in group_transcripts(muscle_seq_iter):
             j = job.addChildJobFn(run_muscle_chunk, chunk)
             results[muscle_path].append(j.rv())
         prank_seq_iter = get_prank_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta,
                                              tx_biotype_map)
-        for chunk in tools.dataOps.grouper(prank_seq_iter, chunk_size):
+        for chunk in group_transcripts(prank_seq_iter):
             j = job.addChildJobFn(run_prank_chunk, chunk)
             results[prank_path].append(j.rv())
     if 'augCGP' in args.alignment_modes:
@@ -110,7 +108,7 @@ def setup(job, args, input_file_ids):
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
-        for chunk in tools.dataOps.grouper(cgp_transcript_seq_iter, cgp_chunk_size):
+        for chunk in group_transcripts(cgp_transcript_seq_iter):
             j = job.addChildJobFn(run_prank_chunk, chunk)
             results[cgp_prank_path].append(j.rv())
     if len(results) == 0:
@@ -177,7 +175,7 @@ def run_prank_chunk(job, chunk):
     """
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     results = []
-    cmd = ['prank', '-codon', '-DNA', '-d={}'.format(tmp_fasta)]
+    cmd = ['prank', '-codon', '-DNA', '-quiet', '-d={}'.format(tmp_fasta)]
     prank_out_file = 'output.best.fas'
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         with open(tmp_fasta, 'w') as outf:
@@ -375,3 +373,25 @@ def validate_prank(aln, seq, rm='-N'):
     :return: boolean (true if things are messed up)
     """
     return aln.translate(None, rm) == seq.translate(None, rm)
+
+
+def group_transcripts(tx_iter, num_bases=0.5 * 10 ** 6, max_seqs=50):
+    """
+    Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
+    Helps speed up the execution of PRANK/MUSCLE when they are faced with very large genes
+    """
+    tx_id, tx_seq, ref_tx_id, ref_tx_seq = tx_iter.next()
+    this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
+    bin_base_count = len(tx_seq)
+    num_seqs = 1
+    for tx_id, tx_seq, ref_tx_id, ref_tx_seq in tx_iter:
+        bin_base_count += len(tx_seq)
+        num_seqs += 1
+        if bin_base_count >= num_bases or num_seqs >= max_seqs:
+            yield this_bin
+            this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
+            bin_base_count = len(tx_seq)
+            num_seqs = 1
+        else:
+            this_bin.append((tx_id, tx_seq, ref_tx_id, ref_tx_seq))
+    yield this_bin
