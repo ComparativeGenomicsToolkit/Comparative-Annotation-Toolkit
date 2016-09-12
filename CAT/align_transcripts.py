@@ -92,7 +92,7 @@ def setup(job, args, input_file_ids):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)
             for chunk, mem in group_transcripts(seq_iter):
-                j = job.addChildJobFn(run_muscle_chunk, chunk, memory=mem)
+                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode, memory=mem)
                 results[out_path].append(j.rv())
 
     # if we ran AugustusCGP, align those CDS sequences
@@ -106,7 +106,7 @@ def setup(job, args, input_file_ids):
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
         for chunk, mem in group_transcripts(cgp_transcript_seq_iter):
-            j = job.addChildJobFn(run_muscle_chunk, chunk, memory=mem)
+            j = job.addChildJobFn(run_blat_chunk, chunk, 'CDS', memory=mem)
             results[cgp_cds_path].append(j.rv())
     if len(results) == 0:
         err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
@@ -124,14 +124,14 @@ def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, 
         tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)
         ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta,
                                                                                              in_frame=True)
-        if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
-            yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
+        yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
 def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, gene_tx_map,
                       tx_biotype_map):
     """
-    Generator for CGP transcripts. Same as get_prank_sequences, but will resolve name2 field into all target transcripts
+    Generator for CGP transcripts. Same as get_alignment_sequences, but will resolve name2 field into all target
+    transcripts
     """
     for cgp_id, tx in transcript_dict.iteritems():
         if 'jg' in tx.name2:
@@ -146,25 +146,39 @@ def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_ge
             ref_tx = ref_transcript_dict[ref_tx_id]
             ref_tx_seq = ref_tx.get_cds(ref_genome_fasta, in_frame=True)
             assert len(ref_tx_seq) % 3 == 0, ref_tx_id
-            if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
-                yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
+            yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
-def run_muscle_chunk(job, chunk):
+def run_blat_chunk(job, chunk, mode):
     """
-    Runs an alignment chunk through muscle for non-coding or coding mRNA sequences
+    Runs an alignment chunk through BLAT for either coding or non-coding transcripts
     :param chunk: List of (tx_id, tx_seq, ref_tx_id, ref_tx_seq) tuples
+    :param mode: One of ['mRNA', 'CDS']. Determines what mode of alignment we will perform.
     :return: List of PSL output
     """
-    tmp_fasta = tools.fileOps.get_tmp_toil_file()
+    def parse_blat(tmp_psl):
+        psl_dict = tools.psl.get_alignment_dict(tmp_psl)
+        if len(psl_dict) == 0:
+            return None
+        longest = sorted(psl_dict.itervalues(), key=lambda p: -p.coverage)[0]
+        return '\t'.join(longest.psl_string() + '\n')
+    tmp_ref = tools.fileOps.get_tmp_toil_file()
+    tmp_tgt = tools.fileOps.get_tmp_toil_file()
+    tmp_psl = tools.fileOps.get_tmp_toil_file()
     results = []
-    cmd = ['muscle', '-quiet', '-in', tmp_fasta]
+    if mode == 'mRNA':
+        cmd = ['blat', '-noHead', tmp_ref, tmp_tgt, tmp_psl]
+    elif mode == 'CDS':
+        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', tmp_ref, tmp_tgt, tmp_psl]
+    else:
+        raise AssertionError('Should not have gotten here.')
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
-        with open(tmp_fasta, 'w') as outf:
-            tools.bio.write_fasta(outf, ref_tx_id, ref_tx_seq)
-            tools.bio.write_fasta(outf, tx_id, tx_seq)
-        r = tools.procOps.call_proc(cmd, keepLastNewLine=True)
-        results.append(r)
+        with open(tmp_ref, 'w') as tmp_ref_h:
+            tools.bio.write_fasta(tmp_ref_h, ref_tx_id, ref_tx_seq)
+        with open(tmp_tgt, 'w') as tmp_tgt_h:
+            tools.bio.write_fasta(tmp_tgt_h, tx_id, tx_seq)
+        tools.procOps.run_proc(cmd)
+        results.append(parse_blat(tmp_psl))
     return results
 
 
@@ -178,10 +192,11 @@ def merge(job, results, args):
     job.fileStore.logToMaster('Merging Alignment output for {}'.format(args.genome), level=logging.INFO)
     results_file_ids = {}
     for gp_category, result_list in results.iteritems():
-        tmp_results_file = tools.fileOps.get_tmp_toil_file(suffix='gz')
+        tmp_results_file = tools.fileOps.get_tmp_toil_file()
         with tools.fileOps.opengz(tmp_results_file, 'w') as outf:
             for line in itertools.chain.from_iterable(result_list):  # results is list of lists
-                outf.write(line + '\n')
+                if line is not None:
+                    outf.write(line + '\n')
         results_file_ids[gp_category] = job.fileStore.writeGlobalFile(tmp_results_file)
     return results_file_ids
 

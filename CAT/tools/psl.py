@@ -4,7 +4,7 @@ Convenience library for working with psl alignment files.
 Original Author: Dent Earl
 Modified by Ian Fiddes
 """
-import re
+import math
 from collections import Counter
 from tools.mathOps import format_ratio
 from tools.fileOps import iter_lines
@@ -44,6 +44,8 @@ class PslRow(object):
         self.block_sizes = [int(x) for x in data_tokens[18].split(',') if x]
         self.q_starts = [int(x) for x in data_tokens[19].split(',') if x]
         self.t_starts = [int(x) for x in data_tokens[20].split(',') if x]
+        if self.strand not in ['+', '-', '++']:
+            raise RuntimeError('PslRow object currently does not support strand {}'.format(self.strand))
 
     def hash_key(self):
         """ return a string to use as dict key.
@@ -58,8 +60,6 @@ class PslRow(object):
             return None
         if p >= self.t_end:
             return None
-        if self.strand not in ['+', '-']:
-            raise RuntimeError('Unanticipated strand: %s' % self.strand)
         for i, t in enumerate(self.t_starts):
             if p < t:
                 continue
@@ -67,7 +67,7 @@ class PslRow(object):
                 continue
             # p must be in block
             offset = p - t
-            if self.strand == '+':
+            if self.strand == '+' or self.strand == '++':
                 return self.q_starts[i] + offset
             else:
                 return self.q_size - (self.q_starts[i] + offset) - 1
@@ -81,9 +81,6 @@ class PslRow(object):
             return None
         if p >= self.q_end:
             return None
-        if self.strand not in ['+', '-']:
-            raise RuntimeError('Unanticipated strand: %s' % self.strand)
-        # this is the easier one to write
         if self.strand == '-':
             p = self.q_size - p - 1
         for i, q in enumerate(self.q_starts):
@@ -98,30 +95,49 @@ class PslRow(object):
 
     @property
     def coverage(self):
-        return 100 * format_ratio(self.matches + self.mismatches + self.repmatches, self.q_size)
+        return 100 * format_ratio(self.matches + self.mismatches + self.repmatches, self.q_size,
+                                  num_digits=5)
 
     @property
     def identity(self):
         return 100 * format_ratio(self.matches + self.repmatches,
-                                  self.matches + self.repmatches + self.mismatches + self.q_num_insert)
+                                  self.matches + self.repmatches + self.mismatches + self.q_num_insert,
+                                  num_digits=5)
 
     @property
     def target_coverage(self):
-        return 100 * format_ratio(self.matches + self.mismatches + self.repmatches, self.t_size)
+        return 100 * format_ratio(self.matches + self.mismatches + self.repmatches, self.t_size,
+                                  num_digits=5)
 
     @property
     def percent_n(self):
-        return 100 * format_ratio(self.n_count, self.q_size)
+        return 100 * format_ratio(self.n_count, self.q_size,
+                                  num_digits=5)
 
     def psl_string(self):
         """ return SELF as a psl formatted line.
         """
-        return "\t".join(map(str, [self.matches, self.mismatches, self.repmatches, self.n_count, self.q_num_insert,
-                                   self.q_base_insert, self.t_num_insert, self.t_base_insert, self.strand, self.q_name,
-                                   self.q_size, self.q_start, self.q_end, self.t_name, self.t_size, self.t_start,
-                                   self.t_end, self.block_count, ','.join([str(b) for b in self.block_sizes]),
-                                   ','.join([str(b) for b in self.q_starts]),
-                                   ','.join([str(b) for b in self.t_starts])]))
+        return map(str, [self.matches, self.mismatches, self.repmatches, self.n_count, self.q_num_insert,
+                         self.q_base_insert, self.t_num_insert, self.t_base_insert, self.strand, self.q_name,
+                         self.q_size, self.q_start, self.q_end, self.t_name, self.t_size, self.t_start,
+                         self.t_end, self.block_count, ','.join([str(b) for b in self.block_sizes]),
+                         ','.join([str(b) for b in self.q_starts]),
+                         ','.join([str(b) for b in self.t_starts])])
+
+    @property
+    def badness(self):
+        """
+        The Jim Kent Badness score, attempts to calculate how bad this alignment is
+
+        https://github.com/ucscGenomeBrowser/kent/blob/fb80e018778062c49021f2c35607868df1054e8e/src/hg/pslCDnaFilter/cDnaAligns.c#L52-L70
+
+        (mismatch + ref_insert + 3 * log(1 + max(ref_size - tgt_size, 0))) / (match + mismatch + repmatch)
+
+        :return: A float
+        """
+        return format_ratio(self.mismatches + self.q_num_insert + 3 * math.log(1 + max(self.q_size - self.t_size, 0)),
+                            self.matches + self.mismatches + self.repmatches,
+                            num_digits=5)
 
 
 def psl_iterator(psl_file, make_unique=False):

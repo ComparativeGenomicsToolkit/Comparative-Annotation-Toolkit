@@ -536,16 +536,16 @@ class Augustus(PipelineWrapperTask):
         args.annotation_db = annotation_files.annotation_db
         args.tm_gp = tm_args.tm_gp
         args.tm_psl = tm_args.tm_psl
-        args.augustus_tm_gp = os.path.join(base_dir, genome + '.TM.gp')
-        args.augustus_tm_gtf = os.path.join(base_dir, genome + '.TM.gtf')
+        args.augustus_tm_gp = os.path.join(base_dir, genome + '.augTM.gp')
+        args.augustus_tm_gtf = os.path.join(base_dir, genome + '.augTM.gtf')
         args.augustus_hints_db = pipeline_args.augustus_hints_db if pipeline_args.augustus_tmr else None
         args.tm_cfg = pipeline_args.tm_cfg
         args.tmr_cfg = pipeline_args.tmr_cfg
         args.augustus_species = pipeline_args.augustus_species
         if pipeline_args.augustus_tmr:
             args.augustus_tmr = True
-            args.augustus_tmr_gp = os.path.join(base_dir, genome + '.TMR.gp')
-            args.augustus_tmr_gtf = os.path.join(base_dir, genome + '.TMR.gtf')
+            args.augustus_tmr_gp = os.path.join(base_dir, genome + '.augTMR.gp')
+            args.augustus_tmr_gtf = os.path.join(base_dir, genome + '.augTMR.gtf')
         return args
 
     def validate(self):
@@ -814,27 +814,27 @@ class AlignTranscripts(PipelineWrapperTask):
         args.genome_fasta = tgt_genome_files.fasta
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
         args.alignment_modes = {'transMap': {'gp': tm_files.tm_gp,
-                                             'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.fasta.gz'),
-                                             'CDS': os.path.join(base_dir, genome + '.transMap.CDS.fasta.gz')}}
+                                             'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
+                                             'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args.alignment_modes['augTM'] = {'gp': aug_args.augustus_tm_gp,
-                                             'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.fasta.gz'),
-                                             'CDS': os.path.join(base_dir, genome + '.augTM.CDS.fasta.gz')}
+                                             'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.psl'),
+                                             'CDS': os.path.join(base_dir, genome + '.augTM.CDS.psl')}
         if pipeline_args.augustus_tmr is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args.alignment_modes['augTMR'] = {'gp': aug_args.augustus_tmr_gp,
-                                              'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.fasta.gz'),
-                                              'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.fasta.gz')}
+                                              'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
+                                              'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
         if pipeline_args.augustus_cgp is True:
             cgp_args = AugustusCgp.get_args(pipeline_args)
             args.alignment_modes['augCGP'] = {'gp': cgp_args.augustus_cgp_gp[genome],
-                                              'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.fasta.gz')}
+                                              'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
         return args
 
     def validate(self):
-        if not tools.misc.is_exec('muscle'):
-            raise ToolMissingException('muscle alignment tool not in global path.')
+        if not tools.misc.is_exec('blat'):
+            raise ToolMissingException('BLAT alignment tool not in global path.')
 
     def requires(self):
         self.validate()
