@@ -91,13 +91,13 @@ def setup(job, args, input_file_ids):
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
         muscle_seq_iter = get_muscle_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta)
-        for chunk in group_transcripts(muscle_seq_iter):
-            j = job.addChildJobFn(run_muscle_chunk, chunk)
+        for chunk, mem in group_transcripts(muscle_seq_iter):
+            j = job.addChildJobFn(run_muscle_chunk, chunk, memory=mem)
             results[muscle_path].append(j.rv())
         prank_seq_iter = get_prank_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta,
                                              tx_biotype_map)
-        for chunk in group_transcripts(prank_seq_iter):
-            j = job.addChildJobFn(run_prank_chunk, chunk)
+        for chunk, mem in group_transcripts(prank_seq_iter):
+            j = job.addChildJobFn(run_prank_chunk, chunk, memory=mem)
             results[prank_path].append(j.rv())
     if 'augCGP' in args.alignment_modes:
         cgp_prank_path = args.alignment_modes['augCGP']['PRANK']
@@ -108,8 +108,8 @@ def setup(job, args, input_file_ids):
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
-        for chunk in group_transcripts(cgp_transcript_seq_iter):
-            j = job.addChildJobFn(run_prank_chunk, chunk)
+        for chunk, mem in group_transcripts(cgp_transcript_seq_iter):
+            j = job.addChildJobFn(run_prank_chunk, chunk, memory=mem)
             results[cgp_prank_path].append(j.rv())
     if len(results) == 0:
         err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
@@ -175,7 +175,7 @@ def run_prank_chunk(job, chunk):
     """
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     results = []
-    cmd = ['prank', '-codon', '-DNA', '-quiet', '-d={}'.format(tmp_fasta)]
+    cmd = ['prank', '-codon', '-iterate=2', '-quiet', '-d={}'.format(tmp_fasta)]
     prank_out_file = 'output.best.fas'
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         with open(tmp_fasta, 'w') as outf:
@@ -184,14 +184,14 @@ def run_prank_chunk(job, chunk):
         # there is a weird bug with prank failing with SIGSEGV: Error deleting file: No such file or directory
         # it is some sort of race condition, because it happens randomly and works on restart
         # therefore, we try running prank up to 5 times
-        for i in xrange(5):
+        for i in xrange(10):
             try:
                 tools.procOps.run_proc(cmd)
             except tools.pipeline.ProcException, e:
                 job.fileStore.logToMaster('PRANK attempt {} failed. Error:\n{}'.format(i, e), level=logging.WARNING)
             else:
                 break
-            if i == 4:
+            if i == 9:
                 cmd = ' '.join(cmd)
                 raise RuntimeError('PRANK command {} failed {} times. '
                                    'Try rerunning the pipeline, this is a weird race condition.'.format(cmd, i))
@@ -214,7 +214,7 @@ def run_muscle_chunk(job, chunk):
     """
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     results = []
-    cmd = ['muscle', '-in', tmp_fasta]
+    cmd = ['muscle', '-quiet', '-in', tmp_fasta]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         with open(tmp_fasta, 'w') as outf:
             tools.bio.write_fasta(outf, ref_tx_id, ref_tx_seq)
@@ -344,10 +344,10 @@ def parse_prank_output(prank_out_file, tx_seq, ref_tx_seq):
             new_tgt_aln.append('-')
     if ref_pos != len(ref_tx_seq):
         # we need to add back in the stop codon
-        assert len(ref_tx_seq) - ref_pos == 3
+        assert (len(ref_tx_seq) - ref_pos) % 3 == 0
         new_ref_aln.extend(ref_tx_seq[ref_pos:])
     if tgt_pos != len(tx_seq):
-        assert len(tx_seq) - tgt_pos == 3
+        assert (len(tx_seq) - tgt_pos) % 3 == 0
         new_tgt_aln.extend(tx_seq[tgt_pos:])
     # we need to add in gaps for the shorter one
     if len(new_ref_aln) < len(new_tgt_aln):
@@ -375,7 +375,7 @@ def validate_prank(aln, seq, rm='-N'):
     return aln.translate(None, rm) == seq.translate(None, rm)
 
 
-def group_transcripts(tx_iter, num_bases=0.5 * 10 ** 6, max_seqs=50):
+def group_transcripts(tx_iter, num_bases=0.25 * 10 ** 6, max_seqs=100):
     """
     Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
     Helps speed up the execution of PRANK/MUSCLE when they are faced with very large genes
@@ -384,14 +384,27 @@ def group_transcripts(tx_iter, num_bases=0.5 * 10 ** 6, max_seqs=50):
     this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
     bin_base_count = len(tx_seq)
     num_seqs = 1
+    mem = find_memory_requirements(tx_seq, ref_tx_seq)
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in tx_iter:
         bin_base_count += len(tx_seq)
         num_seqs += 1
+        mem = max(mem, find_memory_requirements(tx_seq, ref_tx_seq))
         if bin_base_count >= num_bases or num_seqs >= max_seqs:
-            yield this_bin
+            yield this_bin, '{}G'.format(mem)
             this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
             bin_base_count = len(tx_seq)
             num_seqs = 1
+            mem = find_memory_requirements(tx_seq, ref_tx_seq)
         else:
             this_bin.append((tx_id, tx_seq, ref_tx_id, ref_tx_seq))
-    yield this_bin
+    yield this_bin, '{}G'.format(mem)
+
+
+def find_memory_requirements(tx_seq, ref_tx_seq):
+    """
+    Determines how much memory a pair of transcripts will need for alignment. Does this by multplying their sizes,
+    rounding up to the nearest multiple of 4 with at least an 2 extra gb of headroom
+    """
+    requirement = 2 + 1.0 * len(tx_seq) * len(ref_tx_seq) / 10 ** 9
+    mem = requirement if requirement % 4 == 0 else requirement + 4 - requirement % 4
+    return int(mem)
