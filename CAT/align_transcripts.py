@@ -5,17 +5,15 @@ which have new IDs, we use the name2 field which will have assigned a gene ID to
 transcripts associated with that gene ID.
 
 Alignment is performed in a few different ways:
-1. For each CGP transcript, the in-frame CDS will be aligned using PRANK and MUSCLE to the in-frame CDS of each
-protein-coding transcript of the assigned parental gene.
+1. For each CGP transcript, the in-frame CDS will be aligned using MUSCLE to the in-frame CDS of each protein-coding
+transcript of the assigned parental gene.
 2. For each transMap transcript, it will be aligned via MUSCLE to the assigned parent. If the parent is protein coding
-then the transcript will also undergo in-frame CDS alignment via PRANK.
-3. For each AugustusTM(R) transcript, it will be aligned both via MUSCLE and PRANK.
+then the transcript will also undergo in-frame CDS alignment.
+3. For each AugustusTM(R) transcript, it will be aligned both as mRNA and in-frame CDS.
 
 """
 import logging
 import collections
-import os
-import time
 import argparse
 import itertools
 
@@ -81,26 +79,25 @@ def setup(job, args, input_file_ids):
     # will hold a mapping of output file paths to lists of Promise objects containing output
     results = collections.defaultdict(list)
     # start generating chunks of the transMap/Augustus genePreds which we know the 1-1 alignment for
-    for mode in ['transMap', 'augTM', 'augTMR']:
-        if mode not in args.alignment_modes:
+    for tx_mode in ['transMap', 'augTM', 'augTMR']:
+        if tx_mode not in args.alignment_modes:
             continue
         # output file paths
-        muscle_path = args.alignment_modes[mode]['MUSCLE']
-        prank_path = args.alignment_modes[mode]['PRANK']
+        mrna_path = args.alignment_modes[tx_mode]['mRNA']
+        cds_path = args.alignment_modes[tx_mode]['CDS']
         # begin loading transcripts and sequences
-        gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[mode])
+        gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[tx_mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
-        muscle_seq_iter = get_muscle_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta)
-        for chunk, mem in group_transcripts(muscle_seq_iter):
-            j = job.addChildJobFn(run_muscle_chunk, chunk, memory=mem)
-            results[muscle_path].append(j.rv())
-        prank_seq_iter = get_prank_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta,
-                                             tx_biotype_map)
-        for chunk, mem in group_transcripts(prank_seq_iter):
-            j = job.addChildJobFn(run_prank_chunk, chunk, memory=mem)
-            results[prank_path].append(j.rv())
+        for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
+            seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
+                                               ref_genome_fasta, aln_mode)
+            for chunk, mem in group_transcripts(seq_iter):
+                j = job.addChildJobFn(run_muscle_chunk, chunk, memory=mem)
+                results[out_path].append(j.rv())
+
+    # if we ran AugustusCGP, align those CDS sequences
     if 'augCGP' in args.alignment_modes:
-        cgp_prank_path = args.alignment_modes['augCGP']['PRANK']
+        cgp_cds_path = args.alignment_modes['augCGP']['CDS']
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
         gene_tx_map = tools.sqlInterface.get_gene_transcript_map(annotation_db, args.ref_genome)
         tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args.ref_genome)
@@ -109,8 +106,8 @@ def setup(job, args, input_file_ids):
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
         for chunk, mem in group_transcripts(cgp_transcript_seq_iter):
-            j = job.addChildJobFn(run_prank_chunk, chunk, memory=mem)
-            results[cgp_prank_path].append(j.rv())
+            j = job.addChildJobFn(run_muscle_chunk, chunk, memory=mem)
+            results[cgp_cds_path].append(j.rv())
     if len(results) == 0:
         err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
         raise RuntimeError(err_msg)
@@ -118,30 +115,17 @@ def setup(job, args, input_file_ids):
     return job.addFollowOnJobFn(merge, results, args).rv()
 
 
-def get_muscle_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta):
+def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, mode):
     """Generator that yields a tuple of (tx_id, tx_seq, ref_tx_id, ref_tx_seq)"""
+    assert mode in ['mRNA', 'CDS']
     for tx_id, tx in transcript_dict.iteritems():
         ref_tx_id = tools.nameConversions.strip_alignment_numbers(tx_id)
         ref_tx = ref_transcript_dict[ref_tx_id]
-        tx_seq = tx.get_mrna(genome_fasta)
-        ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta)
-        yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
-
-
-def get_prank_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, tx_biotype_map):
-    """Generator that yields a tuple of (tx_id, tx_seq, ref_tx_id, ref_tx_seq)"""
-    for tx_id, tx in transcript_dict.iteritems():
-        ref_tx_id = tools.nameConversions.strip_alignment_numbers(tx_id)
-        ref_tx = ref_transcript_dict[ref_tx_id]
-        biotype = tx_biotype_map[ref_tx_id]
-        if biotype == 'protein_coding':
-            tx_seq = tx.get_cds(genome_fasta, in_frame=True)
-            ref_tx_seq = ref_tx.get_cds(ref_genome_fasta, in_frame=True)
-            assert len(tx_seq) % 3 == 0, tx_id
-            assert len(ref_tx_seq) % 3 == 0, ref_tx_id
-            # don't let PRANK try to align very short sequences
-            if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
-                yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
+        tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)
+        ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta,
+                                                                                             in_frame=True)
+        if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
+            yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
 def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, gene_tx_map,
@@ -164,46 +148,6 @@ def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_ge
             assert len(ref_tx_seq) % 3 == 0, ref_tx_id
             if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
                 yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
-
-
-def run_prank_chunk(job, chunk):
-    """
-    Runs an alignment chunk through PRANK for coding cds alignment. Requires post-processing because PRANK handles
-    stop codons in dumb ways.
-    :param chunk: List of (tx_id, tx_seq, ref_tx_id, ref_tx_seq) tuples
-    :return: List of PSL output
-    """
-    tmp_fasta = tools.fileOps.get_tmp_toil_file()
-    results = []
-    cmd = ['prank', '-codon', '-iterate=2', '-quiet', '-d={}'.format(tmp_fasta)]
-    prank_out_file = 'output.best.fas'
-    for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
-        with open(tmp_fasta, 'w') as outf:
-            tools.bio.write_fasta(outf, ref_tx_id, ref_tx_seq)
-            tools.bio.write_fasta(outf, tx_id, tx_seq)
-        # there is a weird bug with prank failing with SIGSEGV: Error deleting file: No such file or directory
-        # it is some sort of race condition, because it happens randomly and works on restart
-        # therefore, we try running prank up to 5 times
-        for i in xrange(10):
-            try:
-                tools.procOps.run_proc(cmd)
-            except tools.pipeline.ProcException, e:
-                job.fileStore.logToMaster('PRANK attempt {} failed. Error:\n{}'.format(i, e), level=logging.WARNING)
-            else:
-                break
-            if i == 9:
-                cmd = ' '.join(cmd)
-                raise RuntimeError('PRANK command {} failed {} times. '
-                                   'Try rerunning the pipeline, this is a weird race condition.'.format(cmd, i))
-            time.sleep(0.25)
-        # prank may fail to find any alignments
-        if not os.path.exists(prank_out_file):
-            continue
-        r = parse_prank_output(prank_out_file, tx_seq, ref_tx_seq)
-        results.append(r)
-        if os.path.exists(prank_out_file):
-            os.remove(prank_out_file)  # we need to remove this file in case the next iteration fails
-    return results
 
 
 def run_muscle_chunk(job, chunk):
@@ -247,138 +191,10 @@ def merge(job, results, args):
 ###
 
 
-def parse_prank_output(prank_out_file, tx_seq, ref_tx_seq):
-    """
-    Converts the output from PRANK into a sane alignment. PRANK likes to mess up stop codons, like so:
-
-    Example 1. Pruning an in-frame terminal stop codon from the reference:
-
-    Input:
-    >ref
-    ATGGGGTGA
-    >tgt
-    ATGGGGTGC
-
-    Output:
-    >ref
-    ATGGGG---
-    >tgt
-    ATGGGGTGC
-
-    Desired output:
-    >ref
-    ATGGGGTGA
-    >tgt
-    ATGGGGTGC
-
-
-    Example 2: Does not prune an in-frame stop codon if it exists on both:
-    Input, Output, Desired output:
-    >ref
-    ATGGGGTGA
-    >tgt
-    ATGGGGTGA
-
-
-    Example 3: Adds Ns when an in-frame stop codon is aligned over:
-    Input, desired output:
-    >ref
-    ATGGGGTGATAC
-    >tgt
-    ATGGGGTGATAC
-
-    Output:
-    >ref
-    ATGGGGNNNTAC
-    >tgt
-    ATGGGGNNNTAC
-
-
-    Example 4: The same as example 3, but where the stop only exists on one (more common):
-    Input, desired output:
-    >ref
-    ATGGGGTGATAC
-    >tgt
-    ATGGGGTCATAC
-
-    Output:
-    >ref
-    ATGGGGNNNTAC
-    >tgt
-    ATGGGGTCATAC
-
-    :param prank_out_file: Path to PRANK output. Generally 'output.best.fas'
-    :param tx_seq: Sequence of the target transcript for comparison to PRANK output
-    :param ref_tx_seq: Sequence of the reference transcript for comparison to PRANK output
-    :return: Munged string mimicking PRANK output after analysis
-    """
-    ref_name, ref_aln, tgt_name, tgt_aln = list(itertools.chain.from_iterable(tools.bio.read_fasta(prank_out_file)))
-    # fasta naming
-    ref_name = '>' + ref_name
-    tgt_name = '>' + tgt_name
-    # first, we test to see if PRANK broke anything
-    if validate_prank(ref_aln, ref_tx_seq) and validate_prank(tgt_aln, tx_seq):
-        r = '\n'.join([ref_name, ''.join(ref_aln), tgt_name, ''.join(tgt_aln), ''])
-        return r
-    # start walking the alignment, inserting the correct base where it should be
-    new_ref_aln = []
-    new_tgt_aln = []
-    ref_pos = 0
-    tgt_pos = 0
-    for aln_pos, (ref_aln_base, tgt_aln_base) in enumerate(itertools.izip(*[ref_aln, tgt_aln])):
-        if ref_aln_base != '-':
-            if ref_aln_base != ref_tx_seq[ref_pos]:
-                new_ref_aln.append(ref_tx_seq[ref_pos])
-            else:
-                new_ref_aln.append(ref_aln_base)
-            ref_pos += 1
-        else:
-            new_ref_aln.append('-')
-        if tgt_aln_base != '-':
-            if tgt_aln_base != tx_seq[tgt_pos]:
-                new_tgt_aln.append(tx_seq[tgt_pos])
-            else:
-                new_tgt_aln.append(tgt_aln_base)
-            tgt_pos += 1
-        else:
-            new_tgt_aln.append('-')
-    if ref_pos != len(ref_tx_seq):
-        # we need to add back in the stop codon
-        assert (len(ref_tx_seq) - ref_pos) % 3 == 0
-        new_ref_aln.extend(ref_tx_seq[ref_pos:])
-    if tgt_pos != len(tx_seq):
-        assert (len(tx_seq) - tgt_pos) % 3 == 0
-        new_tgt_aln.extend(tx_seq[tgt_pos:])
-    # we need to add in gaps for the shorter one
-    if len(new_ref_aln) < len(new_tgt_aln):
-        new_ref_aln.extend(['-'] * (len(new_tgt_aln) - len(new_ref_aln)))
-    if len(new_tgt_aln) < len(new_ref_aln):
-        new_tgt_aln.extend(['-'] * (len(new_ref_aln) - len(new_tgt_aln)))
-    new_ref_aln = ''.join(new_ref_aln)
-    new_tgt_aln = ''.join(new_tgt_aln)
-    # sanity checks, probably can remove one day
-    assert new_ref_aln.replace('-', '') == ref_tx_seq, (new_ref_aln, ref_tx_seq, new_tgt_aln, tx_seq)
-    assert new_tgt_aln.replace('-', '') == tx_seq, (new_ref_aln, ref_tx_seq, new_tgt_aln, tx_seq)
-    assert len(new_ref_aln) == len(new_tgt_aln)
-    r = '\n'.join([ref_name, new_ref_aln, tgt_name, new_tgt_aln, ''])
-    return r
-
-
-def validate_prank(aln, seq, rm='-N'):
-    """
-    Uses string.translate to remove the dashes and Ns from a pair of sequences and asks if they are the same
-    :param aln: String derived from the output of PRANK
-    :param seq: String derived from the input to PRANK
-    :param rm: characters to remove. Defaults to '-N'
-    :return: boolean (true if things are messed up)
-    """
-    return aln.translate(None, rm) == seq.translate(None, rm)
-
-
 def group_transcripts(tx_iter, num_bases=0.25 * 10 ** 6, max_seqs=100):
     """
     Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
-    Helps speed up the execution of PRANK/MUSCLE when they are faced with very large genes
+    Helps speed up the execution of MUSCLE when faced with very large genes
     """
     tx_id, tx_seq, ref_tx_id, ref_tx_seq = tx_iter.next()
     this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]

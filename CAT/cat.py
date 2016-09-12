@@ -812,24 +812,24 @@ class AlignTranscripts(PipelineWrapperTask):
         args.annotation_gp = annotation_files.annotation_gp
         args.annotation_db = annotation_files.annotation_db
         args.genome_fasta = tgt_genome_files.fasta
-        # the alignment_modes members hold the input genePreds and the MUSCLE/PRANK output paths
+        # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
         args.alignment_modes = {'transMap': {'gp': tm_files.tm_gp,
-                                             'MUSCLE': os.path.join(base_dir, genome + '.transMap.MUSCLE.fasta.gz'),
-                                             'PRANK': os.path.join(base_dir, genome + '.transMap.PRANK.fasta.gz')}}
+                                             'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.fasta.gz'),
+                                             'CDS': os.path.join(base_dir, genome + '.transMap.CDS.fasta.gz')}}
         if pipeline_args.augustus is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args.alignment_modes['augTM'] = {'gp': aug_args.augustus_tm_gp,
-                                             'MUSCLE': os.path.join(base_dir, genome + '.augTM.MUSCLE.fasta.gz'),
-                                             'PRANK': os.path.join(base_dir, genome + '.augTM.PRANK.fasta.gz')}
+                                             'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.fasta.gz'),
+                                             'CDS': os.path.join(base_dir, genome + '.augTM.CDS.fasta.gz')}
         if pipeline_args.augustus_tmr is True:
             aug_args = Augustus.get_args(pipeline_args, genome)
             args.alignment_modes['augTMR'] = {'gp': aug_args.augustus_tmr_gp,
-                                              'MUSCLE': os.path.join(base_dir, genome + '.augTMR.MUSCLE.fasta.gz'),
-                                              'PRANK': os.path.join(base_dir, genome + '.augTMR.PRANK.fasta.gz')}
+                                              'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.fasta.gz'),
+                                              'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.fasta.gz')}
         if pipeline_args.augustus_cgp is True:
             cgp_args = AugustusCgp.get_args(pipeline_args)
             args.alignment_modes['augCGP'] = {'gp': cgp_args.augustus_cgp_gp[genome],
-                                              'PRANK': os.path.join(base_dir, genome + '.augCGP.PRANK.fasta.gz')}
+                                              'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.fasta.gz')}
         return args
 
     def validate(self):
@@ -858,7 +858,7 @@ class AlignTranscriptDriverTask(ToilTask):
     def output(self):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
         for mode, paths in alignment_args.alignment_modes.iteritems():
-            for aln_type in ['PRANK', 'MUSCLE']:
+            for aln_type in ['CDS', 'mRNA']:
                 if aln_type in paths:
                     yield luigi.LocalTarget(paths[aln_type])
 
@@ -923,7 +923,7 @@ class EvaluateDriverTask(ToilTask):
         """construct table names based on input arguments"""
         tables = ['Alignment']
         for tx_mode, path_dict in eval_args.alignment_modes.iteritems():
-            for aln_mode in ['MUSCLE', 'PRANK']:
+            for aln_mode in ['mRNA', 'CDS']:
                 if aln_mode in path_dict:
                     metrics_table = '_'.join([aln_mode, tx_mode, 'Metrics'])
                     eval_table = '_'.join([aln_mode, tx_mode, 'Evaluation'])

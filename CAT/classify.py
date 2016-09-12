@@ -50,8 +50,8 @@ txMode:
 4) augCGP
 
 alnMode:
-1) PRANK
-2) MUSCLE
+1) CDS
+2) mRNA
 
 """
 import argparse
@@ -99,7 +99,7 @@ def classify(args, toil_options):
             for tx_mode, path_dict in args.alignment_modes.iteritems():
                 aln_file_ids = {}
                 gp_file_id = toil.importFile('file://' + path_dict['gp'])
-                for aln_mode in ['MUSCLE', 'PRANK']:
+                for aln_mode in ['mRNA', 'CDS']:
                     if aln_mode in path_dict:
                         aln_file_ids[aln_mode] = toil.importFile('file://' + path_dict[aln_mode])
                 input_file_ids.modes[tx_mode] = aln_file_ids
@@ -176,7 +176,7 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, aln_fasta_fi
     A final combination job combines the results into the output dataframe.
 
     :param tx_mode: Transcript type we are evaluating. Used to build the table name
-    :param aln_mode: Alignment mode. One of MUSCLE, PRANK. Used to build the table name and determine if we are going to
+    :param aln_mode: Alignment mode. One of mRNA, CDS. Used to build the table name and determine if we are going to
     work on CDS or mRNA sequences.
     :param gp_file_id: genePred file ID for this mode
     :param aln_fasta_file_id: Alignment FASTA file id for this mode
@@ -465,13 +465,13 @@ def calculate_num_missing_introns(ref_tx, tx, aln_rec, aln_mode, wiggle_distance
 
     Algorithm:
     1) Convert the coordinates of each block in the transcript to mRNA/CDS depending on the alignment.
-    2) Use the MUSCLE/PRANK alignment to calculate a mapping between alignment positions and transcript positions.
+    2) Use the mRNA/CDS alignment to calculate a mapping between alignment positions and transcript positions.
     3) Determine if each block gap coordinate is within wiggle_distance of a parental block gap.
 
     :param ref_tx: GenePredTranscript object representing the parent transcript
     :param tx: GenePredTranscript object representing the target transcript
-    :param aln_rec: AlignmmentRecord object representing the MUSCLE/PRANK alignment between ref_tx and tx
-    :param aln_mode: One of ('PRANK', 'MUSCLE'). Determines if we aligned CDS or mRNA.
+    :param aln_rec: AlignmmentRecord object representing the mRNA/CDS alignment between ref_tx and tx
+    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :param wiggle_distance: The wiggle distance (in transcript coordinates)
     :return: integer value
     """
@@ -525,8 +525,8 @@ def calculate_num_missing_exons(ref_tx, tx, aln_rec, aln_mode):
 
     :param ref_tx: GenePredTranscript object representing the parent transcript
     :param tx: GenePredTranscript object representing the target transcript
-    :param aln_rec: AlignmentRecord object representing the MUSCLE/PRANK alignment between ref_tx and tx
-    :param aln_mode: One of ('PRANK', 'MUSCLE'). Determines if we aligned CDS or mRNA.
+    :param aln_rec: AlignmentRecord object representing the mRNA/CDS alignment between ref_tx and tx
+    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: integer value
     """
     ref_exons = convert_exon_intervals(get_exon_intervals(ref_tx, aln_mode), aln_rec.ref_inverse_pos_map)
@@ -554,8 +554,8 @@ def exon_gain(ref_tx, tx, aln_rec, aln_mode):
 
     :param ref_tx: Reference GenePredTranscript object
     :param tx: Target GenePredTranscript object
-    :param aln_rec: AlignmentRecord object describing MUSCLE/PRANK alignment between ref_tx and tx
-    :param aln_mode: One of ('PRANK', 'MUSCLE'). Determines if we aligned CDS or mRNA.
+    :param aln_rec: AlignmentRecord object describing mRNA/CDS alignment between ref_tx and tx
+    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: list of ChromosomeInterval objects if a gain exists else []
     """
     ref_exons = convert_exon_intervals(get_exon_intervals(ref_tx, aln_mode), aln_rec.ref_inverse_pos_map)
@@ -572,12 +572,12 @@ def in_frame_stop(tx, aln_rec, aln_mode):
     Finds the first in frame stop of this transcript, if there are any
 
     :param tx: Target GenePredTranscript object
-    :param aln_rec: AlignmentRecord object describing PRANK alignment between ref_tx and tx.
-    :param aln_mode: One of ('PRANK', 'MUSCLE'). Determines if we aligned CDS or mRNA.
+    :param aln_rec: AlignmentRecord object describing CDS alignment between ref_tx and tx.
+    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: A ChromosomeInterval object if an in frame stop was found otherwise None
     """
-    # if we are in MUSCLE space, we need to extract the CDS sequence from aln_rec.tgt_seq
-    if aln_mode == 'MUSCLE':
+    # if we are in mRNA space, we need to extract the CDS sequence from aln_rec.tgt_seq
+    if aln_mode == 'mRNA':
         cds_start = tx.cds_coordinate_to_mrna(0)
         cds_stop = tx.cds_coordinate_to_mrna(tx.cds_size - 1)
         tgt_seq = aln_rec.tgt_seq[cds_start: cds_stop]
@@ -612,8 +612,8 @@ def find_indels(tx, aln_rec, aln_mode):
     maps by sequential integer values, we see the locations of the indels
 
     :param tx: GenePredTranscript object representing the target transcript
-    :param aln_rec: AlignmentRecord object describing PRANK alignment between ref_tx and tx.
-    :param aln_mode: One of ('PRANK', 'MUSCLE'). Determines if we aligned CDS or mRNA.
+    :param aln_rec: AlignmentRecord object describing CDS alignment between ref_tx and tx.
+    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: paired list of [category, ChromosomeInterval] objects if a coding insertion exists else []
     """
     def interval_is_coding(tx, i):
@@ -650,7 +650,7 @@ def find_indels(tx, aln_rec, aln_mode):
 
     # depending on mode, we convert the coordinates from either CDS or mRNA
     # we also have a different position cutoff to make sure we are not evaluating terminal gaps
-    if aln_mode == 'PRANK':
+    if aln_mode == 'CDS':
         coordinate_fn = tx.cds_coordinate_to_chromosome
         right_cutoff = tx.cds_size
     else:
@@ -685,10 +685,10 @@ def convert_cds_frames(ref_tx, tx, aln_mode):
     Transcript objects only if the biotype is protein_coding and the transcripts are out of frame
     :param ref_tx: Reference GenePredTranscript object
     :param tx: Target GenePredTranscript object
-    :param aln_mode: If we are in PRANK mode, we need to convert the transcripts to a CDS-framed object.
+    :param aln_mode: If we are in CDS mode, we need to convert the transcripts to a CDS-framed object.
     :return: tuple of GenePredTranscript objects (ref_tx, tx)
     """
-    if aln_mode == 'PRANK':
+    if aln_mode == 'CDS':
         if ref_tx.offset != 0:
             ref_tx = convert_cds_frame(ref_tx)
         if tx.offset != 0:
@@ -717,10 +717,10 @@ def get_intron_coordinates(tx, aln_mode):
     Converts the block_starts coordinates to mRNA or CDS coordinates used in the alignment based on the biotype
 
     :param tx:GenePredTranscript object
-    :param aln_mode: One of ('PRANK', 'MUSCLE'). Used to determine if we aligned in CDS space or mRNA space
+    :param aln_mode: One of ('CDS', 'mRNA'). Used to determine if we aligned in CDS space or mRNA space
     :return: list of integers
     """
-    if aln_mode == 'PRANK':
+    if aln_mode == 'CDS':
         tx = convert_cds_frame(tx)
         introns = [tx.chromosome_coordinate_to_cds(tx.start + x) for x in tx.block_starts[1:]]
     else:
@@ -735,10 +735,10 @@ def get_exon_intervals(tx, aln_mode):
     transcript biotype.
 
     :param tx: GenePredTranscript object
-    :param aln_mode: One of ('PRANK', 'MUSCLE'). Used to determine if we aligned in CDS space or mRNA space
+    :param aln_mode: One of ('CDS', 'mRNA'). Used to determine if we aligned in CDS space or mRNA space
     :return: list of ChromosomeInterval objects
     """
-    if aln_mode == 'PRANK':
+    if aln_mode == 'CDS':
         tx = convert_cds_frame(tx)
     exons = []
     for exon in tx.exon_intervals:
