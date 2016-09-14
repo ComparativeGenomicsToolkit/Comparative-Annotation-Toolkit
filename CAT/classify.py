@@ -55,7 +55,6 @@ alnMode:
 
 """
 import argparse
-import operator
 import logging
 import bisect
 import itertools
@@ -76,8 +75,17 @@ from toil.job import Job
 from toil.common import Toil
 
 
+# hard coded variables
 # hard coded long transMap size. Bigger than 3 megabases is probably a spurious alignment.
 long_tx_size = 3 * 10 ** 6
+# wiggle distance is the distance between introns allowed in intron coordinates before triggering NumMissingIntrons
+# wiggle distance is counted from both sides of the intron
+wiggle_distance = 7
+# the amount of exon-exon coverage required to consider a exon as present
+num_missing_exons_coverage_cutoff = 0.8
+# the minimum amount of uncovered bases a exon must have to be considered a novel exon
+exon_gain_coverage_cutoff = 0.8
+
 
 
 def classify(args, toil_options):
@@ -458,7 +466,7 @@ def synteny(ref_gp_dict, gp_dict):
 ###
 
 
-def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode, wiggle_distance=7):
+def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
     """
     Determines how many of the gaps present in a given transcript are within a wiggle distance of the parent.
 
@@ -515,7 +523,7 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode, wiggle_distance=7):
     return num_missing
 
 
-def calculate_num_missing_exons(ref_tx, psl, aln_mode, coverage_cutoff=0.8):
+def calculate_num_missing_exons(ref_tx, psl, aln_mode):
     """
     Calculates how many reference exons are missing in this transcript.
 
@@ -541,7 +549,7 @@ def calculate_num_missing_exons(ref_tx, psl, aln_mode, coverage_cutoff=0.8):
         for i in xrange(exon.start, exon.stop):
             if psl.target_coordinate_to_query(i) is None:
                 deleted_bases += 1
-        if tools.mathOps.format_ratio(deleted_bases, len(exon)) >= coverage_cutoff:
+        if tools.mathOps.format_ratio(deleted_bases, len(exon)) >= num_missing_exons_coverage_cutoff:
             num_missing += 1
     return num_missing
 
@@ -551,7 +559,7 @@ def calculate_num_missing_exons(ref_tx, psl, aln_mode, coverage_cutoff=0.8):
 ###
 
 
-def exon_gain(tx, psl, aln_mode, coverage_cutoff=0.8):
+def exon_gain(tx, psl, aln_mode):
     """
     Calculates whether we gained an exon in this transcript. Follows the same logic as calculate_num_missing_exons,
     but inverted.
@@ -573,7 +581,7 @@ def exon_gain(tx, psl, aln_mode, coverage_cutoff=0.8):
         for i in xrange(converted_exon.start, converted_exon.stop):
             if psl.target_coordinate_to_query(i) is None:
                 inserted_bases += 1
-        if tools.mathOps.format_ratio(inserted_bases, len(converted_exon)) >= coverage_cutoff:
+        if tools.mathOps.format_ratio(inserted_bases, len(converted_exon)) >= exon_gain_coverage_cutoff:
             gained_exons.append(exon)
     return gained_exons
 
