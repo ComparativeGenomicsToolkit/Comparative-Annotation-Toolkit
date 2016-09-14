@@ -87,7 +87,6 @@ num_missing_exons_coverage_cutoff = 0.8
 exon_gain_coverage_cutoff = 0.8
 
 
-
 def classify(args, toil_options):
     """
     Entry point for Transcript Classification Toil pipeline.
@@ -168,7 +167,7 @@ def aln_classify(job, args, input_file_ids):
 
 
 def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_file_id, input_file_ids, args,
-                                chunk_size=500):
+                                chunk_size=1000):
     """
     Entry point for both metrics and alignment evaluation processes.
 
@@ -196,7 +195,8 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
         """
         yields tuples of (GenePredTranscript <reference> , GenePredTranscript <target>, PslRow, biotype
         """
-        for (ref_name, target_name), psl in pslord_dict.iteritems():
+        for target_name, psl in psl_dict.iteritems():
+            ref_name = psl.t_name  # this psl is target-referenced
             ref_tx = ref_tx_dict[ref_name]
             tx = tx_dict[target_name]
             biotype = tx_biotype_map[ref_name]
@@ -209,7 +209,7 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
     gp = job.fileStore.readGlobalFile(gp_file_id)
 
     # parse files
-    pslord_dict = tools.psl.get_alignment_dict(tx_aln_psl)
+    psl_dict = tools.psl.get_alignment_dict(tx_aln_psl)
     tx_dict = tools.transcripts.get_gene_pred_dict(gp)
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(ref_gp)
 
@@ -223,7 +223,7 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
     for transcript_chunk in tools.dataOps.grouper(tx_iter(), chunk_size):
         mc_j = job.addChildJobFn(calculate_metrics, transcript_chunk)
         mc_r.append(mc_j.rv())
-        ec_j = job.addChildJobFn(calculate_evaluations, transcript_chunk)
+        ec_j = job.addChildJobFn(calculate_evaluations, transcript_chunk, input_file_ids.fasta)
         ec_r.append(ec_j.rv())
 
     # start merging the results into dataframes
@@ -262,12 +262,14 @@ def calculate_metrics(job, transcript_chunk):
     return r
 
 
-def calculate_evaluations(job, transcript_chunk):
+def calculate_evaluations(job, transcript_chunk, fasta_file_id):
     """
     Calculates the evaluation metrics on this transcript_chunk
     :param transcript_chunk: tuples of ref_tx, tx, psl, biotype, aln_mode
+    :param fasta_file_id: fileStore file ID for the genome FASTA
     :return: list of (aln_id, classifier, chromosome, start, stop, strand) tuples
     """
+    fasta = tools.toilInterface.load_fasta_from_filestore(job, fasta_file_id)
     r = []
     for ref_tx, tx, psl, biotype, aln_mode in transcript_chunk:
         for exon in exon_gain(tx, psl, aln_mode):
@@ -276,7 +278,7 @@ def calculate_evaluations(job, transcript_chunk):
         for category, interval in indels:
             r.append([tx.name, category, interval])
         if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evalaute tiny ORFs
-            ifs = in_frame_stop(tx, psl, aln_mode)
+            ifs = in_frame_stop(tx, fasta, aln_mode)
             if ifs is not None:
                 r.append([tx.name, 'InFrameStop', ifs])
     # convert all of the ChromosomeInterval objects into a column representation
@@ -479,7 +481,6 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
     :param tx: GenePredTranscript object representing the target transcript
     :param psl: PslRow object representing the mRNA/CDS alignment between ref_tx and tx
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :param wiggle_distance: The wiggle distance (in transcript coordinates)
     :return: integer value
     """
     def find_closest(sorted_numeric_list, query_number):
@@ -497,7 +498,7 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
             return before
 
     # before we calculate anything, make sure we have introns to lose
-    if len(tx.intron_intervals) == 0:
+    if len(ref_tx.intron_intervals) == 0:
         return 0
 
     # generate a sorted list of reference introns in current coordinates (mRNA or CDS)
@@ -513,6 +514,10 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
 
     # sort tgt_introns in case of negative strand
     tgt_introns = sorted(tgt_introns)
+
+    # if we lost all introns due to CDS filtering, return
+    if len(tgt_introns) == 0:
+        return len(ref_introns)
 
     # count the number of introns not within wiggle distance of each other
     num_missing = 0
@@ -535,7 +540,6 @@ def calculate_num_missing_exons(ref_tx, psl, aln_mode):
     :param ref_tx: GenePredTranscript object representing the parent transcript
     :param psl: PslRow object representing the mRNA/CDS alignment between ref_tx and tx
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :param coverage_cutoff: The number of bases of an exon that need to not be mapped to count it as missing
     :return: integer value
     """
     # convert the reference exons to alignment coordinates.
@@ -569,7 +573,6 @@ def exon_gain(tx, psl, aln_mode):
     :param tx: Target GenePredTranscript object
     :param psl: PslRow object describing mRNA/CDS alignment between ref_tx and tx
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :param coverage_cutoff: The number of bases of an exon that need to not be mapped to count it as a new exon
     :return: list of ChromosomeInterval objects if a gain exists else []
     """
     # convert the target exons to alignment coordinates
@@ -586,26 +589,25 @@ def exon_gain(tx, psl, aln_mode):
     return gained_exons
 
 
-def in_frame_stop(tx, psl, aln_mode):
+def in_frame_stop(tx, fasta, aln_mode):
     """
     Finds the first in frame stop of this transcript, if there are any
 
     :param tx: Target GenePredTranscript object
-    :param psl: PslRow object describing CDS alignment between ref_tx and tx.
+    :param fasta: pyfasta Fasta object mapping the genome fasta for this analysis
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: A ChromosomeInterval object if an in frame stop was found otherwise None
     """
-    # if we are in mRNA space, we need to extract the CDS sequence from psl.tgt_seq
     if aln_mode == 'mRNA':
-        cds_start = tx.cds_coordinate_to_mrna(0)
-        cds_stop = tx.cds_coordinate_to_mrna(tx.cds_size - 1)
-        tgt_seq = psl.tgt_seq[cds_start: cds_stop]
+        seq = tx.get_mrna(fasta)
+        coordinate_fn = tx.mrna_coordinate_to_chromosome
     else:
-        tgt_seq = psl.tgt_seq
-    for pos, codon in tools.bio.read_codons_with_position(tgt_seq):
+        seq = tx.get_cds(fasta)
+        coordinate_fn = tx.cds_coordinate_to_chromosome
+    for pos, codon in tools.bio.read_codons_with_position(seq):
         if tools.bio.translate_sequence(codon) == '*':
-            start = tx.cds_coordinate_to_chromosome(pos)
-            stop = tx.cds_coordinate_to_chromosome(pos + 3)
+            start = coordinate_fn(pos)
+            stop = coordinate_fn(pos + 3)
             if tx.strand == '-':
                 start, stop = stop, start
             return tools.intervals.ChromosomeInterval(tx.chromosome, start, stop, tx.strand)
