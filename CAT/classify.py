@@ -277,8 +277,8 @@ def calculate_evaluations(job, transcript_chunk, fasta_file_id):
         indels = find_indels(tx, psl, aln_mode)
         for category, interval in indels:
             r.append([tx.name, category, interval])
-        if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evalaute tiny ORFs
-            ifs = in_frame_stop(tx, fasta, aln_mode)
+        if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evaluate tiny ORFs
+            ifs = in_frame_stop(tx, fasta)
             if ifs is not None:
                 r.append([tx.name, 'InFrameStop', ifs])
     # convert all of the ChromosomeInterval objects into a column representation
@@ -589,25 +589,19 @@ def exon_gain(tx, psl, aln_mode):
     return gained_exons
 
 
-def in_frame_stop(tx, fasta, aln_mode):
+def in_frame_stop(tx, fasta):
     """
     Finds the first in frame stop of this transcript, if there are any
 
     :param tx: Target GenePredTranscript object
     :param fasta: pyfasta Fasta object mapping the genome fasta for this analysis
-    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: A ChromosomeInterval object if an in frame stop was found otherwise None
     """
-    if aln_mode == 'mRNA':
-        seq = tx.get_mrna(fasta)
-        coordinate_fn = tx.mrna_coordinate_to_chromosome
-    else:
-        seq = tx.get_cds(fasta)
-        coordinate_fn = tx.cds_coordinate_to_chromosome
+    seq = tx.get_cds(fasta)
     for pos, codon in tools.bio.read_codons_with_position(seq):
         if tools.bio.translate_sequence(codon) == '*':
-            start = coordinate_fn(pos)
-            stop = coordinate_fn(pos + 3)
+            start = tx.cds_coordinate_to_chromosome(pos)
+            stop = tx.cds_coordinate_to_chromosome(pos + 3)
             if tx.strand == '-':
                 start, stop = stop, start
             return tools.intervals.ChromosomeInterval(tx.chromosome, start, stop, tx.strand)
