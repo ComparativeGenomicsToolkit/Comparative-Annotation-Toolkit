@@ -91,8 +91,8 @@ def setup(job, args, input_file_ids):
         for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)
-            for chunk, mem in group_transcripts(seq_iter):
-                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode, memory=mem)
+            for chunk in group_transcripts(seq_iter):
+                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode)
                 results[out_path].append(j.rv())
 
     # if we ran AugustusCGP, align those CDS sequences
@@ -105,8 +105,8 @@ def setup(job, args, input_file_ids):
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
                                                     ref_genome_fasta, gene_tx_map, tx_biotype_map)
-        for chunk, mem in group_transcripts(cgp_transcript_seq_iter):
-            j = job.addChildJobFn(run_blat_chunk, chunk, 'CDS', memory=mem)
+        for chunk in group_transcripts(cgp_transcript_seq_iter):
+            j = job.addChildJobFn(run_blat_chunk, chunk, 'CDS')
             results[cgp_cds_path].append(j.rv())
     if len(results) == 0:
         err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
@@ -124,7 +124,8 @@ def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, 
         tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)
         ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta,
                                                                                              in_frame=True)
-        yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
+        if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
+            yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
 def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, gene_tx_map,
@@ -146,7 +147,8 @@ def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_ge
             ref_tx = ref_transcript_dict[ref_tx_id]
             ref_tx_seq = ref_tx.get_cds(ref_genome_fasta, in_frame=True)
             assert len(ref_tx_seq) % 3 == 0, ref_tx_id
-            yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
+            if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
+                yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
 def run_blat_chunk(job, chunk, mode):
@@ -161,17 +163,17 @@ def run_blat_chunk(job, chunk, mode):
         if len(psl_dict) == 0:
             return None
         longest = sorted(psl_dict.itervalues(), key=lambda p: -p.coverage)[0]
-        return '\t'.join(longest.psl_string() + '\n')
+        return '\t'.join(longest.psl_string())
+
+    assert mode in ['mRNA', 'CDS']
     tmp_ref = tools.fileOps.get_tmp_toil_file()
     tmp_tgt = tools.fileOps.get_tmp_toil_file()
     tmp_psl = tools.fileOps.get_tmp_toil_file()
     results = []
     if mode == 'mRNA':
-        cmd = ['blat', '-noHead', tmp_ref, tmp_tgt, tmp_psl]
-    elif mode == 'CDS':
-        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', tmp_ref, tmp_tgt, tmp_psl]
-    else:
-        raise AssertionError('Should not have gotten here.')
+        cmd = ['blat', '-noHead', '-minIdentity=70', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
+    else:  # mode == CDS
+        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=10', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         with open(tmp_ref, 'w') as tmp_ref_h:
             tools.bio.write_fasta(tmp_ref_h, ref_tx_id, ref_tx_seq)
@@ -206,36 +208,23 @@ def merge(job, results, args):
 ###
 
 
-def group_transcripts(tx_iter, num_bases=0.25 * 10 ** 6, max_seqs=100):
+def group_transcripts(tx_iter, num_bases=0.5 * 10 ** 6, max_seqs=100):
     """
     Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
-    Helps speed up the execution of MUSCLE when faced with very large genes
+    Helps speed up the execution of BLAT when faced with very large genes
     """
     tx_id, tx_seq, ref_tx_id, ref_tx_seq = tx_iter.next()
     this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
     bin_base_count = len(tx_seq)
     num_seqs = 1
-    mem = find_memory_requirements(tx_seq, ref_tx_seq)
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in tx_iter:
         bin_base_count += len(tx_seq)
         num_seqs += 1
-        mem = max(mem, find_memory_requirements(tx_seq, ref_tx_seq))
         if bin_base_count >= num_bases or num_seqs >= max_seqs:
-            yield this_bin, '{}G'.format(mem)
+            yield this_bin
             this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
             bin_base_count = len(tx_seq)
             num_seqs = 1
-            mem = find_memory_requirements(tx_seq, ref_tx_seq)
         else:
             this_bin.append((tx_id, tx_seq, ref_tx_id, ref_tx_seq))
-    yield this_bin, '{}G'.format(mem)
-
-
-def find_memory_requirements(tx_seq, ref_tx_seq):
-    """
-    Determines how much memory a pair of transcripts will need for alignment. Does this by multplying their sizes,
-    rounding up to the nearest multiple of 4 with at least an 2 extra gb of headroom
-    """
-    requirement = 2 + 1.0 * len(tx_seq) * len(ref_tx_seq) / 10 ** 9
-    mem = requirement if requirement % 4 == 0 else requirement + 4 - requirement % 4
-    return int(mem)
+    yield this_bin
