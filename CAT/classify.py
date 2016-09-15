@@ -78,9 +78,9 @@ from toil.common import Toil
 # hard coded variables
 # hard coded long transMap size. Bigger than 3 megabases is probably a spurious alignment.
 long_tx_size = 3 * 10 ** 6
-# wiggle distance is the distance between introns allowed in intron coordinates before triggering NumMissingIntrons
-# wiggle distance is counted from both sides of the intron
-wiggle_distance = 7
+# fuzz distance is the distance between introns allowed in intron coordinates before triggering NumMissingIntrons
+# fuzz distance is counted from both sides of the intron
+fuzz_distance = 7
 # the amount of exon-exon coverage required to consider a exon as present
 num_missing_exons_coverage_cutoff = 0.8
 # the minimum amount of uncovered bases a exon must have to be considered a novel exon
@@ -258,7 +258,7 @@ def calculate_metrics(job, transcript_chunk):
         r.append([tx.name, 'Badness', psl.badness])
         r.append([tx.name, 'PercentUnknownBases', psl.percent_n])
         r.append([tx.name, 'NumMissingIntrons', num_missing_introns])
-        r.append([tx.name, 'NumMissinglExons', num_missing_exons])
+        r.append([tx.name, 'NumMissingExons', num_missing_exons])
     return r
 
 
@@ -463,6 +463,7 @@ def synteny(ref_gp_dict, gp_dict):
         scores[tx.name] = len(reference_genes & target_genes)
     return scores
 
+
 ###
 # Metrics Classifiers
 ###
@@ -475,7 +476,7 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
     Algorithm:
     1) Convert the coordinates of each block in the transcript to mRNA/CDS depending on the alignment.
     2) Use the mRNA/CDS alignment to calculate a mapping between alignment positions and transcript positions.
-    3) Determine if each block gap coordinate is within wiggle_distance of a parental block gap.
+    3) Determine if each block gap coordinate is within fuzz_distance of a parental block gap.
 
     :param ref_tx: GenePredTranscript object representing the parent transcript
     :param tx: GenePredTranscript object representing the target transcript
@@ -483,28 +484,15 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: integer value
     """
-    def find_closest(sorted_numeric_list, query_number):
-        """Uses list bisection to find the closest member of the tgt_intron list to the current ref_intron"""
-        pos = bisect.bisect_left(sorted_numeric_list, query_number)
-        if pos == 0:
-            return sorted_numeric_list[0]
-        if pos == len(sorted_numeric_list):
-            return sorted_numeric_list[-1]
-        before = sorted_numeric_list[pos - 1]
-        after = sorted_numeric_list[pos]
-        if after - query_number < query_number - before:
-            return after
-        else:
-            return before
 
     # before we calculate anything, make sure we have introns to lose
     if len(ref_tx.intron_intervals) == 0:
         return 0
 
-    # generate a sorted list of reference introns in current coordinates (mRNA or CDS)
-    ref_introns = sorted(get_intron_coordinates(ref_tx, aln_mode))
+    # generate a list of reference introns in current coordinates (mRNA or CDS)
+    ref_introns = get_intron_coordinates(ref_tx, aln_mode)
 
-    # generate a sorted list of target introns in current coordinates (mRNA or CDS)
+    # generate a list of target introns in current coordinates (mRNA or CDS)
     # note that since this PSL is target-referenced, we use query_coordinate_to_target()
     tgt_introns = []
     for intron in get_intron_coordinates(tx, aln_mode):
@@ -512,18 +500,15 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
         if p is not None:
             tgt_introns.append(p)
 
-    # sort tgt_introns in case of negative strand
-    tgt_introns = sorted(tgt_introns)
-
-    # if we lost all introns due to CDS filtering, return
+    # if we lost all introns due to CDS filtering, return the number total in the reference
     if len(tgt_introns) == 0:
         return len(ref_introns)
 
     # count the number of introns not within wiggle distance of each other
     num_missing = 0
     for ref_intron in ref_introns:
-        closest = find_closest(tgt_introns, ref_intron)
-        if not (closest - wiggle_distance < ref_intron < closest + wiggle_distance):
+        closest = tools.mathOps.find_closest(tgt_introns, ref_intron)
+        if not (closest - fuzz_distance < ref_intron < closest + fuzz_distance):
             num_missing += 1
     return num_missing
 

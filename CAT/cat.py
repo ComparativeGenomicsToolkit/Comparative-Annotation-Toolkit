@@ -481,7 +481,7 @@ class TransMapPsl(PipelineTask):
             tools.procOps.run_proc(cmd, stdout=tmp_fh)
         tools.fileOps.ensure_file_dir(self.output().path)
         with self.output().open('w') as outf:
-            for q_name, psl_rec in tools.psl.psl_iterator(tmp_file.path, make_unique=True):
+            for psl_rec in tools.psl.psl_iterator(tmp_file.path, make_unique=True):
                 outf.write('\t'.join(psl_rec.psl_string()) + '\n')
 
 

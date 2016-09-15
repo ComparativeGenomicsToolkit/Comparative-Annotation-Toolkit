@@ -159,10 +159,13 @@ def run_blat_chunk(job, chunk, mode):
     :return: List of PSL output
     """
     def parse_blat(tmp_psl):
-        psl_dict = tools.psl.get_alignment_dict(tmp_psl)
-        if len(psl_dict) == 0:
+        # filter for only + alignments, as we are expecting to be on the same strand
+        # translation alignments have explicit strand, and we only want ++
+        filter_strand = '+' if mode == 'mRNA' else '++'
+        psls = [psl for psl in tools.psl.psl_iterator(tmp_psl) if psl.strand == filter_strand]
+        if len(psls) == 0:
             return None
-        longest = sorted(psl_dict.itervalues(), key=lambda p: -p.coverage)[0]
+        longest = sorted(psls, key=lambda p: -p.coverage)[0]
         return '\t'.join(longest.psl_string())
 
     assert mode in ['mRNA', 'CDS']
@@ -171,9 +174,9 @@ def run_blat_chunk(job, chunk, mode):
     tmp_psl = tools.fileOps.get_tmp_toil_file()
     results = []
     if mode == 'mRNA':
-        cmd = ['blat', '-noHead', '-minIdentity=70', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
+        cmd = ['blat', '-noHead', '-minIdentity=0', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
     else:  # mode == CDS
-        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=10', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
+        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=0', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         with open(tmp_ref, 'w') as tmp_ref_h:
             tools.bio.write_fasta(tmp_ref_h, ref_tx_id, ref_tx_seq)
