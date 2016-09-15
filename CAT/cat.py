@@ -236,7 +236,6 @@ class ReferenceFiles(PipelineWrapperTask):
         annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
         args = argparse.Namespace()
         args.annotation_gp = os.path.join(base_dir, annotation + '.gp')
-        args.annotation_db = os.path.join(base_dir, annotation + '.db')
         args.transcript_fasta = os.path.join(base_dir, annotation + '.fa')
         args.transcript_flat_fasta = os.path.join(base_dir, annotation + '.fa.flat')
         args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
@@ -282,11 +281,12 @@ class Gff3ToAttrs(PipelineTask):
     Uses the gff3 parser to extract the attributes table, converting the table into a sqlite databse for import
     and use by downstream tools.
     """
-    annotation_db = luigi.Parameter()
 
     def output(self):
-        tools.fileOps.ensure_file_dir(self.annotation_db)
-        conn_str = 'sqlite:///{}'.format(self.annotation_db)
+        pipeline_args = self.get_pipeline_args()
+        database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
+        tools.fileOps.ensure_file_dir(database)
+        conn_str = 'sqlite:///{}'.format(database)
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                           target_table=self.ref_genome,
                                                           update_id=self.task_id)
@@ -295,8 +295,10 @@ class Gff3ToAttrs(PipelineTask):
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         results = tools.gff3.extract_attrs(self.annotation)
-        with tools.sqlite.ExclusiveSqlConnection(self.annotation_db) as engine:
-            results.to_sql(self.ref_genome, engine, if_exists='replace')
+        pipeline_args = self.get_pipeline_args()
+        database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
+        with tools.sqlite.ExclusiveSqlConnection(database) as engine:
+            results.to_sql('annotation', engine, if_exists='replace')
         self.output().touch()
 
 
@@ -533,7 +535,7 @@ class Augustus(PipelineWrapperTask):
         args.genome_fasta = tgt_genome_files.fasta
         args.ref_psl = tm_args.ref_psl
         args.annotation_gp = annotation_files.annotation_gp
-        args.annotation_db = annotation_files.annotation_db
+        args.ref_genome_db = annotation_files.ref_genome_db
         args.tm_gp = tm_args.tm_gp
         args.tm_psl = tm_args.tm_psl
         args.augustus_tm_gp = os.path.join(base_dir, genome + '.augTM.gp')
@@ -583,7 +585,7 @@ class AugustusDriverTask(ToilTask):
     def extract_coding_genes(self, augustus_args):
         """extracts only coding genes from the input genePred, returning a path to a tmp file"""
         coding_gp = tools.fileOps.get_tmp_file()
-        attrs = tools.sqlInterface.read_attrs(augustus_args.annotation_db, augustus_args.ref_genome)
+        attrs = tools.sqlInterface.read_attrs(augustus_args.ref_genome_db)
         names = set(attrs[attrs.tx_biotype == 'protein_coding'].index)
         with open(coding_gp, 'w') as outf:
             for name, tx in tools.transcripts.gene_pred_iterator(augustus_args.tm_gp):
@@ -643,7 +645,7 @@ class AugustusCgp(ToilTask):
         args.augustus_cgp_cfg = augustus_cgp_cfg
         args.augustus_cgp_param = pipeline_args.augustus_cgp_param
         args.hints_db = hints_db
-        args.annotation_db = ref_files.annotation_db
+        args.ref_genome_db = ref_files.ref_genome_db
         args.query_sizes = ref_genome_files.sizes
         return args
 
@@ -781,7 +783,7 @@ class HgmDriverTask(ToilTask):
         hgm(hgm_args, toil_options)
         logger.info('homGeneMapping toil pipeline for {} completed.'.format(self.mode))
         # convert the output to a dataframe and write to the genome database
-        databases = self.get_databases(pipeline_args)
+        databases = self.__class__.get_databases(pipeline_args)
         for genome, sqla_target in itertools.izip(*[hgm_args['genomes'], self.output()]):
             # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
             intron_counts = parse_hgm_gtf(hgm_args['hgm_gtf'][genome])
@@ -810,7 +812,7 @@ class AlignTranscripts(PipelineWrapperTask):
         args.genome = genome
         args.ref_genome_fasta = ref_genome_files.fasta
         args.annotation_gp = annotation_files.annotation_gp
-        args.annotation_db = annotation_files.annotation_db
+        args.ref_genome_db = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.genome_fasta = tgt_genome_files.fasta
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
         args.alignment_modes = {'transMap': {'gp': tm_files.tm_gp,
@@ -893,8 +895,8 @@ class EvaluateTranscripts(PipelineWrapperTask):
         args.db = pipeline_args.dbs[genome]
         args.tm_psl = tm_args.tm_psl
         args.tm_gp = tm_args.tm_gp
+        args.ref_genome_db = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.annotation_gp = annotation_files.annotation_gp
-        args.annotation_db = annotation_files.annotation_db
         args.genome_fasta = tgt_genome_files.fasta
         args.genome = genome
         args.ref_genome = pipeline_args.ref_genome

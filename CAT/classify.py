@@ -99,7 +99,7 @@ def classify(args, toil_options):
             input_file_ids.tm_psl = toil.importFile('file://' + args.tm_psl)
             input_file_ids.tm_gp = toil.importFile('file://' + args.tm_gp)
             input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
-            input_file_ids.annotation_db = toil.importFile('file://' + args.annotation_db)
+            input_file_ids.ref_genome_db = toil.importFile('file://' + args.ref_genome_db)
             input_file_ids.modes = {}  # modes will hold the file IDs broken down by mode
             input_file_ids.gps = {}  # gps will hold input genePred file IDs
             for tx_mode, path_dict in args.alignment_modes.iteritems():
@@ -205,7 +205,7 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
     # load files
     tx_aln_psl = job.fileStore.readGlobalFile(tx_aln_psl_file_id)
     ref_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
-    annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
+    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_genome_db)
     gp = job.fileStore.readGlobalFile(gp_file_id)
 
     # parse files
@@ -214,7 +214,7 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(ref_gp)
 
     # load transcript biotype map
-    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args.ref_genome)
+    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
 
     # start the classification process
     # mc_r/ec_r will contain uncollapsed result Promises that will be resolved before merge_metrics_results

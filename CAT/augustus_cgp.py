@@ -258,7 +258,7 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
     """
     job.fileStore.logToMaster('Assigning parental genes for {}'.format(genome), level=logging.INFO)
     annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
-    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(annotation_db, args.ref_genome)
+    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(annotation_db)
     tm_gp_file = job.fileStore.readGlobalFile(input_file_ids.tm_gps[genome])
     transmap_dict = tools.transcripts.get_gene_pred_dict(tm_gp_file)
 

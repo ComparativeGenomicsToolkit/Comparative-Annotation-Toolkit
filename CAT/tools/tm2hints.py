@@ -59,4 +59,4 @@ def is_fuzzy_intron(intron, tm_psl, ref_starts, fuzz_distance=12):
     fuzzed_start = q_gap_start - fuzz_distance
     fuzzed_stop = q_gap_stop + fuzz_distance
     r = [fuzzed_start <= ref_gap <= fuzzed_stop for ref_gap in ref_starts]
-    return True if any(r) else False
+    return any(r)

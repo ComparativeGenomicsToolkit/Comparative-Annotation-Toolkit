@@ -89,11 +89,20 @@ class PipelineTask(luigi.Task):
         else:
             target_genomes = tuple([x for x in self.target_genomes])
         args.target_genomes = target_genomes
-        args.modes = self.get_modes(args)
-        args.dbs = self.get_databases(args)
+        args.modes = PipelineTask.get_modes(args)
+        args.dbs = PipelineTask.get_databases(args)
         return args
 
-    def get_modes(self, pipeline_args):
+    def get_module_args(self, module, **args):
+        """
+        convenience wrapper that takes a parent module and propagates any required arguments to generate the full
+        argument set.
+        """
+        pipeline_args = self.get_pipeline_args()
+        return module.get_args(pipeline_args, **args)
+
+    @staticmethod
+    def get_modes(pipeline_args):
         """Convenience function that reports the modes we are operating in as a list"""
         modes = ['transMap']
         if pipeline_args.augustus is True:
@@ -104,23 +113,17 @@ class PipelineTask(luigi.Task):
             modes.append('augCGP')
         return modes
 
-    def get_databases(self, pipeline_args):
+    @staticmethod
+    def get_databases(pipeline_args):
         """wrapper for get_database() that provides all of the databases"""
-        dbs = {genome: self.get_database(pipeline_args, genome) for genome in pipeline_args.hal_genomes}
+        dbs = {genome: PipelineTask.get_database(pipeline_args, genome) for genome in pipeline_args.hal_genomes}
         return dbs
 
-    def get_database(self, pipeline_args, genome):
+    @staticmethod
+    def get_database(pipeline_args, genome):
         """database paths must be resolved here to handle multiple programs accessing them"""
         base_out_dir = os.path.join(pipeline_args.out_dir, 'databases')
         return os.path.join(base_out_dir, '{}.db'.format(genome))
-
-    def get_module_args(self, module, **args):
-        """
-        convenience wrapper that takes a parent module and propagates any required arguments to generate the full
-        argument set.
-        """
-        pipeline_args = self.get_pipeline_args()
-        return module.get_args(pipeline_args, **args)
 
 
 class PipelineWrapperTask(PipelineTask, luigi.WrapperTask):

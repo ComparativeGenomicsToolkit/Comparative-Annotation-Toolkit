@@ -317,7 +317,8 @@ class Gff3Parser(object):
 def extract_attrs(gff3):
     """
     Extracts attributes table from gff3.
-    The attributes we care about are GeneId, GeneName, GeneType, TranscriptId, TranscriptType
+    The attributes we care about are gene_id, gene_name, gene_type, transcript_id, transcript_type, start_codon,
+    stop_codon, five_prime_UTR, three_prime_UTR
     :param gff3: input gff3
     :returns: DataFrame
     """
@@ -355,8 +356,13 @@ def extract_attrs(gff3):
                         tx_biotype = tx.attributes['biotype'][0]
                     except KeyError:  # attempt Gencode naming scheme
                         tx_biotype = tx.attributes['transcript_type'][0]
+                    feature_types = {c.type for c in tx.children}
                     r = {'tx_biotype': tx_biotype, 'gene_id': gene_id,
-                         'gene_name': gene_name, 'gene_biotype': gene_biotype}
+                         'gene_name': gene_name, 'gene_biotype': gene_biotype,
+                         'start_codon': 'start_codon' in feature_types,
+                         'stop_codon': 'stop_codon' in feature_types,
+                         'five_prime_UTR': 'five_prime_UTR' in feature_types,
+                         'three_prime_UTR': 'three_prime_UTR' in feature_types}
                     results[tx_id] = r
                 except KeyError, e:
                     raise RuntimeError('Unable to parse field {} from the input gff3 on line'.format(e, tx.lineNumber))
@@ -364,4 +370,7 @@ def extract_attrs(gff3):
             raise RuntimeError('Unable to parse field {} from the input gff3 on line'.format(e, gene.lineNumber))
     df = pd.DataFrame.from_dict(results, orient='index')
     df.index.rename('tx_id', inplace=True)
+    # make into a nice order for the sqlite database
+    df = df[['tx_biotype', 'gene_id', 'gene_name', 'gene_biotype', 'start_codon', 'stop_codon', 'three_prime_UTR',
+             'five_prime_UTR']]
     return df

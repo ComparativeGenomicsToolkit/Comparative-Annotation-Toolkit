@@ -117,7 +117,8 @@ class PslRow(object):
                                   num_digits=5)
 
     def psl_string(self):
-        """ return SELF as a psl formatted line.
+        """
+        Return a list capable of producing a new PslRow object
         """
         return map(str, [self.matches, self.mismatches, self.repmatches, self.n_count, self.q_num_insert,
                          self.q_base_insert, self.t_num_insert, self.t_base_insert, self.strand, self.q_name,

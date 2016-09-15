@@ -44,7 +44,7 @@ def align_transcripts(args, toil_options):
             input_file_ids.ref_genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.ref_genome_fasta)
             input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
             input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
-            input_file_ids.annotation_db = toil.importFile('file://' + args.annotation_db)
+            input_file_ids.ref_genome_db = toil.importFile('file://' + args.ref_genome_db)
             input_file_ids.modes = {}
             for mode in args.alignment_modes:
                 input_file_ids.modes[mode] = toil.importFile('file://' + args.alignment_modes[mode]['gp'])
@@ -67,14 +67,14 @@ def setup(job, args, input_file_ids):
     job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args.genome), level=logging.INFO)
     # load all fileStore files necessary
     annotation_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
-    annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
+    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_genome_db)
     # we have to explicitly place fasta, flat file and gdx with the correct naming scheme for pyfasta
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
     ref_genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.ref_genome_fasta,
                                                                      prefix='ref_genome', upper=False)
     # load required reference data into memory
-    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args.ref_genome)
+    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
     ref_transcript_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     # will hold a mapping of output file paths to lists of Promise objects containing output
     results = collections.defaultdict(list)
@@ -99,8 +99,8 @@ def setup(job, args, input_file_ids):
     if 'augCGP' in args.alignment_modes:
         cgp_cds_path = args.alignment_modes['augCGP']['CDS']
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
-        gene_tx_map = tools.sqlInterface.get_gene_transcript_map(annotation_db, args.ref_genome)
-        tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(annotation_db, args.ref_genome)
+        gene_tx_map = tools.sqlInterface.get_gene_transcript_map(ref_genome_db)
+        tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
         augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids.modes['augCGP'])
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
         cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
