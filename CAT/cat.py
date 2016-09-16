@@ -406,7 +406,7 @@ class Chaining(ToilTask):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
         for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort']:
             if not tools.misc.is_exec(tool):
-                    raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
+                    raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
     def requires(self):
         yield self.clone(PrepareFiles)
@@ -446,7 +446,7 @@ class TransMap(PipelineWrapperTask):
     def validate(self):
         for tool in ['pslMap', 'pslRecalcMatch', 'transMapPslToGenePred']:
             if not tools.misc.is_exec(tool):
-                    raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
+                    raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
     def requires(self):
         self.validate()
@@ -505,7 +505,7 @@ class TransMapGp(AbstractAtomicFileTask):
 
 
 @requires(TransMapGp)
-class TransMapGtf(AbstractAtomicFileTask):
+class TransMapGtf(PipelineTask):
     """
     Converts the transMap genePred to GTF
     """
@@ -535,7 +535,7 @@ class Augustus(PipelineWrapperTask):
         args.genome_fasta = tgt_genome_files.fasta
         args.ref_psl = tm_args.ref_psl
         args.annotation_gp = annotation_files.annotation_gp
-        args.ref_genome_db = annotation_files.ref_genome_db
+        args.ref_genome_db = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.tm_gp = tm_args.tm_gp
         args.tm_psl = tm_args.tm_psl
         args.augustus_tm_gp = os.path.join(base_dir, genome + '.augTM.gp')
@@ -586,10 +586,10 @@ class AugustusDriverTask(ToilTask):
         """extracts only coding genes from the input genePred, returning a path to a tmp file"""
         coding_gp = tools.fileOps.get_tmp_file()
         attrs = tools.sqlInterface.read_attrs(augustus_args.ref_genome_db)
-        names = set(attrs[attrs.tx_biotype == 'protein_coding'].index)
+        names = set(attrs[attrs.TranscriptBiotype == 'protein_coding'].index)
         with open(coding_gp, 'w') as outf:
-            for name, tx in tools.transcripts.gene_pred_iterator(augustus_args.tm_gp):
-                if tools.nameConversions.strip_alignment_numbers(name) in names:
+            for tx in tools.transcripts.gene_pred_iterator(augustus_args.tm_gp):
+                if tools.nameConversions.strip_alignment_numbers(tx.name) in names:
                     tools.fileOps.print_row(outf, tx.get_gene_pred())
         if os.path.getsize(coding_gp) == 0:
             raise InvalidInputException('Unable to extract coding transcripts from the transMap genePred.')
@@ -612,7 +612,6 @@ class AugustusCgp(ToilTask):
     """
     Task for launching the AugustusCGP toil pipeline
     """
-
     @staticmethod
     def get_args(pipeline_args):
         # add reference to the target genomes
@@ -645,7 +644,7 @@ class AugustusCgp(ToilTask):
         args.augustus_cgp_cfg = augustus_cgp_cfg
         args.augustus_cgp_param = pipeline_args.augustus_cgp_param
         args.hints_db = hints_db
-        args.ref_genome_db = ref_files.ref_genome_db
+        args.ref_genome_db = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.query_sizes = ref_genome_files.sizes
         return args
 
@@ -788,10 +787,10 @@ class HgmDriverTask(ToilTask):
             # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
             intron_counts = parse_hgm_gtf(hgm_args['hgm_gtf'][genome])
             df = pd.DataFrame.from_dict(intron_counts, orient='index')
-            df.index.name = 'TranscriptId'
+            df.index.name = 'AlignmentId'
             df.columns = ['IntronVector']
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
-                df.to_sql('HgmIntronVector', engine, if_exists='replace')
+                df.to_sql(hgm_args['table'], engine, if_exists='replace')
             sqla_target.touch()
             logger.info('Loaded table: {}.{}'.format(genome, hgm_args['table']))
 
@@ -869,6 +868,7 @@ class AlignTranscriptDriverTask(ToilTask):
         if 'augCGP' in alignment_args.alignment_modes:
             yield self.clone(AugustusCgp)
         yield self.clone(TransMap)
+        yield self.clone(ReferenceFiles)
 
     def run(self):
         logger.info('Launching Align Transcript toil pipeline for {}.'.format(self.genome))
@@ -909,6 +909,7 @@ class EvaluateTranscripts(PipelineWrapperTask):
     def requires(self):
         self.validate()
         pipeline_args = self.get_pipeline_args()
+        PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         for target_genome in pipeline_args.target_genomes:
             yield self.clone(EvaluateDriverTask, genome=target_genome)
 
@@ -921,7 +922,7 @@ class EvaluateDriverTask(ToilTask):
 
     def build_table_names(self, eval_args):
         """construct table names based on input arguments"""
-        tables = ['Alignment']
+        tables = ['alignment']
         for tx_mode, path_dict in eval_args.alignment_modes.iteritems():
             for aln_mode in ['mRNA', 'CDS']:
                 if aln_mode in path_dict:
@@ -955,7 +956,7 @@ class EvaluateDriverTask(ToilTask):
                                                       update_id='_'.join([self.task_id, table]))
 
     def requires(self):
-        return self.clone(AlignTranscripts)
+        return self.clone(AlignTranscripts), self.clone(ReferenceFiles)
 
     def run(self):
         logger.info('Launching Evaluate Transcript toil pipeline for {}.'.format(self.genome))
