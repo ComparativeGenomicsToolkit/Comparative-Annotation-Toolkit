@@ -127,12 +127,12 @@ def setup_classify(job, args, input_file_ids):
     job.fileStore.logToMaster('Beginning Transcript Evaluation run on {}'.format(args.genome), level=logging.INFO)
     aln_df = job.addChildJobFn(aln_classify, args, input_file_ids, memory='8G').rv()
     # nested inner list to deal with paired tables coming out of metrics_evaluation_classify
-    dfs = [[('Alignment', aln_df)]]
+    dfs = [[('alignment', aln_df)]]
     for tx_mode, aln_file_ids in input_file_ids.modes.iteritems():
         for aln_mode, tx_aln_psl_file_id in aln_file_ids.iteritems():
             gp_file_id = input_file_ids.gps[tx_mode]
             mc_job = job.addChildJobFn(metrics_evaluation_classify, tx_mode, aln_mode, gp_file_id, tx_aln_psl_file_id,
-                                       input_file_ids, args)
+                                       input_file_ids)
             dfs.append(mc_job.rv())
     return dfs
 
@@ -156,18 +156,18 @@ def aln_classify(job, args, input_file_ids):
         aln = psl_dict[aln_id]
         r.append([aln_id, 'Paralogy', paralog_count[aln_id]])
         r.append([aln_id, 'Synteny', synteny_scores[aln_id]])
-        r.append([aln_id, 'AlnExtendsoffContig', aln_extends_off_contig(aln)])
+        r.append([aln_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
         r.append([aln_id, 'AlnPartialMap', alignment_partial_map(aln)])
         r.append([aln_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
         r.append([aln_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
         r.append([aln_id, 'LongTranscript', long_transcript(tx)])
-    df = pd.DataFrame(r, columns=['TransMapId', 'Classifier', 'Value'])
-    df.set_index(['TransMapId', 'Classifier'], inplace=True)
+    df = pd.DataFrame(r, columns=['AlignmentId', 'classifier', 'value'])
+    df.set_index(['AlignmentId', 'classifier'], inplace=True)
     return df
 
 
-def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_file_id, input_file_ids, args,
-                                chunk_size=1000):
+def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_file_id, input_file_ids,
+                                chunk_size=2500):
     """
     Entry point for both metrics and alignment evaluation processes.
 
@@ -187,7 +187,6 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
     :param gp_file_id: genePred file ID for this mode
     :param tx_aln_psl_file_id: Alignment PSL file id for this mode
     :param input_file_ids: Dictionary of fileStore IDs
-    :param args: Configuration dictionary passed in by Luigi.
     :param chunk_size: The number of transcripts each job will process.
     :return: two tuples of (tablename, dataframe)
     """
@@ -195,8 +194,10 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
         """
         yields tuples of (GenePredTranscript <reference> , GenePredTranscript <target>, PslRow, biotype
         """
-        for target_name, psl in psl_dict.iteritems():
-            ref_name = psl.t_name  # this psl is target-referenced
+        for psl in psl_iter:
+            # this psl is target-referenced
+            target_name = psl.q_name
+            ref_name = psl.t_name
             ref_tx = ref_tx_dict[ref_name]
             tx = tx_dict[target_name]
             biotype = tx_biotype_map[ref_name]
@@ -209,7 +210,7 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
     gp = job.fileStore.readGlobalFile(gp_file_id)
 
     # parse files
-    psl_dict = tools.psl.get_alignment_dict(tx_aln_psl)
+    psl_iter = tools.psl.psl_iterator(tx_aln_psl)
     tx_dict = tools.transcripts.get_gene_pred_dict(gp)
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(ref_gp)
 
@@ -228,8 +229,8 @@ def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_f
 
     # start merging the results into dataframes
     # these are the DataFrame column names for the respective tables
-    mc_columns = ['TranscriptId', 'classifier', 'value']
-    ec_columns = ['TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
+    mc_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
+    ec_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     # these are the sqlite table names
     mc_table_name = '_'.join([aln_mode, tx_mode, 'Metrics'])
     ec_table_name = '_'.join([aln_mode, tx_mode, 'Evaluation'])
@@ -249,16 +250,18 @@ def calculate_metrics(job, transcript_chunk):
     r = []
     for ref_tx, tx, psl, biotype, aln_mode in transcript_chunk:
         if biotype == 'protein_coding':
-            r.append([tx.name, 'CdsStartStat', tx.cds_start_stat])
-            r.append([tx.name, 'CdsEndStat', tx.cds_end_stat])
+            start_ok, stop_ok = start_stop_stat(tx)
+            r.append([tx.name, ref_tx.name, 'StartCodon', start_ok])
+            r.append([tx.name, ref_tx.name, 'StopCodon', stop_ok])
         num_missing_introns = calculate_num_missing_introns(ref_tx, tx, psl, aln_mode)
         num_missing_exons = calculate_num_missing_exons(ref_tx, psl, aln_mode)
-        r.append([tx.name, 'AlnCoverage', psl.coverage])
-        r.append([tx.name, 'AlnIdentity', psl.identity])
-        r.append([tx.name, 'Badness', psl.badness])
-        r.append([tx.name, 'PercentUnknownBases', psl.percent_n])
-        r.append([tx.name, 'NumMissingIntrons', num_missing_introns])
-        r.append([tx.name, 'NumMissingExons', num_missing_exons])
+        r.append([tx.name, ref_tx.name, 'AlnCoverage', psl.coverage])
+        r.append([tx.name, ref_tx.name, 'AlnIdentity', psl.identity])
+        r.append([tx.name, ref_tx.name, 'Badness', psl.badness])
+        r.append([tx.name, ref_tx.name, 'PercentUnknownBases', psl.percent_n])
+        r.append([tx.name, ref_tx.name, 'NumMissingIntrons', num_missing_introns])
+        r.append([tx.name, ref_tx.name, 'NumMissingExons', num_missing_exons])
+        r.append([tx.name, ref_tx.name, 'NumIntrons', len(tx.intron_intervals)])
     return r
 
 
@@ -273,16 +276,16 @@ def calculate_evaluations(job, transcript_chunk, fasta_file_id):
     r = []
     for ref_tx, tx, psl, biotype, aln_mode in transcript_chunk:
         for exon in exon_gain(tx, psl, aln_mode):
-            r.append([tx.name, 'ExonGain', exon])
+            r.append([tx.name, ref_tx.name, 'ExonGain', exon])
         indels = find_indels(tx, psl, aln_mode)
         for category, interval in indels:
-            r.append([tx.name, category, interval])
+            r.append([tx.name, ref_tx.name, category, interval])
         if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evaluate tiny ORFs
             ifs = in_frame_stop(tx, fasta)
             if ifs is not None:
-                r.append([tx.name, 'InFrameStop', ifs])
+                r.append([tx.name, ref_tx.name, 'InFrameStop', ifs])
     # convert all of the ChromosomeInterval objects into a column representation
-    return [[name, cat, i.chromosome, i.start, i.stop, i.strand] for name, cat, i in r]
+    return [[tx_name, ref_name, cat, i.chromosome, i.start, i.stop, i.strand] for tx_name, ref_name, cat, i in r]
 
 
 def merge_results(job, r, columns):
@@ -295,7 +298,8 @@ def merge_results(job, r, columns):
     d = list(itertools.chain.from_iterable(r))
     df = pd.DataFrame(d, columns=columns)
     df.sort_values(columns, inplace=True)
-    df.set_index(['TranscriptId', 'classifier'], inplace=True)
+    df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
+    assert len(d) == len(df)
     return df
 
 
@@ -469,6 +473,17 @@ def synteny(ref_gp_dict, gp_dict):
 ###
 
 
+def start_stop_stat(tx):
+    """
+    Calculate the StartCodon, StopCodon metrics by looking at CdsStartStat/CdsEndStat and taking strand into account
+    """
+    start_ok = True if tx.cds_start_stat == 'cmpl' else False
+    stop_ok = True if tx.cds_end_stat == 'cmpl' else False
+    if tx.strand == '-':
+        start_ok, stop_ok = stop_ok, start_ok
+    return start_ok, stop_ok
+
+
 def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
     """
     Determines how many of the gaps present in a given transcript are within a wiggle distance of the parent.
@@ -628,19 +643,24 @@ def find_indels(tx, psl, aln_mode):
         assert right_chrom_pos >= left_chrom_pos
         return left_chrom_pos, right_chrom_pos
 
-    def parse_indel(left_pos, right_pos, coordinate_fn, tx, gap_type):
+    def parse_indel(left_pos, right_pos, coordinate_fn, tx, offset, gap_type):
         """Converts either an insertion or a deletion into a output interval"""
         left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn,
                                                                             tx.strand)
         if left_chrom_pos is None or right_chrom_pos is None:
             assert aln_mode == 'CDS'
-            return []
+            return None
         i = tools.intervals.ChromosomeInterval(tx.chromosome, left_chrom_pos, right_chrom_pos, tx.strand)
+        indel_type = find_indel_type(tx, i, offset)
+        return [''.join([indel_type, gap_type]), i]
+
+    def find_indel_type(tx, i, offset):
+        """returns Mult3"""
         if interval_is_coding(tx, i):
-            this_type = 'CodingMult3' if len(i) % 3 == 0 else 'Coding'
+            this_type = 'CodingMult3' if offset % 3 == 0 else 'Coding'
         else:
             this_type = 'NonCoding'
-        return [''.join([this_type, gap_type]), i]
+        return this_type
 
     # depending on mode, we convert the coordinates from either CDS or mRNA
     # we also have a different position cutoff to make sure we are not evaluating terminal gaps
@@ -663,10 +683,14 @@ def find_indels(tx, psl, aln_mode):
         if q_offset != 0:  # query insertion -> insertion in target sequence
             left_pos = q_start - q_offset
             right_pos = q_start
-            r.append(parse_indel(left_pos, right_pos, coordinate_fn, tx, 'Insertion'))
+            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, q_offset, 'Insertion')
+            if row is not None:
+                r.append(row)
         if t_offset != 0:  # target insertion -> insertion in reference sequence
             left_pos = right_pos = q_start
-            r.append(parse_indel(left_pos, right_pos, coordinate_fn, tx, 'Deletion'))
+            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, t_offset, 'Deletion')
+            if row is not None:
+                r.append(row)
         q_pos = q_start
         t_pos = t_start
     return r

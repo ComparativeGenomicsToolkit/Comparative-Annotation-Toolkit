@@ -50,7 +50,7 @@ def augustus_cgp(args, toil_options):
             input_file_ids.chrom_sizes = toil.importFile('file://' + args.query_sizes)
             input_file_ids.hints_db = toil.importFile('file://' + args.hints_db)
             input_file_ids.cgp_param = toil.importFile('file://' + args.augustus_cgp_param)
-            input_file_ids.annotation_db = toil.importFile('file://' + args.annotation_db)
+            input_file_ids.ref_genome_db = toil.importFile('file://' + args.ref_genome_db)
             input_file_ids.fasta = {genome: toil.importFile('file://' + fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
             input_file_ids.tm_gps = {genome: toil.importFile('file://' + tm_gp)
@@ -257,8 +257,8 @@ def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
     errors. The better way would be a proper GFF parser. Mark's Gff3 parser does not work.
     """
     job.fileStore.logToMaster('Assigning parental genes for {}'.format(genome), level=logging.INFO)
-    annotation_db = job.fileStore.readGlobalFile(input_file_ids.annotation_db)
-    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(annotation_db)
+    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_genome_db)
+    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(ref_genome_db)
     tm_gp_file = job.fileStore.readGlobalFile(input_file_ids.tm_gps[genome])
     transmap_dict = tools.transcripts.get_gene_pred_dict(tm_gp_file)
 
