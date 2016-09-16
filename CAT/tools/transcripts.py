@@ -423,7 +423,7 @@ def get_gene_pred_dict(gp_file):
     :param gp_file: A genePred file path or handle.
     :return: A dictionary of name:transcript pairs
     """
-    return {n: t for n, t in gene_pred_iterator(gp_file)}
+    return {t.name: t for t in gene_pred_iterator(gp_file)}
 
 
 def gene_pred_iterator(gp_file):
@@ -436,7 +436,7 @@ def gene_pred_iterator(gp_file):
         if len(tokens) != 15:
             raise RuntimeError('GenePred line had {} tokens, not 15. Record: {}'.format(len(tokens), tokens))
         t = GenePredTranscript(tokens)
-        yield t.name, t
+        yield t
 
 
 def get_transcript_dict(bed_file):
@@ -445,7 +445,7 @@ def get_transcript_dict(bed_file):
     :param bed_file: A BED file path or handle.
     :return: A dictionary of name:transcript pairs
     """
-    return {n: t for n, t in transcript_iterator(bed_file)}
+    return {t.name: t for t in transcript_iterator(bed_file)}
 
 
 def transcript_iterator(bed_file):
@@ -459,4 +459,15 @@ def transcript_iterator(bed_file):
             if len(tokens) != 12:
                 raise RuntimeError('BED line had {} tokens, not 12. Record: {}'.format(len(tokens), tokens))
             t = Transcript(tokens)
-            yield t.name, t
+            yield t
+
+
+def load_gps(gp_list):
+    """helper function that loads a list of genePreds into one mega-dict"""
+    r = {}
+    for gp in gp_list:
+        for t in gene_pred_iterator(gp):
+            if t.name in r:
+                raise RuntimeError('Attempted to add duplicate GenePredTranscript object with name {}'.format(name))
+            r[t.name] = t
+    return r

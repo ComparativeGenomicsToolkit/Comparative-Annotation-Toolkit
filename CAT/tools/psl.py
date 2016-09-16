@@ -97,24 +97,21 @@ class PslRow(object):
 
     @property
     def coverage(self):
-        return 100 * format_ratio(self.matches + self.mismatches + self.repmatches, self.q_size,
-                                  num_digits=5)
+        return format_ratio(self.matches + self.mismatches + self.repmatches, self.q_size, num_digits=5)
 
     @property
     def identity(self):
-        return 100 * format_ratio(self.matches + self.repmatches,
-                                  self.matches + self.repmatches + self.mismatches + self.q_num_insert,
-                                  num_digits=5)
+        return format_ratio(self.matches + self.repmatches,
+                            self.matches + self.repmatches + self.mismatches + self.q_num_insert,
+                            num_digits=5)
 
     @property
     def target_coverage(self):
-        return 100 * format_ratio(self.matches + self.mismatches + self.repmatches, self.t_size,
-                                  num_digits=5)
+        return format_ratio(self.matches + self.mismatches + self.repmatches, self.t_size, num_digits=5)
 
     @property
     def percent_n(self):
-        return 100 * format_ratio(self.n_count, self.q_size,
-                                  num_digits=5)
+        return format_ratio(self.n_count, self.q_size, num_digits=5)
 
     def psl_string(self):
         """
@@ -136,11 +133,12 @@ class PslRow(object):
 
         (mismatch + ref_insert + 3 * log(1 + max(ref_size - tgt_size, 0))) / (match + mismatch + repmatch)
 
-        :return: A float
+        :return: A float between 0 and 1 where 1 is very bad
         """
-        return format_ratio(self.mismatches + self.q_num_insert + 3 * math.log(1 + max(self.q_size - self.t_size, 0)),
-                            self.matches + self.mismatches + self.repmatches,
-                            num_digits=5)
+        b = format_ratio(self.mismatches + self.q_num_insert + 3 * math.log(1 + max(self.q_size - self.t_size, 0)),
+                         self.matches + self.mismatches + self.repmatches,
+                         num_digits=5)
+        return min(b, 1)
 
 
 def psl_iterator(psl_file, make_unique=False):

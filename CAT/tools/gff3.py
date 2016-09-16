@@ -357,20 +357,21 @@ def extract_attrs(gff3):
                     except KeyError:  # attempt Gencode naming scheme
                         tx_biotype = tx.attributes['transcript_type'][0]
                     feature_types = {c.type for c in tx.children}
-                    r = {'tx_biotype': tx_biotype, 'gene_id': gene_id,
-                         'gene_name': gene_name, 'gene_biotype': gene_biotype,
-                         'start_codon': 'start_codon' in feature_types,
-                         'stop_codon': 'stop_codon' in feature_types,
-                         'five_prime_UTR': 'five_prime_UTR' in feature_types,
-                         'three_prime_UTR': 'three_prime_UTR' in feature_types}
+                    num_exons = len([c for c in tx.children if c.type == 'exon'])
+                    r = {'TranscriptBiotype': tx_biotype, 'GeneId': gene_id,
+                         'GeneName': gene_name, 'GeneBiotype': gene_biotype,
+                         'StartCodon': 'start_codon' in feature_types,
+                         'StopCodon': 'stop_codon' in feature_types,
+                         'NumReferenceIntrons': num_exons - 1,
+                         'NumReferenceExons': num_exons}
                     results[tx_id] = r
                 except KeyError, e:
-                    raise RuntimeError('Unable to parse field {} from the input gff3 on line'.format(e, tx.lineNumber))
+                    raise GFF3Exception('Unable to parse field {} from the input gff3 on line'.format(e, tx.lineNumber))
         except KeyError, e:
-            raise RuntimeError('Unable to parse field {} from the input gff3 on line'.format(e, gene.lineNumber))
+            raise GFF3Exception('Unable to parse field {} from the input gff3 on line'.format(e, gene.lineNumber))
     df = pd.DataFrame.from_dict(results, orient='index')
-    df.index.rename('tx_id', inplace=True)
+    df.index.rename('TranscriptId', inplace=True)
     # make into a nice order for the sqlite database
-    df = df[['tx_biotype', 'gene_id', 'gene_name', 'gene_biotype', 'start_codon', 'stop_codon', 'three_prime_UTR',
-             'five_prime_UTR']]
+    df = df[['TranscriptBiotype', 'GeneId', 'GeneName', 'GeneBiotype', 'StartCodon', 'StopCodon',
+             'NumReferenceIntrons', 'NumReferenceExons']]
     return df
