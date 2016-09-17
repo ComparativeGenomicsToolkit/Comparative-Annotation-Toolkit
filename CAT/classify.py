@@ -151,18 +151,19 @@ def aln_classify(job, args, input_file_ids):
     fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.fasta)
     r = []
     paralog_count = paralogy(psl_dict)  # we have to count paralogs globally
-    synteny_scores = synteny(ref_gp_dict, gp_dict)  # we also have to count synteny globally
+    synteny_scores = synteny(ref_gp_dict, gp_dict)  # we also have to score synteny globally
     for aln_id, tx in gp_dict.iteritems():
         aln = psl_dict[aln_id]
-        r.append([aln_id, 'Paralogy', paralog_count[aln_id]])
-        r.append([aln_id, 'Synteny', synteny_scores[aln_id]])
-        r.append([aln_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
-        r.append([aln_id, 'AlnPartialMap', alignment_partial_map(aln)])
-        r.append([aln_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
-        r.append([aln_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
-        r.append([aln_id, 'LongTranscript', long_transcript(tx)])
-    df = pd.DataFrame(r, columns=['AlignmentId', 'classifier', 'value'])
-    df.set_index(['AlignmentId', 'classifier'], inplace=True)
+        tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+        r.append([aln_id, tx_id, 'Paralogy', paralog_count[aln_id]])
+        r.append([aln_id, tx_id, 'Synteny', synteny_scores[aln_id]])
+        r.append([aln_id, tx_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
+        r.append([aln_id, tx_id, 'AlnPartialMap', alignment_partial_map(aln)])
+        r.append([aln_id, tx_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
+        r.append([aln_id, tx_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
+        r.append([aln_id, tx_id, 'LongTranscript', long_transcript(tx)])
+    df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'classifier', 'value'])
+    df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
     return df
 
 
@@ -261,7 +262,8 @@ def calculate_metrics(job, transcript_chunk):
         r.append([tx.name, ref_tx.name, 'PercentUnknownBases', psl.percent_n])
         r.append([tx.name, ref_tx.name, 'NumMissingIntrons', num_missing_introns])
         r.append([tx.name, ref_tx.name, 'NumMissingExons', num_missing_exons])
-        r.append([tx.name, ref_tx.name, 'NumIntrons', len(tx.intron_intervals)])
+        num_introns = len(tx.intron_intervals) if aln_mode == 'mRNA' else tx.num_coding_introns
+        r.append([tx.name, ref_tx.name, 'NumIntrons', num_introns])
     return r
 
 
