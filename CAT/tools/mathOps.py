@@ -4,14 +4,18 @@ Library mathematical operations
 import bisect
 
 
-def format_ratio(numerator, denominator, num_digits=None):
+def format_ratio(numerator, denominator, num_digits=None, resolve_nan=None):
     """
     Convenience function that converts two numbers to a ratio.
     Handles dividing by zero, as well as transforming values into floats.
     Rounds the number to the number of num_digits, if requested (not None)
+    resolve_nan defines what to do when dividing by zero. Default is to return float('nan'), but this can be changed.
     """
     if denominator == 0:
-        return float("nan")
+        if resolve_nan is None:
+            return float("nan")
+        else:
+            return resolve_nan
     r = float(numerator) / float(denominator)
     if num_digits is not None:
         r = round(r, num_digits)
