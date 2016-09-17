@@ -4,10 +4,8 @@ Runs AugustusTM(R) on the input transMap records.
 This program takes as input a genePred of transMap output, an attributes table describing the biotype and
 gene-transcript relationships, and an optional RNAseq hints database and runs Augustus on each transcript.
 
-Transcripts are evaluated for the following features to help decide how they are converted into hints:
-
-    1) OriginalIntrons. If any new gaps are not within a wiggle distance (in transcript space) of original introns,
-        do not provide them as hints to Augustus.
+If any new gaps are not within a wiggle distance (in transcript space) of original introns, do not provide them as
+hints to Augustus.
 """
 import logging
 import argparse
@@ -182,9 +180,6 @@ def merge(job, tm_results, tmr_results):
     else:
         tmr_results_file_id = None
     return tm_results_file_id, tmr_results_file_id
-
-
-# Convenience functions
 
 
 def munge_augustus_output(aug_output, mode, tm_tx):
