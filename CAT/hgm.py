@@ -50,17 +50,17 @@ def hgm(args, toil_options):
     :return: a dictionary with one gtf file per genome
     """
     # we decide to either use toil_options.maxCores or the # of CPU on the leader node
-    # this could lock up if the leader has more power than the children or more than 32 cores
-    # the hard coded 32 is basically a stupid hack
+    # this could lock up if the leader has more power than the children or more than 16 cores
+    # the hard coded 16 is basically a stupid hack
     # we pass this along in the args for homGeneMapping to make use of
-    num_cpu = min(multiprocessing.cpu_count(), toil_options.maxCores, 32)
+    num_cpu = min(multiprocessing.cpu_count(), toil_options.maxCores, 16)
     with Toil(toil_options) as toil:
         if not toil.options.restart:
             hal_file_id = toil.importFile('file://' + args['hal'])
             hints_db_file_id = toil.importFile('file://' + args['hints_db'])
             gtf_file_ids = {genome: toil.importFile('file://' + gtf) for genome, gtf in args['in_gtf'].iteritems()}
             input_file_ids = {'hal': hal_file_id, 'hints_db': hints_db_file_id, 'gtfs': gtf_file_ids}
-            job = Job.wrapJobFn(setup, args, input_file_ids, num_cpu, cores=num_cpu, memory='256G')
+            job = Job.wrapJobFn(setup, args, input_file_ids, num_cpu, cores=num_cpu, memory='32G')
             results = toil.start(job)
         else:
             results = toil.restart()
