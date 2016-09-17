@@ -94,15 +94,16 @@ def load_alignment_evaluation(db_path):
     engine = sqlalchemy.create_engine('sqlite:///' + db_path)
     df = pd.read_sql('alignment', engine)
     df['value'] = df['value'].apply(pd.to_numeric)
-    return pd.pivot_table(df, index='AlignmentId', columns='classifier', values='value', fill_value=0)
+    return pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value', fill_value=0)
 
 
-def load_classifications(db_path, alignment_mode, transcript_modes):
+def load_classifications(db_path, alignment_mode, transcript_modes, ref_tx_dict):
     """
     Load all of the evaluation and metrics tables into one joined DataFrame
     :param db_path: path to genome database
     :param alignment_mode: one of ('CDS', 'mRNA')
     :param transcript_modes: List that contains modes ['transMap', 'augTM', 'augTMR', 'augCGP']
+    :param ref_tx_dict: dictionary of GenePredTranscript objects representing the reference transcripts
     :return: DataFrame
     """
     def load_evaluation(tx_type):
@@ -121,6 +122,18 @@ def load_classifications(db_path, alignment_mode, transcript_modes):
         df = pd.read_sql(query, engine)
         return df
 
+    def add_intron_exon_counts():
+        """based on alignment mode, produce a DataFrame of the number of reference introns/exons"""
+        r = []
+        for ref_tx_id, ref_tx in ref_tx_dict.iteritems():
+            if alignment_mode == 'mRNA':
+                r.append([ref_tx_id, len(ref_tx.exon_intervals), len(ref_tx.intron_intervals)])
+            else:
+                r.append([ref_tx_id, ref_tx.num_coding_exons, ref_tx.num_coding_introns])
+        df = pd.DataFrame(r)
+        df.columns = ['TranscriptId', 'NumReferenceExons', 'NumReferenceIntrons']
+        return df
+
     # we did not perform mRNA alignments on CGP
     if alignment_mode == 'mRNA':
         transcript_modes = list(set(transcript_modes) - {'augCGP'})
@@ -128,27 +141,44 @@ def load_classifications(db_path, alignment_mode, transcript_modes):
     dfs = [load_metrics(tx_mode) for tx_mode in transcript_modes]
     dfs.extend([load_evaluation(tx_mode) for tx_mode in transcript_modes])
     df = pd.concat(dfs, join='outer')
+    # we have to convert the value column to numeric for pivot to work
     df['value'] = df['value'].apply(pd.to_numeric)
     eval_df = pd.pivot_table(df, index=['AlignmentId', 'TranscriptId'], columns='classifier', values='value',
                              fill_value=0)
-    return eval_df
+    # bring in the intron counts
+    intron_df = add_intron_exon_counts()
+    eval_df = pd.merge(eval_df.reset_index(), intron_df, on='TranscriptId')
+    return eval_df.set_index(['TranscriptId', 'AlignmentId'])
 
 
-def load_intron_vector(db_path, transcript_modes):
+def load_intron_vector(db_path, aln_mode, transcript_modes, tx_dict):
     """
-    load the homGeneMapping intron vector, collapsing to a single value
+    load the homGeneMapping intron vector, collapsing to a single value.
+    We pass aln_mode/tx to only count CDS introns if we are in CDS mode
     TODO: Make use of the deeper information present in the intron vector
     :param db_path: path to genome database
+    :param aln_mode: One of ('CDS', 'mRNA')
     :param transcript_modes: List that contains modes ['transMap', 'augTM', 'augTMR', 'augCGP']
+    :param tx_dict: dictionary of GenePredTranscript objects representing the target transcripts
     :return: DataFrame
     """
-    def reduce_intron_vector(s):
-        """intron vector is stored as a comma separated string. Apply this function to reduce to a integer count"""
-        s.IntronVector = len([x for x in s.IntronVector.split(',') if x > 0])
-        return s
+    def reduce_intron_vector(s, aln_mode, tx, aln_id):
+        """intron vector is stored as a comma separated string. Reduce this, taking aln_mode into account"""
+        num_supported = 0
+        scores = map(int, list(s)[0].split(','))
+        for intron, score in zip(*[tx.intron_intervals, scores]):
+            if aln_mode == 'CDS' and not intron.subset(tx.coding_interval):  # don't look at this intron
+                continue
+            if score == 0:  # this intron is not supported
+                continue
+            num_supported += 1
+        return aln_id, num_supported
+
     engine = sqlalchemy.create_engine('sqlite:///' + db_path)
     dfs = [pd.read_sql('_'.join([tx_mode, 'HgmIntronVector']), engine) for tx_mode in transcript_modes]
-    dfs = [df.apply(reduce_intron_vector, axis=1) for df in dfs]
     df = pd.concat(dfs, join='outer')
+    df = df.set_index('AlignmentId')
+    r = [reduce_intron_vector(s, aln_mode, tx_dict[aln_id], aln_id) for aln_id, s in df.iterrows()]
+    df = pd.DataFrame(r)
     df.columns = ['AlignmentId', 'NumSupportedIntrons']
-    return df
+    return df.set_index('AlignmentId')

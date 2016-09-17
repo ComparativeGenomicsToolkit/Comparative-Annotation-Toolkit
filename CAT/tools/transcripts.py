@@ -16,7 +16,7 @@ class Transcript(object):
     """
     __slots__ = ('name', 'strand', 'score', 'thick_start', 'rgb', 'thick_stop', 'start', 'stop', 'intron_intervals',
                  'exon_intervals', 'exons', 'block_sizes', 'block_starts', 'block_count', 'chromosome',
-                 'interval')
+                 'interval', 'coding_interval')
 
     def __init__(self, bed_tokens):
         self.chromosome = bed_tokens[0]
@@ -34,6 +34,7 @@ class Transcript(object):
         self.exon_intervals = self._get_exon_intervals()
         self.intron_intervals = self._get_intron_intervals()
         self.interval = self._get_interval()
+        self.coding_interval = self._get_coding_interval()
 
     def __len__(self):
         return sum(len(x) for x in self.exon_intervals)
@@ -44,6 +45,7 @@ class Transcript(object):
 
     @property
     def cds_size(self):
+        """calculates the number of coding bases"""
         l = 0
         for e in self.exon_intervals:
             if self.thick_start < e.start and e.stop < self.thick_stop:
@@ -60,15 +62,31 @@ class Transcript(object):
                 l += self.thick_stop - e.start
         return l
 
+    @property
+    def num_coding_introns(self):
+        """how many coding introns does this transcript have?"""
+        return len([i for i in self.intron_intervals if i.subset(self.coding_interval)])
+
+    @property
+    def num_coding_exons(self):
+        """how many coding exons does this transcript have?"""
+        return len([i for i in self.exon_intervals if i.overlap(self.coding_interval)])
+
     def _get_interval(self):
         """
         Returns a ChromosomeInterval object representing the full span of this transcript.
         """
         return ChromosomeInterval(self.chromosome, self.start, self.stop, self.strand)
 
+    def _get_coding_interval(self):
+        """
+        Returns a ChromosomeInterval object representing the coding span of this transcript.
+        """
+        return ChromosomeInterval(self.chromosome, self.thick_start, self.thick_stop, self.strand)
+
     def _get_exon_intervals(self):
         """
-        Builds a list of ChromosomeInterval objects representing the exons of this trancript.
+        Builds a list of ChromosomeInterval objects representing the exons of this transcript.
         :return: List of ChromosomeIntervals
         """
         exon_intervals = []
@@ -80,7 +98,7 @@ class Transcript(object):
 
     def _get_intron_intervals(self):
         """
-        Builds a list of ChromosomeInterval objects representing the introns of this trancript.
+        Builds a list of ChromosomeInterval objects representing the introns of this transcript.
         :return: List of ChromosomeIntervals
         """
         intron_intervals = []
