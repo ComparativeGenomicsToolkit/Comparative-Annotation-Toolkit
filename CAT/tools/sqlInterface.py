@@ -7,7 +7,7 @@ import pandas as pd
 
 
 ###
-# Useful functions for querying the databases
+# Attributes functions
 ###
 
 
@@ -74,6 +74,11 @@ def get_gene_biotype_map(db_path, table='annotation', index_col='TranscriptId'):
     return dict(zip(df.GeneId, df.GeneBiotype))
 
 
+###
+# Loading classification tables
+###
+
+
 def load_reference(ref_db_path):
     """
     Load the reference annotation table
@@ -81,7 +86,7 @@ def load_reference(ref_db_path):
     :return: DataFrame
     """
     engine = sqlalchemy.create_engine('sqlite:///' + ref_db_path)
-    df = pd.read_sql('annotation', engine, index_col=['GeneId', 'TranscriptId'])
+    df = pd.read_sql('annotation', engine)
     return df
 
 
@@ -92,9 +97,15 @@ def load_alignment_evaluation(db_path):
     :return: DataFrame
     """
     engine = sqlalchemy.create_engine('sqlite:///' + db_path)
-    df = pd.read_sql('alignment', engine)
+    df = pd.read_sql('TransMapEvaluation', engine)
     df['value'] = df['value'].apply(pd.to_numeric)
-    return pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value', fill_value=0)
+    df = pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value', fill_value=0)
+    return df.reset_index()
+
+
+###
+# These functions require external information to create their dataframes
+###
 
 
 def load_classifications(db_path, alignment_mode, transcript_modes, ref_tx_dict):
@@ -147,8 +158,7 @@ def load_classifications(db_path, alignment_mode, transcript_modes, ref_tx_dict)
                              fill_value=0)
     # bring in the intron counts
     intron_df = add_intron_exon_counts()
-    eval_df = pd.merge(eval_df.reset_index(), intron_df, on='TranscriptId')
-    return eval_df.set_index(['TranscriptId', 'AlignmentId'])
+    return pd.merge(eval_df.reset_index(), intron_df, on='TranscriptId')
 
 
 def load_intron_vector(db_path, aln_mode, transcript_modes, tx_dict):
@@ -181,4 +191,4 @@ def load_intron_vector(db_path, aln_mode, transcript_modes, tx_dict):
     r = [reduce_intron_vector(s, aln_mode, tx_dict[aln_id], aln_id) for aln_id, s in df.iterrows()]
     df = pd.DataFrame(r)
     df.columns = ['AlignmentId', 'NumSupportedIntrons']
-    return df.set_index('AlignmentId')
+    return df

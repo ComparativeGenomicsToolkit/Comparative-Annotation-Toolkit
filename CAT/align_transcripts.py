@@ -44,7 +44,7 @@ def align_transcripts(args, toil_options):
             input_file_ids.ref_genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.ref_genome_fasta)
             input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
             input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
-            input_file_ids.ref_genome_db = toil.importFile('file://' + args.ref_genome_db)
+            input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
             input_file_ids.modes = {}
             for mode in args.alignment_modes:
                 input_file_ids.modes[mode] = toil.importFile('file://' + args.alignment_modes[mode]['gp'])
@@ -67,7 +67,7 @@ def setup(job, args, input_file_ids):
     job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args.genome), level=logging.INFO)
     # load all fileStore files necessary
     annotation_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
-    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_genome_db)
+    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_db_path)
     # we have to explicitly place fasta, flat file and gdx with the correct naming scheme for pyfasta
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)

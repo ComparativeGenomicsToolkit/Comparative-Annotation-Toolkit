@@ -1,19 +1,7 @@
 """
 A series of classifiers that evaluate transMap, AugustusTMR and AugustusCGP output.
 
-These classifiers are broken down into 3 groups, which will each end up as a table in the database:
-
-Alignment:
-
-These classifiers apply only to the transMap alignments, and measure how well we mapped over this region:
-1. Paralogy: The # of times this transcript was aligned
-2. AlnExtendsOffConfig: Does this alignment run off the end of a contig?
-3. AlignmentPartialMap: Did this transcript not map completely?
-4. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
-5. AlnContainsUnknownBases: Are there any Ns within the transcript alignment?
-6. LongAlignment: Did this transcript align in a insanely long fashion? Indicative of paralogy problems.
-7. Synteny: If this transcript aligned more than once, assign a boolean based on synteny to whether this is the
-    most probable transcript. This is used to filter for pseudogenes.
+These classifiers are broken down into 2 groups, which will each end up as a table in the database:
 
 <alnMode>_<txMode>_Metrics:
 
@@ -54,11 +42,7 @@ alnMode:
 2) mRNA
 
 """
-import argparse
-import logging
-import bisect
 import itertools
-import collections
 import pandas as pd
 import tools.transcripts
 import tools.intervals
@@ -69,15 +53,9 @@ import tools.bio
 import tools.sqlInterface
 import tools.nameConversions
 import tools.mathOps
-import tools.toilInterface
-
-from toil.job import Job
-from toil.common import Toil
 
 
 # hard coded variables
-# hard coded long transMap size. Bigger than 3 megabases is probably a spurious alignment.
-long_tx_size = 3 * 10 ** 6
 # fuzz distance is the distance between introns allowed in intron coordinates before triggering NumMissingIntrons
 # fuzz distance is counted from both sides of the intron
 fuzz_distance = 7
@@ -87,387 +65,93 @@ num_missing_exons_coverage_cutoff = 0.8
 exon_gain_coverage_cutoff = 0.8
 
 
-def classify(args, toil_options):
+def classify(eval_args):
     """
-    Entry point for Transcript Classification Toil pipeline.
+    Runs alignment classification for all alignment modes
+    :param eval_args: argparse Namespace produced by EvaluateTranscripts.get_args()
+    :return: list of (tablename, dataframe) tuples
     """
-    with Toil(toil_options) as toil:
-        if not toil.options.restart:
-            fasta_file_ids = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
-            input_file_ids = argparse.Namespace()
-            input_file_ids.fasta = fasta_file_ids
-            input_file_ids.tm_psl = toil.importFile('file://' + args.tm_psl)
-            input_file_ids.tm_gp = toil.importFile('file://' + args.tm_gp)
-            input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
-            input_file_ids.ref_genome_db = toil.importFile('file://' + args.ref_genome_db)
-            input_file_ids.modes = {}  # modes will hold the file IDs broken down by mode
-            input_file_ids.gps = {}  # gps will hold input genePred file IDs
-            for tx_mode, path_dict in args.alignment_modes.iteritems():
-                aln_file_ids = {}
-                gp_file_id = toil.importFile('file://' + path_dict['gp'])
-                for aln_mode in ['mRNA', 'CDS']:
-                    if aln_mode in path_dict:
-                        aln_file_ids[aln_mode] = toil.importFile('file://' + path_dict[aln_mode])
-                input_file_ids.modes[tx_mode] = aln_file_ids
-                input_file_ids.gps[tx_mode] = gp_file_id
-            job = Job.wrapJobFn(setup_classify, args, input_file_ids)
-            results = toil.start(job)
-        else:
-            results = toil.restart()
-    return dict(itertools.chain.from_iterable(results))
+    # load shared inputs
+    ref_tx_dict = tools.transcripts.get_gene_pred_dict(eval_args.annotation_gp)
+    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(eval_args.ref_db_path)
+    seq_dict = tools.bio.get_sequence_dict(eval_args.fasta)
+    # results stores the final dataframes
+    results = {}
+    for tx_mode, path_dict in eval_args.alignment_modes.iteritems():
+        tx_dict = tools.transcripts.get_gene_pred_dict(path_dict['gp'])
+        aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
+        for aln_mode in aln_modes:
+            # these are the sqlite table names
+            mc_table_name = '_'.join([aln_mode, tx_mode, 'Metrics'])
+            ec_table_name = '_'.join([aln_mode, tx_mode, 'Evaluation'])
+            tx_aln_psl_dict = tools.psl.get_alignment_dict(path_dict[aln_mode])
+            mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict)
+            ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict)
+            results[mc_table_name] = mc_df
+            results[ec_table_name] = ec_df
+    return results
 
 
-def setup_classify(job, args, input_file_ids):
-    """
-    Splits the pipeline into three sections - aln_classify, metrics_classify, and evaluation_classify
-    :param args: Configuration dictionary passed in by Luigi.
-    :param input_file_ids: Dictionary of fileStore IDs
-    :return: tuples of (tablename: pandas DataFrame)
-    """
-    job.fileStore.logToMaster('Beginning Transcript Evaluation run on {}'.format(args.genome), level=logging.INFO)
-    aln_df = job.addChildJobFn(aln_classify, args, input_file_ids, memory='8G').rv()
-    # nested inner list to deal with paired tables coming out of metrics_evaluation_classify
-    dfs = [[('alignment', aln_df)]]
-    for tx_mode, aln_file_ids in input_file_ids.modes.iteritems():
-        for aln_mode, tx_aln_psl_file_id in aln_file_ids.iteritems():
-            gp_file_id = input_file_ids.gps[tx_mode]
-            mc_job = job.addChildJobFn(metrics_evaluation_classify, tx_mode, aln_mode, gp_file_id, tx_aln_psl_file_id,
-                                       input_file_ids)
-            dfs.append(mc_job.rv())
-    return dfs
-
-
-def aln_classify(job, args, input_file_ids):
-    """
-    Runs alignment classification based on transMap PSLs, genePreds and the genome FASTA.
-    :param args: Configuration dictionary passed in by Luigi.
-    :param input_file_ids: Dictionary of fileStore IDs
-    :return: DataFrame
-    """
-    job.fileStore.logToMaster('Beginning Alignment Evaluation run on {}'.format(args.genome), level=logging.INFO)
-    psl_dict = tools.psl.get_alignment_dict(job.fileStore.readGlobalFile(input_file_ids.tm_psl))
-    gp_dict = tools.transcripts.get_gene_pred_dict(job.fileStore.readGlobalFile(input_file_ids.tm_gp))
-    ref_gp_dict = tools.transcripts.get_gene_pred_dict(job.fileStore.readGlobalFile(input_file_ids.annotation_gp))
-    fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.fasta)
-    r = []
-    paralog_count = paralogy(psl_dict)  # we have to count paralogs globally
-    synteny_scores = synteny(ref_gp_dict, gp_dict)  # we also have to score synteny globally
-    for aln_id, tx in gp_dict.iteritems():
-        aln = psl_dict[aln_id]
-        tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
-        r.append([aln_id, tx_id, 'Paralogy', paralog_count[aln_id]])
-        r.append([aln_id, tx_id, 'Synteny', synteny_scores[aln_id]])
-        r.append([aln_id, tx_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
-        r.append([aln_id, tx_id, 'AlnPartialMap', alignment_partial_map(aln)])
-        r.append([aln_id, tx_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, 'LongTranscript', long_transcript(tx)])
-    df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'classifier', 'value'])
-    df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
-    return df
-
-
-def metrics_evaluation_classify(job, tx_mode, aln_mode, gp_file_id, tx_aln_psl_file_id, input_file_ids,
-                                chunk_size=2500):
-    """
-    Entry point for both metrics and alignment evaluation processes.
-
-    This job parses:
-    1) The alignment record PSL into PslRow objects,
-    2) The reference genePred into GenePredTranscript objects,
-    3) The target genePred into GenePredTranscript objects, and
-    4) The annotation SQLite database to determine biotypes.
-
-    These are then grouped into chunks and new jobs are created to calculate the classifications.
-
-    A final combination job combines the results into the output dataframe.
-
-    :param tx_mode: Transcript type we are evaluating. Used to build the table name
-    :param aln_mode: Alignment mode. One of mRNA, CDS. Used to build the table name and determine if we are going to
-    work on CDS or mRNA sequences.
-    :param gp_file_id: genePred file ID for this mode
-    :param tx_aln_psl_file_id: Alignment PSL file id for this mode
-    :param input_file_ids: Dictionary of fileStore IDs
-    :param chunk_size: The number of transcripts each job will process.
-    :return: two tuples of (tablename, dataframe)
-    """
-    def tx_iter():
-        """
-        yields tuples of (GenePredTranscript <reference> , GenePredTranscript <target>, PslRow, biotype
-        """
-        for psl in psl_iter:
-            # this psl is target-referenced
-            target_name = psl.q_name
-            ref_name = psl.t_name
-            ref_tx = ref_tx_dict[ref_name]
-            tx = tx_dict[target_name]
-            biotype = tx_biotype_map[ref_name]
-            yield ref_tx, tx, psl, biotype, aln_mode
-
-    # load files
-    tx_aln_psl = job.fileStore.readGlobalFile(tx_aln_psl_file_id)
-    ref_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
-    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_genome_db)
-    gp = job.fileStore.readGlobalFile(gp_file_id)
-
-    # parse files
-    psl_iter = tools.psl.psl_iterator(tx_aln_psl)
-    tx_dict = tools.transcripts.get_gene_pred_dict(gp)
-    ref_tx_dict = tools.transcripts.get_gene_pred_dict(ref_gp)
-
-    # load transcript biotype map
-    tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
-
-    # start the classification process
-    # mc_r/ec_r will contain uncollapsed result Promises that will be resolved before merge_metrics_results
-    mc_r = []
-    ec_r = []
-    for transcript_chunk in tools.dataOps.grouper(tx_iter(), chunk_size):
-        mc_j = job.addChildJobFn(calculate_metrics, transcript_chunk)
-        mc_r.append(mc_j.rv())
-        ec_j = job.addChildJobFn(calculate_evaluations, transcript_chunk, input_file_ids.fasta)
-        ec_r.append(ec_j.rv())
-
-    # start merging the results into dataframes
-    # these are the DataFrame column names for the respective tables
-    mc_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
-    ec_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
-    # these are the sqlite table names
-    mc_table_name = '_'.join([aln_mode, tx_mode, 'Metrics'])
-    ec_table_name = '_'.join([aln_mode, tx_mode, 'Evaluation'])
-
-    ec_df = job.addFollowOnJobFn(merge_results, ec_r, ec_columns).rv()
-    mc_df = job.addFollowOnJobFn(merge_results, mc_r, mc_columns).rv()
-
-    return (mc_table_name, mc_df), (ec_table_name, ec_df)
-
-
-def calculate_metrics(job, transcript_chunk):
+def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict):
     """
     Calculates the alignment metrics and the number of missing original introns on this transcript_chunk
-    :param transcript_chunk: tuples of ref_tx, tx, psl, biotype, aln_mode
     :return: list of (aln_id, classifier, result) tuples
     """
+    mc_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
     r = []
-    for ref_tx, tx, psl, biotype, aln_mode in transcript_chunk:
+    for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         if biotype == 'protein_coding':
             start_ok, stop_ok = start_stop_stat(tx)
             r.append([tx.name, ref_tx.name, 'StartCodon', start_ok])
             r.append([tx.name, ref_tx.name, 'StopCodon', stop_ok])
         num_missing_introns = calculate_num_missing_introns(ref_tx, tx, psl, aln_mode)
         num_missing_exons = calculate_num_missing_exons(ref_tx, psl, aln_mode)
+        # calculate number of total introns based on aln_mode
+        num_introns = len(tx.intron_intervals) if aln_mode == 'mRNA' else tx.num_coding_introns
         r.append([tx.name, ref_tx.name, 'AlnCoverage', psl.coverage])
         r.append([tx.name, ref_tx.name, 'AlnIdentity', psl.identity])
         r.append([tx.name, ref_tx.name, 'Badness', psl.badness])
         r.append([tx.name, ref_tx.name, 'PercentUnknownBases', psl.percent_n])
         r.append([tx.name, ref_tx.name, 'NumMissingIntrons', num_missing_introns])
         r.append([tx.name, ref_tx.name, 'NumMissingExons', num_missing_exons])
-        num_introns = len(tx.intron_intervals) if aln_mode == 'mRNA' else tx.num_coding_introns
         r.append([tx.name, ref_tx.name, 'NumIntrons', num_introns])
-    return r
+    return create_data_frame(r, mc_columns)
 
 
-def calculate_evaluations(job, transcript_chunk, fasta_file_id):
+def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict):
     """
     Calculates the evaluation metrics on this transcript_chunk
-    :param transcript_chunk: tuples of ref_tx, tx, psl, biotype, aln_mode
-    :param fasta_file_id: fileStore file ID for the genome FASTA
     :return: list of (aln_id, classifier, chromosome, start, stop, strand) tuples
     """
-    fasta = tools.toilInterface.load_fasta_from_filestore(job, fasta_file_id)
+    ec_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     r = []
-    for ref_tx, tx, psl, biotype, aln_mode in transcript_chunk:
+    for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         for exon in exon_gain(tx, psl, aln_mode):
             r.append([tx.name, ref_tx.name, 'ExonGain', exon])
         indels = find_indels(tx, psl, aln_mode)
         for category, interval in indels:
             r.append([tx.name, ref_tx.name, category, interval])
         if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evaluate tiny ORFs
-            ifs = in_frame_stop(tx, fasta)
+            ifs = in_frame_stop(tx, seq_dict)
             if ifs is not None:
                 r.append([tx.name, ref_tx.name, 'InFrameStop', ifs])
     # convert all of the ChromosomeInterval objects into a column representation
-    return [[tx_name, ref_name, cat, i.chromosome, i.start, i.stop, i.strand] for tx_name, ref_name, cat, i in r]
+    r = [[tx_name, ref_name, cat, i.chromosome, i.start, i.stop, i.strand] for tx_name, ref_name, cat, i in r]
+    return create_data_frame(r, ec_columns)
 
 
-def merge_results(job, r, columns):
+def create_data_frame(r, columns):
     """
     Combines the output of calculate_metrics() or calculate_evaluations() into a DataFrame
-    :param r: List of lists of results that needs to be flattened and converted
+    :param r: List of results to be converted to a DataFrame
     :param columns: List of column names to use
     :return: DataFrame
     """
-    d = list(itertools.chain.from_iterable(r))
-    df = pd.DataFrame(d, columns=columns)
+    df = pd.DataFrame(r, columns=columns)
     df.sort_values(columns, inplace=True)
     df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
-    assert len(d) == len(df)
+    assert len(r) == len(df)
     return df
-
-
-###
-# Alignment Classifiers
-###
-
-
-def paralogy(psl_dict):
-    """
-    Count the number of occurrences of each parental annotation in the target genome
-    :param psl_dict: PslDict from psl module of transMap alignments
-    :return: collections.Counter
-    """
-    r = collections.Counter()
-    for aln_id in psl_dict:
-        r[tools.nameConversions.strip_alignment_numbers(aln_id)] += 1
-    return r
-
-
-def aln_extends_off_contig(aln):
-    """
-    Does the alignment extend off of a contig or scaffold?
-    aligned: #  unaligned: -  whatever: .  edge: |
-             query  |---#####....
-             target    |#####....
-    OR
-    aligned: #  unaligned: -  whatever: .  edge: |
-             query  ...######---|
-             target ...######|
-
-    :param aln: PslRow object
-    :return: boolean
-    """
-    if aln.t_start == 0 and aln.q_start != 0 or aln.t_end == aln.t_size and aln.q_end != aln.q_size:
-        return True
-    else:
-        return False
-
-
-def alignment_partial_map(aln):
-    """
-    Does the query sequence not map entirely?
-
-    a.q_size != a.q_end - a.q_start
-
-    :param aln: PslRow object
-    :return: boolean
-    """
-    return True if aln.q_size != aln.q_end - aln.q_start else False
-
-
-def aln_abuts_unknown_bases(tx, fasta):
-    """
-    Do any exons in this alignment immediately touch Ns?
-
-    :param tx: a GenePredTranscript object
-    :param fasta: pyfasta Fasta object for genome
-    :return: boolean
-    """
-    chrom = tx.chromosome
-    for exon in tx.exon_intervals:
-        if exon.start == 0:  # we are at the edge of the contig
-            left_base = None
-        else:
-            left_base = fasta[chrom][exon.start - 1]
-        if exon.stop >= len(fasta[chrom]):  # we are at the edge of the contig
-            right_base = None
-        else:
-            right_base = fasta[chrom][exon.stop]
-        if left_base == 'N' or right_base == 'N':
-            return True
-    return False
-
-
-def aln_contains_unknown_bases(tx, fasta):
-    """
-    Does this alignment contain unknown bases (Ns)?
-
-    :param tx: a GenePredTranscript object
-    :param fasta: pyfasta Fasta object for genome
-    :return: boolean
-    """
-    return 'N' not in tx.get_mrna(fasta)
-
-
-def long_transcript(tx):
-    """
-    Is this transcript greater in genomic length than long_tx_size?
-
-    :param tx: a GenePredTranscript object
-    :return: boolean
-    """
-    return True if tx.start - tx.stop >= long_tx_size else False
-
-
-def synteny(ref_gp_dict, gp_dict):
-    """
-    Attempts to evaluate the synteny of these transcripts. For each transcript, compares the 5 genes up and down stream
-    in the reference genome and counts how many match the transMap results.
-    :param ref_gp_dict: Dictionary of GenePredTranscript objects from the reference annotation
-    :param gp_dict: Dictionary of GenePredTranscript objects from the transMap output
-    :return:
-    """
-    def create_interval_dict(tx_dict):
-        """
-        Creates a dict mapping chromosome sequences to gene intervals [chrom][gene_id]: [list of tx intervals]
-        Skips huge intervals to avoid mapping issues
-        """
-        interval_dict = collections.defaultdict(lambda: collections.defaultdict(list))
-        for tx in tx_dict.itervalues():
-            if len(tx.interval) < long_tx_size:
-                interval_dict[tx.chromosome][tx.name2].append(tx.interval)
-        return interval_dict
-
-    def merge_interval_dict(interval_dict):
-        """Merges the above intervals into the one genic interval."""
-        merged_interval_dict = collections.defaultdict(dict)
-        for chrom in interval_dict:
-            for gene_id, gene_intervals in interval_dict[chrom].iteritems():
-                merged_intervals = tools.intervals.gap_merge_intervals(gene_intervals, float('inf'))
-                assert len(merged_intervals) == 1
-                merged_interval = merged_intervals[0]
-                if len(merged_interval) >= long_tx_size:
-                    continue
-                merged_interval.data = gene_id
-                merged_interval_dict[chrom][gene_id] = merged_interval
-        return merged_interval_dict
-
-    def sort_interval_dict(merged_interval_dict):
-        """Sorts the dict produced by create_interval_dict so that we can do list bisection"""
-        sorted_interval_dict = {}
-        for chrom in merged_interval_dict:
-            sorted_interval_dict[chrom] = sorted(merged_interval_dict[chrom].itervalues())
-        return sorted_interval_dict
-
-    def make_ref_interval_map(ref_intervals):
-        """Creates a dictionary mapping reference intervals to their name"""
-        ref_interval_map = {}
-        for interval_list in ref_intervals.itervalues():
-            for interval in interval_list:
-                assert interval.data not in ref_interval_map
-                ref_interval_map[interval.data] = interval
-        return ref_interval_map
-
-    # create dictionaries mapping chromosome names to all genic intervals present on the chromosome
-    tm_chrom_intervals = sort_interval_dict(merge_interval_dict(create_interval_dict(gp_dict)))
-    ref_chrom_intervals = sort_interval_dict(merge_interval_dict(create_interval_dict(ref_gp_dict)))
-
-    # convert the reference to a map that is per-name so that we know where to look
-    ref_interval_map = make_ref_interval_map(ref_chrom_intervals)
-
-    # synteny score algorithm
-    scores = {}
-    for tx in gp_dict.itervalues():
-        # find the genes from -5 to +5 in the target genome
-        target_intervals = tm_chrom_intervals[tx.chromosome]
-        target_position = bisect.bisect_left(target_intervals, tx.interval)
-        target_genes = {x.data for x in target_intervals[target_position - 5: target_position + 5]}
-        # find the same gene list in the reference genome
-        ref_interval = ref_interval_map[tx.name2]
-        ref_intervals = ref_chrom_intervals[ref_interval.chromosome]
-        ref_position = bisect.bisect_left(ref_intervals, ref_interval)
-        reference_genes = {x.data for x in ref_intervals[ref_position - 5: ref_position + 5]}
-        scores[tx.name] = len(reference_genes & target_genes)
-    return scores
 
 
 ###
@@ -701,6 +385,18 @@ def find_indels(tx, psl, aln_mode):
 ###
 # Helper functions
 ###
+
+
+def tx_iter(psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
+    """
+    yields tuples of (GenePredTranscript <reference> , GenePredTranscript <target>, PslRow, biotype
+    """
+    for psl in psl_dict.itervalues():
+        # this psl is target-referenced
+        ref_tx = ref_tx_dict[psl.t_name]
+        tx = tx_dict[psl.q_name]
+        biotype = tx_biotype_map[psl.t_name]
+        yield ref_tx, tx, psl, biotype
 
 
 def convert_cds_frames(ref_tx, tx, aln_mode):

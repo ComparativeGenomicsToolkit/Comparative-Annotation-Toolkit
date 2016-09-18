@@ -90,7 +90,7 @@ def consensus(args):
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(args.ref_gp)
 
     # load database tables
-    ref_df = tools.sqlInterface.load_reference(args.ref_genome_db)
+    ref_df = tools.sqlInterface.load_reference(args.ref_db_path)
     aln_eval_df = tools.sqlInterface.load_alignment_evaluation(args.db_path)
 
     # load alignment-mode specific tables, scoring the alignments
@@ -105,12 +105,6 @@ def consensus(args):
 
     # metrics will hold values during consensus finding that will be plotted afterwards
     metrics = {}
-
-    # resolve potential conflicts before consensus finding
-    alns_to_remove = set()
-    if args.resolve_split_genes is True:
-        alns_to_remove.update(resolve_split_genes(aln_eval_df, ref_df, tx_dict))
-        metrics['Genes Lost To Split Chromosomes'] = num_removed
 
     # remove filtered alignments
 
@@ -154,8 +148,8 @@ def merge_ref_tgt(ref_df, tgt_df, intron_df):
     :param tgt_df: DataFrame from sqlInterface.load_classifications()
     :return: DataFrame
     """
-    df = pd.merge(tgt_df.reset_index(), ref_df.reset_index(), on='TranscriptId', how='inner', suffixes=['_Tgt', '_Ref'])
-    df = pd.merge(df, intron_df.reset_index(), on='AlignmentId', how='inner')
+    df = pd.merge(tgt_df, ref_df, on='TranscriptId', how='inner', suffixes=['_Tgt', '_Ref'])
+    df = pd.merge(df, intron_df, on='AlignmentId', how='inner')
     return df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
 
 

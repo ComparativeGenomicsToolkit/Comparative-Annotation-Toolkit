@@ -22,7 +22,7 @@ class PipelineTask(luigi.Task):
     ref_genome = luigi.Parameter()
     annotation = luigi.Parameter()
     out_dir = luigi.Parameter(default='./cat_output')
-    work_dir = luigi.Parameter(default=tempfile.gettempdir())
+    work_dir = luigi.Parameter(default=os.path.join(tempfile.gettempdir(), __name__))
     target_genomes = luigi.TupleParameter(default=None)
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
@@ -36,6 +36,8 @@ class PipelineTask(luigi.Task):
     augustus_cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
+    # consensus options
+    resolve_split_genes = luigi.BoolParameter(default=False)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)
@@ -75,6 +77,7 @@ class PipelineTask(luigi.Task):
         args.augustus_cgp = self.augustus_cgp
         args.maf_chunksize = self.maf_chunksize
         args.maf_overlap = self.maf_overlap
+        args.resolve_split_genes = self.resolve_split_genes
         if self.augustus_cgp_cfg is not None:
             args.augustus_cgp_cfg = os.path.abspath(self.augustus_cgp_cfg)
         else:
@@ -124,6 +127,18 @@ class PipelineTask(luigi.Task):
         """database paths must be resolved here to handle multiple programs accessing them"""
         base_out_dir = os.path.join(pipeline_args.out_dir, 'databases')
         return os.path.join(base_out_dir, '{}.db'.format(genome))
+
+    @staticmethod
+    def get_plot_dir(pipeline_args, genome):
+        """plot base directories must be resolved here to handle multiple programs accessing them"""
+        base_out_dir = os.path.join(pipeline_args.out_dir, 'plots')
+        return os.path.join(base_out_dir, genome)
+
+    @staticmethod
+    def get_metrics_dir(pipeline_args, genome):
+        """plot data directories must be resolved here to handle multiple programs accessing them"""
+        base_out_dir = os.path.join(pipeline_args.work_dir, 'plot_data')
+        return os.path.join(base_out_dir, genome)
 
 
 class PipelineWrapperTask(PipelineTask, luigi.WrapperTask):

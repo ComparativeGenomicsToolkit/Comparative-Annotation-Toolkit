@@ -60,3 +60,13 @@ def aln_id_is_augustus_tm(aln_id):
 
 def aln_id_is_augustus_tmr(aln_id):
     return 'augTMR-' in aln_id
+
+
+def extract_unique_txs(aln_ids):
+    """finds all unique transcript names in a list of alignment IDs"""
+    return {strip_alignment_numbers(x) for x in aln_ids}
+
+
+def extract_unique_genes(aln_ids, tx_gene_map):
+    """finds all unique gene names in a list of alignment ids using a tx_gene_map"""
+    return {tx_gene_map[strip_alignment_numbers(x)] for x in aln_ids}

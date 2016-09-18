@@ -68,7 +68,7 @@ def setup(job, args, input_file_ids):
     def start_jobs(mode, chunk_size, cfg_file_id):
         """loop wrapper that starts jobs for both TM and TMR modes"""
         results = []
-        for chunk in tools.dataOps.grouper(gp_list, chunk_size):
+        for chunk in tools.dataOps.grouper(tx_dict.iteritems(), chunk_size):
             grouped_recs = {}
             for tx_id, tx in chunk:
                 grouped_recs[tx_id] = [tx,
@@ -88,7 +88,7 @@ def setup(job, args, input_file_ids):
     ref_psl_dict = tools.psl.get_alignment_dict(ref_psl)
     tm_psl_dict = tools.psl.get_alignment_dict(tm_psl)
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
-    gp_list = list(tools.transcripts.gene_pred_iterator(coding_gp))
+    tx_dict = tools.transcripts.get_gene_pred_dict(coding_gp)
     tm_results = start_jobs('TM', 100, input_file_ids.tm_cfg)
     if args.augustus_tmr:
         log_msg = 'Augustus run on {} has a hints database and will run both transMap and transMap-RNAseq modes.'
