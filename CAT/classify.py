@@ -78,7 +78,7 @@ def classify(eval_args):
     seq_dict = tools.bio.get_sequence_dict(eval_args.fasta)
     # results stores the final dataframes
     results = {}
-    for tx_mode, path_dict in eval_args.alignment_modes.iteritems():
+    for tx_mode, path_dict in eval_args.transcript_modes.iteritems():
         tx_dict = tools.transcripts.get_gene_pred_dict(path_dict['gp'])
         aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
         for aln_mode in aln_modes:
@@ -342,7 +342,7 @@ def find_indels(tx, psl, aln_mode):
         return [''.join([indel_type, gap_type]), i]
 
     def find_indel_type(tx, i, offset):
-        """returns Mult3"""
+        """Determines what type this indel is - coding/noncoding, mult3 or no"""
         if interval_is_coding(tx, i):
             this_type = 'CodingMult3' if offset % 3 == 0 else 'Coding'
         else:
@@ -367,6 +367,7 @@ def find_indels(tx, psl, aln_mode):
         q_offset = q_start - block_size - q_pos
         t_offset = t_start - block_size - t_pos
         assert not (q_offset == t_offset == 0)
+        assert (q_offset >= 0 and t_offset >= 0)
         if q_offset != 0:  # query insertion -> insertion in target sequence
             left_pos = q_start - q_offset
             right_pos = q_start

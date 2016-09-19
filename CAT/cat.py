@@ -24,15 +24,16 @@ import tools.psl
 import tools.sqlInterface
 import tools.sqlite
 import tools.transcripts
+from tools.luigiAddons import multiple_requires
 from align_transcripts import align_transcripts
 from augustus import augustus
 from augustus_cgp import augustus_cgp
 from base_tasks import PipelineTask, PipelineWrapperTask, ToilTask, AbstractAtomicFileTask
 from chaining import chaining
 from classify import classify
+from consensus import consensus
 from filter_transmap import filter_transmap
 from hgm import hgm, parse_hgm_gtf
-from tools.luigiAddons import multiple_requires
 from transmap_classify import transmap_classify
 
 logger = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
-        #yield self.clone(Consensus)
+        yield self.clone(Consensus)
         #yield self.clone(Plots)
 
 
@@ -918,19 +919,19 @@ class AlignTranscripts(PipelineWrapperTask):
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
-        args.alignment_modes = {'transMap': {'gp': FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp,
+        args.transcript_modes = {'transMap': {'gp': FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp,
                                              'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
                                              'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
         if pipeline_args.augustus is True:
-            args.alignment_modes['augTM'] = {'gp':  Augustus.get_args(pipeline_args, genome).augustus_tm_gp,
+            args.transcript_modes['augTM'] = {'gp':  Augustus.get_args(pipeline_args, genome).augustus_tm_gp,
                                              'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.psl'),
                                              'CDS': os.path.join(base_dir, genome + '.augTM.CDS.psl')}
         if pipeline_args.augustus_tmr is True:
-            args.alignment_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
+            args.transcript_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
         if pipeline_args.augustus_cgp is True:
-            args.alignment_modes['augCGP'] = {'gp': AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome],
+            args.transcript_modes['augCGP'] = {'gp': AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome],
                                               'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
         return args
 
@@ -957,16 +958,16 @@ class AlignTranscriptDriverTask(ToilTask):
 
     def output(self):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
-        for mode, paths in alignment_args.alignment_modes.iteritems():
+        for mode, paths in alignment_args.transcript_modes.iteritems():
             for aln_type in ['CDS', 'mRNA']:
                 if aln_type in paths:
                     yield luigi.LocalTarget(paths[aln_type])
 
     def requires(self):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
-        if 'augTM' in alignment_args.alignment_modes:
+        if 'augTM' in alignment_args.transcript_modes:
             yield self.clone(Augustus)
-        if 'augCGP' in alignment_args.alignment_modes:
+        if 'augCGP' in alignment_args.transcript_modes:
             yield self.clone(AugustusCgp)
         yield self.clone(FilterTransMap)
         yield self.clone(ReferenceFiles)
@@ -988,17 +989,15 @@ class EvaluateTranscripts(PipelineWrapperTask):
     """
     @staticmethod
     def get_args(pipeline_args, genome):
-        tgt_genome_files = GenomeFiles.get_args(pipeline_args, genome)
-        annotation_files = ReferenceFiles.get_args(pipeline_args)
-        tx_alignment_args = AlignTranscripts.get_args(pipeline_args, genome)
         args = argparse.Namespace()
-        args.db = pipeline_args.dbs[genome]
+        args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
-        args.annotation_gp = annotation_files.annotation_gp
-        args.fasta = tgt_genome_files.fasta
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.genome = genome
         args.ref_genome = pipeline_args.ref_genome
-        args.alignment_modes = tx_alignment_args.alignment_modes  # pass along all of the paths from alignment
+        # pass along all of the paths from alignment
+        args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes 
         return args
 
     def validate(self):
@@ -1021,7 +1020,7 @@ class EvaluateDriverTask(PipelineTask):
     def build_table_names(self, eval_args):
         """construct table names based on input arguments"""
         tables = []
-        for tx_mode, path_dict in eval_args.alignment_modes.iteritems():
+        for tx_mode, path_dict in eval_args.transcript_modes.iteritems():
             for aln_mode in ['mRNA', 'CDS']:
                 if aln_mode in path_dict:
                     metrics_table = '_'.join([aln_mode, tx_mode, 'Metrics'])
@@ -1035,7 +1034,7 @@ class EvaluateDriverTask(PipelineTask):
 
     def write_to_sql(self, results, eval_args):
         """Load the results into the SQLite database"""
-        with tools.sqlite.ExclusiveSqlConnection(eval_args.db) as engine:
+        with tools.sqlite.ExclusiveSqlConnection(eval_args.db_path) as engine:
             for table, target in self.pair_table_output(eval_args).iteritems():
                 if table not in results:
                     continue
@@ -1046,8 +1045,8 @@ class EvaluateDriverTask(PipelineTask):
 
     def output(self):
         eval_args = self.get_module_args(EvaluateTranscripts, genome=self.genome)
-        tools.fileOps.ensure_file_dir(eval_args.db)
-        conn_str = 'sqlite:///{}'.format(eval_args.db)
+        tools.fileOps.ensure_file_dir(eval_args.db_path)
+        conn_str = 'sqlite:///{}'.format(eval_args.db_path)
         for table in self.build_table_names(eval_args):
             yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                       target_table=table,
@@ -1070,24 +1069,17 @@ class Consensus(PipelineWrapperTask):
     """
     @staticmethod
     def get_args(pipeline_args, genome):
-        tm_args = TransMap.get_args(pipeline_args, genome)
-        args.alignment_modes = {'transMap': {'gp': tm_files.tm_gp,
-                                             'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
-                                             'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
-        if pipeline_args.augustus is True:
-            aug_args = Augustus.get_args(pipeline_args, genome)
-            args.alignment_modes['augTM'] = {'gp': aug_args.augustus_tm_gp,
-                                             'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.psl'),
-                                             'CDS': os.path.join(base_dir, genome + '.augTM.CDS.psl')}
-        if pipeline_args.augustus_tmr is True:
-            aug_args = Augustus.get_args(pipeline_args, genome)
-            args.alignment_modes['augTMR'] = {'gp': aug_args.augustus_tmr_gp,
-                                              'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
-                                              'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
-        if pipeline_args.augustus_cgp is True:
-            cgp_args = AugustusCgp.get_args(pipeline_args)
-            args.alignment_modes['augCGP'] = {'gp': cgp_args.augustus_cgp_gp[genome],
-                                              'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
+        base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
+        # grab the genePred of every mode
+        tx_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes
+        args = argparse.Namespace()
+        args.gp_list = [x['gp'] for x in tx_modes.itervalues()]
+        args.transcript_modes = tx_modes.keys()
+        args.db_path = pipeline_args.dbs[genome]
+        args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.consensus_gp = os.path.join(base_dir, genome + '.gp')
+        args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
         return args
 
     def validate(self):
@@ -1097,7 +1089,29 @@ class Consensus(PipelineWrapperTask):
         self.validate()
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
-            yield self.clone(ConsensusDriverTask, genome=target_genome)
+            consensus_args = self.get_module_args(Consensus, genome=target_genome)
+            yield self.clone(ConsensusDriverTask, genome=target_genome, consensus_args=consensus_args)
+
+
+class ConsensusDriverTask(PipelineTask):
+    """
+    Driver task for performing consensus finding.
+    """
+    genome = luigi.Parameter()
+    consensus_args = luigi.Parameter()
+
+    def output(self):
+        return (luigi.LocalTarget(self.consensus_args.consensus_gp),
+                luigi.LocalTarget(self.consensus_args.metrics_json))
+
+    def requires(self):
+        return self.clone(EvaluateTransMap), self.clone(EvaluateTranscripts)
+
+    def run(self):
+        logger.info('Generating consensus gene set for {}.'.format(self.genome))
+        consensus_gp, metrics_json = self.output()
+        metrics_dict = consensus(self.consensus_args, consensus_gp)
+        PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 
 def parse_args():

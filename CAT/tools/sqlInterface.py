@@ -183,7 +183,7 @@ def load_intron_vector(db_path, aln_mode, transcript_modes, tx_dict):
             if score == 0:  # this intron is not supported
                 continue
             num_supported += 1
-        return aln_id, num_supported
+        return aln_id, num_supported, scores
 
     engine = sqlalchemy.create_engine('sqlite:///' + db_path)
     dfs = [pd.read_sql('_'.join([tx_mode, 'HgmIntronVector']), engine) for tx_mode in transcript_modes]
@@ -191,5 +191,5 @@ def load_intron_vector(db_path, aln_mode, transcript_modes, tx_dict):
     df = df.set_index('AlignmentId')
     r = [reduce_intron_vector(s, aln_mode, tx_dict[aln_id], aln_id) for aln_id, s in df.iterrows()]
     df = pd.DataFrame(r)
-    df.columns = ['AlignmentId', 'NumSupportedIntrons']
+    df.columns = ['AlignmentId', 'NumSupportedIntrons', 'IntronVector']
     return df

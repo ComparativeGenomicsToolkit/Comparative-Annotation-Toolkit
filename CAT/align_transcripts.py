@@ -46,8 +46,8 @@ def align_transcripts(args, toil_options):
             input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
             input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
             input_file_ids.modes = {}
-            for mode in args.alignment_modes:
-                input_file_ids.modes[mode] = toil.importFile('file://' + args.alignment_modes[mode]['gp'])
+            for mode in args.transcript_modes:
+                input_file_ids.modes[mode] = toil.importFile('file://' + args.transcript_modes[mode]['gp'])
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='16G')
             results_file_ids = toil.start(job)
         else:
@@ -80,11 +80,11 @@ def setup(job, args, input_file_ids):
     results = collections.defaultdict(list)
     # start generating chunks of the transMap/Augustus genePreds which we know the 1-1 alignment for
     for tx_mode in ['transMap', 'augTM', 'augTMR']:
-        if tx_mode not in args.alignment_modes:
+        if tx_mode not in args.transcript_modes:
             continue
         # output file paths
-        mrna_path = args.alignment_modes[tx_mode]['mRNA']
-        cds_path = args.alignment_modes[tx_mode]['CDS']
+        mrna_path = args.transcript_modes[tx_mode]['mRNA']
+        cds_path = args.transcript_modes[tx_mode]['CDS']
         # begin loading transcripts and sequences
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[tx_mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
@@ -96,8 +96,8 @@ def setup(job, args, input_file_ids):
                 results[out_path].append(j.rv())
 
     # if we ran AugustusCGP, align those CDS sequences
-    if 'augCGP' in args.alignment_modes:
-        cgp_cds_path = args.alignment_modes['augCGP']['CDS']
+    if 'augCGP' in args.transcript_modes:
+        cgp_cds_path = args.transcript_modes['augCGP']['CDS']
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
         gene_tx_map = tools.sqlInterface.get_gene_transcript_map(ref_genome_db)
         tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
@@ -174,9 +174,9 @@ def run_blat_chunk(job, chunk, mode):
     tmp_psl = tools.fileOps.get_tmp_toil_file()
     results = []
     if mode == 'mRNA':
-        cmd = ['blat', '-noHead', '-minIdentity=0', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
+        cmd = ['blat', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
     else:  # mode == CDS
-        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=0', '-oneOff=1', tmp_ref, tmp_tgt, tmp_psl]
+        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         with open(tmp_ref, 'w') as tmp_ref_h:
             tools.bio.write_fasta(tmp_ref_h, ref_tx_id, ref_tx_seq)

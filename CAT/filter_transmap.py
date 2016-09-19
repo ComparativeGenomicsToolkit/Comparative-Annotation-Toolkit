@@ -37,8 +37,8 @@ def filter_transmap(filter_tm_args, out_target):
     aln_eval_df = filter_df(aln_eval_df, long_ids_to_remove)
 
     # remove super low coverage
-    low_cov_ids_to_remove = filter_coverage(aln_eval_df)
-    metrics['Coverage Filter'] = len(low_cov_ids_to_remove)
+    low_cov_ids_to_remove = filter_coverage_identity(aln_eval_df)
+    metrics['Alignment Quality Filter'] = len(low_cov_ids_to_remove)
     aln_eval_df = filter_df(aln_eval_df, low_cov_ids_to_remove)
 
     # resolve paralogs
@@ -72,9 +72,10 @@ def filter_long_transcripts(aln_eval_df):
     return set(long_tx_df.AlignmentId)
 
 
-def filter_coverage(aln_eval_df, cov_cutoff=0.1):
+def filter_coverage_identity(aln_eval_df, cov_cutoff=0.1, ident_cutoff=0.5):
     """apply a very weak coverage filter. This reduces the number of very unlikely alignments"""
-    low_cov_df = aln_eval_df[aln_eval_df['TransMapCoverage'] <= cov_cutoff]
+    low_cov_df = aln_eval_df[(aln_eval_df['TransMapCoverage'] <= cov_cutoff) |
+                             (aln_eval_df['TransMapIdentity']) <= ident_cutoff]
     return set(low_cov_df.AlignmentId)
 
 
