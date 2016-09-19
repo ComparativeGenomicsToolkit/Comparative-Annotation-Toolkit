@@ -9,10 +9,12 @@ Filters:
 one transcript.
 """
 import collections
+
+import pandas as pd
+
+import tools.nameConversions
 import tools.sqlInterface
 import tools.transcripts
-import tools.nameConversions
-import pandas as pd
 
 
 def filter_transmap(filter_tm_args, out_target):
@@ -55,6 +57,8 @@ def filter_transmap(filter_tm_args, out_target):
         for aln_id in aln_eval_df.AlignmentId:
             tx = tx_dict[aln_id]
             outf.write('\t'.join(tx.get_gene_pred()) + '\n')
+
+    return metrics
 
 
 def filter_df(aln_eval_df, ids_to_remove):

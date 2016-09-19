@@ -2,13 +2,16 @@
 Base tasks used by the pipeline. 
 """
 import argparse
+import json
 import os
-import luigi
 import shutil
 import tempfile
+
+import luigi
+from toil.job import Job
+
 import tools.fileOps
 import tools.procOps
-from toil.job import Job
 
 
 class PipelineTask(luigi.Task):
@@ -139,6 +142,13 @@ class PipelineTask(luigi.Task):
         """plot data directories must be resolved here to handle multiple programs accessing them"""
         base_out_dir = os.path.join(pipeline_args.work_dir, 'plot_data')
         return os.path.join(base_out_dir, genome)
+
+    @staticmethod
+    def write_metrics(metrics_dict, out_target):
+        """write out a metrics dictionary to a path for later loading and plotting"""
+        tools.fileOps.ensure_file_dir(out_target.path)
+        with out_target.open('w') as outf:
+            json.dumps(metrics_dict, outf)
 
 
 class PipelineWrapperTask(PipelineTask, luigi.WrapperTask):

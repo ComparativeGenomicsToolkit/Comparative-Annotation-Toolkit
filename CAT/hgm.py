@@ -26,16 +26,17 @@
  31.08.16 | Stefanie Koenig | creation of the file
 """
 
-from toil.job import Job
-from toil.common import Toil
-
-import logging
-import os
 import collections
+import logging
 import multiprocessing
+import os
+
+from toil.common import Toil
+from toil.job import Job
 
 import tools.fileOps
 import tools.procOps
+
 
 ###
 # hgm pipeline section

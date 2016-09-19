@@ -2,13 +2,15 @@
 Toil program to generate UCSC chains and nets between two genomes in a HAL file.
 """
 import argparse
-import logging
 import collections
+import logging
+
+from toil.common import Toil
+from toil.job import Job
+
+import tools.fileOps
 import tools.hal
 import tools.procOps
-import tools.fileOps
-from toil.job import Job
-from toil.common import Toil
 
 
 def chaining(args, toil_options):

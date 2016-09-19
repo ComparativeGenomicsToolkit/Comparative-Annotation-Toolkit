@@ -6,8 +6,9 @@ Modified by Ian Fiddes
 """
 import math
 from collections import Counter
-from tools.mathOps import format_ratio
+
 from tools.fileOps import iter_lines
+from tools.mathOps import format_ratio
 
 __author__ = 'Ian Fiddes'
 
@@ -97,32 +98,23 @@ class PslRow(object):
 
     @property
     def coverage(self):
-        return format_ratio(self.matches + self.mismatches + self.repmatches, self.q_size, num_digits=5)
+        return format_ratio(self.matches + self.mismatches + self.repmatches, self.q_size,
+                            num_digits=5, resolve_nan=0)
 
     @property
     def identity(self):
         return format_ratio(self.matches + self.repmatches,
                             self.matches + self.repmatches + self.mismatches + self.q_num_insert,
-                            num_digits=5)
+                            num_digits=5, resolve_nan=0)
 
     @property
     def target_coverage(self):
-        return format_ratio(self.matches + self.mismatches + self.repmatches, self.t_size, num_digits=5)
+        return format_ratio(self.matches + self.mismatches + self.repmatches, self.t_size,
+                            num_digits=5, resolve_nan=0)
 
     @property
     def percent_n(self):
         return format_ratio(self.n_count, self.q_size, num_digits=5)
-
-    def psl_string(self):
-        """
-        Return a list capable of producing a new PslRow object
-        """
-        return map(str, [self.matches, self.mismatches, self.repmatches, self.n_count, self.q_num_insert,
-                         self.q_base_insert, self.t_num_insert, self.t_base_insert, self.strand, self.q_name,
-                         self.q_size, self.q_start, self.q_end, self.t_name, self.t_size, self.t_start,
-                         self.t_end, self.block_count, ','.join([str(b) for b in self.block_sizes]),
-                         ','.join([str(b) for b in self.q_starts]),
-                         ','.join([str(b) for b in self.t_starts])])
 
     @property
     def badness(self):
@@ -137,8 +129,19 @@ class PslRow(object):
         """
         b = format_ratio(self.mismatches + self.q_num_insert + 3 * math.log(1 + max(self.q_size - self.t_size, 0)),
                          self.matches + self.mismatches + self.repmatches,
-                         num_digits=5)
+                         num_digits=5, resolve_nan=1)
         return min(b, 1)
+
+    def psl_string(self):
+        """
+        Return a list capable of producing a new PslRow object
+        """
+        return map(str, [self.matches, self.mismatches, self.repmatches, self.n_count, self.q_num_insert,
+                         self.q_base_insert, self.t_num_insert, self.t_base_insert, self.strand, self.q_name,
+                         self.q_size, self.q_start, self.q_end, self.t_name, self.t_size, self.t_start,
+                         self.t_end, self.block_count, ','.join([str(b) for b in self.block_sizes]),
+                         ','.join([str(b) for b in self.q_starts]),
+                         ','.join([str(b) for b in self.t_starts])])
 
 
 def psl_iterator(psl_file, make_unique=False):

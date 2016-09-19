@@ -43,17 +43,18 @@ alnMode:
 
 """
 import itertools
-import pandas as pd
-import tools.transcripts
-import tools.intervals
-import tools.psl
-import tools.fileOps
-import tools.dataOps
-import tools.bio
-import tools.sqlInterface
-import tools.nameConversions
-import tools.mathOps
 
+import pandas as pd
+
+import tools.bio
+import tools.dataOps
+import tools.fileOps
+import tools.intervals
+import tools.mathOps
+import tools.nameConversions
+import tools.psl
+import tools.sqlInterface
+import tools.transcripts
 
 # hard coded variables
 # fuzz distance is the distance between introns allowed in intron coordinates before triggering NumMissingIntrons

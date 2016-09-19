@@ -3,8 +3,9 @@ Represent either BED12 or genePred transcripts as objects. Allows for conversion
 chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
 from itertools import izip
-from fileOps import iter_lines
+
 from bio import reverse_complement, translate_sequence
+from fileOps import iter_lines
 from intervals import ChromosomeInterval
 
 __author__ = "Ian Fiddes"

@@ -2,8 +2,9 @@
 Functions to interface with the sqlite databases produced by various steps of the annotation pipeline
 """
 import collections
-import sqlalchemy
+
 import pandas as pd
+import sqlalchemy
 
 
 ###

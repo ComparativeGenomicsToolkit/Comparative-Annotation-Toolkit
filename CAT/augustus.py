@@ -7,23 +7,23 @@ gene-transcript relationships, and an optional RNAseq hints database and runs Au
 If any new gaps are not within a wiggle distance (in transcript space) of original introns, do not provide them as
 hints to Augustus.
 """
-import logging
 import argparse
 import itertools
+import logging
 
-from toil.job import Job
 from toil.common import Toil
+from toil.job import Job
 
 import tools.bio
 import tools.dataOps
 import tools.fileOps
+import tools.intervals
+import tools.nameConversions
 import tools.procOps
 import tools.psl
 import tools.tm2hints
-import tools.nameConversions
-import tools.transcripts
-import tools.intervals
 import tools.toilInterface
+import tools.transcripts
 from tools.hintsDatabaseInterface import reflect_hints_db, get_rnaseq_hints
 
 

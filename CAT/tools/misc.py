@@ -1,9 +1,12 @@
 """
 Miscellaneous tools for the pipeline. Some may eventually be refactored into their own modules.
 """
-import pysam
 import itertools
+
+import pysam
+
 import procOps
+from tools.pipeline import ProcException
 
 
 def convert_gtf_gp(gp_target, gtf_target):
@@ -25,7 +28,7 @@ def is_exec(program):
     cmd = ['which', program]
     try:
         return procOps.call_proc_lines(cmd)[0].endswith(program)
-    except Exception as error:
+    except ProcException:
         return False
 
 

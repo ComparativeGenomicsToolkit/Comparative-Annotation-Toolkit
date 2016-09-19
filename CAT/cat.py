@@ -2,37 +2,38 @@
 """
 Comparative Annotation Toolkit.
 """
-import logging
 import argparse
 import itertools
+import logging
 import os
-import luigi
-import pandas as pd
 import tempfile
-import tools.fileOps
-import tools.procOps
-import tools.nameConversions
-import tools.hal
-import tools.transcripts
-import tools.sqlInterface
-import tools.psl
-import tools.bio
-import tools.gff3
-import tools.misc
-import tools.sqlite
-from tools.luigiAddons import multiple_requires
-from luigi.util import requires
+
+import luigi
 import luigi.contrib.sqla
-from base_tasks import PipelineTask, PipelineWrapperTask, ToilTask, AbstractAtomicFileTask
-from chaining import chaining
+import pandas as pd
+from luigi.util import requires
+
+import tools.bio
+import tools.fileOps
+import tools.gff3
+import tools.hal
+import tools.misc
+import tools.nameConversions
+import tools.procOps
+import tools.psl
+import tools.sqlInterface
+import tools.sqlite
+import tools.transcripts
+from align_transcripts import align_transcripts
 from augustus import augustus
 from augustus_cgp import augustus_cgp
-from hgm import hgm, parse_hgm_gtf
-from filter_transmap import filter_transmap
-from align_transcripts import align_transcripts
-from tm_classify import tm_classify
+from base_tasks import PipelineTask, PipelineWrapperTask, ToilTask, AbstractAtomicFileTask
+from chaining import chaining
 from classify import classify
-
+from filter_transmap import filter_transmap
+from hgm import hgm, parse_hgm_gtf
+from tools.luigiAddons import multiple_requires
+from transmap_classify import transmap_classify
 
 logger = logging.getLogger(__name__)
 
@@ -578,7 +579,7 @@ class EvaluateTransMapDriverTask(PipelineTask):
 
     def run(self):
         logger.info('Evaluating transMap results for {}.'.format(self.genome))
-        results = tm_classify(self.tm_eval_args)
+        results = transmap_classify(self.tm_eval_args)
         self.write_to_sql(results)
 
 
@@ -595,7 +596,7 @@ class FilterTransMap(PipelineWrapperTask):
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = pipeline_args.dbs[pipeline_args.ref_genome]
         args.resolve_split_genes = pipeline_args.resolve_split_genes
-        args.get_metrics_dir = PipelineTask.get_metrics_dir(pipeline_args, genome)
+        args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'filter_tm_metrics.json')
         return args
 
     def validate(self):
@@ -617,14 +618,17 @@ class FilterTransMapDriverTask(PipelineTask):
     filter_tm_args = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.filter_tm_args.filtered_tm_gp)
+        return (luigi.LocalTarget(self.filter_tm_args.filtered_tm_gp),
+                luigi.LocalTarget(self.filter_tm_args.metrics_json))
 
     def requires(self):
         return self.clone(EvaluateTransMap)
 
     def run(self):
         logger.info('Filtering transMap results for {}.'.format(self.genome))
-        filter_transmap(self.filter_tm_args, self.output())
+        filtered_tm_gp, metrics_json = self.output()
+        metrics_dict = filter_transmap(self.filter_tm_args, filtered_tm_gp)
+        PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 
 class Augustus(PipelineWrapperTask):
@@ -964,7 +968,7 @@ class AlignTranscriptDriverTask(ToilTask):
             yield self.clone(Augustus)
         if 'augCGP' in alignment_args.alignment_modes:
             yield self.clone(AugustusCgp)
-        yield self.clone(TransMap)
+        yield self.clone(FilterTransMap)
         yield self.clone(ReferenceFiles)
 
     def run(self):

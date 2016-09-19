@@ -14,21 +14,21 @@
  10.08.16 | Stefanie Koenig | creation of the file
 """
 
-from toil.job import Job
-from toil.common import Toil
-
-import logging
 import argparse
-import itertools
-import os
 import collections
+import itertools
+import logging
+import os
 
-import tools.fileOps
+from toil.common import Toil
+from toil.job import Job
+
 import tools.dataOps
-import tools.procOps
+import tools.fileOps
 import tools.intervals
-import tools.transcripts
+import tools.procOps
 import tools.sqlInterface
+import tools.transcripts
 
 
 ###

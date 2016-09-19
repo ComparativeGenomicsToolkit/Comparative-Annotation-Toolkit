@@ -12,19 +12,20 @@ Classify transMap transcripts producing the TransMapEvaluation table for each ge
 """
 import bisect
 import collections
+
 import pandas as pd
+
+import tools.bio
+import tools.nameConversions
 import tools.psl
 import tools.transcripts
-import tools.nameConversions
-import tools.bio
-
 
 # hard coded variables
 # hard coded long transMap size. Bigger than 3 megabases is probably a spurious alignment.
 long_tx_size = 3 * 10 ** 6
 
 
-def tm_classify(tm_eval_args):
+def transmap_classify(tm_eval_args):
     """
     Runs alignment classification based on transMap PSLs, genePreds and the genome FASTA.
     :param tm_eval_args: argparse Namespace produced by EvaluateTransMap.get_args()

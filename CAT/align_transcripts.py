@@ -12,24 +12,24 @@ then the transcript will also undergo in-frame CDS alignment.
 3. For each AugustusTM(R) transcript, it will be aligned both as mRNA and in-frame CDS.
 
 """
-import logging
-import collections
 import argparse
+import collections
 import itertools
+import logging
 
-from toil.job import Job
 from toil.common import Toil
+from toil.job import Job
 
 import tools.bio
-import tools.psl
 import tools.dataOps
-import tools.pipeline
 import tools.fileOps
-import tools.procOps
-import tools.transcripts
-import tools.toilInterface
-import tools.sqlInterface
 import tools.nameConversions
+import tools.pipeline
+import tools.procOps
+import tools.psl
+import tools.sqlInterface
+import tools.toilInterface
+import tools.transcripts
 
 
 def align_transcripts(args, toil_options):

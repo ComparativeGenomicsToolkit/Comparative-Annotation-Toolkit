@@ -15,30 +15,30 @@ genome1 = /path/to/bam1.bam, /path/to/bam2.bam
 The annotation field is optional, but will help AugustusCGP make better predictions.
 
 """
-import os
-import logging
-import shutil
 import collections
-import pyfasta
-import luigi
-import pysam
 import itertools
-import tempfile
+import logging
+import os
+import shutil
 import sqlite3
-from configobj import ConfigObj
-from toil.job import Job
-from toil.common import Toil
+import tempfile
 
-import tools.toilInterface
-import tools.fileOps
-import tools.procOps
+import luigi
+import luigi.contrib.sqla
+import pyfasta
+import pysam
+from configobj import ConfigObj
+from luigi.util import requires
+from toil.common import Toil
+from toil.job import Job
+
 import tools.dataOps
+import tools.fileOps
 import tools.mathOps
 import tools.misc
+import tools.procOps
+import tools.toilInterface
 import tools.transcripts
-import luigi.contrib.sqla
-from luigi.util import inherits, requires
-
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,11 @@ class HintsDbToilTask(HintsDbTask):
         namespace = parser.parse_args([''])  # empty jobStore attribute
         namespace.jobStore = None  # jobStore attribute will be updated per-batch
         return namespace
+
+    def __repr__(self):
+        """override the PipelineTask repr to report the batch system being used"""
+        base_repr = super(HintsDbToilTask, self).__repr__()
+        return 'Toil' + base_repr + ' using batchSystem {}'.format(self.batchSystem)
 
 
 class BuildHints(HintsDbWrapperTask):
