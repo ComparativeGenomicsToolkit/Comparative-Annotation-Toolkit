@@ -70,28 +70,30 @@ forms rescued the transcript.
 
 """
 import collections
+
 import pandas as pd
-import tools.mathOps
-import tools.transcripts
-import tools.sqlInterface
+
 import tools.intervals
+import tools.mathOps
+import tools.sqlInterface
+import tools.transcripts
+import tools.nameConversions
 
 cds_cutoffs = {'AlnIdentity': 0.8, 'AlnCoverage': 0.9, 'PercentUnknownBases': 0.02}
 mrna_cutoffs = {'AlnIdentity': 0.7, 'AlnCoverage': 0.5, 'PercentUnknownBases': 0.05}
 
 
-def consensus(args):
+def consensus(args, consensus_gp):
     """
     Entry point for consensus finding module.
     :param args: Argument namespace from luigi
     """
     # load all genePreds
     tx_dict = tools.transcripts.load_gps(args.gp_list)
-    ref_tx_dict = tools.transcripts.get_gene_pred_dict(args.ref_gp)
+    ref_tx_dict = tools.transcripts.get_gene_pred_dict(args.annotation_gp)
 
-    # load database tables
+    # load reference data
     ref_df = tools.sqlInterface.load_reference(args.ref_db_path)
-    aln_eval_df = tools.sqlInterface.load_alignment_evaluation(args.db_path)
 
     # load alignment-mode specific tables, scoring the alignments
     aln_mode_dfs = {}
@@ -101,16 +103,86 @@ def consensus(args):
         merged_df = merge_ref_tgt(ref_df, tgt_df, intron_df)
         filtered_df = filter_alignments(merged_df, aln_mode)
         scored_df = score_df(filtered_df)
-        aln_mode_dfs[aln_mode] = scored_df
+        indexed_scored_df = scored_df.set_index(['GeneId', 'TranscriptId'])
+        aln_mode_dfs[aln_mode] = indexed_scored_df.sort_index()
+        # some of these dataframes need to be saved for later
+        if aln_mode == 'mRNA':
+            # this will be needed for gene rescue
+            unfiltered_df = merged_df.set_index('GeneId')
+        if aln_mode == 'CDS':
+            cgp_intron_df = intron_df[intron_df.AlignmentId.str.contains('jg')].set_index('AlignmentId')
+
+    # construct a map to iterate over
+    gene_transcript_map = tools.sqlInterface.get_gene_transcript_map(args.ref_db_path)
 
     # metrics will hold values during consensus finding that will be plotted afterwards
     metrics = {}
 
-    # remove filtered alignments
-
-
-
     # begin consensus finding
+    consensus_tx_dict = {}  # stores mapping between target ID and aln_id
+
+    # incorporate every CGP that was not assigned a parental gene
+    novel_transcripts = {tx.name: tx.name for tx in tx_dict.itervalues() if 'jg' in tx.name2}
+    novel_genes = {tx.name2 for tx in tx_dict.itervalues() if 'jg' in tx.name2}
+    metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel transcripts': len(novel_transcripts)}
+    consensus_tx_dict.update(novel_transcripts)
+
+    # main consensus finding loop
+    aln_modes = collections.Counter()
+    tx_modes = collections.Counter()
+    failed_consensus = {'Gene': set(), 'Transcript': set()}
+    for gene, tx_list in gene_transcript_map.iteritems():
+        gene_seen = False
+        for tx in tx_list:
+            best = find_best_score(aln_mode_dfs, gene, tx)
+            if best is None:
+                failed_consensus['Transcript'].add(tx)
+            else:
+                gene_seen = True
+                best_id, tx_mode, aln_mode = best
+                consensus_tx_dict[tx] = best_id
+                tx_modes[tx_mode] += 1
+                aln_modes[aln_mode] += 1
+        if gene_seen is False:
+            failed_consensus['Gene'].add(gene)
+
+    # save metrics
+    metrics['Initial Consensus'] = {'Alignment Modes': aln_modes, 'Transcript Modes': tx_modes,
+                                    'Gene Failed': len(failed_consensus['Gene']),
+                                    'Transcript Failed': len(failed_consensus['Transcript'])}
+
+    # rescue genes that were lost
+    metrics['Gene Rescue'] = collections.Counter()
+    for gene in failed_consensus['Gene']:
+        # use the unfiltered_df which is the mRNA alignment data without filtering
+        rescue = rescue_missing_gene(unfiltered_df, gene)
+        if rescue is not None:
+            rescued_tx, aln_id = rescue
+            consensus_tx_dict[rescued_tx] = aln_id
+            metrics['Gene Rescue']['Rescued'] += 1
+        else:
+            metrics['Gene Rescue']['Failed rescue'] += 1
+
+    # incorporate every CGP as a novel isoform if it has novel supported splice junctions
+    novel_isoforms, transcripts_to_include = find_novel_cgp_splices(tx_dict, consensus_tx_dict, cgp_intron_df,
+                                                                    gene_transcript_map)
+    metrics['CGP']['Novel isoforms'] = novel_isoforms
+    consensus_tx_dict.update(transcripts_to_include)
+
+    # deduplicate consensus
+    deduplicated_consensus, dup_count = deduplicate_consensus(consensus_tx_dict, tx_dict, unfiltered_df)
+    metrics['Duplicates removed'] = dup_count
+
+    # sanity check
+    assert len(set(deduplicated_consensus.values())) == len(deduplicated_consensus)
+
+    # write out the results
+    with consensus_gp.open('w') as outf:
+        for tx_id, aln_id in consensus_tx_dict.iteritems():
+            tx = tx_dict[aln_id]
+            tx.name = tx_id
+            outf.write('\t'.join(tx.get_gene_pred()) + '\n')
+    return metrics
 
 
 ###
@@ -130,8 +202,48 @@ def filter_alignments(merged_df, aln_mode):
     return merged_df[(merged_df['AlnIdentity'] > cutoffs['AlnIdentity']) &
                      (merged_df['AlnCoverage'] > cutoffs['AlnCoverage']) &
                      (merged_df['PercentUnknownBases'] <= cutoffs['PercentUnknownBases']) &
-                     ((2 * merged_df['NumMissingIntrons'] <= merged_df['NumReferenceIntrons'] - 1)
-                      | (merged_df['NumReferenceIntrons'] < 5))]
+                     ((2 * merged_df['NumMissingIntrons'] <= merged_df['NumReferenceIntrons'] - 1) |
+                      (merged_df['NumReferenceIntrons'] < 5))]
+
+
+def deduplicate_consensus(consensus_tx_dict, tx_dict, unfiltered_df):
+    """
+    In the process of consensus building, we may find that we have ended up with more than one transcript for a gene
+    that are actually identical. Remove these, picking the best based on their badness, favoring the coding transcript
+    """
+    def resolve_duplicate(gp_list, df):
+        """resolve first by biotype then by score"""
+        tx_biotypes = {aln_id: df.ix[aln_id].TranscriptBiotype for tx_id, aln_id in gp_list}
+        if len(tx_biotypes) > 1 and 'protein_coding' in tx_biotypes:
+            gp_list = [aln_id for aln_id, biotype in tx_biotypes.iteritems() if biotype == 'protein_coding']
+            if len(gp_list) == 1:
+                return gp_list[0]
+        badness_scores = {(tx_id, aln_id): df.ix[aln_id].Badness for tx_id, aln_id in gp_list}
+        badness_scores = sorted(badness_scores.iteritems(), key=lambda ((tx_id, aln_id), badness): badness)
+        return badness_scores[-1][0]
+
+    # re-index the dataframe
+    df = unfiltered_df.reset_index().set_index(['AlignmentId'])
+
+    # build a dictionary mapping duplicates making use of hashing intervals
+    duplicates = collections.defaultdict(list)
+    for tx_id, aln_id in consensus_tx_dict.iteritems():
+        tx = tx_dict[aln_id]
+        duplicates[frozenset(tx.exon_intervals)].append([tx_id, aln_id])
+
+    # begin iterating
+    deduplicated_consensus = {}
+    dup_count = 0
+    for gp_list in duplicates.itervalues():
+        if len(gp_list) > 1:
+            dup_count += 1
+            # we have duplicates to collapse - which has the lowest badness?
+            tx_id, aln_id = resolve_duplicate(gp_list, df)
+            deduplicated_consensus[tx_id] = aln_id
+        else:
+            tx_id, aln_id = gp_list[0]
+            deduplicated_consensus[tx_id] = aln_id
+    return deduplicated_consensus, dup_count
 
 
 ###
@@ -149,8 +261,7 @@ def merge_ref_tgt(ref_df, tgt_df, intron_df):
     :return: DataFrame
     """
     df = pd.merge(tgt_df, ref_df, on='TranscriptId', how='inner', suffixes=['_Tgt', '_Ref'])
-    df = pd.merge(df, intron_df, on='AlignmentId', how='inner')
-    return df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
+    return pd.merge(df, intron_df, on='AlignmentId', how='inner')
 
 
 ###
@@ -281,11 +392,113 @@ def evaluation_bonus(s):
 ###
 
 
+def find_best_score(aln_mode_dfs, gene, tx):
+    """
+    Extracts the best score for all alignments for a given transcript, handling missing data
+    :param aln_mode_dfs: dictionary of DataFrames produced by consensus()
+    :param gene: gene ID
+    :param tx: tx ID
+    :return: best_id, tx_mode, aln_mode or None
+    """
+    def handle_missing(df, gene, tx):
+        try:
+            return df.ix[gene, tx]
+        except KeyError:
+            return None
+
+    def find_best(cds, mrna):
+        if cds is None:
+            mrna_r = mrna.sort_values('ConsensusScore').iloc[-1]
+            return mrna_r.AlignmentId, tools.nameConversions.alignment_type(mrna_r.AlignmentId), 'mRNA'
+        elif mrna is None:
+            cds_r = cds.sort_values('ConsensusScore').iloc[-1]
+            return cds_r.AlignmentId, tools.nameConversions.alignment_type(cds_r.AlignmentId), 'CDS'
+        mrna_r = mrna.sort_values('ConsensusScore').iloc[-1]
+        cds_r = cds.sort_values('ConsensusScore').iloc[-1]
+        if mrna_r.ConsensusScore >= cds_r.ConsensusScore:
+            return mrna_r.AlignmentId, tools.nameConversions.alignment_type(mrna_r.AlignmentId), 'mRNA'
+        else:
+            return cds_r.AlignmentId, tools.nameConversions.alignment_type(cds_r.AlignmentId), 'CDS'
+
+    cds = handle_missing(aln_mode_dfs['CDS'], gene, tx)
+    mrna = handle_missing(aln_mode_dfs['mRNA'], gene, tx)
+    if cds is None and mrna is None:
+        return None
+    else:
+        return find_best(cds, mrna)
 
 
+def rescue_missing_gene(unfiltered_df, gene):
+    """
+    Similar to find_best_score, but resolves on the gene level picking based on badness
+    :param unfiltered_df: mRNA alignment mode DataFrame
+    :param gene: gene ID to rescue
+    :return: best_id or None
+    """
+    try:
+        df = unfiltered_df.ix[gene]
+    except KeyError:
+        return None
+
+    if not isinstance(df, pd.core.series.Series):
+        # if exactly one alignment is being evaluated, it will be a series
+        df = df.sort_values('Badness')
+        gene_biotype = df.GeneBiotype[0]
+        if gene_biotype == 'protein_coding':
+            # only consider coding transcripts
+            coding_df = df[df.TranscriptBiotype == 'protein_coding']
+            if len(coding_df) != 0:
+                # edge case where this coding gene has no coding transcripts
+                return coding_df.iloc[0].TranscriptId, coding_df.iloc[0].AlignmentId
+        return df.iloc[0].TranscriptId, df.iloc[0].AlignmentId
+    else:
+        return df.TranscriptId, df.AlignmentId
 
 
-###
-# Helper functions
-###
+def find_novel_cgp_splices(tx_dict, consensus_tx_dict, cgp_intron_df, gene_transcript_map):
+    """
+    Finds novel splice junctions in CGP transcripts. If there are any, these get included as a novel isoform.
+    :param tx_dict: Combined dictionary of GenePredTranscript objects
+    :param consensus_tx_dict: Dict mapping {tx_id: aln_id} for transcripts that are in the consensus set
+    :param cgp_intron_df: DataFrame of intron vectors
+    :param gene_transcript_map: Dict mapping {gene_id: tx_id}
+    :return:
+    """
+    def create_cgp_dict(consensus_tx_set, tx_dict):
+        """create a dict mapping ensembl gene names to associated comparative transcripts"""
+        cgp_dict = collections.defaultdict(list)
+        for aln_id, tx in tx_dict.iteritems():
+            if 'jg' in aln_id and 'jg' not in tx.name2 and aln_id not in consensus_tx_set:
+                cgp_dict[tx.name2].append(tx)
+        return cgp_dict
 
+    def find_existing_splices(tx_dict, consensus_tx_dict, tx_ids):
+        existing_splices = set()
+        for tx in tx_ids:
+            try:  # this transcript may not be in the consensus
+                consensus_tx = tx_dict[consensus_tx_dict[tx]]
+            except KeyError:
+                continue
+            existing_splices.update(consensus_tx.intron_intervals)
+        return existing_splices
+
+    def find_supported_intervals(tx, cgp_intron_df):
+        intervals = set()
+        intron_vector = cgp_intron_df.ix[tx.name].IntronVector
+        for interval, intron_score in zip(*[tx.intron_intervals, intron_vector]):
+            if intron_score > 0:
+                intervals.add(interval)
+        return intervals
+
+    novel_isoforms = 0
+    transcripts_to_include = {}
+    consensus_tx_set = set(consensus_tx_dict.itervalues())
+    cgp_dict = create_cgp_dict(consensus_tx_set, tx_dict)
+    for gene_id, tx_ids in gene_transcript_map.iteritems():
+        existing_splices = find_existing_splices(tx_dict, consensus_tx_dict, tx_ids)
+        for tx in cgp_dict[gene_id]:
+            tx_supported_intervals = find_supported_intervals(tx, cgp_intron_df)
+            if len(tx_supported_intervals - existing_splices) > 0:
+                novel_isoforms += 1
+                transcripts_to_include[tx.name] = tx.name
+    return novel_isoforms, transcripts_to_include

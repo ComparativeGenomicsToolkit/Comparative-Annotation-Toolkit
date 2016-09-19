@@ -60,6 +60,10 @@ class HintsDbTask(luigi.Task):
     parasolCommand = luigi.Parameter(default=None, significant=False)
     defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
 
+    def __repr__(self):
+        """override the repr to make logging cleaner"""
+        return 'HintsDbTask: {}'.format(self.__class__.__name__)
+
 
 class HintsDbWrapperTask(HintsDbTask, luigi.WrapperTask):
     """add WrapperTask functionality to PipelineTask"""

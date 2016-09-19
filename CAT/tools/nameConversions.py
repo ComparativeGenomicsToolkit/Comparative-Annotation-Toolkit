@@ -62,6 +62,24 @@ def aln_id_is_augustus_tmr(aln_id):
     return 'augTMR-' in aln_id
 
 
+def aln_id_is_cgp(aln_id):
+    return aln_id.startswith('jg')
+
+
+def alignment_type(aln_id):
+    """returns what type of alignment this ID is"""
+    if aln_id_is_augustus_tmr(aln_id):
+        return 'augTMR'
+    elif aln_id_is_augustus_tm(aln_id):
+        return 'augTM'
+    elif aln_id_is_cgp(aln_id):
+        return 'augCGP'
+    elif aln_id_is_transmap(aln_id):
+        return 'transMap'
+    else:
+        raise RuntimeError('Alignment ID: {} was not valid.'.format(aln_id))
+
+
 def extract_unique_txs(aln_ids):
     """finds all unique transcript names in a list of alignment IDs"""
     return {strip_alignment_numbers(x) for x in aln_ids}
