@@ -1105,7 +1105,7 @@ class ConsensusDriverTask(PipelineTask):
                 luigi.LocalTarget(self.consensus_args.metrics_json))
 
     def requires(self):
-        return self.clone(EvaluateTransMap), self.clone(EvaluateTranscripts)
+        return self.clone(EvaluateTransMap), self.clone(EvaluateTranscripts), self.clone(Hgm)
 
     def run(self):
         logger.info('Generating consensus gene set for {}.'.format(self.genome))

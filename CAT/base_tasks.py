@@ -48,6 +48,8 @@ class PipelineTask(luigi.Task):
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
     parasolCommand = luigi.Parameter(default=None, significant=False)
     defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
+    workDir = luigi.Parameter(default=None, significant=False)
+    disableCaching = luigi.BoolParameter(default=False, significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -198,6 +200,10 @@ class ToilTask(PipelineTask):
                 toil_args.restart = True
             except IOError:
                 shutil.rmtree(job_store)
+        if toil_args.workDir is not None:
+            if toil_args.batchSystem == 'parasol' and toil_args.disableCaching is False:
+                raise RuntimeError('Running parasol without disabled caching is a very bad idea.')
+            tools.fileOps.ensure_dir(toil_args.workDir)
         job_store = 'file:' + job_store
         toil_args.jobStore = job_store
         return toil_args

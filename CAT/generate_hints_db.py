@@ -57,6 +57,8 @@ class HintsDbTask(luigi.Task):
     maxCores = luigi.IntParameter(default=16, significant=False)
     logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
+    workDir = luigi.Parameter(default=None, significant=False)
+    disableCaching = luigi.BoolParameter(default=False, significant=False)
     parasolCommand = luigi.Parameter(default=None, significant=False)
     defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
 
@@ -275,18 +277,18 @@ def generate_hints(genome, flat_fasta, cfg, annotation, out_gff_path, toil_optio
     """
     Entry point for hints database Toil pipeline.
     """
-    if genome in cfg['BAM'] and cfg['BAM'][genome] is not None:
-        logger.info('Validating BAMs for {}.'.format(genome))
-        # validate BAMs
-        fasta = pyfasta.Fasta(flat_fasta)
-        fasta_sequences = {x.split()[0] for x in fasta.keys()}
-        for bam_path in cfg['BAM'][genome]:
-            validate_bam_fasta_pairs(bam_path, fasta_sequences, genome)
-            logger.info('BAM {} for {} is valid.'.format(bam_path, genome))
-        logger.info('All BAMs valid for {}, beginning Toil hints pipeline.'.format(genome))
-    # start pipeline
     with Toil(toil_options) as toil:
         if not toil.options.restart:
+            if genome in cfg['BAM'] and cfg['BAM'][genome] is not None:
+                logger.info('Validating BAMs for {}.'.format(genome))
+                # validate BAMs
+                fasta = pyfasta.Fasta(flat_fasta)
+                fasta_sequences = {x.split()[0] for x in fasta.keys()}
+                for bam_path in cfg['BAM'][genome]:
+                    validate_bam_fasta_pairs(bam_path, fasta_sequences, genome)
+                    logger.info('BAM {} for {} is valid.'.format(bam_path, genome))
+                logger.info('All BAMs valid for {}, beginning Toil hints pipeline.'.format(genome))
+            # start pipeline
             if genome in cfg['BAM'] and cfg['BAM'][genome] is not None:
                 bam_file_ids = {}
                 for bam_path in cfg['BAM'][genome]:
@@ -558,7 +560,7 @@ def bam_is_paired(bam_path, num_reads=20000, paired_cutoff=0.75):
         raise UserException("Unable to infer pairing from bamfile {}".format(bam_path))
 
 
-def group_references(sam_handle, num_bases=10 ** 6, max_seqs=100):
+def group_references(sam_handle, num_bases=10 ** 7, max_seqs=500):
     """
     Group up references by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
     """
