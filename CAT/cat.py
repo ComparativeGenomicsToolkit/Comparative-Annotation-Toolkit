@@ -742,7 +742,6 @@ class AugustusCgp(ToilTask):
                        for genome in pipeline_args.target_genomes}
         # add the reference annotation as a pseudo-transMap to assign parents in reference
         tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-        augustus_cgp_cfg = pipeline_args.augustus_cgp_cfg if pipeline_args.augustus_cgp_cfg is not None else None
         hints_db = pipeline_args.augustus_hints_db if pipeline_args.augustus_hints_db else None
         args = argparse.Namespace()
         args.genomes = tgt_genomes
@@ -755,8 +754,7 @@ class AugustusCgp(ToilTask):
         args.species = pipeline_args.augustus_species
         args.chunksize = pipeline_args.maf_chunksize
         args.overlap = pipeline_args.maf_overlap
-        args.augustus_cgp_cfg = augustus_cgp_cfg
-        args.augustus_cgp_param = pipeline_args.augustus_cgp_param
+        args.cgp_param = pipeline_args.cgp_param
         args.hints_db = hints_db
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.query_sizes = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
@@ -787,6 +785,16 @@ class AugustusCgp(ToilTask):
         self.validate()
         yield self.clone(FilterTransMap)
 
+    def prepare_cfg(self, pipeline_args):
+        """use the config template to create a config file"""
+        template = open(pipeline_args.augustus_cgp_cfg_template).read()
+        cfg = template.format(ref_genome=pipeline_args.ref_genome,
+                              target_genomes=' '.join(pipeline_args.target_genomes))
+        out_path = tools.fileOps.get_tmp_file()
+        with open(out_path, 'w') as outf:
+            outf.write(cfg)
+        return out_path
+
     def run(self):
         pipeline_args = self.get_pipeline_args()
         if pipeline_args.augustus_hints_db is None:
@@ -797,6 +805,7 @@ class AugustusCgp(ToilTask):
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(toil_work_dir)
         cgp_args = self.get_args(pipeline_args)
+        cgp_args.cgp_cfg = self.prepare_cfg(pipeline_args)
         augustus_cgp(cgp_args, toil_options)
         logger.info('AugustusCGP toil pipeline completed.')
         # convert each to genePred as well
@@ -1113,10 +1122,9 @@ class ConsensusDriverTask(PipelineTask):
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
-        assert False, vars(consensus_args())
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         consensus_gp, metrics_json = self.output()
-        metrics_dict = consensus(self.consensus_args, consensus_gp)
+        metrics_dict = consensus(consensus_args, consensus_gp)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 

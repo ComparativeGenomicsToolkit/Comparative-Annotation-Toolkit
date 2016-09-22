@@ -49,15 +49,13 @@ def augustus_cgp(args, toil_options):
             input_file_ids.hal = toil.importFile('file://' + args.hal)
             input_file_ids.chrom_sizes = toil.importFile('file://' + args.query_sizes)
             input_file_ids.hints_db = toil.importFile('file://' + args.hints_db)
-            input_file_ids.cgp_param = toil.importFile('file://' + args.augustus_cgp_param)
+            input_file_ids.cgp_param = toil.importFile('file://' + args.cgp_param)
             input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
             input_file_ids.fasta = {genome: toil.importFile('file://' + fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
             input_file_ids.tm_gps = {genome: toil.importFile('file://' + tm_gp)
                                      for genome, tm_gp in args.tm_gps.iteritems()}
-            if args.augustus_cgp_cfg is not None:
-                cgp_cfg_file_id = toil.importFile('file://' + args.augustus_cgp_cfg)
-                input_file_ids.cgp_cfg = cgp_cfg_file_id
+            input_file_ids.cgp_cfg = toil.importFile('file://' + args.cgp_cfg)
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G')
             results = toil.start(job)
         else:
@@ -138,30 +136,22 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
     job.fileStore.logToMaster('Running AugustusCGP on {}'.format(genomic_region), level=logging.INFO)
 
     genomeFofn = writeGenomeFofn(job, input_file_ids.fasta)
+    cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
 
-    opt_param = []  # optional AugustusCGP parameters
-    if args.augustus_cgp_cfg is not None:
-        # extrinsic config file
-        # for now, let's assume RNA-Seq evidence whenever an extrinsic
-        # config file is given, e.g. by default we turn on
-        # --UTR=1
-        # --allow_hinted_splicesites=atac
-        cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
-        opt_param += ['--extrinsicCfgFile={}'.format(cgp_cfg),
-                      '--dbhints=1', '--UTR=1', '--allow_hinted_splicesites=atac']
-
-    cmd = ['augustus'] + opt_param + ['--species={}'.format(args.species),
-                                      '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
-                                      '--alnfile={}'.format(job.fileStore.readGlobalFile(mafChunk)),
-                                      '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
-                                      '--speciesfilenames={}'.format(genomeFofn),
-                                      '--softmasking=1',
-                                      '--exoncands=0',
-                                      '--alternatives-from-evidence=0',
-                                      '--/CompPred/logreg=on',
-                                      '--printOEs=false',
-                                      '--/CompPred/outdir={}'.format(os.getcwd()),
-                                      '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param))]
+    cmd = ['augustus', '--dbhints=1', '--UTR=1', '--allow_hinted_splicesites=atac',
+           '--extrinsicCfgFile={}'.format(cgp_cfg),
+           '--species={}'.format(args.species),
+           '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
+           '--alnfile={}'.format(job.fileStore.readGlobalFile(mafChunk)),
+           '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
+           '--speciesfilenames={}'.format(genomeFofn),
+           '--softmasking=1',
+           '--exoncands=0',
+           '--alternatives-from-evidence=0',
+           '--/CompPred/logreg=on',
+           '--printOEs=false',
+           '--/CompPred/outdir={}'.format(os.getcwd()),
+           '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param))]
 
     tools.procOps.run_proc(cmd)
     return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}

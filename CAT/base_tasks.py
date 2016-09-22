@@ -35,8 +35,8 @@ class PipelineTask(luigi.Task):
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
     # AugustusCGP parameters
     augustus_cgp = luigi.BoolParameter(default=False)
-    augustus_cgp_cfg = luigi.Parameter(default=None, significant=False)
-    augustus_cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
+    cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
+    augustus_cgp_cfg_template = luigi.Parameter(default='augustus_cfgs/cgp_extrinsic_template.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     # consensus options
@@ -83,14 +83,11 @@ class PipelineTask(luigi.Task):
         args.maf_chunksize = self.maf_chunksize
         args.maf_overlap = self.maf_overlap
         args.resolve_split_genes = self.resolve_split_genes
-        if self.augustus_cgp_cfg is not None:
-            args.augustus_cgp_cfg = os.path.abspath(self.augustus_cgp_cfg)
+        args.augustus_cgp_cfg_template = os.path.abspath(self.augustus_cgp_cfg_template)
+        if self.cgp_param is not None:
+            args.cgp_param = os.path.abspath(self.cgp_param)
         else:
-            args.augustus_cgp_cfg = None
-        if self.augustus_cgp_param is not None:
-            args.augustus_cgp_param = os.path.abspath(self.augustus_cgp_param)
-        else:
-            args.augustus_cgp_param = None
+            args.cgp_param = None
         args.hal_genomes = tools.hal.extract_genomes(self.hal)
         if self.target_genomes is None:
             target_genomes = tuple(set(args.hal_genomes) - {self.ref_genome})
