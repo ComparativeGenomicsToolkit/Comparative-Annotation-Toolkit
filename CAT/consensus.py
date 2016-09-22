@@ -262,7 +262,7 @@ def merge_ref_tgt(ref_df, tgt_df, intron_df):
     :return: DataFrame
     """
     df = pd.merge(tgt_df, ref_df, on='TranscriptId', how='inner', suffixes=['_Tgt', '_Ref'])
-    return pd.merge(df, intron_df, on='AlignmentId', how='inner')
+    return pd.merge(df, intron_df, on='AlignmentId', how='left')
 
 
 ###
@@ -431,7 +431,7 @@ def rescue_missing_gene(unfiltered_df, gene):
     :param gene: gene ID to rescue
     :return: best_id or None
     """
-    if gene not in unfiltered_df:
+    if gene not in unfiltered_df.index:
         return None
     df = unfiltered_df.ix[[gene]]
     df = df.sort_values('Badness')
