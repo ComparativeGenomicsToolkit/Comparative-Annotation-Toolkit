@@ -421,10 +421,7 @@ def find_best_score(aln_mode_dfs, gene, tx):
     if cds is None and mrna is None:
         return None
     else:
-        try:
-            return find_best(cds, mrna)
-        except:
-            assert False, (cds, mrna)
+        return find_best(cds, mrna)
 
 
 def rescue_missing_gene(unfiltered_df, gene):
@@ -434,10 +431,9 @@ def rescue_missing_gene(unfiltered_df, gene):
     :param gene: gene ID to rescue
     :return: best_id or None
     """
-    try:
-        df = unfiltered_df.ix[[gene]]
-    except KeyError:
+    if gene not in unfiltered_df:
         return None
+    df = unfiltered_df.ix[[gene]]
     df = df.sort_values('Badness')
     gene_biotype = df.GeneBiotype[0]
     if gene_biotype == 'protein_coding':
