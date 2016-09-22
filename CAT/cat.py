@@ -96,6 +96,8 @@ class RunCat(PipelineWrapperTask):
         if len(missing_genomes) > 0:
             missing_genomes = ','.join(missing_genomes)
             raise InvalidInputException('Target genomes {} not present in HAL.'.format(missing_genomes))
+        if pipeline_args.ref_genome in pipeline_args.target_genomes:
+            raise InvalidInputException('A target genome cannot be the reference genome.')
 
     def requires(self):
         self.validate()
@@ -594,6 +596,7 @@ class FilterTransMap(PipelineWrapperTask):
         args = argparse.Namespace()
         args.tm_gp = TransMap.get_args(pipeline_args, genome).tm_gp
         args.filtered_tm_gp = os.path.join(base_dir, genome + '.filtered.gp')
+        args.filtered_tm_gtf = os.path.join(base_dir, genome + '.filtered.gtf')
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = pipeline_args.dbs[pipeline_args.ref_genome]
         args.resolve_split_genes = pipeline_args.resolve_split_genes
@@ -620,6 +623,7 @@ class FilterTransMapDriverTask(PipelineTask):
 
     def output(self):
         return (luigi.LocalTarget(self.filter_tm_args.filtered_tm_gp),
+                luigi.LocalTarget(self.filter_tm_args.filtered_tm_gtf),
                 luigi.LocalTarget(self.filter_tm_args.metrics_json))
 
     def requires(self):
@@ -627,9 +631,10 @@ class FilterTransMapDriverTask(PipelineTask):
 
     def run(self):
         logger.info('Filtering transMap results for {}.'.format(self.genome))
-        filtered_tm_gp, metrics_json = self.output()
+        filtered_tm_gp, filtered_tm_gtf, metrics_json = self.output()
         metrics_dict = filter_transmap(self.filter_tm_args, filtered_tm_gp)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
+        tools.misc.convert_gp_gtf(filtered_tm_gtf, filtered_tm_gp)
 
 
 class Augustus(PipelineWrapperTask):
@@ -826,7 +831,7 @@ class Hgm(PipelineWrapperTask):
                             for genome in tgt_genomes}
         elif mode == 'transMap':
             tgt_genomes = pipeline_args.target_genomes
-            gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
+            gtf_in_files = {genome: FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gtf
                             for genome in tgt_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
@@ -878,7 +883,7 @@ class HgmDriverTask(ToilTask):
         elif self.mode == 'augTM' or self.mode == 'augTMR':
             yield self.clone(Augustus)
         elif self.mode == 'transMap':
-            yield self.clone(TransMap)
+            yield self.clone(FilterTransMap)
         else:
             raise UserException('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
 
@@ -920,19 +925,19 @@ class AlignTranscripts(PipelineWrapperTask):
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
         args.transcript_modes = {'transMap': {'gp': FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp,
-                                             'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
-                                             'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
+                                              'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
+                                              'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
         if pipeline_args.augustus is True:
             args.transcript_modes['augTM'] = {'gp':  Augustus.get_args(pipeline_args, genome).augustus_tm_gp,
-                                             'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.psl'),
-                                             'CDS': os.path.join(base_dir, genome + '.augTM.CDS.psl')}
+                                              'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.psl'),
+                                              'CDS': os.path.join(base_dir, genome + '.augTM.CDS.psl')}
         if pipeline_args.augustus_tmr is True:
             args.transcript_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
-                                              'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
-                                              'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
+                                               'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
+                                               'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
         if pipeline_args.augustus_cgp is True:
             args.transcript_modes['augCGP'] = {'gp': AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome],
-                                              'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
+                                               'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
         return args
 
     def validate(self):
@@ -1089,8 +1094,7 @@ class Consensus(PipelineWrapperTask):
         self.validate()
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
-            consensus_args = self.get_module_args(Consensus, genome=target_genome)
-            yield self.clone(ConsensusDriverTask, genome=target_genome, consensus_args=consensus_args)
+            yield self.clone(ConsensusDriverTask, genome=target_genome)
 
 
 class ConsensusDriverTask(PipelineTask):
@@ -1098,16 +1102,18 @@ class ConsensusDriverTask(PipelineTask):
     Driver task for performing consensus finding.
     """
     genome = luigi.Parameter()
-    consensus_args = luigi.Parameter()
 
     def output(self):
-        return (luigi.LocalTarget(self.consensus_args.consensus_gp),
-                luigi.LocalTarget(self.consensus_args.metrics_json))
+        consensus_args = self.get_module_args(Consensus, genome=self.genome)
+        return (luigi.LocalTarget(consensus_args.consensus_gp),
+                luigi.LocalTarget(consensus_args.metrics_json))
 
     def requires(self):
         return self.clone(EvaluateTransMap), self.clone(EvaluateTranscripts), self.clone(Hgm)
 
     def run(self):
+        consensus_args = self.get_module_args(Consensus, genome=self.genome)
+        assert False, vars(consensus_args())
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         consensus_gp, metrics_json = self.output()
         metrics_dict = consensus(self.consensus_args, consensus_gp)

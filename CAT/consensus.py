@@ -8,12 +8,8 @@ This process relies on a combination of metrics and evaluations loaded to a sqli
 
 Transcript scoring functions:
 
-structure score = 100 *  (0.5 * (1 - # missing introns / # parent introns)
-                          + 0.45 * (1 - # missing exons / # parent exons)
-                          + 0.05 * # exon gain / # parent exons)
-This function is a weighted average of the structural changes seen in the alignments. Missing original introns is
-weighted slightly higher than losing exons which is slightly higher than gaining exons because gaining exons may be
-a real change. We multiply by 100 to put this score on the same scale as the base transcript score.
+structure score = 0.5 * (1 - # missing introns / # parent introns) + 0.5 * (1 - # missing exons / # parent exons)
+This function is a weighted average of the structural changes seen in the alignments.
 # parent introns/exons will be adjusted for CDS alignments to only include coding introns/exons.
 Exists on the range(0, 100)
 
@@ -109,7 +105,7 @@ def consensus(args, consensus_gp):
         if aln_mode == 'mRNA':
             # this will be needed for gene rescue
             unfiltered_df = merged_df.set_index('GeneId')
-        if aln_mode == 'CDS':
+        if aln_mode == 'CDS' and 'augCGP' in args.transcript_modes:
             cgp_intron_df = intron_df[intron_df.AlignmentId.str.contains('jg')].set_index('AlignmentId')
 
     # construct a map to iterate over
@@ -122,16 +118,20 @@ def consensus(args, consensus_gp):
     consensus_tx_dict = {}  # stores mapping between target ID and aln_id
 
     # incorporate every CGP that was not assigned a parental gene
-    novel_transcripts = {tx.name: tx.name for tx in tx_dict.itervalues() if 'jg' in tx.name2}
-    novel_genes = {tx.name2 for tx in tx_dict.itervalues() if 'jg' in tx.name2}
-    metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel transcripts': len(novel_transcripts)}
-    consensus_tx_dict.update(novel_transcripts)
+    if 'augCGP' in args.transcript_modes:
+        novel_transcripts = {tx.name: tx.name for tx in tx_dict.itervalues() if 'jg' in tx.name2}
+        novel_genes = {tx.name2 for tx in tx_dict.itervalues() if 'jg' in tx.name2}
+        metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel transcripts': len(novel_transcripts)}
+        consensus_tx_dict.update(novel_transcripts)
 
     # main consensus finding loop
     aln_modes = collections.Counter()
     tx_modes = collections.Counter()
     failed_consensus = {'Gene': set(), 'Transcript': set()}
     for gene, tx_list in gene_transcript_map.iteritems():
+        # convert unicode to str because otherwise pandas complains
+        gene = str(gene)
+        tx_list = map(str, tx_list)
         gene_seen = False
         for tx in tx_list:
             best = find_best_score(aln_mode_dfs, gene, tx)
@@ -163,11 +163,12 @@ def consensus(args, consensus_gp):
         else:
             metrics['Gene Rescue']['Failed rescue'] += 1
 
-    # incorporate every CGP as a novel isoform if it has novel supported splice junctions
-    novel_isoforms, transcripts_to_include = find_novel_cgp_splices(tx_dict, consensus_tx_dict, cgp_intron_df,
-                                                                    gene_transcript_map)
-    metrics['CGP']['Novel isoforms'] = novel_isoforms
-    consensus_tx_dict.update(transcripts_to_include)
+    if 'augCGP' in args.transcript_modes:
+        # incorporate every CGP as a novel isoform if it has novel supported splice junctions
+        novel_isoforms, transcripts_to_include = find_novel_cgp_splices(tx_dict, consensus_tx_dict, cgp_intron_df,
+                                                                        gene_transcript_map)
+        metrics['CGP']['Novel isoforms'] = novel_isoforms
+        consensus_tx_dict.update(transcripts_to_include)
 
     # deduplicate consensus
     deduplicated_consensus, dup_count = deduplicate_consensus(consensus_tx_dict, tx_dict, unfiltered_df)
@@ -312,12 +313,8 @@ def indicator(item):
 
 def structure_score(s):
     """
-    structure score = 0.5 * (1 - # missing introns / # parent introns)
-                        + 0.45 * (1 - # missing exons / # parent exons)
-                        + 0.05 * # exon gain / # parent exons
-    This function is a weighted average of the structural changes seen in the alignments. Missing original introns is
-    weighted slightly higher than losing exons which is slightly higher than gaining exons because gaining exons may be
-    a real change.
+    structure score = 0.5 * (1 - # missing introns / # parent introns) + 0.5 * (1 - # missing exons / # parent exons)
+    This function is a weighted average of the structural changes seen in the alignments.
     Parent introns/exons will be adjusted for CDS alignments to only include coding introns/exons by the sqlInterface
     query.
     Exists on the range(0, 1)
@@ -327,8 +324,7 @@ def structure_score(s):
     """
     present_introns = 1 - tools.mathOps.format_ratio(s.NumMissingIntrons, s.NumReferenceIntrons, resolve_nan=1)
     present_exons = 1 - tools.mathOps.format_ratio(s.NumMissingExons, s.NumReferenceExons)
-    exon_gain = tools.mathOps.format_ratio(s.ExonGain, s.NumReferenceExons)
-    score = 0.5 * present_introns + 0.45 * present_exons + 0.05 * exon_gain
+    score = 0.5 * present_introns + 0.5 * present_exons
     assert 0 <= score <= 1, s
     return score
 
@@ -402,7 +398,7 @@ def find_best_score(aln_mode_dfs, gene, tx):
     """
     def handle_missing(df, gene, tx):
         try:
-            return df.ix[gene, tx]
+            return df.ix[(gene, tx)]
         except KeyError:
             return None
 
@@ -425,7 +421,10 @@ def find_best_score(aln_mode_dfs, gene, tx):
     if cds is None and mrna is None:
         return None
     else:
-        return find_best(cds, mrna)
+        try:
+            return find_best(cds, mrna)
+        except:
+            assert False, (cds, mrna)
 
 
 def rescue_missing_gene(unfiltered_df, gene):
@@ -436,23 +435,18 @@ def rescue_missing_gene(unfiltered_df, gene):
     :return: best_id or None
     """
     try:
-        df = unfiltered_df.ix[gene]
+        df = unfiltered_df.ix[[gene]]
     except KeyError:
         return None
-
-    if not isinstance(df, pd.core.series.Series):
-        # if exactly one alignment is being evaluated, it will be a series
-        df = df.sort_values('Badness')
-        gene_biotype = df.GeneBiotype[0]
-        if gene_biotype == 'protein_coding':
-            # only consider coding transcripts
-            coding_df = df[df.TranscriptBiotype == 'protein_coding']
-            if len(coding_df) != 0:
-                # edge case where this coding gene has no coding transcripts
-                return coding_df.iloc[0].TranscriptId, coding_df.iloc[0].AlignmentId
-        return df.iloc[0].TranscriptId, df.iloc[0].AlignmentId
-    else:
-        return df.TranscriptId, df.AlignmentId
+    df = df.sort_values('Badness')
+    gene_biotype = df.GeneBiotype[0]
+    if gene_biotype == 'protein_coding':
+        # only consider coding transcripts
+        coding_df = df[df.TranscriptBiotype == 'protein_coding']
+        if len(coding_df) != 0:
+            # edge case where this coding gene has no coding transcripts
+            return coding_df.iloc[0].TranscriptId, coding_df.iloc[0].AlignmentId
+    return df.iloc[0].TranscriptId, df.iloc[0].AlignmentId
 
 
 def find_novel_cgp_splices(tx_dict, consensus_tx_dict, cgp_intron_df, gene_transcript_map):

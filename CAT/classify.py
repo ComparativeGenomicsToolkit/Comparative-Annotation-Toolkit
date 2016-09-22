@@ -26,8 +26,7 @@ BED-like format. In cases where there are multiple problems, they will be additi
 4. CodingMult3Deletion: Do we have any mod3 coding deletions?
 5. NonCodingInsertion: Do we have indels in UTR sequence?
 6. NonCodingDeletion: Do we have any indels in UTR sequence?
-7. ExonGain: Do we gain any exons? Defined as having a continuous block of sequence with no alignment that is spliced.
-8. InFrameStop: Are there any in-frame stop codons?
+7. InFrameStop: Are there any in-frame stop codons?
 
 
 The Metrics and Evaluation groups will have multiple tables for each of the input methods used:
@@ -62,8 +61,6 @@ import tools.transcripts
 fuzz_distance = 7
 # the amount of exon-exon coverage required to consider a exon as present
 num_missing_exons_coverage_cutoff = 0.8
-# the minimum amount of uncovered bases a exon must have to be considered a novel exon
-exon_gain_coverage_cutoff = 0.8
 
 
 def classify(eval_args):
@@ -127,8 +124,6 @@ def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_p
     ec_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
-        for exon in exon_gain(tx, psl, aln_mode):
-            r.append([tx.name, ref_tx.name, 'ExonGain', exon])
         indels = find_indels(tx, psl, aln_mode)
         for category, interval in indels:
             r.append([tx.name, ref_tx.name, category, interval])
@@ -248,32 +243,6 @@ def calculate_num_missing_exons(ref_tx, psl, aln_mode):
 ###
 # Alignment Evaluation Classifiers
 ###
-
-
-def exon_gain(tx, psl, aln_mode):
-    """
-    Calculates whether we gained an exon in this transcript. Follows the same logic as calculate_num_missing_exons,
-    but inverted.
-
-    TODO: This could be made faster by using a sample distance, and only looking every N bases. But less accurate
-
-    :param tx: Target GenePredTranscript object
-    :param psl: PslRow object describing mRNA/CDS alignment between ref_tx and tx
-    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :return: list of ChromosomeInterval objects if a gain exists else []
-    """
-    # convert the target exons to alignment coordinates
-    tgt_exons = get_exon_intervals(tx, aln_mode)
-    # note that since this PSL is target-referenced, we use query_coordinate_to_target()
-    gained_exons = []
-    for exon, converted_exon in tgt_exons.iteritems():
-        inserted_bases = 0
-        for i in xrange(converted_exon.start, converted_exon.stop):
-            if psl.target_coordinate_to_query(i) is None:
-                inserted_bases += 1
-        if tools.mathOps.format_ratio(inserted_bases, len(converted_exon)) >= exon_gain_coverage_cutoff:
-            gained_exons.append(exon)
-    return gained_exons
 
 
 def in_frame_stop(tx, fasta):
