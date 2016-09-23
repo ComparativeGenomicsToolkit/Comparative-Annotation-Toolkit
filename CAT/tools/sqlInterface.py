@@ -4,11 +4,157 @@ Functions to interface with the sqlite databases produced by various steps of th
 import collections
 
 import pandas as pd
-import sqlalchemy
+from sqlalchemy import Column, Integer, Text, Float, Boolean, func, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+
+###
+# Data model
+###
+
+
+Base = declarative_base()
+
+
+class Annotation(Base):
+    """Table for the annotation table. Only exists in ref_genome"""
+    __tablename__ = 'annotation'
+    GeneId = Column(Text, primary_key=True)
+    TranscriptId = Column(Text, primary_key=True)
+    GeneName = Column(Text)
+    GeneBiotype = Column(Text)
+    StartCodon = Column(Boolean)
+    StopCodon = Column(Boolean)
+
+
+class EvaluationColumns(object):
+    """Mixin class for all TranscriptEvaluation module tables"""
+    GeneId = Column(Text, primary_key=True)
+    TranscriptId = Column(Text, primary_key=True)
+    AlignmentId = Column(Text, primary_key=True)
+    classifier = Column(Text, primary_key=True)
+    chromosome = Column(Text)
+    start = Column(Integer)
+    stop = Column(Integer)
+    strand = Column(Text)
+
+
+class TmEval(EvaluationColumns, Base):
+    """Table for evaluations from TransMapEvaluation module"""
+    __tablename__ = 'TransMapEvaluation'
+
+
+class MrnaTmEval(EvaluationColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from transMap"""
+    __tablename__ = 'mRNA_transMap_Evaluation'
+
+
+class MrnaAugTmEval(EvaluationColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from AugustusTM"""
+    __tablename__ = 'mRNA_augTM_Evaluation'
+
+
+class MrnaAugTmrEval(EvaluationColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from AugustusTMR"""
+    __tablename__ = 'mRNA_augTMR_Evaluation'
+
+
+class CdsTmEval(EvaluationColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from transMap"""
+    __tablename__ = 'CDS_transMap_Evaluation'
+
+
+class CdsAugTmEval(EvaluationColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusTM"""
+    __tablename__ = 'CDS_augTM_Evaluation'
+
+
+class CdsAugTmrEval(EvaluationColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusTMR"""
+    __tablename__ = 'CDS_augTMR_Evaluation'
+
+
+class CdsAugCgpEval(EvaluationColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusCGP"""
+    __tablename__ = 'CDS_augCGP_Evaluation'
+
+
+class MetricsColumns(object):
+    """Mixin class for all TranscriptMetrics module tables"""
+    GeneId = Column(Text, primary_key=True)
+    TranscriptId = Column(Text, primary_key=True)
+    AlignmentId = Column(Text, primary_key=True)
+    classifier = Column(Text, primary_key=True)
+    value = Column(Float)
+
+
+class TmMetrics(MetricsColumns, Base):
+    """Table for evaluations from TransMapMetrics module"""
+    __tablename__ = 'TransMapMetrics'
+
+
+class MrnaTmMetrics(MetricsColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from transMap"""
+    __tablename__ = 'mRNA_transMap_Metrics'
+
+
+class MrnaAugTmMetrics(MetricsColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from AugustusTM"""
+    __tablename__ = 'mRNA_augTM_Metrics'
+
+
+class MrnaAugTmrMetrics(MetricsColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from AugustusTMR"""
+    __tablename__ = 'mRNA_augTMR_Metrics'
+
+
+class CdsTmMetrics(MetricsColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from transMap"""
+    __tablename__ = 'CDS_transMap_Metrics'
+
+
+class CdsAugTmMetrics(MetricsColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusTM"""
+    __tablename__ = 'CDS_augTM_Metrics'
+
+
+class CdsAugTmrMetrics(MetricsColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusTMR"""
+    __tablename__ = 'CDS_augTMR_Metrics'
+
+
+class CdsAugCgpMetrics(MetricsColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusCGP"""
+    __tablename__ = 'CDS_augCGP_Metrics'
+
+
+class HgmColumns(object):
+    """Mixin class for all homGeneMapping tables"""
+    AlignmentId = Column(Text, primary_key=True)
+    IntronVector = Column(Text, primary_key=True)
+
+
+class TmIntronSupport(HgmColumns, Base):
+    """Table for intron support of transMap transcripts from homGeneMapping"""
+    __tablename__ = 'transMap_HgmIntronVector'
+
+
+class AugTmIntronSupport(HgmColumns, Base):
+    """Table for intron support of AugustusTM transcripts from homGeneMapping"""
+    __tablename__ = 'augTM_HgmIntronVector'
+
+
+class AugTmrIntronSupport(HgmColumns, Base):
+    """Table for intron support of AugustusTMR transcripts from homGeneMapping"""
+    __tablename__ = 'augTMR_HgmIntronVector'
+
+
+class AugCgpIntronSupport(HgmColumns, Base):
+    """Table for intron support of AugustusCGP transcripts from homGeneMapping"""
+    __tablename__ = 'augCGP_HgmIntronVector'
 
 
 ###
-# Attributes functions
+# Attributes functions -- read data from the annotation table
 ###
 
 
@@ -20,7 +166,7 @@ def read_attrs(db_path, table='annotation', index_col='TranscriptId'):
     :param index_col: column to index on. should generally be tx_id.
     :return: pandas DataFrame
     """
-    engine = sqlalchemy.create_engine('sqlite:///{}'.format(db_path))
+    engine = create_engine('sqlite:///{}'.format(db_path))
     return pd.read_sql_table(table, engine, index_col=index_col)
 
 
@@ -76,7 +222,7 @@ def get_gene_biotype_map(db_path, table='annotation', index_col='TranscriptId'):
 
 
 ###
-# Loading classification tables
+# Loading entire tables
 ###
 
 
@@ -86,7 +232,7 @@ def load_reference(ref_db_path):
     :param ref_db_path: path to reference genome database. Must have table 'annotation'
     :return: DataFrame
     """
-    engine = sqlalchemy.create_engine('sqlite:///' + ref_db_path)
+    engine = create_engine('sqlite:///' + ref_db_path)
     df = pd.read_sql('annotation', engine)
     return df
 
@@ -97,99 +243,73 @@ def load_alignment_evaluation(db_path):
     :param db_path: path to genome database
     :return: DataFrame
     """
-    engine = sqlalchemy.create_engine('sqlite:///' + db_path)
+    engine = create_engine('sqlite:///' + db_path)
     df = pd.read_sql('TransMapEvaluation', engine)
-    df['value'] = df['value'].apply(pd.to_numeric)
     df = pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value', fill_value=0)
     return df.reset_index()
 
 
 ###
-# These functions require external information to create their dataframes
+# Load subsets of tables using the ORM
 ###
 
 
-def load_classifications(db_path, alignment_mode, transcript_modes, ref_tx_dict):
+def _generic_gene_query(table, session, gene_id):
+    """Generic function for selecting members of a table by gene_id"""
+    query = session.query(table).filter(table.GeneId == gene_id)
+    return pd.read_sql(query.statement, session.bind)
+
+
+def _generic_transcript_query(table, session, tx_id):
+    """Generic function for selecting members of a table by tx_id"""
+    query = session.query(table).filter(table.TranscriptId == tx_id)
+    return pd.read_sql(query.statement, session.bind)
+
+
+def _generic_alignment_query(table, session, aln_id):
+    """Generic function for selecting members of a table by aln_id"""
+    query = session.query(table).filter(table.AlignmentId == aln_id)
+    return pd.read_sql(query.statement, session.bind)
+
+
+def load_evaluation(table, session, gene_id):
     """
-    Load all of the evaluation and metrics tables into one joined DataFrame
-    :param db_path: path to genome database
-    :param alignment_mode: one of ('CDS', 'mRNA')
-    :param transcript_modes: List that contains modes ['transMap', 'augTM', 'augTMR', 'augCGP']
-    :param ref_tx_dict: dictionary of GenePredTranscript objects representing the reference transcripts
+    load evaluation entries for this gene. Makes use of count() and group by to get the # of times the classifier failed
+    :param table: One of the evaluation tables
+    :param session: Active sqlalchemy session.
+    :param gene_id: Gene to query
     :return: DataFrame
     """
-    def load_evaluation(tx_type):
-        """load evaluation table. Makes use of count() and group by to get the # of times the classifier failed"""
-        table = '_'.join([alignment_mode, tx_type, 'Evaluation'])
-        query = 'SELECT AlignmentId,TranscriptId,classifier,COUNT(*) FROM {} ' \
-                'group by AlignmentId,TranscriptId,classifier'.format(table)
-        df = pd.read_sql(query, engine)
-        df.columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
-        return df
-
-    def load_metrics(tx_type):
-        """load metrics table"""
-        table = '_'.join([alignment_mode, tx_type, 'Metrics'])
-        query = 'SELECT AlignmentId,TranscriptId,classifier,value FROM {}'.format(table)
-        df = pd.read_sql(query, engine)
-        return df
-
-    def add_intron_exon_counts():
-        """based on alignment mode, produce a DataFrame of the number of reference introns/exons"""
-        r = []
-        for ref_tx_id, ref_tx in ref_tx_dict.iteritems():
-            if alignment_mode == 'mRNA':
-                r.append([ref_tx_id, len(ref_tx.exon_intervals), len(ref_tx.intron_intervals)])
-            else:
-                r.append([ref_tx_id, ref_tx.num_coding_exons, ref_tx.num_coding_introns])
-        df = pd.DataFrame(r)
-        df.columns = ['TranscriptId', 'NumReferenceExons', 'NumReferenceIntrons']
-        return df
-
-    # we did not perform mRNA alignments on CGP
-    if alignment_mode == 'mRNA':
-        transcript_modes = list(set(transcript_modes) - {'augCGP'})
-    engine = sqlalchemy.create_engine('sqlite:///' + db_path)
-    dfs = [load_metrics(tx_mode) for tx_mode in transcript_modes]
-    dfs.extend([load_evaluation(tx_mode) for tx_mode in transcript_modes])
-    df = pd.concat(dfs, join='outer')
-    # we have to convert the value column to numeric for pivot to work
-    df['value'] = df['value'].apply(pd.to_numeric)
-    eval_df = pd.pivot_table(df, index=['AlignmentId', 'TranscriptId'], columns='classifier', values='value',
-                             fill_value=0)
-    # bring in the intron counts
-    intron_df = add_intron_exon_counts()
-    return pd.merge(eval_df.reset_index(), intron_df, on='TranscriptId')
+    assert any(table == cls for cls in (MrnaAugTmrEval, MrnaAugTmEval, MrnaTmEval,
+                                        CdsAugCgpEval, CdsAugTmrEval, CdsAugTmEval, CdsTmEval))
+    query = session.query(table.GeneId, table.TranscriptId, table.AlignmentId, table.classifier,
+                          func.count(table.classifier).label('value')). \
+        group_by(table.AlignmentId, table.TranscriptId, table.classifier). \
+        filter(table.GeneId == gene_id)
+    return pd.read_sql(query.statement, session.bind)
 
 
-def load_intron_vector(db_path, aln_mode, transcript_modes, tx_dict):
+def load_metrics(table, session, gene_id):
     """
-    load the homGeneMapping intron vector, collapsing to a single value.
-    We pass aln_mode/tx to only count CDS introns if we are in CDS mode
-    TODO: Make use of the deeper information present in the intron vector
-    :param db_path: path to genome database
-    :param aln_mode: One of ('CDS', 'mRNA')
-    :param transcript_modes: List that contains modes ['transMap', 'augTM', 'augTMR', 'augCGP']
-    :param tx_dict: dictionary of GenePredTranscript objects representing the target transcripts
+    load metrics entries for this gene. Wrapper for generic_gene_query.
+    :param table: One of the metrics tables
+    :param session: Active sqlalchemy session.
+    :param gene_id: Gene to query
     :return: DataFrame
     """
-    def reduce_intron_vector(s, aln_mode, tx, aln_id):
-        """intron vector is stored as a comma separated string. Reduce this, taking aln_mode into account"""
-        num_supported = 0
-        scores = map(int, list(s)[0].split(','))
-        for intron, score in zip(*[tx.intron_intervals, scores]):
-            if aln_mode == 'CDS' and not intron.subset(tx.coding_interval):  # don't look at this intron
-                continue
-            if score == 0:  # this intron is not supported
-                continue
-            num_supported += 1
-        return aln_id, num_supported, scores
+    assert any(table == cls for cls in (MrnaAugTmrMetrics, MrnaAugTmMetrics, MrnaTmMetrics,
+                                        CdsAugCgpMetrics, CdsAugTmrMetrics, CdsAugTmMetrics, CdsTmMetrics))
+    return _generic_gene_query(table, session, gene_id)
 
-    engine = sqlalchemy.create_engine('sqlite:///' + db_path)
-    dfs = [pd.read_sql('_'.join([tx_mode, 'HgmIntronVector']), engine) for tx_mode in transcript_modes]
-    df = pd.concat(dfs, join='outer')
-    df = df.set_index('AlignmentId')
-    r = [reduce_intron_vector(s, aln_mode, tx_dict[aln_id], aln_id) for aln_id, s in df.iterrows()]
-    df = pd.DataFrame(r)
-    df.columns = ['AlignmentId', 'NumSupportedIntrons', 'IntronVector']
-    return df
+
+def load_intron_vector(table, session, gene_id):
+    """
+    load intron vector entries for this gene. Wrapper for generic_gene_query.
+    :param table: One of the intron vector tables
+    :param session: Active sqlalchemy session.
+    :param gene_id: Gene to query
+    :return: DataFrame
+    """
+    assert any(table == cls for cls in (TmIntronSupport, AugCgpIntronSupport, AugTmIntronSupport,
+                                        AugTmrIntronSupport))
+    return _generic_gene_query(table, session, gene_id)

@@ -41,19 +41,20 @@ def transmap_classify(tm_eval_args):
     for aln_id, tx in gp_dict.iteritems():
         aln = psl_dict[aln_id]
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
-        r.append([aln_id, tx_id, 'Paralogy', paralog_count[aln_id]])
-        r.append([aln_id, tx_id, 'Synteny', synteny_scores[aln_id]])
-        r.append([aln_id, tx_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
-        r.append([aln_id, tx_id, 'AlnPartialMap', alignment_partial_map(aln)])
-        r.append([aln_id, tx_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, 'LongTranscript', long_transcript(tx)])
-        r.append([aln_id, tx_id, 'TransMapCoverage', aln.coverage])
-        r.append([aln_id, tx_id, 'TransMapIdentity', aln.identity])
-        r.append([aln_id, tx_id, 'TransMapBadness', aln.badness])
-    df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'classifier', 'value'])
+        gene_id = ref_gp_dict[tx_id].name2
+        r.append([aln_id, tx_id, gene_id, 'Paralogy', paralog_count[aln_id]])
+        r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
+        r.append([aln_id, tx_id, gene_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
+        r.append([aln_id, tx_id, gene_id, 'AlnPartialMap', alignment_partial_map(aln)])
+        r.append([aln_id, tx_id, gene_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
+        r.append([aln_id, tx_id, gene_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
+        r.append([aln_id, tx_id, gene_id, 'LongTranscript', long_transcript(tx)])
+        r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', aln.coverage])
+        r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', aln.identity])
+        r.append([aln_id, tx_id, gene_id, 'TransMapBadness', aln.badness])
+    df = pd.DataFrame(r, columns=['AlignmentId', 'GeneId', 'TranscriptId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
-    df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
+    df.set_index(['AlignmentId', 'GeneId', 'TranscriptId', 'classifier'], inplace=True)
     return df
 
 

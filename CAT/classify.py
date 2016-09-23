@@ -93,7 +93,7 @@ def classify(eval_args):
 def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict):
     """
     Calculates the alignment metrics and the number of missing original introns on this transcript_chunk
-    :return: list of (aln_id, classifier, result) tuples
+    :return: DataFrame
     """
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
@@ -105,18 +105,18 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_
         num_missing_exons = calculate_num_missing_exons(ref_tx, psl, aln_mode)
         # calculate number of total introns based on aln_mode
         num_introns = len(tx.intron_intervals) if aln_mode == 'mRNA' else tx.num_coding_introns
-        r.append([tx.name, ref_tx.name, 'AlnCoverage', psl.coverage])
-        r.append([tx.name, ref_tx.name, 'AlnIdentity', psl.identity])
-        r.append([tx.name, ref_tx.name, 'Badness', psl.badness])
-        r.append([tx.name, ref_tx.name, 'PercentUnknownBases', psl.percent_n])
-        r.append([tx.name, ref_tx.name, 'NumMissingIntrons', num_missing_introns])
-        r.append([tx.name, ref_tx.name, 'NumMissingExons', num_missing_exons])
-        r.append([tx.name, ref_tx.name, 'NumIntrons', num_introns])
-    columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', psl.coverage])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', psl.identity])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'Badness', psl.badness])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumMissingIntrons', num_missing_introns])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumMissingExons', num_missing_exons])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumIntrons', num_introns])
+    columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
     df = pd.DataFrame(r, columns=columns)
     df.value = pd.to_numeric(df.value)  # coerce all into floats
     df = df.sort_values(columns)
-    df = df.set_index(['AlignmentId', 'TranscriptId', 'classifier'])
+    df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
     assert len(r) == len(df)
     return df
 
@@ -124,23 +124,21 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_
 def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict):
     """
     Calculates the evaluation metrics on this transcript_chunk
-    :return: list of (aln_id, classifier, chromosome, start, stop, strand) tuples
+    :return: DataFrame
     """
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         indels = find_indels(tx, psl, aln_mode)
-        for category, interval in indels:
-            r.append([tx.name, ref_tx.name, category, interval])
+        for category, i in indels:
+            r.append([ref_tx.name2, ref_tx.name, tx.name, category, i.chromosome, i.start, i.stop, i.strand])
         if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evaluate tiny ORFs
-            ifs = in_frame_stop(tx, seq_dict)
-            if ifs is not None:
-                r.append([tx.name, ref_tx.name, 'InFrameStop', ifs])
-    # convert all of the ChromosomeInterval objects into a column representation
-    r = [[tx_name, ref_name, cat, i.chromosome, i.start, i.stop, i.strand] for tx_name, ref_name, cat, i in r]
-    columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
+            i = in_frame_stop(tx, seq_dict)
+            if i is not None:
+                r.append([ref_tx.name2, ref_tx.name, tx.name, 'InFrameStop', i.chromosome, i.start, i.stop, i.strand])
+    columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     df = pd.DataFrame(r, columns=columns)
     df = df.sort_values(columns)
-    df = df.set_index(['AlignmentId', 'TranscriptId', 'classifier'])
+    df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
     assert len(r) == len(df)
     return df
 

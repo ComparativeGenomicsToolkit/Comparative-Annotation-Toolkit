@@ -91,6 +91,23 @@ def consensus(args, consensus_gp):
     # load reference data
     ref_df = tools.sqlInterface.load_reference(args.ref_db_path)
 
+    # construct a map to iterate over
+    gene_transcript_map = tools.sqlInterface.get_gene_transcript_map(args.ref_db_path)
+
+
+
+def consensus(args, consensus_gp):
+    """
+    Entry point for consensus finding module.
+    :param args: Argument namespace from luigi
+    """
+    # load all genePreds
+    tx_dict = tools.transcripts.load_gps(args.gp_list)
+    ref_tx_dict = tools.transcripts.get_gene_pred_dict(args.annotation_gp)
+
+    # load reference data
+    ref_df = tools.sqlInterface.load_reference(args.ref_db_path)
+
     # load alignment-mode specific tables, scoring the alignments
     aln_mode_dfs = {}
     for aln_mode in ['CDS', 'mRNA']:
