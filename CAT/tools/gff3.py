@@ -367,6 +367,8 @@ def extract_attrs(gff3):
         except KeyError, e:
             raise GFF3Exception('Unable to parse field {} from the input gff3 on line'.format(e, gene.lineNumber))
     df = pd.DataFrame.from_dict(results, orient='index')
+    df.StartCodon = pd.to_numeric(df.StartCodon)  # force the types here for better sql dtypes
+    df.StopCodon = pd.to_numeric(df.StopCodon)
     df.index.rename('TranscriptId', inplace=True)
     # make into a nice order for the sqlite database
     df = df[['TranscriptBiotype', 'GeneId', 'GeneName', 'GeneBiotype', 'StartCodon', 'StopCodon']]

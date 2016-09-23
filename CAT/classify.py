@@ -95,7 +95,6 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_
     Calculates the alignment metrics and the number of missing original introns on this transcript_chunk
     :return: list of (aln_id, classifier, result) tuples
     """
-    mc_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         if biotype == 'protein_coding':
@@ -113,7 +112,13 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_
         r.append([tx.name, ref_tx.name, 'NumMissingIntrons', num_missing_introns])
         r.append([tx.name, ref_tx.name, 'NumMissingExons', num_missing_exons])
         r.append([tx.name, ref_tx.name, 'NumIntrons', num_introns])
-    return create_data_frame(r, mc_columns)
+    columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
+    df = pd.DataFrame(r, columns=columns)
+    df.value = pd.to_numeric(df.value)  # coerce all into floats
+    df = df.sort_values(columns)
+    df = df.set_index(['AlignmentId', 'TranscriptId', 'classifier'])
+    assert len(r) == len(df)
+    return df
 
 
 def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict):
@@ -121,7 +126,6 @@ def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_p
     Calculates the evaluation metrics on this transcript_chunk
     :return: list of (aln_id, classifier, chromosome, start, stop, strand) tuples
     """
-    ec_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         indels = find_indels(tx, psl, aln_mode)
@@ -133,19 +137,10 @@ def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_p
                 r.append([tx.name, ref_tx.name, 'InFrameStop', ifs])
     # convert all of the ChromosomeInterval objects into a column representation
     r = [[tx_name, ref_name, cat, i.chromosome, i.start, i.stop, i.strand] for tx_name, ref_name, cat, i in r]
-    return create_data_frame(r, ec_columns)
-
-
-def create_data_frame(r, columns):
-    """
-    Combines the output of calculate_metrics() or calculate_evaluations() into a DataFrame
-    :param r: List of results to be converted to a DataFrame
-    :param columns: List of column names to use
-    :return: DataFrame
-    """
+    columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     df = pd.DataFrame(r, columns=columns)
-    df.sort_values(columns, inplace=True)
-    df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
+    df = df.sort_values(columns)
+    df = df.set_index(['AlignmentId', 'TranscriptId', 'classifier'])
     assert len(r) == len(df)
     return df
 

@@ -52,6 +52,7 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, 'TransMapIdentity', aln.identity])
         r.append([aln_id, tx_id, 'TransMapBadness', aln.badness])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'classifier', 'value'])
+    df.value = pd.to_numeric(df.value)
     df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
     return df
 
