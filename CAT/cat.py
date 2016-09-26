@@ -288,6 +288,7 @@ class Gff3ToAttrs(PipelineTask):
     """
     Uses the gff3 parser to extract the attributes table, converting the table into a sqlite database.
     """
+    table = tools.sqlInterface.Annotation.__tablename__
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -295,7 +296,7 @@ class Gff3ToAttrs(PipelineTask):
         tools.fileOps.ensure_file_dir(database)
         conn_str = 'sqlite:///{}'.format(database)
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
-                                                          target_table=self.ref_genome,
+                                                          target_table=self.table,
                                                           update_id=self.task_id)
         return attrs_table
 
@@ -305,7 +306,7 @@ class Gff3ToAttrs(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
-            results.to_sql('annotation', engine, if_exists='replace')
+            results.to_sql(self.table, engine, if_exists='replace')
         self.output().touch()
 
 
@@ -561,7 +562,7 @@ class EvaluateTransMapDriverTask(PipelineTask):
     """
     genome = luigi.Parameter()
     tm_eval_args = luigi.Parameter()
-    table = 'TransMapEvaluation'
+    table = tools.sqlInterface.TmEval.__tablename__
 
     def write_to_sql(self, df):
         """Load the results into the SQLite database"""
@@ -849,7 +850,6 @@ class Hgm(PipelineWrapperTask):
                 'hal': pipeline_args.hal,
                 'in_gtf': gtf_in_files,
                 'hgm_gtf': gtf_out_files,
-                'table': '_'.join([mode, 'HgmIntronVector']),
                 'hints_db': pipeline_args.augustus_hints_db}
         return args
 
@@ -883,7 +883,9 @@ class HgmDriverTask(ToilTask):
             db = pipeline_args.dbs[genome]
             tools.fileOps.ensure_file_dir(db)
             conn_str = 'sqlite:///{}'.format(db)
-            yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str, target_table=hgm_args['table'],
+            tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
+            yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                      target_table=tablename,
                                                       update_id=self.task_id)
 
     def requires(self):
@@ -906,16 +908,14 @@ class HgmDriverTask(ToilTask):
         logger.info('homGeneMapping toil pipeline for {} completed.'.format(self.mode))
         # convert the output to a dataframe and write to the genome database
         databases = self.__class__.get_databases(pipeline_args)
+        tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
         for genome, sqla_target in itertools.izip(*[hgm_args['genomes'], self.output()]):
             # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
-            intron_counts = parse_hgm_gtf(hgm_args['hgm_gtf'][genome])
-            df = pd.DataFrame.from_dict(intron_counts, orient='index')
-            df.index.name = 'AlignmentId'
-            df.columns = ['IntronVector']
+            df = parse_hgm_gtf(hgm_args['hgm_gtf'][genome])
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
-                df.to_sql(hgm_args['table'], engine, if_exists='replace')
+                df.to_sql(tablename, engine, if_exists='replace')
             sqla_target.touch()
-            logger.info('Loaded table: {}.{}'.format(genome, hgm_args['table']))
+            logger.info('Loaded table: {}.{}'.format(genome, tablename))
 
 
 class AlignTranscripts(PipelineWrapperTask):
@@ -1034,12 +1034,12 @@ class EvaluateDriverTask(PipelineTask):
     def build_table_names(self, eval_args):
         """construct table names based on input arguments"""
         tables = []
-        for tx_mode, path_dict in eval_args.transcript_modes.iteritems():
-            for aln_mode in ['mRNA', 'CDS']:
-                if aln_mode in path_dict:
-                    metrics_table = '_'.join([aln_mode, tx_mode, 'Metrics'])
-                    eval_table = '_'.join([aln_mode, tx_mode, 'Evaluation'])
-                    tables.extend([metrics_table, eval_table])
+        for aln_mode in ['mRNA', 'CDS']:
+            for tx_mode in eval_args.transcript_modes.iterkeys():
+                if tx_mode == 'augCGP' and aln_mode == 'mRNA':
+                    continue
+                names = [x.__tablename__ for x in tools.sqlInterface.tables[aln_mode][tx_mode].values()]
+                tables.extend(names)
         return tables
 
     def pair_table_output(self, eval_args):
@@ -1092,7 +1092,9 @@ class Consensus(PipelineWrapperTask):
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
-        args.consensus_gp = os.path.join(base_dir, genome + '.gp')
+        args.consensus_gp = luigi.LocalTarget(os.path.join(base_dir, genome + '.gp'))
+        args.consensus_gp_info = luigi.LocalTarget(os.path.join(base_dir, genome + '.gp_info'))
+        args.consensus_gff3 = luigi.LocalTarget(os.path.join(base_dir, genome + '.gff3'))
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
         return args
 
@@ -1114,8 +1116,7 @@ class ConsensusDriverTask(PipelineTask):
 
     def output(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
-        return (luigi.LocalTarget(consensus_args.consensus_gp),
-                luigi.LocalTarget(consensus_args.metrics_json))
+        return consensus_args.consensus_gp, consensus_args.metrics_json
 
     def requires(self):
         return self.clone(EvaluateTransMap), self.clone(EvaluateTranscripts), self.clone(Hgm)
@@ -1124,7 +1125,7 @@ class ConsensusDriverTask(PipelineTask):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         consensus_gp, metrics_json = self.output()
-        metrics_dict = consensus(consensus_args, consensus_gp)
+        metrics_dict = consensus(consensus_args)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 

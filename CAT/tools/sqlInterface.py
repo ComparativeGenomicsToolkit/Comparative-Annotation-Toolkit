@@ -6,6 +6,7 @@ import collections
 import pandas as pd
 from sqlalchemy import Column, Integer, Text, Float, Boolean, func, create_engine
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 ###
 # Data model
@@ -129,8 +130,10 @@ class CdsAugCgpMetrics(MetricsColumns, Base):
 
 class HgmColumns(object):
     """Mixin class for all homGeneMapping tables"""
+    GeneId = Column(Text, primary_key=True)
+    TranscriptId = Column(Text, primary_key=True)
     AlignmentId = Column(Text, primary_key=True)
-    IntronVector = Column(Text, primary_key=True)
+    IntronVector = Column(Text)
 
 
 class TmIntronSupport(HgmColumns, Base):
@@ -154,11 +157,40 @@ class AugCgpIntronSupport(HgmColumns, Base):
 
 
 ###
+# Wrapper functions for setting up sessions
+###
+
+
+def start_session(db_path):
+    """basic script for starting a session"""
+    engine = create_engine('sqlite:///' + db_path)
+    Session = sessionmaker(bind=engine)
+    return Session()
+
+
+
+###
+# Dictionary mapping tables to their respective transcript/alignment modes
+###
+
+
+tables = {'hgm': {'augCGP': AugCgpIntronSupport, 'augTM': AugTmIntronSupport,
+                  'augTMR': AugTmrIntronSupport, 'transMap': TmIntronSupport},
+          'CDS': {'augCGP': {'metrics': CdsAugCgpMetrics, 'evaluation': CdsAugCgpEval},
+                  'augTM': {'metrics': CdsAugTmMetrics, 'evaluation': CdsAugTmEval},
+                  'augTMR': {'metrics': CdsAugTmrMetrics, 'evaluation': CdsAugTmrEval},
+                  'transMap': {'metrics': CdsTmMetrics, 'evaluation': CdsTmEval}},
+          'mRNA': {'augTM': {'metrics': MrnaAugTmMetrics, 'evaluation': MrnaAugTmEval},
+                   'augTMR': {'metrics': MrnaAugTmrMetrics, 'evaluation': MrnaAugTmrEval},
+                   'transMap': {'metrics': MrnaTmMetrics, 'evaluation': MrnaTmEval}}}
+
+
+###
 # Attributes functions -- read data from the annotation table
 ###
 
 
-def read_attrs(db_path, table='annotation', index_col='TranscriptId'):
+def read_attrs(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
     """
     Read the attributes database file into a pandas DataFrame
     :param db_path: path to the attributes database
@@ -170,7 +202,7 @@ def read_attrs(db_path, table='annotation', index_col='TranscriptId'):
     return pd.read_sql_table(table, engine, index_col=index_col)
 
 
-def get_transcript_gene_map(db_path, table='annotation', index_col='TranscriptId'):
+def get_transcript_gene_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
     """
     Convenience wrapper for read_attrs that returns a dictionary mapping transcript IDs to gene IDs.
     :param db_path: path to the attributes database
@@ -182,7 +214,7 @@ def get_transcript_gene_map(db_path, table='annotation', index_col='TranscriptId
     return dict(zip(df.index, df.GeneId))
 
 
-def get_gene_transcript_map(db_path, table='annotation', index_col='TranscriptId'):
+def get_gene_transcript_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
     """
     Convenience wrapper for read_attrs that returns a dictionary mapping transcript IDs to gene IDs.
     :param db_path: path to the attributes database
@@ -191,13 +223,13 @@ def get_gene_transcript_map(db_path, table='annotation', index_col='TranscriptId
     :return: dictionary {GeneId: [tx_id1, tx_id2, etc]}
     """
     df = read_attrs(db_path, table, index_col)
-    r = collections.defaultdict(list)
+    r = collections.defaultdict(set)
     for tx_id, row in df.iterrows():
-        r[row.GeneId].append(tx_id)
+        r[row.GeneId].add(tx_id)
     return dict(r)  # don't return a defaultdict to prevent bugs
 
 
-def get_transcript_biotype_map(db_path, table='annotation', index_col='TranscriptId'):
+def get_transcript_biotype_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
     """
     Convenience wrapper for read_attrs that returns a dictionary mapping transcript IDs to their biotype
     :param db_path: path to the attributes database
@@ -209,7 +241,7 @@ def get_transcript_biotype_map(db_path, table='annotation', index_col='Transcrip
     return dict(zip(df.index, df.TranscriptBiotype))
 
 
-def get_gene_biotype_map(db_path, table='annotation', index_col='TranscriptId'):
+def get_gene_biotype_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
     """
     Convenience wrapper for read_attrs that returns a dictionary mapping gene IDs to their biotype
     :param db_path: path to the attributes database
@@ -226,14 +258,14 @@ def get_gene_biotype_map(db_path, table='annotation', index_col='TranscriptId'):
 ###
 
 
-def load_reference(ref_db_path):
+def load_annotation(ref_db_path):
     """
     Load the reference annotation table
-    :param ref_db_path: path to reference genome database. Must have table 'annotation'
+    :param ref_db_path: path to reference genome database. Must have table Annotation.__tablename__
     :return: DataFrame
     """
     engine = create_engine('sqlite:///' + ref_db_path)
-    df = pd.read_sql('annotation', engine)
+    df = pd.read_sql_table(Annotation.__tablename__, engine)
     return df
 
 
@@ -244,7 +276,7 @@ def load_alignment_evaluation(db_path):
     :return: DataFrame
     """
     engine = create_engine('sqlite:///' + db_path)
-    df = pd.read_sql('TransMapEvaluation', engine)
+    df = pd.read_sql_table(TmEval.__tablename__, engine)
     df = pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value', fill_value=0)
     return df.reset_index()
 

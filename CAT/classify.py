@@ -80,13 +80,11 @@ def classify(eval_args):
         aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
         for aln_mode in aln_modes:
             # these are the sqlite table names
-            mc_table_name = '_'.join([aln_mode, tx_mode, 'Metrics'])
-            ec_table_name = '_'.join([aln_mode, tx_mode, 'Evaluation'])
             tx_aln_psl_dict = tools.psl.get_alignment_dict(path_dict[aln_mode])
             mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict)
             ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict)
-            results[mc_table_name] = mc_df
-            results[ec_table_name] = ec_df
+            results[tools.sqlInterface.tables[aln_mode][tx_mode]['metrics'].__tablename__] = mc_df
+            results[tools.sqlInterface.tables[aln_mode][tx_mode]['evaluation'].__tablename__] = ec_df
     return results
 
 
@@ -99,8 +97,8 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         if biotype == 'protein_coding':
             start_ok, stop_ok = start_stop_stat(tx)
-            r.append([tx.name, ref_tx.name, 'StartCodon', start_ok])
-            r.append([tx.name, ref_tx.name, 'StopCodon', stop_ok])
+            r.append([ref_tx.name2, ref_tx.name, tx.name, 'StartCodon', start_ok])
+            r.append([ref_tx.name2, ref_tx.name, tx.name, 'StopCodon', stop_ok])
         num_missing_introns = calculate_num_missing_introns(ref_tx, tx, psl, aln_mode)
         num_missing_exons = calculate_num_missing_exons(ref_tx, psl, aln_mode)
         # calculate number of total introns based on aln_mode
