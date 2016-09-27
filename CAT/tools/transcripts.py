@@ -44,6 +44,9 @@ class Transcript(object):
         return (hash(self.chromosome) ^ hash(self.start) ^ hash(self.stop) ^ hash(self.strand) ^
                 hash((self.chromosome, self.start, self.stop, self.strand)))
 
+    def __repr__(self):
+        return 'Transcript({})'.format(self.get_bed())
+
     @property
     def cds_size(self):
         """calculates the number of coding bases"""
@@ -366,6 +369,9 @@ class GenePredTranscript(Transcript):
                       block_starts]
         super(GenePredTranscript, self).__init__(bed_tokens)
 
+    def __repr__(self):
+        return 'GenePredTranscript({})'.format(self.get_bed())
+
     @property
     def offset(self):
         frames = [x for x in self.exon_frames if x != -1]
@@ -487,6 +493,20 @@ def load_gps(gp_list):
     for gp in gp_list:
         for t in gene_pred_iterator(gp):
             if t.name in r:
-                raise RuntimeError('Attempted to add duplicate GenePredTranscript object with name {}'.format(name))
+                raise RuntimeError('Attempted to add duplicate GenePredTranscript object with name {}'.format(t.name))
             r[t.name] = t
     return r
+
+
+def get_start_interval(tx):
+    if tx.strand == '+':
+        return tx.thick_start, tx.thick_start + 3
+    else:
+        return tx.thick_stop - 3, tx.thick_stop
+
+
+def get_stop_interval(tx):
+    if tx.strand == '-':
+        return tx.thick_start, tx.thick_start + 3
+    else:
+        return tx.thick_stop - 3, tx.thick_stop

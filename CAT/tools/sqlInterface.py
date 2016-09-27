@@ -282,7 +282,7 @@ def load_alignment_evaluation(db_path):
 
 
 ###
-# Load subsets of tables using the ORM
+# Load tables for consensus finding
 ###
 
 
@@ -304,24 +304,22 @@ def _generic_alignment_query(table, session, aln_id):
     return pd.read_sql(query.statement, session.bind)
 
 
-def load_evaluation(table, session, gene_id):
+def load_evaluation(table, session):
     """
     load evaluation entries for this gene. Makes use of count() and group by to get the # of times the classifier failed
     :param table: One of the evaluation tables
     :param session: Active sqlalchemy session.
-    :param gene_id: Gene to query
     :return: DataFrame
     """
     assert any(table == cls for cls in (MrnaAugTmrEval, MrnaAugTmEval, MrnaTmEval,
                                         CdsAugCgpEval, CdsAugTmrEval, CdsAugTmEval, CdsTmEval))
     query = session.query(table.GeneId, table.TranscriptId, table.AlignmentId, table.classifier,
                           func.count(table.classifier).label('value')). \
-        group_by(table.AlignmentId, table.TranscriptId, table.classifier). \
-        filter(table.GeneId == gene_id)
+        group_by(table.AlignmentId, table.TranscriptId, table.classifier)
     return pd.read_sql(query.statement, session.bind)
 
 
-def load_metrics(table, session, gene_id):
+def load_metrics(table, session):
     """
     load metrics entries for this gene. Wrapper for generic_gene_query.
     :param table: One of the metrics tables
@@ -331,17 +329,18 @@ def load_metrics(table, session, gene_id):
     """
     assert any(table == cls for cls in (MrnaAugTmrMetrics, MrnaAugTmMetrics, MrnaTmMetrics,
                                         CdsAugCgpMetrics, CdsAugTmrMetrics, CdsAugTmMetrics, CdsTmMetrics))
-    return _generic_gene_query(table, session, gene_id)
+    query = session.query(table)
+    return pd.read_sql(query.statement, session.bind)
 
 
-def load_intron_vector(table, session, gene_id):
+def load_intron_vector(table, session):
     """
     load intron vector entries for this gene. Wrapper for generic_gene_query.
     :param table: One of the intron vector tables
     :param session: Active sqlalchemy session.
-    :param gene_id: Gene to query
     :return: DataFrame
     """
     assert any(table == cls for cls in (TmIntronSupport, AugCgpIntronSupport, AugTmIntronSupport,
                                         AugTmrIntronSupport))
-    return _generic_gene_query(table, session, gene_id)
+    query = session.query(table)
+    return pd.read_sql(query.statement, session.bind)

@@ -10,7 +10,6 @@ import tempfile
 
 import luigi
 import luigi.contrib.sqla
-import pandas as pd
 from luigi.util import requires
 
 import tools.bio
@@ -31,7 +30,7 @@ from augustus_cgp import augustus_cgp
 from base_tasks import PipelineTask, PipelineWrapperTask, ToilTask, AbstractAtomicFileTask
 from chaining import chaining
 from classify import classify
-from consensus import consensus
+from consensus import generate_consensus
 from filter_transmap import filter_transmap
 from hgm import hgm, parse_hgm_gtf
 from transmap_classify import transmap_classify
@@ -1095,7 +1094,8 @@ class Consensus(PipelineWrapperTask):
         args.consensus_gp = luigi.LocalTarget(os.path.join(base_dir, genome + '.gp'))
         args.consensus_gp_info = luigi.LocalTarget(os.path.join(base_dir, genome + '.gp_info'))
         args.consensus_gff3 = luigi.LocalTarget(os.path.join(base_dir, genome + '.gff3'))
-        args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
+        json_path = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
+        args.metrics_json = luigi.LocalTarget(json_path)
         return args
 
     def validate(self):
@@ -1125,8 +1125,13 @@ class ConsensusDriverTask(PipelineTask):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         consensus_gp, metrics_json = self.output()
-        metrics_dict = consensus(consensus_args)
+        metrics_dict = generate_consensus(consensus_args, self.genome)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
+
+
+###
+# Entry point without using luigi
+###
 
 
 def parse_args():
@@ -1140,7 +1145,7 @@ def parse_args():
     parser.add_argument('--ref-genome', required=True)
     parser.add_argument('--annotation', required=True)
     parser.add_argument('--out-dir', default='./cat_output')
-    parser.add_argument('--work-dir', default=tempfile.gettempdir())
+    parser.add_argument('--work-dir', default=os.path.join(tempfile.gettempdir(), __name__))
     parser.add_argument('--target-genomes', nargs='+', default=None)
     # parallelism
     parser.add_argument('--workers', default=10)
