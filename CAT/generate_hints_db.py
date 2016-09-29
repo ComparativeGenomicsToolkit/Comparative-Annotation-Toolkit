@@ -3,9 +3,6 @@ Generate a hints database file from RNAseq alignments for AugustusTMR/AugustusCG
 
 Expects a config file to be passed in with the paths to the files. Example:
 
-[FASTA]
-genome1 = /path/to/fasta
-
 [ANNOTATION]
 annotation = /path/to/gff3
 
@@ -19,8 +16,8 @@ import collections
 import itertools
 import logging
 import os
-import shutil
 import sqlite3
+import argparse
 import tempfile
 
 import luigi
@@ -39,6 +36,8 @@ import tools.misc
 import tools.procOps
 import tools.toilInterface
 import tools.transcripts
+import tools.hal
+from base_tasks import HintsDbToilTask, HintsDbTask, HintsDbWrapperTask
 
 logger = logging.getLogger(__name__)
 
@@ -47,87 +46,13 @@ class UserException(Exception):
     pass
 
 
-class HintsDbTask(luigi.Task):
-    # path to config file
-    config = luigi.Parameter(default='hints_cfg.cfg')
-    augustus_hints_db = luigi.Parameter(default='augustus_hints.db')
-    work_dir = luigi.Parameter(default=os.path.join(tempfile.gettempdir(), __name__))
-    # Toil options
-    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
-    maxCores = luigi.IntParameter(default=16, significant=False)
-    logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
-    cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
-    workDir = luigi.Parameter(default=None, significant=False)
-    disableCaching = luigi.BoolParameter(default=False, significant=False)
-    parasolCommand = luigi.Parameter(default=None, significant=False)
-    defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
-
-    def __repr__(self):
-        """override the repr to make logging cleaner"""
-        return 'HintsDbTask: {}'.format(self.__class__.__name__)
-
-
-class HintsDbWrapperTask(HintsDbTask, luigi.WrapperTask):
-    """add WrapperTask functionality to PipelineTask"""
-    pass
-
-
-class HintsDbToilTask(HintsDbTask):
-    """
-    Task for launching toil pipelines from within luigi.
-    """
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
-
-    def prepare_toil_options(self, work_dir):
-        """
-        Prepares a Namespace object for Toil which has all defaults, overridden as specified
-        Will see if the jobStore path exists, and if it does, assume that we need to add --restart
-        :param work_dir: Parent directory where toil work will be done. jobStore will be placed inside. Will be used
-        to fill in the workDir class variable.
-        :return: Namespace
-        """
-        job_store = os.path.join(work_dir, 'jobStore')
-        tools.fileOps.ensure_file_dir(job_store)
-        toil_args = self.get_toil_defaults()
-        toil_args.__dict__.update(vars(self))
-        if os.path.exists(job_store):
-            try:
-                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
-                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
-                    shutil.rmtree(job_store)
-                else:
-                    toil_args.restart = True
-            except OSError:
-                toil_args.restart = True
-            except IOError:
-                shutil.rmtree(job_store)
-        job_store = 'file:' + job_store
-        toil_args.jobStore = job_store
-        return toil_args
-
-    def get_toil_defaults(self):
-        """
-        Extracts the default toil options as a dictionary, setting jobStore to None
-        :return: dict
-        """
-        parser = Job.Runner.getDefaultArgumentParser()
-        namespace = parser.parse_args([''])  # empty jobStore attribute
-        namespace.jobStore = None  # jobStore attribute will be updated per-batch
-        return namespace
-
-    def __repr__(self):
-        """override the PipelineTask repr to report the batch system being used"""
-        base_repr = super(HintsDbToilTask, self).__repr__()
-        return 'Toil' + base_repr + ' using batchSystem {}'.format(self.batchSystem)
-
-
 class BuildHints(HintsDbWrapperTask):
     """
     Main entry point. Parses input files, and launches the next task.
     """
     def parse_cfg(self):
         # configspec validates the input config file
-        configspec = ['[FASTA]', '__many__ = string', '[ANNOTATION]', '__many__ = string', '[BAM]', '__many__ = list']
+        configspec = ['[ANNOTATION]', '__many__ = string', '[BAM]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
         # if a given genome only has one BAM, it is a string. Fix this.
         for genome in parser['BAM']:
@@ -151,16 +76,19 @@ class BuildHints(HintsDbWrapperTask):
         cfg = self.parse_cfg()
         hint_paths = {}
         flat_fasta_paths = {}
-        for genome in cfg['FASTA']:
-            flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=cfg)
+        hal = os.path.abspath(self.hal)
+        genomes = tools.hal.extract_genomes(hal)
+        for genome in genomes:
+            flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=cfg, hal=hal)
             yield flat_fasta
             flat_fasta_paths[genome] = flat_fasta.output().path
             annotation = cfg['ANNOTATION'].get(genome, None)
             hints = self.clone(GenerateHints, genome=genome, flat_fasta=flat_fasta.output().path,
                                annotation=annotation, cfg=cfg)
             yield hints
-            hint_paths[genome] = hints.output().path
-        yield self.clone(BuildDb, cfg=cfg, hint_paths=hint_paths, flat_fasta_paths=flat_fasta_paths)
+            if genome in cfg['BAM']:
+                hint_paths[genome] = hints.output().path
+        yield self.clone(BuildDb, cfg=cfg, hint_paths=hint_paths, flat_fasta_paths=flat_fasta_paths, genomes=genomes)
 
 
 class GenomeFlatFasta(HintsDbTask):
@@ -169,6 +97,7 @@ class GenomeFlatFasta(HintsDbTask):
     """
     genome = luigi.Parameter()
     cfg = luigi.Parameter()
+    hal = luigi.Parameter()
 
     def output(self):
         path = os.path.abspath(os.path.join(self.work_dir, self.genome + '.fasta'))
@@ -176,8 +105,11 @@ class GenomeFlatFasta(HintsDbTask):
         return luigi.LocalTarget(path)
 
     def run(self):
+        logger.info('Extracting fasta for {} from HAL.'.format(self.genome))
+        with self.output().open('w') as outf:
+            cmd = ['hal2fasta', self.hal, self.genome]
+            tools.procOps.run_proc(cmd, stdout=outf)
         logger.info('Flattening fasta for {}.'.format(self.genome))
-        shutil.copyfile(self.cfg['FASTA'][self.genome], self.output().path)
         cmd = ['pyfasta', 'flatten', self.output().path]
         tools.procOps.run_proc(cmd)
 
@@ -191,7 +123,6 @@ class GenerateHints(HintsDbToilTask):
     flat_fasta = luigi.Parameter()
     annotation = luigi.Parameter()
     cfg = luigi.Parameter()
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
 
     def output(self):
         hints = os.path.abspath(os.path.join(self.work_dir, self.genome + '.reduced_hints.gff'))
@@ -220,9 +151,10 @@ class BuildDb(HintsDbTask):
     cfg = luigi.Parameter()
     hint_paths = luigi.Parameter()
     flat_fasta_paths = luigi.Parameter()
+    genomes = luigi.TupleParameter()
 
     def requires(self):
-        for genome in self.cfg['FASTA']:
+        for genome in self.genomes:
             flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=self.cfg)
             annotation = self.cfg['ANNOTATION'].get(genome, None)
             hints = self.clone(GenerateHints, genome=genome, flat_fasta=flat_fasta.output().path,
@@ -234,7 +166,7 @@ class BuildDb(HintsDbTask):
         return IndexTarget(self.augustus_hints_db)
 
     def run(self):
-        for genome in self.cfg['FASTA']:
+        for genome in self.genomes:
             logger.info('Loading finished hints for {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(self.augustus_hints_db)]
@@ -580,3 +512,38 @@ def group_references(sam_handle, num_bases=10 ** 7, max_seqs=500):
         else:
             this_bin.append(name)
     yield this_bin
+
+
+###
+# Entry point without using luigi
+###
+
+
+def parse_args():
+    """
+    Provides the ability to run directly from this script, bypassing the luigi wrapper. If you go this route, you
+    cannot control the number of concurrent toil pipelines.
+    :return: argparse.Namespace
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', required=True)
+    parser.add_argument('--hal', required=True)
+    parser.add_argument('--augustus-hints-db', default='augustus_hints.db')
+    parser.add_argument('--work-dir', default=os.path.join(tempfile.gettempdir(), __name__))
+    # parallelism
+    parser.add_argument('--workers', default=10)
+    # toil options
+    parser.add_argument('--batchSystem', default='singleMachine')
+    parser.add_argument('--maxCores', default=16, type=int)
+    parser.add_argument('--logLevel', default='WARNING')
+    parser.add_argument('--cleanWorkDir', default='onSuccess')
+    parser.add_argument('--parasolCommand', default=None)
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    workers = args.workers
+    del args.workers  # hack because workers is actually a argument to luigi, not RunCat
+    luigi.build([BuildHints(**vars(args))], logging_conf_file='logging.cfg', workers=workers)
