@@ -296,7 +296,7 @@ class Gff3ToAttrs(PipelineTask):
         conn_str = 'sqlite:///{}'.format(database)
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                           target_table=self.table,
-                                                          update_id=self.task_id)
+                                                          update_id='_'.join([self.table, str(hash(pipeline_args))]))
         return attrs_table
 
     def run(self):
@@ -571,11 +571,12 @@ class EvaluateTransMapDriverTask(PipelineTask):
             logger.info('Loaded table: {}.{}'.format(self.genome, self.table))
 
     def output(self):
+        pipeline_args = self.get_pipeline_args()
         tools.fileOps.ensure_file_dir(self.tm_eval_args.db_path)
         conn_str = 'sqlite:///{}'.format(self.tm_eval_args.db_path)
         return luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                    target_table=self.table,
-                                                   update_id=self.task_id)
+                                                   update_id='_'.join([self.table, str(hash(pipeline_args))]))
 
     def requires(self):
         return self.clone(TransMap), self.clone(ReferenceFiles)
@@ -885,7 +886,7 @@ class HgmDriverTask(ToilTask):
             tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
             yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                       target_table=tablename,
-                                                      update_id=self.task_id)
+                                                      update_id='_'.join([tablename, str(hash(pipeline_args))]))
 
     def requires(self):
         if self.mode == 'augCGP':
@@ -1057,13 +1058,14 @@ class EvaluateDriverTask(PipelineTask):
                 logger.info('Loaded table: {}.{}'.format(self.genome, table))
 
     def output(self):
+        pipeline_args = self.get_pipeline_args()
         eval_args = self.get_module_args(EvaluateTranscripts, genome=self.genome)
         tools.fileOps.ensure_file_dir(eval_args.db_path)
         conn_str = 'sqlite:///{}'.format(eval_args.db_path)
         for table in self.build_table_names(eval_args):
             yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                       target_table=table,
-                                                      update_id='_'.join([self.task_id, table]))
+                                                      update_id='_'.join([table, str(hash(pipeline_args))]))
 
     def requires(self):
         return self.clone(AlignTranscripts), self.clone(ReferenceFiles)

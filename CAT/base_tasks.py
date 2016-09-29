@@ -8,10 +8,23 @@ import shutil
 import tempfile
 
 import luigi
+from frozendict import frozendict
 from toil.job import Job
 
 import tools.fileOps
 import tools.procOps
+
+
+class HashableNamespace(argparse.Namespace):
+    """
+    Adds a __hash__ function to argparse's Namespace. Follows best practices for implementation of __hash__.
+    """
+    def __hash__(self):
+        def xor(x, y):
+            return x ^ hash(y)
+        val_iter = self.__dict__.itervalues()
+        first = hash(val_iter.next())
+        return reduce(xor, val_iter, first) ^ hash(tuple(self.__dict__.values()))
 
 
 class PipelineTask(luigi.Task):
@@ -63,7 +76,7 @@ class PipelineTask(luigi.Task):
 
     def get_pipeline_args(self):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
-        args = argparse.Namespace()
+        args = HashableNamespace()
         args.hal = os.path.abspath(self.hal)
         args.ref_genome = self.ref_genome
         args.annotation = os.path.abspath(self.annotation)
@@ -88,7 +101,7 @@ class PipelineTask(luigi.Task):
             args.cgp_param = os.path.abspath(self.cgp_param)
         else:
             args.cgp_param = None
-        args.hal_genomes = tools.hal.extract_genomes(self.hal)
+        args.hal_genomes = tuple(tools.hal.extract_genomes(self.hal))
         if self.target_genomes is None:
             target_genomes = tuple(set(args.hal_genomes) - {self.ref_genome})
         else:
@@ -116,13 +129,13 @@ class PipelineTask(luigi.Task):
             modes.append('augTMR')
         if pipeline_args.augustus_cgp is True:
             modes.append('augCGP')
-        return modes
+        return tuple(modes)
 
     @staticmethod
     def get_databases(pipeline_args):
         """wrapper for get_database() that provides all of the databases"""
         dbs = {genome: PipelineTask.get_database(pipeline_args, genome) for genome in pipeline_args.hal_genomes}
-        return dbs
+        return frozendict(dbs)
 
     @staticmethod
     def get_database(pipeline_args, genome):
