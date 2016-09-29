@@ -80,72 +80,63 @@ def classify(eval_args):
         aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
         for aln_mode in aln_modes:
             # these are the sqlite table names
-            mc_table_name = '_'.join([aln_mode, tx_mode, 'Metrics'])
-            ec_table_name = '_'.join([aln_mode, tx_mode, 'Evaluation'])
             tx_aln_psl_dict = tools.psl.get_alignment_dict(path_dict[aln_mode])
             mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict)
             ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict)
-            results[mc_table_name] = mc_df
-            results[ec_table_name] = ec_df
+            results[tools.sqlInterface.tables[aln_mode][tx_mode]['metrics'].__tablename__] = mc_df
+            results[tools.sqlInterface.tables[aln_mode][tx_mode]['evaluation'].__tablename__] = ec_df
     return results
 
 
 def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict):
     """
     Calculates the alignment metrics and the number of missing original introns on this transcript_chunk
-    :return: list of (aln_id, classifier, result) tuples
+    :return: DataFrame
     """
-    mc_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'value']
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         if biotype == 'protein_coding':
             start_ok, stop_ok = start_stop_stat(tx)
-            r.append([tx.name, ref_tx.name, 'StartCodon', start_ok])
-            r.append([tx.name, ref_tx.name, 'StopCodon', stop_ok])
+            r.append([ref_tx.name2, ref_tx.name, tx.name, 'StartCodon', start_ok])
+            r.append([ref_tx.name2, ref_tx.name, tx.name, 'StopCodon', stop_ok])
         num_missing_introns = calculate_num_missing_introns(ref_tx, tx, psl, aln_mode)
         num_missing_exons = calculate_num_missing_exons(ref_tx, psl, aln_mode)
         # calculate number of total introns based on aln_mode
         num_introns = len(tx.intron_intervals) if aln_mode == 'mRNA' else tx.num_coding_introns
-        r.append([tx.name, ref_tx.name, 'AlnCoverage', psl.coverage])
-        r.append([tx.name, ref_tx.name, 'AlnIdentity', psl.identity])
-        r.append([tx.name, ref_tx.name, 'Badness', psl.badness])
-        r.append([tx.name, ref_tx.name, 'PercentUnknownBases', psl.percent_n])
-        r.append([tx.name, ref_tx.name, 'NumMissingIntrons', num_missing_introns])
-        r.append([tx.name, ref_tx.name, 'NumMissingExons', num_missing_exons])
-        r.append([tx.name, ref_tx.name, 'NumIntrons', num_introns])
-    return create_data_frame(r, mc_columns)
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', psl.coverage])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', psl.identity])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'Badness', psl.badness])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumMissingIntrons', num_missing_introns])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumMissingExons', num_missing_exons])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumIntrons', num_introns])
+    columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
+    df = pd.DataFrame(r, columns=columns)
+    df.value = pd.to_numeric(df.value)  # coerce all into floats
+    df = df.sort_values(columns)
+    df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
+    assert len(r) == len(df)
+    return df
 
 
 def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict):
     """
     Calculates the evaluation metrics on this transcript_chunk
-    :return: list of (aln_id, classifier, chromosome, start, stop, strand) tuples
+    :return: DataFrame
     """
-    ec_columns = ['AlignmentId', 'TranscriptId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
         indels = find_indels(tx, psl, aln_mode)
-        for category, interval in indels:
-            r.append([tx.name, ref_tx.name, category, interval])
+        for category, i in indels:
+            r.append([ref_tx.name2, ref_tx.name, tx.name, category, i.chromosome, i.start, i.stop, i.strand])
         if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evaluate tiny ORFs
-            ifs = in_frame_stop(tx, seq_dict)
-            if ifs is not None:
-                r.append([tx.name, ref_tx.name, 'InFrameStop', ifs])
-    # convert all of the ChromosomeInterval objects into a column representation
-    r = [[tx_name, ref_name, cat, i.chromosome, i.start, i.stop, i.strand] for tx_name, ref_name, cat, i in r]
-    return create_data_frame(r, ec_columns)
-
-
-def create_data_frame(r, columns):
-    """
-    Combines the output of calculate_metrics() or calculate_evaluations() into a DataFrame
-    :param r: List of results to be converted to a DataFrame
-    :param columns: List of column names to use
-    :return: DataFrame
-    """
+            i = in_frame_stop(tx, seq_dict)
+            if i is not None:
+                r.append([ref_tx.name2, ref_tx.name, tx.name, 'InFrameStop', i.chromosome, i.start, i.stop, i.strand])
+    columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
     df = pd.DataFrame(r, columns=columns)
-    df.sort_values(columns, inplace=True)
-    df.set_index(['AlignmentId', 'TranscriptId', 'classifier'], inplace=True)
+    df = df.sort_values(columns)
+    df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
     assert len(r) == len(df)
     return df
 

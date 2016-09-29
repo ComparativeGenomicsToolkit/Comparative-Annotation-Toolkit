@@ -2,6 +2,7 @@
 Library mathematical operations
 """
 import bisect
+import math
 
 
 def format_ratio(numerator, denominator, num_digits=None, resolve_nan=None):
@@ -11,9 +12,9 @@ def format_ratio(numerator, denominator, num_digits=None, resolve_nan=None):
     Rounds the number to the number of num_digits, if requested (not None)
     resolve_nan defines what to do when dividing by zero. Default is to return float('nan'), but this can be changed.
     """
-    if denominator == 0:
+    if denominator == 0 or math.isnan(denominator) or math.isnan(numerator):
         if resolve_nan is None:
-            return float("nan")
+            return float('nan')
         else:
             return resolve_nan
     r = float(numerator) / float(denominator)

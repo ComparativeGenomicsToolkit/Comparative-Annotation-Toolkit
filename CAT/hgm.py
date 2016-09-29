@@ -30,12 +30,14 @@ import collections
 import logging
 import multiprocessing
 import os
+import pandas as pd
 
 from toil.common import Toil
 from toil.job import Job
 
 import tools.fileOps
 import tools.procOps
+import tools.nameConversions
 
 
 ###
@@ -107,6 +109,14 @@ def setup(job, args, input_file_ids, num_cpu):
     return {genome: job.fileStore.writeGlobalFile(genome + '.gtf') for genome in args['genomes']}    
 
 
+def parse_gtf_attr_line(attr_line):
+    """parse a GTF attributes line"""
+    attr_line = [x.split(' ') for x in attr_line.replace('"', '').split('; ')]
+    attr_line[-1][-1] = attr_line[-1][-1].replace(';', '')
+    attrs = dict(attr_line)
+    return attrs
+
+
 def parse_hgm_gtf(hgm_out):
     """
     parses the hgm output gtfs and creates for each transcript a string with the intron support counts
@@ -115,20 +125,26 @@ def parse_hgm_gtf(hgm_out):
     But this can be changed later on, e.g. using also the multiplicities, or the presence of the introng
     in (one of) the reference annotation(s) (if "M" is in the 'hgm_info' string, then it is an annotated intron)
     """
-    d = collections.defaultdict(list)
-    
-    with open(hgm_out, 'r') as infile:
+    d = collections.defaultdict(lambda: collections.defaultdict(list))
+
+    with open(hgm_out) as infile:
         # get last column of all intron lines
         intron_lines = [i.strip().split('\t')[-1] for i in infile if "\tintron\t" in i]
-        for attributes in intron_lines:
-            txid = None
-            count = 0
-            for a in attributes.split(';'):
-                if "hgm_info" in a:                
-                    count = a.count("E")  # count number of occurrences of 'E'
-                if "transcript_id" in a:
-                    txid = a.split()[-1].strip('"')  # parse transcript id
-            if txid is None:
-                raise RuntimeError("Internal error in parse_hgm_gtf. Missing transcript_id in file {}".format(hgm_out))
-            d[txid].append(count)
-    return {k: ','.join(map(str, v)) for k, v in d.items()}  # convert list of intron counts to comma-separated string
+        for attr_line in intron_lines:
+            attributes = parse_gtf_attr_line(attr_line)
+            assert 'transcript_id' in attributes
+            support_count = attributes['hgm_info'].count('E')
+            d[attributes['gene_id']][attributes['transcript_id']].append(support_count)
+
+    # convert to dataframe, switching the list to a comma separated string
+    dd = []
+    for gene_id in d:
+        for aln_id, intron_vector in d[gene_id].iteritems():
+            tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+            intron_vector = ','.join(map(str, intron_vector))
+            dd.append([gene_id, tx_id, aln_id, intron_vector])
+
+    df = pd.DataFrame(dd)
+    df.columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'IntronVector']
+    df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
+    return df

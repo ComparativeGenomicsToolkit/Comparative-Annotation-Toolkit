@@ -16,7 +16,7 @@ def remove_alignment_number(aln_id, aln_re=re.compile("-[0-9]+$")):
     return aln_re.split(aln_id)[0]
 
 
-def remove_augustus_alignment_number(aln_id, aug_re=re.compile("^aug(TM|TMR)-")):
+def remove_augustus_alignment_number(aln_id, aug_re=re.compile("^aug(TM|TMR|CGP)-")):
     """
     removes the alignment numbers prepended by AugustusTM/AugustusTMR
     Format: aug(TM|TMR)-ENSMUST00000169901.2-1
