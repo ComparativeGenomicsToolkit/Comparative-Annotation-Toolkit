@@ -24,7 +24,7 @@ def filter_transmap(filter_tm_args, out_target):
     :param out_target: luigi.LocalTarget where the results will be written
     """
     # load database tables
-    ref_df = tools.sqlInterface.load_reference(filter_tm_args.ref_db_path)
+    ref_df = tools.sqlInterface.load_annotation(filter_tm_args.ref_db_path)
     aln_eval_df = tools.sqlInterface.load_alignment_evaluation(filter_tm_args.db_path)
     tx_dict = tools.transcripts.get_gene_pred_dict(filter_tm_args.tm_gp)
 
@@ -125,7 +125,7 @@ def resolve_split_genes(aln_eval_df, ref_df, tx_dict):
     If the gene biotype is protein_coding, only count coding transcripts.
 
     :param aln_eval_df: DataFrame produced by load_alignment_evaluation
-    :param ref_df: DataFrame produced by sqlInterface.load_reference()
+    :param ref_df: DataFrame produced by sqlInterface.load_annotation()
     :param tx_dict: Dictionary mapping alignment IDs to GenePredTranscript objects for all alignment modes. We will
                     ignore the non-transMap ones. This is just to get the chromosomes.
     :return: tuple of (metrics_dict, set of alignment ids to remove)

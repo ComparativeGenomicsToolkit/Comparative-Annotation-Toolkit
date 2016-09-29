@@ -286,24 +286,6 @@ def load_alignment_evaluation(db_path):
 ###
 
 
-def _generic_gene_query(table, session, gene_id):
-    """Generic function for selecting members of a table by gene_id"""
-    query = session.query(table).filter(table.GeneId == gene_id)
-    return pd.read_sql(query.statement, session.bind)
-
-
-def _generic_transcript_query(table, session, tx_id):
-    """Generic function for selecting members of a table by tx_id"""
-    query = session.query(table).filter(table.TranscriptId == tx_id)
-    return pd.read_sql(query.statement, session.bind)
-
-
-def _generic_alignment_query(table, session, aln_id):
-    """Generic function for selecting members of a table by aln_id"""
-    query = session.query(table).filter(table.AlignmentId == aln_id)
-    return pd.read_sql(query.statement, session.bind)
-
-
 def load_evaluation(table, session):
     """
     load evaluation entries for this gene. Makes use of count() and group by to get the # of times the classifier failed
@@ -324,7 +306,6 @@ def load_metrics(table, session):
     load metrics entries for this gene. Wrapper for generic_gene_query.
     :param table: One of the metrics tables
     :param session: Active sqlalchemy session.
-    :param gene_id: Gene to query
     :return: DataFrame
     """
     assert any(table == cls for cls in (MrnaAugTmrMetrics, MrnaAugTmMetrics, MrnaTmMetrics,

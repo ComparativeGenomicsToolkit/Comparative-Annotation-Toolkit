@@ -45,7 +45,7 @@ These filters throw out low quality alignments via the identity/coverage filter 
 The intron inequality is an important filter to preventing retroposed pseudogenes from being assigned as the parent.
 
 If the filter process throws out all transcripts for a gene, then one transcript with the best consensus score will be
-used, regardless of filtering.
+used, regardless of filtering. This transcript will be marked as failing.
 
 GFF3 tags generated in this process:
 1. source_transcript: The name of the parent transcript, if it exists
@@ -151,7 +151,7 @@ def generate_consensus(args, genome):
 
         # score the alignments
         scored_mrna_df = score_df(gene_mrna_df)
-        scored_cds_df = score_df(cds_df.xs(gene_id))
+        scored_cds_df = score_df(gene_cds_df)
 
         # filter the alignments
         filtered_mrna = filter_alignments(scored_mrna_df, aln_mode='mRNA')
@@ -181,7 +181,7 @@ def generate_consensus(args, genome):
         # attempt gene rescue, pick the one transcript to represent this
         if gene_seen is False and (len(scored_mrna_df) > 0 or len(scored_cds_df) > 0):
             metrics['Gene Failed'] += 1
-            rescue_missing_gene(scored_mrna_df, scored_cds_df, metrics, tm_eval, consensus)
+            rescue_missing_gene(scored_mrna_df, scored_cds_df, metrics, tm_eval, consensus, gene_id)
 
         # cgp-specific novel introns
         if cgp:
@@ -206,9 +206,7 @@ def generate_consensus(args, genome):
 
 
 def find_novel_transcripts(tx_dict, consensus, metrics):
-    """
-    Finds novel transcripts, builds their attributes
-    """
+    """Finds novel transcripts, builds their attributes"""
     novel_transcripts = {tx.name: tx.name for tx in tx_dict.itervalues() if 'jg' in tx.name2}
     novel_genes = {tx.name2 for tx in tx_dict.itervalues() if 'jg' in tx.name2}
     metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel transcripts': len(novel_transcripts)}
@@ -260,8 +258,6 @@ def evaluate_ties(best_rows):
 def build_tx_entry(best_series, failed_gene, tx_id, gene_id, tm_eval):
     """
     Constructs a dictionary of all of the useful attributes we have gleaned about this consensus transcript
-    :param best_series:
-    :return: dict of attributes
     """
     d = {'source_transcript': tx_id,
          'source_gene': gene_id,
@@ -279,31 +275,28 @@ def build_tx_entry(best_series, failed_gene, tx_id, gene_id, tm_eval):
     return d
 
 
-def rescue_missing_gene(scored_mrna_df, scored_cds_df, metrics, tm_eval, consensus):
+def rescue_missing_gene(scored_mrna_df, scored_cds_df, metrics, tm_eval, consensus, gene_id):
     """
     Attempts to resolve a missing gene by looking at the single best transcript within the same biotype.
-    If the biotype is protein_coding, favors the CDS version
-    :param scored_mrna_df: mRNA alignment mode DataFrame
-    :param scored_cds_df: CDS alignment mode DataFrame
-    :return: best_id or None
     """
     # combine the dataframes
     df = pd.merge(scored_mrna_df.reset_index(), scored_cds_df.reset_index(), how='outer', indicator='AlignmentMode',
                   copy=False)
     df = df.sort_values('ConsensusScore', ascending=False)
-    # favor the parent biotype, where possible
+    # only pick if the parent biotype matches
     biotype_df = df[df.GeneBiotype == df.TranscriptBiotype]
-    if len(biotype_df) != 0:
-        df = biotype_df
-    df = df.set_index('GeneId')
-    best_rows = find_best_score(df, df.index[0])
+    if len(biotype_df) == 0:
+        return
+    # below code is a hack to be able to make use of find_best_score()
+    biotype_df['GeneId'] = [gene_id] * len(biotype_df)
+    biotype_df = biotype_df.set_index('GeneId')
+    best_rows = find_best_score(biotype_df, biotype_df.index[0])
     if best_rows is not None:
         metrics['Gene Rescue'] += 1
-        best_rows = best_rows.set_index('AlignmentId')
         metrics['Transcript Modes'][evaluate_ties(best_rows)] += 1
-        aln_id, best_row = best_rows.iterrows().next()
-        best_row.GeneId = df.index[0]  # have to re-add in this column
-        consensus[aln_id] = build_tx_entry(best_row, True, best_row.TranscriptId, tm_eval)
+        _, best_series = best_rows.iterrows().next()
+        consensus[best_series.AlignmentId] = build_tx_entry(best_series, True, best_series.TranscriptId, gene_id,
+                                                            tm_eval)
 
 
 def find_novel_cgp_splices(gene_tx_objs, tx_dict, cds_intron_df, gene_id, common_name_map, consensus, gene_seen,
@@ -343,12 +336,6 @@ def load_metrics_evaluations_into_merged_table(session, tx_modes, ref_tx_dict, t
     """
     Loads all of the metrics and evaluations for all alignments associated with a given gene_id, bringing in outside
     data from the transcripts themselves.
-    :param session:
-    :param tx_modes:
-    :param ref_tx_dict:
-    :param tx_dict:
-    :param ref_df:
-    :param aln_mode:
     :return: DataFrame
     """
     def reduce_intron_vectors(aln_ids, intron_vectors):
@@ -476,8 +463,6 @@ def resolve_opposite_strand(deduplicated_consensus, tx_dict):
     """
     Resolves situations where multiple transcripts of the same gene are on opposite strands. Does so by looking for
     the largest sum of scores.
-    :param deduplicated_consensus:
-    :return:
     """
     gene_dict = collections.defaultdict(list)
     for tx_id, attrs in deduplicated_consensus:
@@ -529,9 +514,9 @@ def categorize_aln(s, percent_junction_support):
     supported.
     A passing alignment has:
     1) No in frame stops, 2) 75% of junctions supported
-    :param s:
-    :param percent_junction_support:
-    :return:
+    :param s: pandas Series
+    :param percent_junction_support: percentage as a float
+    :return: string
     """
     if s.TranscriptBiotype == 'protein_coding':
         if (s.StartCodon_Tgt == 1 or s.StartCodon_Ref == 0) and (s.StopCodon_Tgt == 1 or s.StopCodon_Ref == 0) and \
@@ -656,12 +641,6 @@ def evaluation_bonus(s):
 def write_consensus_gps(consensus_gp, consensus_gp_info, deduplicated_strand_resolved_consensus, tx_dict, genome):
     """
     Write the resulting gp + gp_info, generating genome-specific unique identifiers
-    :param consensus_gp:
-    :param consensus_gp_info:
-    :param deduplicated_strand_resolved_consensus:
-    :param tx_dict:
-    :param genome:
-    :return:
     """
     gene_count = 0
     tx_count = 1
@@ -692,9 +671,6 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, deduplicated_strand_res
 def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     """
     Write the consensus set in gff3 format
-    :param consensus_gene_dict:
-    :param consensus_gff3:
-    :return:
     """
     def convert_frame(exon_frame):
         """converts genePred-style exonFrame to GFF-style phase"""
@@ -747,6 +723,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
                        convert_frame(exon_frame), attrs_field]
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
+        """generate start/stop codon GFF3 records, handling frame appropriately"""
         cds_frames = [x for x in tx_obj.exon_frames if x != -1]
         if tx_obj.cds_start_stat == 'cmpl':
             attrs_field = convert_attrs(attrs, 'start_codon:{}'.format(tx_id))
@@ -765,6 +742,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
                 stop_frame = convert_frame(cds_frames[0])
             yield [chrom, 'CAT', 'stop_codon', start + 1, stop + 1, '.', tx_obj.strand, stop_frame, attrs_field]
 
+    # main gff3 writing logic
     with consensus_gff3.open('w') as out_gff3:
         out_gff3.write('##gff-version 3\n')
         for chrom in consensus_gene_dict:
