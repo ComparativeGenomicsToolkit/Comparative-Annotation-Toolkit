@@ -40,6 +40,8 @@ class PipelineTask(luigi.Task):
     out_dir = luigi.Parameter(default='./cat_output')
     work_dir = luigi.Parameter(default=os.path.join(tempfile.gettempdir(), __name__))
     target_genomes = luigi.TupleParameter(default=None)
+    # Debugging option - use this to bypass the dependency graph for specific submodules
+    no_evaluate_dependency = luigi.BoolParameter(default=False)
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human', significant=False)

@@ -107,8 +107,8 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(FilterTransMap)
         if self.augustus is True:
             yield self.clone(Augustus)
-        if self.augustus_cgp is True:
-            yield self.clone(AugustusCgp)
+        #if self.augustus_cgp is True:
+        #    yield self.clone(AugustusCgp)
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
@@ -579,6 +579,8 @@ class EvaluateTransMapDriverTask(PipelineTask):
                                                    update_id='_'.join([self.table, str(hash(pipeline_args))]))
 
     def requires(self):
+        if self.no_evaluate_dependency is True:
+            return
         return self.clone(TransMap), self.clone(ReferenceFiles)
 
     def run(self):
@@ -628,6 +630,8 @@ class FilterTransMapDriverTask(PipelineTask):
                 luigi.LocalTarget(self.filter_tm_args.metrics_json))
 
     def requires(self):
+        if self.no_evaluate_dependency is True:
+            return
         return self.clone(EvaluateTransMap)
 
     def run(self):
@@ -697,6 +701,8 @@ class AugustusDriverTask(ToilTask):
             yield luigi.LocalTarget(augustus_args.augustus_tmr_gtf)
 
     def requires(self):
+        if self.no_evaluate_dependency is True:
+            return
         return self.clone(FilterTransMap)
 
     def extract_coding_genes(self, augustus_args):
@@ -784,6 +790,8 @@ class AugustusCgp(ToilTask):
 
     def requires(self):
         self.validate()
+        if self.no_evaluate_dependency is True:
+            return
         yield self.clone(FilterTransMap)
 
     def prepare_cfg(self, pipeline_args):
@@ -889,6 +897,8 @@ class HgmDriverTask(ToilTask):
                                                       update_id='_'.join([tablename, str(hash(pipeline_args))]))
 
     def requires(self):
+        if self.no_evaluate_dependency is True:
+            return
         if self.mode == 'augCGP':
             yield self.clone(AugustusCgp)
         elif self.mode == 'augTM' or self.mode == 'augTMR':
@@ -978,6 +988,8 @@ class AlignTranscriptDriverTask(ToilTask):
                     yield luigi.LocalTarget(paths[aln_type])
 
     def requires(self):
+        if self.no_evaluate_dependency is True:
+            return
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
         if 'augTM' in alignment_args.transcript_modes:
             yield self.clone(Augustus)
@@ -1068,6 +1080,8 @@ class EvaluateDriverTask(PipelineTask):
                                                       update_id='_'.join([table, str(hash(pipeline_args))]))
 
     def requires(self):
+        if self.no_evaluate_dependency is True:
+            return
         return self.clone(AlignTranscripts), self.clone(ReferenceFiles)
 
     def run(self):
@@ -1121,6 +1135,8 @@ class ConsensusDriverTask(PipelineTask):
         return consensus_args.consensus_gp, consensus_args.metrics_json
 
     def requires(self):
+        if self.no_evaluate_dependency is True:
+            return
         return self.clone(EvaluateTransMap), self.clone(EvaluateTranscripts), self.clone(Hgm)
 
     def run(self):
@@ -1150,7 +1166,9 @@ def parse_args():
     parser.add_argument('--work-dir', default=os.path.join(tempfile.gettempdir(), __name__))
     parser.add_argument('--target-genomes', nargs='+', default=None)
     # parallelism
-    parser.add_argument('--workers', default=10)
+    parser.add_argument('--workers', default=10, type=int)
+    # Debugging option - use this to bypass the dependency graph for specific submodules
+    parser.add_argument('--no-evaluate-dependency', default=False, type=bool)
     # augustus TM(R) options
     parser.add_argument('--augustus', action='store_true')
     parser.add_argument('--augustus-species', default='human')

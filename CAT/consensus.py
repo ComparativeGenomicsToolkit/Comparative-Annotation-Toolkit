@@ -61,8 +61,8 @@ GFF3 tags generated in this process:
 11. gene_biotype: gene biotype
 12. transcript_biotype: transcript biotype
 """
-import copy
 import collections
+import copy
 
 import pandas as pd
 
@@ -73,6 +73,8 @@ import tools.sqlInterface
 import tools.transcripts
 import tools.nameConversions
 from tools.defaultOrderedDict import DefaultOrderedDict
+
+pd.options.mode.chained_assignment = None  # false positive in novel splice finding code
 
 cds_cutoffs = {'AlnIdentity': 0.8, 'AlnCoverage': 0.9, 'PercentUnknownBases': 0.02}
 mrna_cutoffs = {'AlnIdentity': 0.7, 'AlnCoverage': 0.5, 'PercentUnknownBases': 0.05}
@@ -108,6 +110,10 @@ def generate_consensus(args, genome):
     # construct a map to iterate over
     gene_transcript_map = tools.sqlInterface.get_gene_transcript_map(args.ref_db_path)
 
+    # biotypes
+    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(args.ref_db_path)
+    transcript_biotype_map = tools.sqlInterface.get_transcript_biotype_map(args.ref_db_path)
+
     # did we run augustusCGP? If so, the consensus finding algorithm adds a few steps
     cgp = True if 'augCGP' in args.transcript_modes else False
 
@@ -126,8 +132,9 @@ def generate_consensus(args, genome):
     consensus = {}
     # store some metrics for plotting
     metrics = {'Alignment Modes': collections.Counter(), 'Transcript Modes': collections.Counter(),
-               'Gene Failed': 0, 'Transcript Failed': 0, 'Gene Rescue': 0, 'Gene Missing': 0,
-               'Duplicate transcripts': 0}
+               'Gene Failed': collections.Counter(), 'Transcript Failed': collections.Counter(),
+               'Gene Rescue': collections.Counter(), 'Gene Missing': collections.Counter(),
+               'Duplicate transcripts': collections.Counter(), 'Discarded by strand resolution': 0}
 
     # novel genes/transcripts from CGP based on parent assignment
     if cgp:
@@ -146,7 +153,7 @@ def generate_consensus(args, genome):
             gene_cds_df = pd.DataFrame()
 
         if len(gene_cds_df) == len(gene_mrna_df) == 0:
-            metrics['Gene Missing'] += 1
+            metrics['Gene Missing'][gene_biotype_map[gene_id]] += 1
             continue
 
         # score the alignments
@@ -176,11 +183,11 @@ def generate_consensus(args, genome):
                                                        tm_eval)
                     gene_tx_objs.append(tx_dict[aln_id])
                 else:
-                    metrics['Transcript Failed'] += 1
+                    metrics['Transcript Failed'][transcript_biotype_map[tx_id]] += 1
 
         # attempt gene rescue, pick the one transcript to represent this
         if gene_seen is False and (len(scored_mrna_df) > 0 or len(scored_cds_df) > 0):
-            metrics['Gene Failed'] += 1
+            metrics['Gene Failed'][gene_biotype_map[gene_id]] += 1
             rescue_missing_gene(scored_mrna_df, scored_cds_df, metrics, tm_eval, consensus, gene_id)
 
         # cgp-specific novel introns
@@ -190,9 +197,9 @@ def generate_consensus(args, genome):
 
     # perform final filtering steps
     deduplicated_consensus = deduplicate_consensus(consensus, tx_dict, metrics)
-    deduplicated_strand_resolved_consensus = resolve_opposite_strand(deduplicated_consensus, tx_dict)
+    deduplicated_strand_resolved_consensus = resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics)
 
-    # write out reuslts. consensus tx dict has the unique names
+    # write out results. consensus tx dict has the unique names
     consensus_gene_dict = write_consensus_gps(args.consensus_gp, args.consensus_gp_info,
                                               deduplicated_strand_resolved_consensus, tx_dict, genome)
     write_consensus_gff3(consensus_gene_dict, args.consensus_gff3)
@@ -292,7 +299,8 @@ def rescue_missing_gene(scored_mrna_df, scored_cds_df, metrics, tm_eval, consens
     biotype_df = biotype_df.set_index('GeneId')
     best_rows = find_best_score(biotype_df, biotype_df.index[0])
     if best_rows is not None:
-        metrics['Gene Rescue'] += 1
+        gene_biotype = list(biotype_df.GeneBiotype)[0]
+        metrics['Gene Rescue'][gene_biotype] += 1
         metrics['Transcript Modes'][evaluate_ties(best_rows)] += 1
         _, best_series = best_rows.iterrows().next()
         consensus[best_series.AlignmentId] = build_tx_entry(best_series, True, best_series.TranscriptId, gene_id,
@@ -446,7 +454,7 @@ def deduplicate_consensus(consensus, tx_dict, metrics):
     deduplicated_consensus = {}
     for tx_list in duplicates.itervalues():
         if len(tx_list) > 1:
-            metrics['Duplicate transcripts'] += 1
+            metrics['Duplicate transcripts'][len(tx_list)] += 1
             best_tx = resolve_duplicate(tx_list, consensus)
             add_duplicate_field(best_tx, tx_list, consensus, deduplicated_consensus)
         else:
@@ -459,7 +467,7 @@ def deduplicate_consensus(consensus, tx_dict, metrics):
     return deduplicated_consensus
 
 
-def resolve_opposite_strand(deduplicated_consensus, tx_dict):
+def resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics):
     """
     Resolves situations where multiple transcripts of the same gene are on opposite strands. Does so by looking for
     the largest sum of scores.
@@ -475,11 +483,13 @@ def resolve_opposite_strand(deduplicated_consensus, tx_dict):
         if len(set(tx_obj.strand for tx_obj in tx_objs)) > 1:
             strand_scores = collections.Counter()
             for tx_obj, attrs in gene_dict[gene]:
-                strand_scores[tx_obj.strand] += attrs['score']
+                strand_scores[tx_obj.strand] += attrs.get('score', 0)
             best_strand = sorted(strand_scores.items())[0][0]
             for tx_obj, attrs in gene_dict[gene]:
                 if tx_obj.strand == best_strand:
                     deduplicated_strand_resolved_consensus.append([tx_obj.name, attrs])
+                else:
+                    metrics['Discarded by strand resolution'] += 1
         else:
             deduplicated_strand_resolved_consensus.extend([[tx_obj.name, attrs] for tx_obj, attrs in gene_dict[gene]])
     return deduplicated_strand_resolved_consensus
@@ -674,7 +684,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     """
     def convert_frame(exon_frame):
         """converts genePred-style exonFrame to GFF-style phase"""
-        mapping = {0: 0, 1: 2, 2: 1}
+        mapping = {0: 0, 1: 2, 2: 1, -1: '.'}
         return mapping[exon_frame]
 
     def convert_attrs(attrs, id_field):
@@ -745,7 +755,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     # main gff3 writing logic
     with consensus_gff3.open('w') as out_gff3:
         out_gff3.write('##gff-version 3\n')
-        for chrom in consensus_gene_dict:
+        for chrom in sorted(consensus_gene_dict):
             for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
                 tx_objs, attrs_list = zip(*tx_list)
                 attrs = tx_list[0][1]  # grab the attrs from the first transcript
