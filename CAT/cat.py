@@ -7,6 +7,7 @@ import itertools
 import logging
 import os
 import tempfile
+from collections import OrderedDict
 
 import luigi
 import luigi.contrib.sqla
@@ -34,6 +35,7 @@ from consensus import generate_consensus
 from filter_transmap import filter_transmap
 from hgm import hgm, parse_hgm_gtf
 from transmap_classify import transmap_classify
+from plots import generate_plots
 
 logger = logging.getLogger(__name__)
 
@@ -107,13 +109,13 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(FilterTransMap)
         if self.augustus is True:
             yield self.clone(Augustus)
-        #if self.augustus_cgp is True:
-        #    yield self.clone(AugustusCgp)
+        if self.augustus_cgp is True:
+            yield self.clone(AugustusCgp)
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
-        #yield self.clone(Plots)
+        yield self.clone(Plots)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -1102,16 +1104,22 @@ class Consensus(PipelineWrapperTask):
         # grab the genePred of every mode
         tx_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes
         args = argparse.Namespace()
-        args.gp_list = [x['gp'] for x in tx_modes.itervalues()]
+        gp_list = [TransMap.get_args(pipeline_args, genome).tm_gp]
+        if pipeline_args.augustus is True:
+            gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tm_gp)
+        if pipeline_args.augustus_tmr is True:
+            gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tmr_gp)
+        if pipeline_args.augustus_cgp is True:
+            gp_list.append(AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome])
+        args.gp_list = gp_list
         args.transcript_modes = tx_modes.keys()
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
-        args.consensus_gp = luigi.LocalTarget(os.path.join(base_dir, genome + '.gp'))
-        args.consensus_gp_info = luigi.LocalTarget(os.path.join(base_dir, genome + '.gp_info'))
-        args.consensus_gff3 = luigi.LocalTarget(os.path.join(base_dir, genome + '.gff3'))
-        json_path = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
-        args.metrics_json = luigi.LocalTarget(json_path)
+        args.consensus_gp = os.path.join(base_dir, genome + '.gp')
+        args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')
+        args.consensus_gff3 = os.path.join(base_dir, genome + '.gff3')
+        args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
         return args
 
     def validate(self):
@@ -1132,7 +1140,7 @@ class ConsensusDriverTask(PipelineTask):
 
     def output(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
-        return consensus_args.consensus_gp, consensus_args.metrics_json
+        return luigi.LocalTarget(consensus_args.consensus_gp), luigi.LocalTarget(consensus_args.metrics_json)
 
     def requires(self):
         if self.no_evaluate_dependency is True:
@@ -1145,6 +1153,65 @@ class ConsensusDriverTask(PipelineTask):
         consensus_gp, metrics_json = self.output()
         metrics_dict = generate_consensus(consensus_args, self.genome)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
+
+
+class Plots(PipelineTask):
+    """
+    Produce final analysis plots
+    """
+    @staticmethod
+    def get_args(pipeline_args):
+        base_dir = os.path.join(pipeline_args.out_dir, 'plots')
+        ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
+                                                       genome_subset=pipeline_args.target_genomes)
+        args = argparse.Namespace()
+        args.ordered_genomes = ordered_genomes
+        # plots derived from transMap results
+        args.tm_coverage = luigi.LocalTarget(os.path.join(base_dir, 'transmap_coverage.pdf'))
+        args.tm_identity = luigi.LocalTarget(os.path.join(base_dir, 'transmap_identity.pdf'))
+        args.tm_badness = luigi.LocalTarget(os.path.join(base_dir, 'transmap_badness.pdf'))
+        # plots derived from transMap filtering
+        args.paralogy = luigi.LocalTarget(os.path.join(base_dir, 'paralogy.pdf'))
+        args.transmap_filtering = luigi.LocalTarget(os.path.join(base_dir, 'transmap_filtering.pdf'))
+        args.transmap_splice_support = luigi.LocalTarget(os.path.join(base_dir, 'transmap_splice_support.pdf'))
+        # plots derived from transcript alignment / consensus finding
+        args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
+        args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))
+        args.badness = luigi.LocalTarget(os.path.join(base_dir, 'badness.pdf'))
+        args.consensus_score = luigi.LocalTarget(os.path.join(base_dir, 'consensus_score.pdf'))
+        args.completeness = luigi.LocalTarget(os.path.join(base_dir, 'completeness.pdf'))
+        args.categories = luigi.LocalTarget(os.path.join(base_dir, 'transcript_categories.pdf'))
+        args.gene_failure = luigi.LocalTarget(os.path.join(base_dir, 'gene_failure.pdf'))
+        args.consensus_splice_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_splice_support.pdf'))
+        if 'augTM' in pipeline_args.modes or 'augTMR' in pipeline_args.modes or 'augCGP' in pipeline_args.modes:
+            args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
+        # plots that depend on execution mode
+        if 'augCGP' in pipeline_args.modes:
+            args.novel = luigi.LocalTarget(os.path.join(base_dir, 'cgp_novel.pdf'))
+        if pipeline_args.resolve_split_genes is True:
+            args.split_genes = luigi.LocalTarget(os.path.join(base_dir, 'split_genes.pdf'))
+        # input data
+        args.metrics_jsons = OrderedDict([[genome, Consensus.get_args(pipeline_args, genome).metrics_json]
+                                          for genome in ordered_genomes])
+        args.tm_jsons = OrderedDict([[genome, FilterTransMap.get_args(pipeline_args, genome).metrics_json]
+                                     for genome in ordered_genomes])
+        args.annotation_db = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
+        args.dbs = OrderedDict([[genome, PipelineTask.get_database(pipeline_args, genome)]
+                                for genome in ordered_genomes])
+        return args
+
+    def output(self):
+        pipeline_args = self.get_pipeline_args()
+        args = Plots.get_args(pipeline_args)
+        return [p for p in args.__dict__.itervalues() if isinstance(p, luigi.LocalTarget)]
+
+    def requires(self):
+        yield self.clone(Consensus)
+
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        logger.info('Generating plots.')
+        generate_plots(Plots.get_args(pipeline_args))
 
 
 ###
@@ -1168,7 +1235,7 @@ def parse_args():
     # parallelism
     parser.add_argument('--workers', default=10, type=int)
     # Debugging option - use this to bypass the dependency graph for specific submodules
-    parser.add_argument('--no-evaluate-dependency', default=False, type=bool)
+    parser.add_argument('--no-evaluate-dependency', action='store_true')
     # augustus TM(R) options
     parser.add_argument('--augustus', action='store_true')
     parser.add_argument('--augustus-species', default='human')
@@ -1177,8 +1244,8 @@ def parse_args():
     parser.add_argument('--tmr-cfg', default='augustus_cfgs/extrinsic.ETM2.cfg')
     # augustus CGP options
     parser.add_argument('--augustus-cgp', action='store_true')
-    parser.add_argument('--augustus-cgp-cfg', default=None)
-    parser.add_argument('--augustus-cgp-param', default='augustus_cfgs/log_reg_parameters_default.cfg')
+    parser.add_argument('--augustus-cgp-cfg-template', default='augustus_cfgs/cgp_extrinsic_template.cfg')
+    parser.add_argument('--cgp-param', default='augustus_cfgs/log_reg_parameters_default.cfg')
     parser.add_argument('--maf-chunksize', default=2500000, type=int)
     parser.add_argument('--maf-overlap', default=500000, type=int)
     # consensus options

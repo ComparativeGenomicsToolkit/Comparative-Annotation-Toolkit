@@ -99,7 +99,8 @@ def resolve_paralogs(aln_eval_df):
         paralog_metrics[category] += 1
 
     alignment_ids_to_remove = set()
-    paralog_metrics = collections.Counter()
+    paralog_metrics = {'Alignments discarded': 0, 'Transcripts resolved due to synteny delta': 0,
+                       'Transcripts not resolved': 0, 'Transcripts resolved due to one non-zero': 0}
     for tx, df in aln_eval_df.groupby('TranscriptId'):
         if len(df) == 1:  # no paralogs
             continue
@@ -196,7 +197,8 @@ def resolve_split_genes(aln_eval_df, ref_df, tx_dict):
 
     # begin iteration, keeping track of metrics
     ids_to_remove = set()
-    split_gene_metrics = collections.Counter()
+    split_gene_metrics = {'Resolved by synteny': 0, 'Resolved by badness': 0, 'Genes discarded': 0,
+                          'Number of genes affected': 0}
     for gene, rec in merged_df.groupby('GeneId'):
         gene_biotype = extract_gene_biotype(rec)
         if gene_biotype == 'protein_coding':
