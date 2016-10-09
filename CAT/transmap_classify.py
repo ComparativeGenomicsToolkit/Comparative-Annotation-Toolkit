@@ -42,7 +42,7 @@ def transmap_classify(tm_eval_args):
         aln = psl_dict[aln_id]
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         gene_id = ref_gp_dict[tx_id].name2
-        r.append([aln_id, tx_id, gene_id, 'Paralogy', paralog_count[aln_id]])
+        r.append([aln_id, tx_id, gene_id, 'Paralogy', paralog_count[tools.nameConversions.strip_alignment_numbers(aln_id)]])
         r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
         r.append([aln_id, tx_id, gene_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
         r.append([aln_id, tx_id, gene_id, 'AlnPartialMap', alignment_partial_map(aln)])
@@ -52,9 +52,9 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', aln.coverage])
         r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', aln.identity])
         r.append([aln_id, tx_id, gene_id, 'TransMapBadness', aln.badness])
-    df = pd.DataFrame(r, columns=['AlignmentId', 'GeneId', 'TranscriptId', 'classifier', 'value'])
+    df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
-    df.set_index(['AlignmentId', 'GeneId', 'TranscriptId', 'classifier'], inplace=True)
+    df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'], inplace=True)
     return df
 
 

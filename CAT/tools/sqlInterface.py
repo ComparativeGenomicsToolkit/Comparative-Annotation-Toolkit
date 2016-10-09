@@ -23,6 +23,7 @@ class Annotation(Base):
     TranscriptId = Column(Text, primary_key=True)
     GeneName = Column(Text)
     GeneBiotype = Column(Text)
+    TranscriptBiotype = Column(Text)
     StartCodon = Column(Boolean)
     StopCodon = Column(Boolean)
 
@@ -37,11 +38,6 @@ class EvaluationColumns(object):
     start = Column(Integer)
     stop = Column(Integer)
     strand = Column(Text)
-
-
-class TmEval(EvaluationColumns, Base):
-    """Table for evaluations from TransMapEvaluation module"""
-    __tablename__ = 'TransMapEvaluation'
 
 
 class MrnaTmEval(EvaluationColumns, Base):
@@ -86,6 +82,11 @@ class MetricsColumns(object):
     AlignmentId = Column(Text, primary_key=True)
     classifier = Column(Text, primary_key=True)
     value = Column(Float)
+
+
+class TmEval(MetricsColumns, Base):
+    """Table for evaluations from TransMapEvaluation module"""
+    __tablename__ = 'TransMapEvaluation'
 
 
 class TmMetrics(MetricsColumns, Base):
@@ -251,6 +252,30 @@ def get_gene_biotype_map(db_path, table=Annotation.__tablename__, index_col='Tra
     """
     df = read_attrs(db_path, table, index_col)
     return dict(zip(df.GeneId, df.GeneBiotype))
+
+
+def get_transcript_biotypes(db_path, table=Annotation):
+    """
+    Returns a set of transcript biotypes seen in this annotation set
+    :param db_path: path to the attributes database
+    :param table: table name. should generally be annotation
+    :return: dictionary {tx_id: tx_biotype}
+    """
+    session = start_session(db_path)
+    query = session.query(table.TranscriptBiotype).distinct()
+    return {x[0] for x in query.all()}
+
+
+def get_gene_biotypes(db_path, table=Annotation):
+    """
+    Returns a set of transcript biotypes seen in this annotation set
+    :param db_path: path to the attributes database
+    :param table: table name. should generally be annotation
+    :return: dictionary {tx_id: tx_biotype}
+    """
+    session = start_session(db_path)
+    query = session.query(table.GeneBiotype).distinct()
+    return {x[0] for x in query.all()}
 
 
 ###
