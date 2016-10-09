@@ -377,7 +377,6 @@ def cov_ident_badness_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=N
             if biotype_df is not None:
                 title = '{} for biotype {}'.format(mode, biotype)
                 generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, x=x, y=y, xlim=xlim)
-                multipage_close(pdf)
 
 
 ###
