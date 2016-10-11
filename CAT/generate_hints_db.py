@@ -86,7 +86,7 @@ class BuildHints(HintsDbWrapperTask):
             hints = self.clone(GenerateHints, genome=genome, flat_fasta=flat_fasta.output().path,
                                annotation=annotation, cfg=cfg)
             yield hints
-            if genome in cfg['BAM']:
+            if genome in cfg['BAM'] or genome in cfg['ANNOTATION']:
                 hint_paths[genome] = hints.output().path
         yield self.clone(BuildDb, cfg=cfg, hint_paths=hint_paths, flat_fasta_paths=flat_fasta_paths, genomes=genomes)
 
