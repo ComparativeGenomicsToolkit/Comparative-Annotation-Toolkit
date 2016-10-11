@@ -5,6 +5,7 @@ Comparative Annotation Toolkit.
 import argparse
 import itertools
 import logging
+import multiprocessing
 import os
 import tempfile
 from collections import OrderedDict
@@ -20,6 +21,7 @@ import tools.hal
 import tools.misc
 import tools.nameConversions
 import tools.procOps
+import tools.mathOps
 import tools.psl
 import tools.sqlInterface
 import tools.sqlite
@@ -855,12 +857,17 @@ class Hgm(PipelineWrapperTask):
                             for genome in tgt_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
-        gtf_out_files = {genome: os.path.join(base_dir, genome + '_hgm.gtf') for genome in tgt_genomes}
-        args = {'genomes': tgt_genomes,
-                'hal': pipeline_args.hal,
-                'in_gtf': gtf_in_files,
-                'hgm_gtf': gtf_out_files,
-                'hints_db': pipeline_args.augustus_hints_db}
+        args = argparse.Namespace()
+        args.genomes = tgt_genomes
+        args.hal = pipeline_args.hal
+        args.in_gtf = gtf_in_files
+        args.gtf_out_dir = base_dir
+        args.gtf_out_files = {genome: os.path.join(base_dir, genome + '.gtf') for genome in tgt_genomes}
+        args.hints_db = pipeline_args.augustus_hints_db
+        # calculate the number of cores a hgm run should use
+        # this is sort of a hack, but the reality is that halLiftover uses a fraction of a CPU most of the time
+        max_cpu = min(pipeline_args.max_cores, multiprocessing.cpu_count())
+        args.num_cpu = int(tools.mathOps.format_ratio(max_cpu, len(pipeline_args.modes)))
         return args
 
     def validate(self, pipeline_args):
@@ -889,7 +896,7 @@ class HgmDriverTask(ToilTask):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         hgm_args = Hgm.get_args(pipeline_args, self.mode)
-        for genome in hgm_args['genomes']:
+        for genome in hgm_args.genomes:
             db = pipeline_args.dbs[genome]
             tools.fileOps.ensure_file_dir(db)
             conn_str = 'sqlite:///{}'.format(db)
@@ -911,19 +918,16 @@ class HgmDriverTask(ToilTask):
             raise UserException('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
 
     def run(self):
-        logger.info('Launching homGeneMapping toil pipeline for {}.'.format(self.mode))
-        toil_work_dir = os.path.join(self.work_dir, 'toil', 'hgm', self.mode)
-        toil_options = self.prepare_toil_options(toil_work_dir)
+        logger.info('Launching homGeneMapping for {}.'.format(self.mode))
         pipeline_args = self.get_pipeline_args()
         hgm_args = Hgm.get_args(pipeline_args, self.mode)
-        hgm(hgm_args, toil_options)
-        logger.info('homGeneMapping toil pipeline for {} completed.'.format(self.mode))
+        hgm(hgm_args)
         # convert the output to a dataframe and write to the genome database
         databases = self.__class__.get_databases(pipeline_args)
         tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
-        for genome, sqla_target in itertools.izip(*[hgm_args['genomes'], self.output()]):
+        for genome, sqla_target in itertools.izip(*[hgm_args.genomes, self.output()]):
             # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
-            df = parse_hgm_gtf(hgm_args['hgm_gtf'][genome])
+            df = parse_hgm_gtf(hgm_args.gtf_out_files[genome])
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
                 df.to_sql(tablename, engine, if_exists='replace')
             sqla_target.touch()

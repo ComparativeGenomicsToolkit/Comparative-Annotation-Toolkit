@@ -58,7 +58,7 @@ class PipelineTask(luigi.Task):
     resolve_split_genes = luigi.BoolParameter(default=False)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
-    maxCores = luigi.IntParameter(default=16, significant=False)
+    maxCores = luigi.IntParameter(default=32, significant=False)
     logLevel = luigi.Parameter(default='WARNING', significant=False)  # this is passed to toil
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)  # debugging option
     parasolCommand = luigi.Parameter(default=None, significant=False)
@@ -111,6 +111,7 @@ class PipelineTask(luigi.Task):
         args.target_genomes = target_genomes
         args.modes = PipelineTask.get_modes(args)
         args.dbs = PipelineTask.get_databases(args)
+        args.max_cores = self.maxCores  # used for HGM
         return args
 
     def get_module_args(self, module, **args):

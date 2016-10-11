@@ -21,7 +21,6 @@
 
  authors: Stefanie Koenig, Ian Fiddes
 """
-
 import collections
 import pandas as pd
 import tools.fileOps
@@ -45,7 +44,8 @@ def hgm(args):
                '--dbaccess={}'.format(args.hints_db),
                '--gtfs={}'.format(gtf_fofn),
                '--outdir={}'.format(args.gtf_out_dir),
-               '--tmpdir={}'.format(temp_dir)]
+               '--tmpdir={}'.format(temp_dir),
+               '--cpu={}'.format(args.num_cpu)]
         tools.procOps.run_proc(cmd, stdout='/dev/null')
 
 

@@ -218,7 +218,7 @@ def tm_splice_plot(consensus_data, ordered_genomes, biotypes, splice_tgt):
         for biotype in biotypes:
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
-                title = 'Consensus splice junction support for biotype {}'.format(biotype)
+                title = 'transMap splice junction support for biotype {}'.format(biotype)
                 generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, hue='Paralogy',
                                              y='genome', x='Percent of introns supported')
                 munge_legend()
@@ -324,8 +324,9 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
         df = json_biotype_counter_to_df(tm_data, 'Split Genes')
         df.columns = ['category', 'count', 'genome']
         title = 'Resolution methods of genes split across sequences'
-        g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', col='category', xlabel='', col_wrap=2, sharey=False,
-                            ylabel='Number of transcripts', row_order=ordered_genomes, title=title)
+        g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', col='category', xlabel='', col_wrap=2,
+                            sharey=False, ylabel='Number of transcripts or genes', row_order=ordered_genomes,
+                            title=title)
 
 
 def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_plot_tgt, gene_biotype_map,
