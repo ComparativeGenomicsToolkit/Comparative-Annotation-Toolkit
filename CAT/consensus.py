@@ -321,7 +321,6 @@ def rescue_failed_gene(scored_mrna_df, scored_cds_df, metrics, tm_eval, consensu
     best_rows = find_best_score(biotype_df, biotype_df.index[0])
     if best_rows is not None:
         gene_biotype = list(biotype_df.GeneBiotype)[0]
-        tx_biotype = list(biotype_df.TranscriptBiotype)[0]
         metrics['Gene Rescue'][gene_biotype] += 1
         metrics['Transcript Modes'][evaluate_ties(best_rows)] += 1
         _, best_series = best_rows.iterrows().next()

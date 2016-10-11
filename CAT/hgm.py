@@ -20,93 +20,33 @@
           # 17    WSB_EiJ
 
  authors: Stefanie Koenig, Ian Fiddes
- 
-  date    |  author         |  changes
- ---------|-----------------|------------------------------------------
- 31.08.16 | Stefanie Koenig | creation of the file
 """
 
 import collections
-import logging
-import multiprocessing
-import os
 import pandas as pd
-
-from toil.common import Toil
-from toil.job import Job
-
 import tools.fileOps
 import tools.procOps
 import tools.nameConversions
 
 
-###
-# hgm pipeline section
-###
-
-
-def hgm(args, toil_options):
+def hgm(args):
     """
     Main entry function for hgm toil pipeline
     :param args: dictionary of arguments from CAT
-    :param toil_options: toil options Namespace object
     :return: a dictionary with one gtf file per genome
     """
-    # we decide to either use toil_options.maxCores or the # of CPU on the leader node
-    # this could lock up if the leader has more power than the children or more than 16 cores
-    # the hard coded 16 is basically a stupid hack
-    # we pass this along in the args for homGeneMapping to make use of
-    num_cpu = min(multiprocessing.cpu_count(), toil_options.maxCores, 32)
-    with Toil(toil_options) as toil:
-        if not toil.options.restart:
-            hal_file_id = toil.importFile('file://' + args['hal'])
-            hints_db_file_id = toil.importFile('file://' + args['hints_db'])
-            gtf_file_ids = {genome: toil.importFile('file://' + gtf) for genome, gtf in args['in_gtf'].iteritems()}
-            input_file_ids = {'hal': hal_file_id, 'hints_db': hints_db_file_id, 'gtfs': gtf_file_ids}
-            job = Job.wrapJobFn(setup, args, input_file_ids, num_cpu, cores=num_cpu, memory='255G')
-            results = toil.start(job)
-        else:
-            results = toil.restart()
-        for genome in results:
-            tools.fileOps.ensure_file_dir(args['hgm_gtf'][genome])
-            toil.exportFile(results[genome], 'file://' + args['hgm_gtf'][genome])
+    tools.fileOps.ensure_dir(args.gtf_out_dir)
+    with tools.fileOps.TemporaryFilePath() as gtf_fofn, tools.fileOps.TemporaryDirectoryPath() as temp_dir:
+        with open(gtf_fofn, 'w') as outf:
+            tools.fileOps.print_rows(outf, args.in_gtf.items())
 
-
-def writeGtfFofn(job, gtf_file_ids):
-    """
-    writes a file with the location of the input gtf files, e.g.
-    galGal4 /path/to/gene_set/galGal4.gtf
-    hg38    /path/to/gene_set/hg38.gtf
-    mm10    /path/to/gene_set/mm10.gtf
-    rn6     /path/to/gene_set/rn6.gtf
-    ...
-    These files are loaded from the fileStore
-    """
-    gtfFofn = tools.fileOps.get_tmp_toil_file()
-    with open(gtfFofn, 'w') as outf:
-        for genome, file_id in gtf_file_ids.iteritems():
-            local_path = job.fileStore.readGlobalFile(file_id)
-            tools.fileOps.print_row(outf, [genome, local_path])
-    return gtfFofn
-
-
-def setup(job, args, input_file_ids, num_cpu):
-    """
-    runs homGeneMapping on a set of input gtf files from different genomes and
-    returns one gtf file for each genome
-    containing the "hgm_info" string in the last column
-    """
-    job.fileStore.logToMaster('Running homGeneMapping with {} cores'.format(num_cpu), level=logging.INFO)
-    gtfFofn = writeGtfFofn(job, input_file_ids['gtfs'])
-
-    cmd = ['homGeneMapping',
-           '--halfile={}'.format(job.fileStore.readGlobalFile(input_file_ids['hal'])),
-           '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids['hints_db'])),
-           '--gtfs={}'.format(gtfFofn),
-           '--cpus={}'.format(num_cpu),
-           '--outdir={}'.format(os.getcwd())]
-    tools.procOps.run_proc(cmd)
-    return {genome: job.fileStore.writeGlobalFile(genome + '.gtf') for genome in args['genomes']}    
+        cmd = ['homGeneMapping',
+               '--halfile={}'.format(args.hal),
+               '--dbaccess={}'.format(args.hints_db),
+               '--gtfs={}'.format(gtf_fofn),
+               '--outdir={}'.format(args.gtf_out_dir),
+               '--tmpdir={}'.format(temp_dir)]
+        tools.procOps.run_proc(cmd, stdout='/dev/null')
 
 
 def parse_gtf_attr_line(attr_line):
