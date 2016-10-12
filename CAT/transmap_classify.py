@@ -133,7 +133,7 @@ def aln_contains_unknown_bases(tx, fasta):
     :param fasta: pyfasta Fasta object for genome
     :return: boolean
     """
-    return 'N' not in tx.get_mrna(fasta)
+    return 'N' in tx.get_mrna(fasta)
 
 
 def long_transcript(tx):
