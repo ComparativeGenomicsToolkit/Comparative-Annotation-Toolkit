@@ -796,7 +796,7 @@ class AugustusCgp(ToilTask):
         self.validate()
         if self.no_evaluate_dependency is True:
             return
-        yield self.clone(FilterTransMap)
+        yield self.clone(FilterTransMap), self.clone(Gff3ToAttrs)
 
     def prepare_cfg(self, pipeline_args):
         """use the config template to create a config file"""
