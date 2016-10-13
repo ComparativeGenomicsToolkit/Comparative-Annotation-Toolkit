@@ -362,12 +362,10 @@ def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, genome, use_
     Takes the merged BAM for a genome and produces both intron and exon hints.
     """
     job.fileStore.logToMaster('Building hints for {}'.format(genome))
-    if use_wiggle_hints is False:
-        exon_hints_file_ids = None
     if merged_bam_file_ids is None:
         intron_hints_file_ids = exon_hints_file_ids = None
     else:
-        exon_hints_file_ids = {}
+        exon_hints_file_ids = None if use_wiggle_hints is False else {}
         intron_hints_file_ids = {}
         for ref_group, file_ids in merged_bam_file_ids.iteritems():
             intron_hints_file_ids[ref_group] = job.addChildJobFn(build_intron_hints, file_ids).rv()
