@@ -298,9 +298,10 @@ class Gff3ToAttrs(PipelineTask):
         database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
         tools.fileOps.ensure_file_dir(database)
         conn_str = 'sqlite:///{}'.format(database)
+        digest = tools.fileOps.hashfile(self.annotation)
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                           target_table=self.table,
-                                                          update_id='_'.join([self.table, str(hash(pipeline_args))]))
+                                                          update_id='_'.join([self.table, digest]))
         return attrs_table
 
     def run(self):
