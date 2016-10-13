@@ -246,7 +246,7 @@ def generate_hints(genome, flat_fasta, cfg, annotation, out_gff_path, toil_optio
             return False
 
 
-def setup_hints(job, input_file_ids, genome):
+def setup_hints(job, input_file_ids, genome, use_wiggle_hints):
     """
     Generates hints for a given genome with a list of BAMs. Will add annotation if it exists.
 
@@ -280,7 +280,8 @@ def setup_hints(job, input_file_ids, genome):
     else:
         annotation_hints_file_id = None
     # returns path to filtered GFF output
-    return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints_file_id, genome).rv()
+    return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints_file_id,
+                                genome, use_wiggle_hints).rv()
 
 
 def filter_bam(job, bam_file_id, bai_file_id, reference_subset, is_paired):
@@ -307,7 +308,7 @@ def filter_bam(job, bam_file_id, bai_file_id, reference_subset, is_paired):
     return filtered_bam_file_id
 
 
-def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, genome):
+def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, genome, use_wiggle_hints):
     """
     Takes a dictionary mapping reference chunks to filtered BAMs. For each reference chunk, these BAMs will be
     first concatenated then sorted, then passed off to hint building.
@@ -320,7 +321,8 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, genome):
             merged_bam_file_ids[ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, ref_group, genome).rv()
     else:
         merged_bam_file_ids = None
-    return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, genome).rv()
+    return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id,
+                                genome, use_wiggle_hints).rv()
 
 
 def cat_sort_bams(job, bam_file_ids, ref_group, genome):
@@ -355,11 +357,13 @@ def cat_sort_bams(job, bam_file_ids, ref_group, genome):
     return job.fileStore.writeGlobalFile(merged)
 
 
-def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, genome):
+def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, genome, use_wiggle_hints):
     """
     Takes the merged BAM for a genome and produces both intron and exon hints.
     """
     job.fileStore.logToMaster('Building hints for {}'.format(genome))
+    if use_wiggle_hints is False:
+        exon_hints_file_ids = None
     if merged_bam_file_ids is None:
         intron_hints_file_ids = exon_hints_file_ids = None
     else:
@@ -367,7 +371,8 @@ def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, genome):
         intron_hints_file_ids = {}
         for ref_group, file_ids in merged_bam_file_ids.iteritems():
             intron_hints_file_ids[ref_group] = job.addChildJobFn(build_intron_hints, file_ids).rv()
-            exon_hints_file_ids[ref_group] = job.addChildJobFn(build_exon_hints, file_ids).rv()
+            if use_wiggle_hints is True:
+                exon_hints_file_ids[ref_group] = job.addChildJobFn(build_exon_hints, file_ids).rv()
     return job.addFollowOnJobFn(cat_hints, intron_hints_file_ids, exon_hints_file_ids,
                                 annotation_hints_file_id, genome).rv()
 
@@ -530,6 +535,7 @@ def parse_args():
     parser.add_argument('--hal', required=True)
     parser.add_argument('--augustus-hints-db', default='augustus_hints.db')
     parser.add_argument('--work-dir', default=os.path.join(tempfile.gettempdir(), __name__))
+    parser.add_argument('--use-wiggle-hints', default=True, type=bool)
     # parallelism
     parser.add_argument('--workers', default=10)
     # toil options
