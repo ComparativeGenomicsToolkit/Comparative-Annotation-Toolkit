@@ -211,16 +211,16 @@ def tm_splice_plot(consensus_data, ordered_genomes, biotypes, splice_tgt):
     with splice_tgt.open('w') as outf, PdfPages(outf) as pdf:
         title = 'transMap splice junction support'
         xlabel = 'Percent splice junctions supported per transcript'
-        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, hue='Paralogy', y='genome',
-                                     x='Percent of introns supported')
+        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, pdf, hue='Paralogy', y='genome',
+                                     x='Percent of introns supported', close=False)
         munge_legend()
         multipage_close(pdf)
         for biotype in biotypes:
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
                 title = 'transMap splice junction support for biotype {}'.format(biotype)
-                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, hue='Paralogy',
-                                             y='genome', x='Percent of introns supported')
+                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, pdf, hue='Paralogy',
+                                             y='genome', x='Percent of introns supported', close=False)
                 munge_legend()
                 multipage_close(pdf)
 
@@ -244,15 +244,14 @@ def consensus_splice_plot(consensus_data, ordered_genomes, biotypes, consensus_s
     with consensus_splice_tgt.open('w') as outf, PdfPages(outf) as pdf:
         title = 'Consensus splice junction support'
         xlabel = 'Percent splice junctions supported per transcript'
-        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, y='genome', x='Percent of introns supported')
-        multipage_close(pdf)
+        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, pdf, y='genome',
+                                     x='Percent of introns supported')
         for biotype in biotypes:
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
                 title = 'Consensus splice junction support for biotype {}'.format(biotype)
-                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel,
+                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, pdf,
                                              y='genome', x='Percent of introns supported')
-                multipage_close(pdf)
 
 
 def category_plot(consensus_data, ordered_genomes, biotypes, category_plot_tgt):
@@ -299,11 +298,12 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
     modes_df = json_biotype_counter_to_df(consensus_data, 'Transcript Modes')
     df = modes_df.pivot(index='genome', columns='Transcript Modes').transpose()
     with tx_mode_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
-        title_string = 'Transcript modes in consensus gene set'
+        title_string = 'Transcript modes in protein coding consensus gene set'
         legend_labels = df.index.get_level_values('Transcript Modes')
         ylabel = 'Number of transcripts'
         box_label = 'Transcript\nmode'
-        generic_stacked_barplot(df, pdf, title_string, legend_labels, ylabel, ordered_genomes, box_label)
+        generic_stacked_barplot(df, pdf, title_string, legend_labels, ylabel, ordered_genomes, box_label,
+                                bbox_to_anchor=(1.3, 0.7))
 
 
 def novel_genes_plot(consensus_data, ordered_genomes, novel_plot_tgt):
@@ -371,13 +371,12 @@ def cov_ident_badness_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=N
         xlabel = 'Percent {}'.format(mode) if 'Badness' not in mode else 'Badness metric'
     with tgt.open('w') as outf, PdfPages(outf) as pdf:
         title = 'Overall {}'.format(mode)
-        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, x=x, y=y, xlim=xlim)
-        multipage_close(pdf)
+        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=xlim)
         for biotype in biotypes:
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
                 title = '{} for biotype {}'.format(mode, biotype)
-                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, x=x, y=y, xlim=xlim)
+                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=xlim)
 
 
 ###
@@ -407,7 +406,8 @@ def generic_barplot(data, pdf, xlabel, ylabel, title, row_order=None, x=None, y=
     return g
 
 
-def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, hue=None, x=None, y=None, xlim=(0, 100)):
+def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, pdf, hue=None, x=None, y=None, close=True,
+                                 xlim=(0, 100)):
     """not so generic function that specifically produces a paired boxplot/violinplot"""
     fig, (ax1, ax2) = plt.subplots(ncols=2, sharex=True)
     g1 = sns.boxplot(data=data, x=x, y=y, hue=hue, order=ordered_genomes, palette=choose_palette(ordered_genomes),
@@ -425,10 +425,13 @@ def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, hue=None,
     ax2.set_ylabel('')
     ax2.set_yticks([])
     ax2.set_yticklabels([])
+    if close is True:
+        multipage_close(pdf, tight_layout=False)
+    return g1, g2
 
 
-def _generic_histogram(bars, legend_labels, title_string, pdf, ax, fig, ylabel, names, box_label):
-    fig.legend([x[0] for x in bars[::-1]], legend_labels[::-1], bbox_to_anchor=(1.12, 0.7), frameon=True,
+def _generic_histogram(bars, legend_labels, title_string, pdf, ax, fig, ylabel, names, box_label, bbox_to_anchor):
+    fig.legend([x[0] for x in bars[::-1]], legend_labels[::-1], bbox_to_anchor=bbox_to_anchor, frameon=True,
                title=box_label)
     ax.set_title(title_string)
     ax.set_ylabel(ylabel)
@@ -438,25 +441,27 @@ def _generic_histogram(bars, legend_labels, title_string, pdf, ax, fig, ylabel, 
     multipage_close(pdf)
 
 
-def generic_unstacked_barplot(df, pdf, title_string, legend_labels, ylabel, names, box_label):
+def generic_unstacked_barplot(df, pdf, title_string, legend_labels, ylabel, names, box_label,
+                              bbox_to_anchor=(1.12, 0.7)):
     fig, ax = plt.subplots()
     bars = []
     shorter_bar_width = bar_width / len(df)
     for i, (_, d) in enumerate(df.iterrows()):
         bars.append(ax.bar(np.arange(len(df.columns)) + shorter_bar_width * i, d, shorter_bar_width,
                            color=sns.color_palette()[i], linewidth=0.0))
-    _generic_histogram(bars, legend_labels, title_string, pdf, ax, fig, ylabel, names, box_label)
+    _generic_histogram(bars, legend_labels, title_string, pdf, ax, fig, ylabel, names, box_label, bbox_to_anchor)
 
 
-def generic_stacked_barplot(df, pdf, title_string, legend_labels, ylabel, names, box_label):
+def generic_stacked_barplot(df, pdf, title_string, legend_labels, ylabel, names, box_label, bbox_to_anchor=(1.12, 0.7)):
     fig, ax = plt.subplots()
     bars = []
     cumulative = np.zeros(len(df.columns))
+    color_palette = choose_palette(legend_labels)
     for i, (_, d) in enumerate(df.iterrows()):
         bars.append(ax.bar(np.arange(len(df.columns)), d, bar_width, bottom=cumulative,
-                           color=sns.color_palette()[i], linewidth=0.0))
+                           color=color_palette[i], linewidth=0.0))
         cumulative += d
-    _generic_histogram(bars, legend_labels, title_string, pdf, ax, fig, ylabel, names, box_label)
+    _generic_histogram(bars, legend_labels, title_string, pdf, ax, fig, ylabel, names, box_label, bbox_to_anchor)
 
 
 ###
