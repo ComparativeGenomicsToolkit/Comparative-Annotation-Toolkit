@@ -44,7 +44,7 @@ def align_transcripts(args, toil_options):
             input_file_ids.ref_genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.ref_genome_fasta)
             input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
             input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
-            input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
+            input_file_ids.ref_db = toil.importFile('file://' + args.ref_db_path)
             input_file_ids.modes = {}
             for mode in args.transcript_modes:
                 input_file_ids.modes[mode] = toil.importFile('file://' + args.transcript_modes[mode]['gp'])
@@ -67,8 +67,7 @@ def setup(job, args, input_file_ids):
     job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args.genome), level=logging.INFO)
     # load all fileStore files necessary
     annotation_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
-    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_db_path)
-    # we have to explicitly place fasta, flat file and gdx with the correct naming scheme for pyfasta
+    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_db)
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
     ref_genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.ref_genome_fasta,
@@ -88,6 +87,8 @@ def setup(job, args, input_file_ids):
         # begin loading transcripts and sequences
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[tx_mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
+        transcript_dict = {aln_id: tx for aln_id, tx in transcript_dict.iteritems() if
+                           tx_biotype_map[tools.nameConversions.strip_alignment_numbers(aln_id)] == 'protein_coding'}
         for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)

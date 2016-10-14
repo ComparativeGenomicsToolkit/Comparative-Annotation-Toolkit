@@ -539,18 +539,22 @@ class EvaluateTransMap(PipelineWrapperTask):
     def get_args(pipeline_args, genome):
         tm_args = TransMap.get_args(pipeline_args, genome)
         args = argparse.Namespace()
-        args.db_path = pipeline_args.dbs[genome]
         args.tm_psl = tm_args.tm_psl
         args.tm_gp = tm_args.tm_gp
-        args.annotation_gp = tm_args.annotation_gp
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.genome = genome
-        args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.ref_genome = pipeline_args.ref_genome
+        args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
+        args.ref_fasta = GenomeFiles.get_args(pipeline_args, args.ref_genome).fasta
+        args.db_path = pipeline_args.dbs[genome]
+        args.ref_db_path = pipeline_args.dbs[args.ref_genome]
         return args
 
     def validate(self):
-        pass
+        if not tools.misc.is_exec('muscle'):
+            raise ToolMissingException('Missing alignment program muscle from global path.')
+        if not tools.misc.is_exec('FastTree'):
+            raise ToolMissingException('Missing tree building program FastTree from global path.')
 
     def requires(self):
         self.validate()
@@ -560,9 +564,9 @@ class EvaluateTransMap(PipelineWrapperTask):
             yield self.clone(EvaluateTransMapDriverTask, tm_eval_args=tm_eval_args, genome=target_genome)
 
 
-class EvaluateTransMapDriverTask(PipelineTask):
+class EvaluateTransMapDriverTask(ToilTask):
     """
-    Task for per-genome launching of a toil pipeline for aligning transcripts to their parent.
+    Task for per-genome launching of a toil pipeline evaluating transMap alignments. Performs tree building.
     """
     genome = luigi.Parameter()
     tm_eval_args = luigi.Parameter()
@@ -589,8 +593,11 @@ class EvaluateTransMapDriverTask(PipelineTask):
         return self.clone(TransMap), self.clone(ReferenceFiles)
 
     def run(self):
-        logger.info('Evaluating transMap results for {}.'.format(self.genome))
-        results = transmap_classify(self.tm_eval_args)
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'evaluate_tm', self.genome)
+        logger.info('Launching EvaluateTransMap toil pipeline on {}.'.format(self.genome))
+        toil_options = self.prepare_toil_options(toil_work_dir)
+        results = transmap_classify(self.tm_eval_args, toil_options)
+        logger.info('Finished EvaluateTransMap toil pipeline on {}'.format(self.genome))
         self.write_to_sql(results)
 
 
