@@ -488,11 +488,13 @@ class TransMapPsl(PipelineTask):
         cmd = [['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, '/dev/stdout'],
                ['postTransMapChain', '/dev/stdin', '/dev/stdout'],
                ['sort', '-k', '14,14', '-k', '16,16n'],
-               ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout']]
+               ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
+               ['pslCDnaFilter', '-localNearBest=0.0001', '-minCover=0.1', '/dev/stdin', '/dev/stdout'],
+               ['awk', '$17 - $16 < 3000000 {print $0}']]
         # hacky way to make unique - capture output to a file, then process
         tmp_file = luigi.LocalTarget(is_tmp=True)
         with tmp_file.open('w') as tmp_fh:
-            tools.procOps.run_proc(cmd, stdout=tmp_fh)
+            tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
         tools.fileOps.ensure_file_dir(self.output().path)
         with self.output().open('w') as outf:
             for psl_rec in tools.psl.psl_iterator(tmp_file.path, make_unique=True):
