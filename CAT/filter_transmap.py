@@ -94,7 +94,7 @@ def fit_distributions(aln_eval_df, ref_df):
 
     # turn r into a dataframe
     r_df = pd.DataFrame(r)
-    r_df.columns = ['AlignmentId', 'Evaluation']
+    r_df.columns = ['AlignmentId', 'TranscriptClass']
     return pd.merge(biotype_df, r_df, on='AlignmentId')
 
 
@@ -121,7 +121,7 @@ def resolve_paralogs(updated_aln_eval_df):
             paralog_status.append([tx, None])
             continue
         biotype = df.TranscriptBiotype.iloc[0]
-        passing = df[df.Evaluation == 'Passing']
+        passing = df[df.TranscriptClass == 'Passing']
         if len(passing) == 1:  # we can pick one passing member
             ids = {aln_id for aln_id in df.AlignmentId if aln_id != passing.AlignmentId.iloc[0]}
             alignment_ids_to_remove.update(ids)
@@ -251,18 +251,12 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
 
 def create_new_table(paralog_filtered_df):
     """
-    Convert this dataframe back into the long form stored in the database, with the new features.
+    Clean up this dataframe to write to SQL. I am not using the long form here because it is too hard to reload when
+    the columns are not numeric.
     :param paralog_filtered_df: output from either resolve_split_genes() if flag set else resolve_paralogs()
     :return: dataframe to be written to sql
     """
-    columns = set(paralog_filtered_df.columns) - {'AlignmentId', 'TranscriptId', 'GeneId', 'TranscriptBiotype',
-                                                  'GeneBiotype'}
-    r = []
-    for _, s in paralog_filtered_df.iterrows():
-        for column in columns:
-            if s[column] is None:
-                continue
-            r.append([s.GeneId, s.TranscriptId, s.AlignmentId, column, s[column]])
+    df = paralog_filtered_df[['GeneId', 'TranscriptId', 'AlignmentId',
+                              'TranscriptClass', 'ParalogStatus', 'GeneAlternateContigs']]
+    return df.set_index(['TranscriptId', 'AlignmentId'])
 
-    df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
-    return df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'])

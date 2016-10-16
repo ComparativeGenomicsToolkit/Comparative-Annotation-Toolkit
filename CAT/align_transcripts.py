@@ -4,13 +4,9 @@ this can be determined by using tools.nameConversions.strip_alignment_numbers() 
 which have new IDs, we use the name2 field which will have assigned a gene ID to try and align to all protein coding
 transcripts associated with that gene ID.
 
-Alignment is performed in a few different ways:
-1. For each CGP transcript, the in-frame CDS will be aligned using MUSCLE to the in-frame CDS of each protein-coding
-transcript of the assigned parental gene.
-2. For each transMap transcript, it will be aligned via MUSCLE to the assigned parent. If the parent is protein coding
-then the transcript will also undergo in-frame CDS alignment.
-3. For each AugustusTM(R) transcript, it will be aligned both as mRNA and in-frame CDS.
-
+Alignment is only performed on protein coding transcripts. For CGP, the in-frame CDS will be aligned using BLAT to the
+in-frame CDS of each protein coding transcript of the assigned parental gene. For transMap and AugustusTM(R)
+transcripts, two alignments we be performed - full mRNA and in-frame CDS.
 """
 import argparse
 import collections

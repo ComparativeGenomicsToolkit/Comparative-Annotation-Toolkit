@@ -630,7 +630,7 @@ class FilterTransMapDriverTask(PipelineTask):
     """
     genome = luigi.Parameter()
     filter_tm_args = luigi.Parameter()
-    table = tools.sqlInterface.TmEval.__tablename__
+    table = tools.sqlInterface.TmFilterEval.__tablename__
 
     def write_to_sql(self, df, table_target):
         """Load the results into the SQLite database"""
