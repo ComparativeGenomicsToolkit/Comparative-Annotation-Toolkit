@@ -118,8 +118,8 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
-        #yield self.clone(Consensus)
-        #yield self.clone(Plots)
+        yield self.clone(Consensus)
+        yield self.clone(Plots)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -309,6 +309,8 @@ class Gff3ToAttrs(PipelineTask):
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         results = tools.gff3.extract_attrs(self.annotation)
+        if 'protein_coding' not in results.TranscriptBiotype or 'protein_coding' not in results.GeneBiotype:
+            logger.warning('No protein_coding annotations found!')
         pipeline_args = self.get_pipeline_args()
         database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
@@ -492,7 +494,7 @@ class TransMapPsl(PipelineTask):
                ['sort', '-k', '14,14', '-k', '16,16n'],
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
                ['pslCDnaFilter', '-localNearBest=0.0001', '-minCover=0.1', '/dev/stdin', '/dev/stdout'],
-               ['awk', '$17 - $16 < 3000000 {print $0}']]
+               ['awk', '$17 - $16 < 3000000 {print $0}']]  # hard coded filter for 3mb transcripts
         # hacky way to make unique - capture output to a file, then process
         tmp_file = luigi.LocalTarget(is_tmp=True)
         with tmp_file.open('w') as tmp_fh:
@@ -838,7 +840,7 @@ class AugustusCgp(ToilTask):
             logger.info('Hints database has annotation hints for {}.'.format(pipeline_args.ref_genome))
         genomes_with_hints = []
         for genome in pipeline_args.target_genomes:
-            if tools.hintsDatabaseInterface.hints_db_has_rnaeq(pipeline_args.augustus_hints_db, genome) is True:
+            if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db, genome) is True:
                 genomes_with_hints.append(genome)
         if len(genomes_with_hints) == 0:
             logger.warning('AugustusCGP is being ran without any RNA-seq hints!')
@@ -915,6 +917,8 @@ class Hgm(PipelineWrapperTask):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
         if pipeline_args.augustus_hints_db is None:
             raise InvalidInputException('Cannot run homGeneMapping module without a hints database.')
+        if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db) is False:
+            raise UserException('homGeneMapping should not be ran on a hints database without RNA-seq.')
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
@@ -1157,6 +1161,7 @@ class Consensus(PipelineWrapperTask):
         args.transcript_modes = tx_modes.keys()
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
+        args.hints_db = pipeline_args.augustus_hints_db
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.consensus_gp = os.path.join(base_dir, genome + '.gp')
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')

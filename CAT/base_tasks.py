@@ -11,8 +11,10 @@ import luigi
 from frozendict import frozendict
 from toil.job import Job
 
+import tools.hal
 import tools.fileOps
 import tools.procOps
+import tools.hintsDatabaseInterface
 
 
 class HashableNamespace(argparse.Namespace):
@@ -89,7 +91,8 @@ class PipelineTask(luigi.Task):
         args.augustus_species = self.augustus_species
         if self.augustus_hints_db is not None:
             args.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
-            args.augustus_tmr = True if self.augustus else False
+            if self.augustus is True and tools.hintsDatabaseInterface.hints_db_has_rnaseq(self.augustus_hints_db):
+                args.augustus_tmr = True
         else:
             args.augustus_hints_db = None
         args.tm_cfg = os.path.abspath(self.tm_cfg)

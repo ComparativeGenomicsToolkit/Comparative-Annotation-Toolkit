@@ -60,7 +60,7 @@ def get_rnaseq_hints(genome, chromosome, start, stop, speciesnames, seqnames, hi
     return '\n'.join(hints)
 
 
-def hints_db_has_rnaeq(db_path, genome=None):
+def hints_db_has_rnaseq(db_path, genome=None):
     """
     Determines if the hints DB has RNAseq. Is done by querying for one b2h or w2h in hints
     :param db_path: path to database
