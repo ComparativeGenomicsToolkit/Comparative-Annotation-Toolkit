@@ -543,6 +543,7 @@ class EvaluateTransMap(PipelineWrapperTask):
         args = argparse.Namespace()
         args.db_path = pipeline_args.dbs[genome]
         args.tm_psl = tm_args.tm_psl
+        args.ref_psl = ReferenceFiles.get_args(pipeline_args).ref_psl
         args.tm_gp = tm_args.tm_gp
         args.annotation_gp = tm_args.annotation_gp
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp

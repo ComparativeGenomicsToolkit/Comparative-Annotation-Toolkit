@@ -8,6 +8,8 @@ Classify transMap transcripts producing the TransMapEvaluation table for each ge
 5. AlnContainsUnknownBases: Are there any Ns within the transcript alignment?
 6. Synteny: If this transcript aligned more than once, assign a boolean based on synteny to whether this is the
     most probable transcript. This is used to filter for pseudogenes.
+7. TransMapOriginalIntrons: The number of transMap introns within a wiggle distance of a intron in the parent transcript
+   in transcript coordinates.
 """
 import bisect
 import collections
@@ -21,6 +23,8 @@ import tools.fileOps
 import tools.transcripts
 import tools.toilInterface
 import tools.procOps
+import tools.tm2hints
+import tools.mathOps
 
 
 def transmap_classify(tm_eval_args):
@@ -31,6 +35,7 @@ def transmap_classify(tm_eval_args):
     :return: DataFrame
     """
     psl_dict = tools.psl.get_alignment_dict(tm_eval_args.tm_psl)
+    ref_psl_dict = tools.psl.get_alignment_dict(tm_eval_args.ref_psl)
     gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.tm_gp)
     ref_gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.annotation_gp)
     fasta = tools.bio.get_sequence_dict(tm_eval_args.fasta)
@@ -43,6 +48,7 @@ def transmap_classify(tm_eval_args):
     for aln_id, tx in gp_dict.iteritems():
         aln = psl_dict[aln_id]
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+        ref_aln = ref_psl_dict[tx_id]
         gene_id = ref_gp_dict[tx_id].name2
         r.append([aln_id, tx_id, gene_id, 'Paralogy', paralog_count[tools.nameConversions.strip_alignment_numbers(aln_id)]])
         r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
@@ -53,6 +59,7 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', aln.coverage])
         r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', aln.identity])
         r.append([aln_id, tx_id, gene_id, 'TransMapBadness', aln.badness])
+        r.append([aln_id, tx_id, gene_id, 'TransMapOriginalIntrons', find_original_introns(aln, tx, ref_aln)])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
     return df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'])
@@ -211,3 +218,19 @@ def synteny(ref_gp_dict, gp_dict):
         scores[tx.name] = len(reference_genes & target_genes)
     return scores
 
+
+def find_original_introns(aln, tx, ref_aln):
+    """
+    Calculates the intron support vector, using code from tm2hints, but shrinking the fuzz distance to match the
+    alignment classifiers.
+    :param aln: PslRow object representing the transMapped transcript
+    :param tx: GenePredTranscript object representing the transMapped transcript
+    :param ref_aln: PslRow object representing the reference transcript
+    :return: float between 0 and 1
+    """
+    ref_starts = tools.tm2hints.fix_ref_q_starts(ref_aln)
+    c = 0
+    for i in tx.intron_intervals:
+        if tools.tm2hints.is_fuzzy_intron(i, aln, ref_starts, fuzz_distance=7):
+            c += 1
+    return tools.mathOps.format_ratio(c, len(tx.intron_intervals), resolve_nan=1)
