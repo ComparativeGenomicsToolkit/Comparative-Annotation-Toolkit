@@ -25,6 +25,7 @@ import tools.mathOps
 import tools.psl
 import tools.sqlInterface
 import tools.sqlite
+import tools.hintsDatabaseInterface
 import tools.transcripts
 from tools.luigiAddons import multiple_requires
 from align_transcripts import align_transcripts
@@ -113,11 +114,12 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(Augustus)
         if self.augustus_cgp is True:
             yield self.clone(AugustusCgp)
-        yield self.clone(Hgm)
+        if self.augustus_tmr is True:
+            yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Consensus)
-        yield self.clone(Plots)
+        #yield self.clone(Consensus)
+        #yield self.clone(Plots)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -638,7 +640,7 @@ class FilterTransMapDriverTask(PipelineTask):
         with tools.sqlite.ExclusiveSqlConnection(self.filter_tm_args.db_path) as engine:
             df.to_sql(self.table, engine, if_exists='replace')
             table_target.touch()
-            logger.info('Updated table: {}.{}'.format(self.genome, self.table))
+            logger.info('Loaded table: {}.{}'.format(self.genome, self.table))
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -827,12 +829,29 @@ class AugustusCgp(ToilTask):
             outf.write(cfg)
         return out_path
 
+    def evaluate_database(self, pipeline_args):
+        """warn the user about the database not containing things"""
+        if tools.hintsDatabaseInterface.hints_db_has_annotation(pipeline_args.augustus_hints_db,
+                                                                pipeline_args.ref_genome) is False:
+            logger.warning('AugustusCGP is being ran without any annotation hints!')
+        else:
+            logger.info('Hints database has annotation hints for {}.'.format(pipeline_args.ref_genome))
+        genomes_with_hints = []
+        for genome in pipeline_args.target_genomes:
+            if tools.hintsDatabaseInterface.hints_db_has_rnaeq(pipeline_args.augustus_hints_db, genome) is True:
+                genomes_with_hints.append(genome)
+        if len(genomes_with_hints) == 0:
+            logger.warning('AugustusCGP is being ran without any RNA-seq hints!')
+        else:
+            logger.info('RNA-seq hints found for the following genomes: {}.'.format(','.join(genomes_with_hints)))
+
     def run(self):
         pipeline_args = self.get_pipeline_args()
         if pipeline_args.augustus_hints_db is None:
             # TODO: if no database is given (de novo setting),
             # create a new DB with the flattened genomes from the HAL alignment
             raise UserException('Cannot run AugustusCGP without a hints database.')
+        self.evaluate_database(pipeline_args)
         logger.info('Launching AugustusCGP toil pipeline.')
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(toil_work_dir)
@@ -904,7 +923,7 @@ class Hgm(PipelineWrapperTask):
             yield self.clone(HgmDriverTask, mode=mode)
 
 
-class HgmDriverTask(ToilTask):
+class HgmDriverTask(PipelineTask):
     """
     Task for running each individual instance of the Hgm pipeline. Dumps the results into a sqlite database
     table HgmIntronVector: two columns, TranscriptId and IntronVector
@@ -1166,9 +1185,13 @@ class ConsensusDriverTask(PipelineTask):
         return luigi.LocalTarget(consensus_args.consensus_gp), luigi.LocalTarget(consensus_args.metrics_json)
 
     def requires(self):
+        pipeline_args = self.get_pipeline_args()
         if self.no_evaluate_dependency is True:
             return
-        return self.clone(EvaluateTransMap), self.clone(EvaluateTranscripts), self.clone(Hgm)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(EvaluateTranscripts)
+        if pipeline_args.augustus_tmr is True:
+            yield self.clone(Hgm)
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)

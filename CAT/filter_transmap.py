@@ -127,7 +127,7 @@ def resolve_paralogs(updated_aln_eval_df):
             alignment_ids_to_remove.update(ids)
             paralog_metrics[biotype]['Alignments discarded'] += 1
             paralog_metrics[biotype]['Transcripts resolved by model prediction'] += 1
-            paralog_status.append([tx, 'resolved'])
+            paralog_status.append([tx, 'Confident'])
         else:
             df['Score'] = 0.15 * df.TransMapCoverage + 0.65 * (1 - df.TransMapBadness) + 0.25 * (1.0 * df.Synteny / 6)
             df = df.sort_values(by='Score', ascending=False)
@@ -138,18 +138,21 @@ def resolve_paralogs(updated_aln_eval_df):
                 alignment_ids_to_remove.update(ids)
                 paralog_metrics[biotype]['Transcripts resolved by synteny heuristic'] += 1
                 paralog_metrics[biotype]['Alignments discarded'] += 1
-                paralog_status.append([tx, 'resolved'])
+                paralog_status.append([tx, 'Confident'])
             else:
                 ids = {aln_id for aln_id in df.AlignmentId if aln_id != highest_score_df.AlignmentId.iloc[0]}
                 alignment_ids_to_remove.update(ids)
                 paralog_metrics[biotype]['Transcripts arbitarily resolved'] += 1
                 paralog_metrics[biotype]['Alignments discarded'] += 1
-                paralog_status.append([tx, 'not_resolved'])
+                paralog_status.append([tx, 'NotConfident'])
 
     filtered_df = updated_aln_eval_df[~updated_aln_eval_df['AlignmentId'].isin(alignment_ids_to_remove)]
     status_df = pd.DataFrame(paralog_status)
     status_df.columns = ['TranscriptId', 'ParalogStatus']
-    return paralog_metrics, pd.merge(filtered_df, status_df, on='TranscriptId')
+    merged = pd.merge(filtered_df, status_df, on='TranscriptId')
+    merged['TranscriptClass'] = [s.TranscriptClass if s.ParalogStatus != 'NotConfident' else 'Failing'
+                                 for _, s in merged.iterrows()]
+    return paralog_metrics, merged
 
 
 def resolve_split_genes(paralog_filtered_df, tx_dict):
