@@ -1,20 +1,18 @@
 """
-Filter transMap transcripts based on classification. These filtered transcripts are used as input to Augustus pipelines
-as well as for the consensus gene set.
-
-Filters:
-1. LongTranscript. If any of the transcripts failed this classifier, remove it.
-2. ResolveSplitGenes. If the flag to resolve split genes is set, resolve them based on synteny scores.
-3. Paralogy. Attempt to resolve paralogs. If they are not resolvable, keep them. They will be passed to Augustus as
-one transcript.
+Resolves paralogs in transMap output based on phylogenetic distance inferred by FastTree.
+Resolves genes that have transcripts split across chromosomes based on a consensus finding process. This process
+combines information from both synteny and phylogenetic distance to determine which contig is likely the parental
+contig. This should be used carefully on genomes that are highly fragmented.
 """
 import collections
-
+import numpy as np
 import pandas as pd
-
+from pomegranate import LogNormalDistribution, GeneralMixtureModel
+from scipy.stats import lognorm
 import tools.nameConversions
 import tools.sqlInterface
 import tools.transcripts
+import tools.mathOps
 
 
 def filter_transmap(filter_tm_args, out_target):
@@ -28,29 +26,20 @@ def filter_transmap(filter_tm_args, out_target):
     aln_eval_df = tools.sqlInterface.load_alignment_evaluation(filter_tm_args.db_path)
     tx_dict = tools.transcripts.get_gene_pred_dict(filter_tm_args.tm_gp)
 
+    # fit lognormal distributions to assign categories
+    updated_aln_eval_df = fit_distributions(aln_eval_df, ref_df)
+
     # store metrics on filtering for plots. This will be written to disk for final plots
     metrics = {}
 
-    # remove long transcripts
-    long_ids_to_remove = filter_long_transcripts(aln_eval_df)
-    metrics['Long Transcripts'] = len(long_ids_to_remove)
-    aln_eval_df = filter_df(aln_eval_df, long_ids_to_remove)
-
-    # remove super low coverage
-    low_cov_ids_to_remove = filter_coverage_identity(aln_eval_df)
-    metrics['Alignment Quality Filter'] = len(low_cov_ids_to_remove)
-    aln_eval_df = filter_df(aln_eval_df, low_cov_ids_to_remove)
-
     # resolve paralogs
-    paralog_metrics, paralog_ids_to_remove = resolve_paralogs(aln_eval_df)
+    paralog_metrics, paralog_filtered_df = resolve_paralogs(updated_aln_eval_df)
     metrics['Paralogy'] = paralog_metrics
-    aln_eval_df = filter_df(aln_eval_df, paralog_ids_to_remove)
 
     # resolve split genes, if user requested
     if filter_tm_args.resolve_split_genes is True:
-        split_gene_metrics, split_ids_to_remove = resolve_split_genes(aln_eval_df, ref_df, tx_dict)
+        split_gene_metrics, paralog_filtered_df = resolve_split_genes(paralog_filtered_df, tx_dict)
         metrics['Split Genes'] = split_gene_metrics
-        aln_eval_df = filter_df(aln_eval_df, split_ids_to_remove)
 
     # write out the filtered transMap results
     with out_target.open('w') as outf:
@@ -58,78 +47,126 @@ def filter_transmap(filter_tm_args, out_target):
             tx = tx_dict[aln_id]
             outf.write('\t'.join(tx.get_gene_pred()) + '\n')
 
-    return metrics
+    # produced update df
+    updated_df = create_new_table(paralog_filtered_df)
+
+    return metrics, updated_df
 
 
-def filter_df(aln_eval_df, ids_to_remove):
-    """remove IDs from aln_eval_df between each step"""
-    return aln_eval_df[~aln_eval_df['AlignmentId'].isin(ids_to_remove)]
-
-
-def filter_long_transcripts(aln_eval_df):
-    """apply long transcript filter"""
-    long_tx_df = aln_eval_df[aln_eval_df['LongTranscript'] == 1]
-    return set(long_tx_df.AlignmentId)
-
-
-def filter_coverage_identity(aln_eval_df, cov_cutoff=0.1, ident_cutoff=0.5):
-    """apply a very weak coverage filter. This reduces the number of very unlikely alignments"""
-    low_cov_df = aln_eval_df[(aln_eval_df['TransMapCoverage'] <= cov_cutoff) |
-                             (aln_eval_df['TransMapIdentity']) <= ident_cutoff]
-    return set(low_cov_df.AlignmentId)
-
-
-def resolve_paralogs(aln_eval_df):
+def fit_distributions(aln_eval_df, ref_df):
     """
-    Resolve paralogs based on synteny scores.
-    1: If only one paralog has a non-zero synteny score, discard the others (easy case of retroposed copy)
-    2: If one paralog for a given source transcript has a synteny score 3 or more than any other paralog, discard the
-    others. (one region is a much better fit than the others)
-    If 1/2 did not resolve this paralog, then we need to get to tricky ordering-based resolution. This will be done
-    by AugustusTM(R) within that pipeline.
+    Fits a mixture model of 2 lognormals to the aln_eval_df identity based on whether the alignments are 1-1 or 1-many
+    This is done for every biotype. In the end, a new column is added to the aln_eval_df that says whether a alignment
+    is Failing (more likely under paralog model) or Passing (more likely under paralog model)
+    """
+    def calculate_starting_values(idents):
+        """calculates lognormal parameters. Converts to mu/sigma parameterization"""
+        shape, loc, scale = lognorm.fit(const - idents, floc=1 - const)
+        mu = np.log(scale)
+        sigma = shape
+        return mu, sigma
 
-    :param aln_eval_df: DataFrame produced by load_alignment_evaluation
+    const = 1.00001  # we use this to avoid the 1 - identity == 0 problem, shifting the distribution
+    biotype_df = pd.merge(aln_eval_df, ref_df, on=['TranscriptId'])
+    r = []  # will hold the labels
+
+    for biotype, df in biotype_df.groupby('TranscriptBiotype'):
+        biotype_unique = df[df.Paralogy == 1]
+        biotype_not_unique = df[df.Paralogy != 1]
+        if len(biotype_not_unique) == 0:
+            # No paralogous mappings implies all passing
+            r.extend([[aln_id, 'Passing'] for aln_id in df.AlignmentId])
+        elif len(biotype_unique) == 0:
+            # Only paralogous mappings implies all failing
+            r.extend([[aln_id, 'Failing'] for aln_id in df.AlignmentId])
+        else:
+            unique_mu, unique_sigma = calculate_starting_values(biotype_unique.TransMapIdentity)
+            para_mu, para_sigma = calculate_starting_values(biotype_not_unique.TransMapIdentity)
+            unique_weight = 1.0 * len(biotype_unique) / len(df)
+            para_weight = np.log(1 - unique_weight)
+            unique_weight = np.log(unique_weight)
+            d = GeneralMixtureModel([LogNormalDistribution(unique_mu, unique_sigma),
+                                     LogNormalDistribution(para_mu, para_sigma)],
+                                    weights=np.array([unique_weight, para_weight]))
+            _ = d.fit(const - df.TransMapIdentity)
+            labels = ['Passing' if label == 0 else 'Failing' for label in d.predict(const - df.TransMapIdentity)]
+            r.extend([[aln_id, label] for aln_id, label in zip(*[df.AlignmentId, labels])])
+
+    # turn r into a dataframe
+    r_df = pd.DataFrame(r)
+    r_df.columns = ['AlignmentId', 'Evaluation']
+    return pd.merge(biotype_df, r_df, on='AlignmentId')
+
+
+def resolve_paralogs(updated_aln_eval_df):
+    """
+    Resolves paralogs based on likelihood to come from the two lognormal distributions.
+
+    1. If only one paralog is more likely under the ortholog model, discard the others.
+    2. If more than one paralog are more likely under the ortholog model, or we were unable to fit a model, resolve
+       based on a heuristic combination of synteny score and alignment badness.
+       score: 0.15 * coverage + 0.65 * (1 - badness) + 0.25 * (synteny / 6)
+
+    :param updated_aln_eval_df: DataFrame produced by fit_distributions()
     :return: tuple of (metrics_dict, set of alignment ids to remove)
     """
-    def pick_top(df, category):
-        """throw away all alignment IDs not at the top of the sorted DataFrame"""
-        alignment_ids = set(df.AlignmentId[1:])
-        alignment_ids_to_remove.update(alignment_ids)
-        paralog_metrics['Alignments discarded'] += len(alignment_ids)
-        paralog_metrics[category] += 1
-
     alignment_ids_to_remove = set()
-    paralog_metrics = {'Alignments discarded': 0, 'Transcripts resolved due to synteny delta': 0,
-                       'Transcripts not resolved': 0, 'Transcripts resolved due to one non-zero': 0}
-    for tx, df in aln_eval_df.groupby('TranscriptId'):
+    paralog_status = []  # stores the results for a new column
+    paralog_metrics = {biotype: {'Alignments discarded': 0, 'Transcripts resolved by model prediction': 0,
+                                 'Transcripts resolved by synteny heuristic': 0, 'Transcripts arbitarily resolved': 0}
+                       for biotype in set(updated_aln_eval_df.TranscriptBiotype)}
+
+    for tx, df in updated_aln_eval_df.groupby('TranscriptId'):
         if len(df) == 1:  # no paralogs
+            paralog_status.append([tx, None])
             continue
-        df = df.sort_values(by='Synteny', ascending=False)
-        if df.iloc[0].Synteny - 3 > df.iloc[1].Synteny:
-            pick_top(df, 'Transcripts resolved due to synteny delta')
-        elif sum(df.Synteny) == df.iloc[0].Synteny:
-            pick_top(df, 'Transcripts resolved due to one non-zero')
+        biotype = df.TranscriptBiotype.iloc[0]
+        passing = df[df.Evaluation == 'Passing']
+        if len(passing) == 1:  # we can pick one passing member
+            ids = {aln_id for aln_id in df.AlignmentId if aln_id != passing.AlignmentId.iloc[0]}
+            alignment_ids_to_remove.update(ids)
+            paralog_metrics[biotype]['Alignments discarded'] += 1
+            paralog_metrics[biotype]['Transcripts resolved by model prediction'] += 1
+            paralog_status.append([tx, 'resolved'])
         else:
-            paralog_metrics['Transcripts not resolved'] += 1
-    return paralog_metrics, alignment_ids_to_remove
+            df['Score'] = 0.15 * df.TransMapCoverage + 0.65 * (1 - df.TransMapBadness) + 0.25 * (1.0 * df.Synteny / 6)
+            df = df.sort_values(by='Score', ascending=False)
+            highest_score = df.iloc[0].Score
+            highest_score_df = df[df.Score == highest_score]
+            if len(highest_score_df) == 1:
+                ids = {aln_id for aln_id in df.AlignmentId if aln_id != highest_score_df.AlignmentId.iloc[0]}
+                alignment_ids_to_remove.update(ids)
+                paralog_metrics[biotype]['Transcripts resolved by synteny heuristic'] += 1
+                paralog_metrics[biotype]['Alignments discarded'] += 1
+                paralog_status.append([tx, 'resolved'])
+            else:
+                ids = {aln_id for aln_id in df.AlignmentId if aln_id != highest_score_df.AlignmentId.iloc[0]}
+                alignment_ids_to_remove.update(ids)
+                paralog_metrics[biotype]['Transcripts arbitarily resolved'] += 1
+                paralog_metrics[biotype]['Alignments discarded'] += 1
+                paralog_status.append([tx, 'not_resolved'])
+
+    filtered_df = updated_aln_eval_df[~updated_aln_eval_df['AlignmentId'].isin(alignment_ids_to_remove)]
+    status_df = pd.DataFrame(paralog_status)
+    status_df.columns = ['TranscriptId', 'ParalogStatus']
+    return paralog_metrics, pd.merge(filtered_df, status_df, on='TranscriptId')
 
 
-def resolve_split_genes(aln_eval_df, ref_df, tx_dict):
+def resolve_split_genes(paralog_filtered_df, tx_dict):
     """
     Resolves cases where transMap mapped a gene to different chromosomes. This is a useful feature to turn on
     if you have a high quality assembly, but may be problematic for highly fragmented assemblies.
 
     For each gene, if transcripts on that gene are on multiple sequences, a consensus finding process is performed.
-    For each transMap transcript associated with this gene, sum up the synteny scores. Whichever sequence has the
-    highest score wins. If there is a tie (or both are 0), pick the sequence with the lowest sum of badness.
+    For each chromosome a gene maps to, find the weighted average of:
+        0.15 * coverage + 0.65 * (1 - badness) + 0.25 * (synteny / 6)
+    Pick the chromosome with the highest value of this metric.
 
     If the gene biotype is protein_coding, only count coding transcripts.
 
-    :param aln_eval_df: DataFrame produced by load_alignment_evaluation
-    :param ref_df: DataFrame produced by sqlInterface.load_annotation()
-    :param tx_dict: Dictionary mapping alignment IDs to GenePredTranscript objects for all alignment modes. We will
-                    ignore the non-transMap ones. This is just to get the chromosomes.
-    :return: tuple of (metrics_dict, set of alignment ids to remove)
+    :param paralog_filtered_df: DataFrame produced by resolve_paralogs()
+    :param tx_dict: Dictionary mapping alignment IDs to GenePredTranscript objects.
+    :return: tuple of (metrics_dict, updated dataframe)
     """
     def extract_gene_biotype(rec):
         """there should only be one gene biotype"""
@@ -137,49 +174,40 @@ def resolve_split_genes(aln_eval_df, ref_df, tx_dict):
         assert len(gene_biotypes) == 1
         return gene_biotypes[0]
 
+    def chrom_metric(chroms, rec):
+        """finds the sum of of (synteny + 1) * distance for each chrom in chroms"""
+        r = {}
+        tot = len(rec)
+        for chrom, vals in chroms.iteritems():
+            r[chrom] = (1.0 * len(vals) / tot) * np.mean(zip(*vals)[1])
+        return r
+
+    def score_aln(s):
+        """scores an alignment based on badness, distance and synteny"""
+        return 0.15 * s.TransMapCoverage + 0.65 * (1 - s.TransMapBadness) + 0.25 * (1.0 * s.Synteny / 6)
+
     def find_coding_chromosomes(rec):
         """create a mapping of genome sequence names to associated protein coding alignment ids and synteny scores"""
         chroms = collections.defaultdict(list)
-        for aln_id, tx_biotype, synteny_score in zip(*[rec.AlignmentId, rec.TranscriptBiotype, rec.Synteny]):
-            if tx_biotype != 'protein_coding':
+        for _, s in rec.iterrows():
+            if s.TranscriptBiotype != 'protein_coding':
                 continue
-            chroms[tx_dict[aln_id].chromosome].append([aln_id, synteny_score])
+            chroms[tx_dict[s.AlignmentId].chromosome].append([s.AlignmentId, score_aln(s)])
         return chroms
 
     def find_chromosomes(rec):
         """create a mapping of genome sequence names to associated alignment ids and synteny scores"""
         chroms = collections.defaultdict(list)
-        for aln_id, synteny_score in zip(*[rec.AlignmentId, rec.Synteny]):
-            chroms[tx_dict[aln_id].chromosome].append([aln_id, synteny_score])
+        for _, s in rec.iterrows():
+            chroms[tx_dict[s.AlignmentId].chromosome].append([s.AlignmentId, score_aln(s)])
         return chroms
 
-    def synteny_metric(chroms):
-        """sum up the synteny scores for each chromosome"""
-        synteny_scores = collections.Counter()
-        for chrom in chroms:
-            for aln_id, synteny_score in chroms[chrom]:
-                synteny_scores[chrom] += synteny_score
-        return synteny_scores
-
-    def find_best_chrom(synteny_scores):
-        """find the best chromosome(s) based on synteny"""
-        max_score = max(synteny_scores.values())
-        best_chroms = [chrom for chrom, score in synteny_scores.iteritems() if score == max_score]
-        return best_chroms
-
-    def find_lowest_badness(chroms, best_chroms, rec):
-        """we have a tie, pick based on the lowest sum of badness"""
-        # filter transcript lists for best chrom only
-        chrom_map = {chrom: {aln_id for aln_id, syn_score in chroms[chrom]} for chrom in best_chroms}
-        # index the record for access
-        rec = rec.set_index('AlignmentId')
-        # sum up the badness scores
-        badness_map = {}
-        for chrom, aln_ids in chrom_map.iteritems():
-            badness_map[chrom] = round(sum([rec.ix[aln_id].TransMapBadness for aln_id in aln_ids]), 5)
-        min_badness = min([x for x in badness_map.itervalues()])
-        best_chroms = [chrom for chrom, badness in badness_map.iteritems() if badness == min_badness]
-        return best_chroms
+    def find_best_chroms(chroms):
+        """finds the best chrom in the chroms dict based on the lowest chrom_metric score"""
+        chroms = chrom_metric(chroms, rec)
+        s = sorted(chroms.iteritems(), key=lambda (chrom, val): val)
+        best_val = s[0][1]
+        return [chrom for chrom, val in s if val == best_val]
 
     def find_names_to_remove(chrom_or_chroms, chroms):
         """return the list of names to remove as well as the count based on chrom_or_chroms"""
@@ -189,17 +217,13 @@ def resolve_split_genes(aln_eval_df, ref_df, tx_dict):
             chrom_list = chrom_or_chroms
         aln_ids = set()
         for chrom in chrom_list:
-            aln_ids.update([aln_id for aln_id, synteny_score in chroms[chrom]])
+            aln_ids.update([aln_id for aln_id, score in chroms[chrom]])
         return len(aln_ids), aln_ids
 
-    # merge the aln_eval_df and ref_df, producing a gene-level name mapping
-    merged_df = pd.merge(aln_eval_df, ref_df, on='TranscriptId', how='inner')
-
-    # begin iteration, keeping track of metrics
-    ids_to_remove = set()
-    split_gene_metrics = {'Resolved by synteny': 0, 'Resolved by badness': 0, 'Genes discarded': 0,
-                          'Number of genes affected': 0}
-    for gene, rec in merged_df.groupby('GeneId'):
+    split_gene_metrics = {'Number of split genes': 0, 'Number of transcripts removed': 0}
+    alignment_ids_to_remove = set()
+    split_status = []
+    for gene, rec in paralog_filtered_df.groupby('GeneId'):
         gene_biotype = extract_gene_biotype(rec)
         if gene_biotype == 'protein_coding':
             chroms = find_coding_chromosomes(rec)
@@ -208,23 +232,37 @@ def resolve_split_genes(aln_eval_df, ref_df, tx_dict):
         else:
             chroms = find_chromosomes(rec)
         if len(chroms) == 1:  # no ambiguous chromosomes here
+            split_status.extend([[tx_id, None] for tx_id in rec.TranscriptId])
             continue
-        split_gene_metrics['Number of genes affected'] += 1
-        # try to resolve by synteny
-        synteny_scores = synteny_metric(chroms)
-        best_chroms = find_best_chrom(synteny_scores)
-        if len(best_chroms) == 1:  # we have a winner, remove the rest
-            split_gene_metrics['Resolved by synteny'] += 1
-            n, i = find_names_to_remove(best_chroms[0], chroms)
-            ids_to_remove.update(i)
-        else:  # try to resolve by lowest sum of badness only on tie chromosomes
-            best_chroms = find_lowest_badness(chroms, best_chroms, rec)
-            if len(best_chroms) == 1:
-                split_gene_metrics['Resolved by badness'] += 1
-                n, i = find_names_to_remove(best_chroms[0], chroms)
-                ids_to_remove.update(i)
-            else:  # all hope is lost
-                split_gene_metrics['Genes discarded'] += 1
-                n, i = find_names_to_remove(chroms.keys(), chroms)
-                ids_to_remove.update(i)
-    return split_gene_metrics, ids_to_remove
+        best_chroms = find_best_chroms(chroms)
+        n, i = find_names_to_remove(best_chroms[0], chroms)
+        alignment_ids_to_remove.update(i)
+        split_gene_metrics['Number of split genes'] += 1
+        split_gene_metrics['Number of transcripts removed'] += 1
+        other_contigs = ','.join(set(chroms.keys()) - {best_chroms[0]})
+        split_status.extend([[tx_id, other_contigs] for tx_id in rec.TranscriptId])
+
+    split_df = pd.DataFrame(split_status)
+    split_df.columns = ['TranscriptId', 'GeneAlternateContigs']
+    merged_df = pd.merge(paralog_filtered_df, split_df, on='TranscriptId')
+    final_df = merged_df[~merged_df['AlignmentId'].isin(alignment_ids_to_remove)]
+    return split_gene_metrics, final_df
+
+
+def create_new_table(paralog_filtered_df):
+    """
+    Convert this dataframe back into the long form stored in the database, with the new features.
+    :param paralog_filtered_df: output from either resolve_split_genes() if flag set else resolve_paralogs()
+    :return: dataframe to be written to sql
+    """
+    columns = set(paralog_filtered_df.columns) - {'AlignmentId', 'TranscriptId', 'GeneId', 'TranscriptBiotype',
+                                                  'GeneBiotype'}
+    r = []
+    for _, s in paralog_filtered_df.iterrows():
+        for column in columns:
+            if s[column] is None:
+                continue
+            r.append([s.GeneId, s.TranscriptId, s.AlignmentId, column, s[column]])
+
+    df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
+    return df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'])

@@ -541,22 +541,18 @@ class EvaluateTransMap(PipelineWrapperTask):
     def get_args(pipeline_args, genome):
         tm_args = TransMap.get_args(pipeline_args, genome)
         args = argparse.Namespace()
+        args.db_path = pipeline_args.dbs[genome]
         args.tm_psl = tm_args.tm_psl
         args.tm_gp = tm_args.tm_gp
+        args.annotation_gp = tm_args.annotation_gp
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.genome = genome
-        args.ref_genome = pipeline_args.ref_genome
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
-        args.ref_fasta = GenomeFiles.get_args(pipeline_args, args.ref_genome).fasta
-        args.db_path = pipeline_args.dbs[genome]
-        args.ref_db_path = pipeline_args.dbs[args.ref_genome]
+        args.ref_genome = pipeline_args.ref_genome
         return args
 
     def validate(self):
-        if not tools.misc.is_exec('muscle'):
-            raise ToolMissingException('Missing alignment program muscle from global path.')
-        if not tools.misc.is_exec('FastTree'):
-            raise ToolMissingException('Missing tree building program FastTree from global path.')
+        pass
 
     def requires(self):
         self.validate()
@@ -566,9 +562,9 @@ class EvaluateTransMap(PipelineWrapperTask):
             yield self.clone(EvaluateTransMapDriverTask, tm_eval_args=tm_eval_args, genome=target_genome)
 
 
-class EvaluateTransMapDriverTask(ToilTask):
+class EvaluateTransMapDriverTask(PipelineTask):
     """
-    Task for per-genome launching of a toil pipeline evaluating transMap alignments. Performs tree building.
+    Task for per-genome launching of a toil pipeline for aligning transcripts to their parent.
     """
     genome = luigi.Parameter()
     tm_eval_args = luigi.Parameter()
@@ -595,11 +591,8 @@ class EvaluateTransMapDriverTask(ToilTask):
         return self.clone(TransMap), self.clone(ReferenceFiles)
 
     def run(self):
-        toil_work_dir = os.path.join(self.work_dir, 'toil', 'evaluate_tm', self.genome)
-        logger.info('Launching EvaluateTransMap toil pipeline on {}.'.format(self.genome))
-        toil_options = self.prepare_toil_options(toil_work_dir)
-        results = transmap_classify(self.tm_eval_args, toil_options)
-        logger.info('Finished EvaluateTransMap toil pipeline on {}'.format(self.genome))
+        logger.info('Evaluating transMap results for {}.'.format(self.genome))
+        results = transmap_classify(self.tm_eval_args)
         self.write_to_sql(results)
 
 
@@ -637,9 +630,23 @@ class FilterTransMapDriverTask(PipelineTask):
     """
     genome = luigi.Parameter()
     filter_tm_args = luigi.Parameter()
+    table = tools.sqlInterface.TmEval.__tablename__
+
+    def write_to_sql(self, df, table_target):
+        """Load the results into the SQLite database"""
+        with tools.sqlite.ExclusiveSqlConnection(self.filter_tm_args.db_path) as engine:
+            df.to_sql(self.table, engine, if_exists='replace')
+            table_target.touch()
+            logger.info('Updated table: {}.{}'.format(self.genome, self.table))
 
     def output(self):
-        return (luigi.LocalTarget(self.filter_tm_args.filtered_tm_gp),
+        pipeline_args = self.get_pipeline_args()
+        tools.fileOps.ensure_file_dir(self.filter_tm_args.db_path)
+        conn_str = 'sqlite:///{}'.format(self.filter_tm_args.db_path)
+        return (luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                    target_table=self.table,
+                                                    update_id='_'.join([self.table, str(hash(pipeline_args))])),
+                luigi.LocalTarget(self.filter_tm_args.filtered_tm_gp),
                 luigi.LocalTarget(self.filter_tm_args.filtered_tm_gtf),
                 luigi.LocalTarget(self.filter_tm_args.metrics_json))
 
@@ -650,10 +657,11 @@ class FilterTransMapDriverTask(PipelineTask):
 
     def run(self):
         logger.info('Filtering transMap results for {}.'.format(self.genome))
-        filtered_tm_gp, filtered_tm_gtf, metrics_json = self.output()
-        metrics_dict = filter_transmap(self.filter_tm_args, filtered_tm_gp)
+        table_target, filtered_tm_gp, filtered_tm_gtf, metrics_json = self.output()
+        metrics_dict, updated_df = filter_transmap(self.filter_tm_args, filtered_tm_gp)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
         tools.misc.convert_gp_gtf(filtered_tm_gtf, filtered_tm_gp)
+        self.write_to_sql(updated_df, table_target)
 
 
 class Augustus(PipelineWrapperTask):
