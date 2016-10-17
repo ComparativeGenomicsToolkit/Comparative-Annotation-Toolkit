@@ -102,9 +102,10 @@ class RunCat(PipelineWrapperTask):
             raise InvalidInputException('Target genomes {} not present in HAL.'.format(missing_genomes))
         if pipeline_args.ref_genome in pipeline_args.target_genomes:
             raise InvalidInputException('A target genome cannot be the reference genome.')
+        return pipeline_args
 
     def requires(self):
-        self.validate()
+        pipeline_args = self.validate()
         yield self.clone(PrepareFiles)
         yield self.clone(Chaining)
         yield self.clone(TransMap)
@@ -114,7 +115,7 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(Augustus)
         if self.augustus_cgp is True:
             yield self.clone(AugustusCgp)
-        if self.augustus_tmr is True:
+        if pipeline_args.augustus_tmr is True:
             yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
@@ -309,7 +310,7 @@ class Gff3ToAttrs(PipelineTask):
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         results = tools.gff3.extract_attrs(self.annotation)
-        if 'protein_coding' not in results.TranscriptBiotype or 'protein_coding' not in results.GeneBiotype:
+        if 'protein_coding' not in results.TranscriptBiotype[1] or 'protein_coding' not in results.GeneBiotype[1]:
             logger.warning('No protein_coding annotations found!')
         pipeline_args = self.get_pipeline_args()
         database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
@@ -1161,7 +1162,7 @@ class Consensus(PipelineWrapperTask):
         args.transcript_modes = tx_modes.keys()
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
-        args.hints_db = pipeline_args.augustus_hints_db
+        args.hints_db_has_rnaseq = pipeline_args.hints_db_has_rnaseq
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.consensus_gp = os.path.join(base_dir, genome + '.gp')
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')

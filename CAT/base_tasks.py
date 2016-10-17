@@ -91,10 +91,12 @@ class PipelineTask(luigi.Task):
         args.augustus_species = self.augustus_species
         if self.augustus_hints_db is not None:
             args.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
-            if self.augustus is True and tools.hintsDatabaseInterface.hints_db_has_rnaseq(self.augustus_hints_db):
+            args.hints_db_has_rnaseq = tools.hintsDatabaseInterface.hints_db_has_rnaseq(self.augustus_hints_db)
+            if self.augustus is True and args.hints_db_has_rnaseq is True:
                 args.augustus_tmr = True
         else:
             args.augustus_hints_db = None
+            args.hints_db_has_rnaseq = False
         args.tm_cfg = os.path.abspath(self.tm_cfg)
         args.tmr_cfg = os.path.abspath(self.tmr_cfg)
         args.augustus_cgp = self.augustus_cgp

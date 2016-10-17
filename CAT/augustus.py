@@ -134,6 +134,7 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
         transcript = run_augustus(hint, genome_fasta, tm_tx, cfg_file, start, stop, args.augustus_species, mode)
         if transcript is not None:
             results.extend(transcript)
+    session.close()
     return results
 
 

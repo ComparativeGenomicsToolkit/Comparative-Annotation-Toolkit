@@ -2,6 +2,7 @@
 This module interfaces with the hints database produced for Augustus, providing a SQLAlchemy ORM access to it.
 """
 import sqlalchemy
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
 
@@ -9,10 +10,14 @@ from sqlalchemy.orm import sessionmaker
 def reflect_hints_db(db_path):
     """
     Reflect the database schema of the hints database, automapping the existing tables
+
+    The NullPool is used to avoid concurrency issues with luigi. Using this activates pooling, but since sqlite doesn't
+    really support pooling, what effectively happens is just that it locks the database and the other connections wait.
+
     :param db_path: path to hints sqlite database
     :return: sqlalchemy.MetaData object, sqlalchemy.orm.Session object
     """
-    engine = sqlalchemy.create_engine('sqlite:///{}'.format(db_path))
+    engine = sqlalchemy.create_engine('sqlite:///{}'.format(db_path), poolclass=NullPool)
     metadata = sqlalchemy.MetaData()
     metadata.reflect(bind=engine)
     Base = automap_base(metadata=metadata)
@@ -72,7 +77,9 @@ def hints_db_has_rnaseq(db_path, genome=None):
     if genome is not None:
         speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
         query = query.filter(hints.speciesid == speciesid)
-    return query.first() is not None
+    r = query.first() is not None
+    session.close()
+    return r
 
 
 def hints_db_has_annotation(db_path, genome=None):
@@ -87,4 +94,6 @@ def hints_db_has_annotation(db_path, genome=None):
     if genome is not None:
         speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
         query = query.filter(hints.speciesid == speciesid)
-    return query.first() is not None
+    r = query.first() is not None
+    session.close()
+    return r
