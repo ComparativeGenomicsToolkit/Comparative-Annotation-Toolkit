@@ -59,7 +59,7 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', aln.coverage])
         r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', aln.identity])
         r.append([aln_id, tx_id, gene_id, 'TransMapBadness', aln.badness])
-        r.append([aln_id, tx_id, gene_id, 'TransMapOriginalIntrons', find_original_introns(aln, tx, ref_aln)])
+        r.append([aln_id, tx_id, gene_id, 'TransMapPercentOriginalIntrons', percent_original_introns(aln, tx, ref_aln)])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
     return df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'])
@@ -219,10 +219,11 @@ def synteny(ref_gp_dict, gp_dict):
     return scores
 
 
-def find_original_introns(aln, tx, ref_aln):
+def percent_original_introns(aln, tx, ref_aln):
     """
     Calculates the intron support vector, using code from tm2hints, but shrinking the fuzz distance to match the
     alignment classifiers.
+    Returns the number of introns that are within wiggle distance
     :param aln: PslRow object representing the transMapped transcript
     :param tx: GenePredTranscript object representing the transMapped transcript
     :param ref_aln: PslRow object representing the reference transcript
@@ -233,4 +234,4 @@ def find_original_introns(aln, tx, ref_aln):
     for i in tx.intron_intervals:
         if tools.tm2hints.is_fuzzy_intron(i, aln, ref_starts, fuzz_distance=7):
             c += 1
-    return tools.mathOps.format_ratio(c, len(tx.intron_intervals), resolve_nan=1)
+    return tools.mathOps.format_ratio(c, len(tx.intron_intervals), resolve_nan=None)

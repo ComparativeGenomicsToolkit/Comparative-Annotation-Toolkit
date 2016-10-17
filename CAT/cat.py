@@ -931,7 +931,6 @@ class Hgm(PipelineWrapperTask):
 class HgmDriverTask(PipelineTask):
     """
     Task for running each individual instance of the Hgm pipeline. Dumps the results into a sqlite database
-    table HgmIntronVector: two columns, TranscriptId and IntronVector
     Also produces a GTF file that is parsed into this database, but this file is not explicitly tracked by Luigi.
     """
     mode = luigi.Parameter()
