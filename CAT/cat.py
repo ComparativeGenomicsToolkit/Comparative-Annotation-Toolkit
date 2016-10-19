@@ -636,22 +636,29 @@ class FilterTransMapDriverTask(PipelineTask):
     """
     genome = luigi.Parameter()
     filter_tm_args = luigi.Parameter()
-    table = tools.sqlInterface.TmFilterEval.__tablename__
+    eval_table = tools.sqlInterface.TmFilterEval.__tablename__
+    cutoff_table = tools.sqlInterface.TmFit.__tablename__
 
-    def write_to_sql(self, df, table_target):
+    def write_to_sql(self, updated_df, fit_df, filter_table_target, fit_table_target):
         """Load the results into the SQLite database"""
         with tools.sqlite.ExclusiveSqlConnection(self.filter_tm_args.db_path) as engine:
-            df.to_sql(self.table, engine, if_exists='replace')
-            table_target.touch()
-            logger.info('Loaded table: {}.{}'.format(self.genome, self.table))
+            updated_df.to_sql(self.eval_table, engine, if_exists='replace')
+            filter_table_target.touch()
+            logger.info('Loaded table: {}.{}'.format(self.genome, self.eval_table))
+            fit_df.to_sql(self.cutoff_table, engine, if_exists='replace')
+            fit_table_target.touch()
+            logger.info('Loaded table: {}.{}'.format(self.genome, self.cutoff_table))
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
         tools.fileOps.ensure_file_dir(self.filter_tm_args.db_path)
         conn_str = 'sqlite:///{}'.format(self.filter_tm_args.db_path)
         return (luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
-                                                    target_table=self.table,
-                                                    update_id='_'.join([self.table, str(hash(pipeline_args))])),
+                                                    target_table=self.eval_table,
+                                                    update_id='_'.join([self.eval_table, str(hash(pipeline_args))])),
+                luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                    target_table=self.cutoff_table,
+                                                    update_id='_'.join([self.cutoff_table, str(hash(pipeline_args))])),
                 luigi.LocalTarget(self.filter_tm_args.filtered_tm_gp),
                 luigi.LocalTarget(self.filter_tm_args.filtered_tm_gtf),
                 luigi.LocalTarget(self.filter_tm_args.metrics_json))
@@ -663,11 +670,11 @@ class FilterTransMapDriverTask(PipelineTask):
 
     def run(self):
         logger.info('Filtering transMap results for {}.'.format(self.genome))
-        table_target, filtered_tm_gp, filtered_tm_gtf, metrics_json = self.output()
-        metrics_dict, updated_df = filter_transmap(self.filter_tm_args, filtered_tm_gp)
+        filter_table_target, fit_table_target, filtered_tm_gp, filtered_tm_gtf, metrics_json = self.output()
+        metrics_dict, updated_df, fit_df = filter_transmap(self.filter_tm_args, filtered_tm_gp)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
         tools.misc.convert_gp_gtf(filtered_tm_gtf, filtered_tm_gp)
-        self.write_to_sql(updated_df, table_target)
+        self.write_to_sql(updated_df, fit_df, filter_table_target, fit_table_target)
 
 
 class Augustus(PipelineWrapperTask):
@@ -1148,7 +1155,6 @@ class Consensus(PipelineWrapperTask):
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
         # grab the genePred of every mode
-        tx_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes
         args = argparse.Namespace()
         gp_list = [TransMap.get_args(pipeline_args, genome).tm_gp]
         if pipeline_args.augustus is True:
@@ -1158,7 +1164,8 @@ class Consensus(PipelineWrapperTask):
         if pipeline_args.augustus_cgp is True:
             gp_list.append(AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome])
         args.gp_list = gp_list
-        args.transcript_modes = tx_modes.keys()
+        args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
+        args.augustus_cgp = pipeline_args.augustus_cgp
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.hints_db_has_rnaseq = pipeline_args.hints_db_has_rnaseq

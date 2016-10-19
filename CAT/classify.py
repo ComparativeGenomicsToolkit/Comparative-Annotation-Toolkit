@@ -79,22 +79,21 @@ def classify(eval_args):
         tx_dict = tools.transcripts.get_gene_pred_dict(path_dict['gp'])
         aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
         for aln_mode in aln_modes:
-            # these are the sqlite table names
-            tx_aln_psl_dict = tools.psl.get_alignment_dict(path_dict[aln_mode])
-            mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict)
-            ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict)
+            psl_iter = list(tools.psl.psl_iterator(path_dict[aln_mode]))
+            mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter)
+            ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict)
             results[tools.sqlInterface.tables[aln_mode][tx_mode]['metrics'].__tablename__] = mc_df
             results[tools.sqlInterface.tables[aln_mode][tx_mode]['evaluation'].__tablename__] = ec_df
     return results
 
 
-def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict):
+def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
     """
     Calculates the alignment metrics and the number of missing original introns on this transcript_chunk
     :return: DataFrame
     """
     r = []
-    for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
+    for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         if biotype == 'protein_coding':
             start_ok, stop_ok = start_stop_stat(tx)
             r.append([ref_tx.name2, ref_tx.name, tx.name, 'StartCodon', start_ok])
@@ -116,13 +115,13 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_
     return df
 
 
-def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict):
+def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict):
     """
     Calculates the evaluation metrics on this transcript_chunk
     :return: DataFrame
     """
     r = []
-    for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
+    for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         indels = find_indels(tx, psl, aln_mode)
         for category, i in indels:
             r.append([ref_tx.name2, ref_tx.name, tx.name, category, i.chromosome, i.start, i.stop, i.strand])
@@ -343,11 +342,11 @@ def find_indels(tx, psl, aln_mode):
 ###
 
 
-def tx_iter(psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
+def tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
     """
     yields tuples of (GenePredTranscript <reference> , GenePredTranscript <target>, PslRow, biotype
     """
-    for psl in psl_dict.itervalues():
+    for psl in psl_iter:
         # this psl is target-referenced
         ref_tx = ref_tx_dict[psl.t_name]
         tx = tx_dict[psl.q_name]
