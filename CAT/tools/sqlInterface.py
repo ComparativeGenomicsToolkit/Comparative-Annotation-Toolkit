@@ -342,7 +342,8 @@ def load_tm_fit(db_path, biotype='protein_coding'):
     """
     session = start_session(db_path)
     query = session.query(TmFit.IdentityCutoff).filter(TmFit.TranscriptBiotype == biotype)
-    return query.one()[0]
+    r = query.one()[0]
+    return r if r is not None else 0   # handle case where we had no coding paralogs
 
 
 ###
