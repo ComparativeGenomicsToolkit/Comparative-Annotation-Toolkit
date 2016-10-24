@@ -58,6 +58,8 @@ class PipelineTask(luigi.Task):
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     # consensus options
     resolve_split_genes = luigi.BoolParameter(default=False)
+    cgp_splice_support = luigi.FloatParameter(default=0.8, significant=False)
+    cgp_num_exons = luigi.IntParameter(default=3, significant=False)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=32, significant=False)
@@ -117,6 +119,8 @@ class PipelineTask(luigi.Task):
         args.modes = PipelineTask.get_modes(args)
         args.dbs = PipelineTask.get_databases(args)
         args.max_cores = self.maxCores  # used for HGM
+        args.cgp_splice_support = self.cgp_splice_support
+        args.cgp_num_exons = self.cgp_num_exons
         return args
 
     def get_module_args(self, module, **args):

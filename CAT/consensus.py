@@ -102,16 +102,15 @@ def generate_consensus(args, genome):
     metrics = {'Alignment Modes': collections.Counter(), 'Transcript Modes': collections.Counter(),  # coding only
                'Gene Failed': collections.Counter(), 'Transcript Failed': collections.Counter(),
                'Transcript Missing': collections.Counter(),
-               'Gene Rescue': collections.Counter(), 'Gene Missing': collections.Counter(),
+               'Gene Missing': collections.Counter(),
                'Duplicate transcripts': collections.Counter(),
                'Discarded by strand resolution': 0,
-               'Novel isoforms': 0, 'Novel genes': 0,
+               'Novel isoforms': 0,
                'Transcript Categories': collections.defaultdict(lambda: collections.Counter()),
                'Coverage': collections.defaultdict(list),
                'Identity': collections.defaultdict(list),
                'Consensus Score': collections.defaultdict(list),
-               'Splice Support': collections.defaultdict(list),
-               'transMap Splice Support': collections.defaultdict(list)}
+               'Splice Support': collections.defaultdict(list)}
 
     # load all genePreds
     tx_dict = tools.transcripts.load_gps(args.gp_list)
@@ -132,10 +131,9 @@ def generate_consensus(args, genome):
     scored_df = score_alignments(args.db_path, args.transcript_modes, ref_df, tm_eval, coding_cutoff, intron_df)
 
     # did we run augustusCGP? If so, find novel genes within cutoffs
-    # TODO: expose these cutoffs to the user as options
     if args.augustus_cgp is True:
-        consensus_dict.update(find_novel_transcripts(intron_df, tx_dict, metrics))
-        metrics['Novel genes'] = len(consensus_dict)
+        splice_support = args.cgp_splice_support if args.hints_db_has_rnaseq else 0
+        consensus_dict.update(find_novel_transcripts(intron_df, tx_dict, metrics, args.cgp_num_exons, splice_support))
 
     # gene transcript map to iterate over so that we capture missing gene information
     gene_transcript_map = tools.sqlInterface.get_gene_transcript_map(args.ref_db_path)
@@ -431,14 +429,15 @@ def score_non_coding_df(tm_eval, intron_df):
     return df
 
 
-def find_novel_transcripts(intron_df, tx_dict, metrics, num_introns=3, splice_support=0.8):
+def find_novel_transcripts(intron_df, tx_dict, metrics, num_introns, splice_support):
     """Finds novel transcripts, builds their attributes"""
-    novel_transcripts = {tx.name: tx.name for tx in tx_dict.itervalues() if 'jg' in tx.name2}
+    novel_transcripts = {tx.name: tx.name for tx in tx_dict.itervalues()
+                         if tools.nameConversions.aln_id_is_cgp(tx.name2)}
     novel_df = intron_df[intron_df.AlignmentId.isin(novel_transcripts)]
     novel_df = novel_df[(novel_df.PercentIntronsSupported >= splice_support) & (novel_df.NumIntrons > num_introns)]
     novel_genes = set(novel_df.GeneId)
-    metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel transcripts': len(novel_transcripts)}
-    metrics['Transcript Modes']['augCGP'] += len(novel_transcripts)
+    metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel transcripts': len(novel_df)}
+    metrics['Transcript Modes']['augCGP'] += len(novel_df)
     consensus = {}
     for novel_tx in novel_df.AlignmentId:
         consensus[novel_tx] = {'transcript_class': 'Novel', 'gene_biotype': 'unknown_likely_coding',
@@ -627,7 +626,8 @@ def calculate_completeness(final_consensus, metrics):
     genes = collections.defaultdict(set)
     txs = collections.Counter()
     for aln_id, c in final_consensus:
-        if c['transcript_biotype'] == 'unknown_likely_coding':
+        # don't count novel transcripts towards completeness
+        if c['transcript_class'] == 'novel':
             continue
         genes[c['gene_biotype']].add(c['source_gene'])
         txs[c['transcript_biotype']] += 1

@@ -147,8 +147,8 @@ def resolve_paralogs(updated_aln_eval_df):
     updated_aln_eval_df = updated_aln_eval_df.sort_values(by='Score', ascending=False)
 
     paralog_status = []  # stores the results for a new column
-    paralog_metrics = {biotype: {'Alignments discarded': 0, 'Transcripts resolved by model prediction': 0,
-                                 'Transcripts resolved by synteny heuristic': 0, 'Transcripts arbitarily resolved': 0}
+    paralog_metrics = {biotype: {'Alignments discarded': 0, 'Model prediction': 0,
+                                 'Synteny heuristic': 0, 'Arbitarily resolved': 0}
                        for biotype in set(updated_aln_eval_df.TranscriptBiotype)}
 
     for tx, df in updated_aln_eval_df.groupby('TranscriptId'):
@@ -159,16 +159,16 @@ def resolve_paralogs(updated_aln_eval_df):
         passing = df[df.TranscriptClass == 'Passing']
         if len(passing) == 1:  # we can pick one passing member
             paralog_metrics[biotype]['Alignments discarded'] += 1
-            paralog_metrics[biotype]['Transcripts resolved by model prediction'] += 1
+            paralog_metrics[biotype]['Model prediction'] += 1
             paralog_status.append([df.AlignmentId.iloc[0], 'Confident'])
         else:
             highest_score_df = df[df.Score == df.iloc[0].Score]
             if len(highest_score_df) == 1:
-                paralog_metrics[biotype]['Transcripts resolved by synteny heuristic'] += 1
+                paralog_metrics[biotype]['Synteny heuristic'] += 1
                 paralog_metrics[biotype]['Alignments discarded'] += 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'Confident'])
             else:
-                paralog_metrics[biotype]['Transcripts arbitarily resolved'] += 1
+                paralog_metrics[biotype]['Arbitarily resolved'] += 1
                 paralog_metrics[biotype]['Alignments discarded'] += 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'NotConfident'])
 
@@ -265,7 +265,7 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
         n, i = find_names_to_remove(best_chroms[0], chroms)
         alignment_ids_to_remove.update(i)
         split_gene_metrics['Number of split genes'] += 1
-        split_gene_metrics['Number of transcripts removed'] += 1
+        split_gene_metrics['Number of transcripts removed'] += len(i)
         other_contigs = ','.join(set(chroms.keys()) - {best_chroms[0]})
         split_status.extend([[tx_id, other_contigs] for tx_id in rec.TranscriptId])
 

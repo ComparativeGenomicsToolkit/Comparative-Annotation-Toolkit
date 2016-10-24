@@ -1156,6 +1156,8 @@ class Consensus(PipelineWrapperTask):
         base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
         # grab the genePred of every mode
         args = argparse.Namespace()
+        args.cgp_num_exons = pipeline_args.cgp_num_exons
+        args.cgp_splice_support = pipeline_args.cgp_splice_support
         gp_list = [TransMap.get_args(pipeline_args, genome).tm_gp]
         if pipeline_args.augustus is True:
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tm_gp)
@@ -1227,19 +1229,17 @@ class Plots(PipelineTask):
         # plots derived from transMap results
         args.tm_coverage = luigi.LocalTarget(os.path.join(base_dir, 'transmap_coverage.pdf'))
         args.tm_identity = luigi.LocalTarget(os.path.join(base_dir, 'transmap_identity.pdf'))
-        args.tm_badness = luigi.LocalTarget(os.path.join(base_dir, 'transmap_badness.pdf'))
         # plots derived from transMap filtering
         args.paralogy = luigi.LocalTarget(os.path.join(base_dir, 'paralogy.pdf'))
         args.transmap_filtering = luigi.LocalTarget(os.path.join(base_dir, 'transmap_filtering.pdf'))
-        args.transmap_splice_support = luigi.LocalTarget(os.path.join(base_dir, 'transmap_splice_support.pdf'))
         # plots derived from transcript alignment / consensus finding
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
         args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))
-        args.badness = luigi.LocalTarget(os.path.join(base_dir, 'badness.pdf'))
         args.consensus_score = luigi.LocalTarget(os.path.join(base_dir, 'consensus_score.pdf'))
         args.completeness = luigi.LocalTarget(os.path.join(base_dir, 'completeness.pdf'))
         args.categories = luigi.LocalTarget(os.path.join(base_dir, 'transcript_categories.pdf'))
         args.gene_failure = luigi.LocalTarget(os.path.join(base_dir, 'gene_failure.pdf'))
+        args.transcript_failure = luigi.LocalTarget(os.path.join(base_dir, 'transcript_failure.pdf'))
         args.consensus_splice_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_splice_support.pdf'))
         if 'augTM' in pipeline_args.modes or 'augTMR' in pipeline_args.modes or 'augCGP' in pipeline_args.modes:
             args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
@@ -1308,6 +1308,8 @@ def parse_args():
     parser.add_argument('--maf-overlap', default=500000, type=int)
     # consensus options
     parser.add_argument('--resolve-split-genes', action='store_true')
+    parser.add_argument('--cgp-splice-support', default=0.8, type=float)
+    parser.add_argument('--cgp-num-exons', default=3, type=int)
     # toil options
     parser.add_argument('--batchSystem', default='singleMachine')
     parser.add_argument('--maxCores', default=16, type=int)
