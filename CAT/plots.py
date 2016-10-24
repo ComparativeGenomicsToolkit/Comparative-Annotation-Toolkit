@@ -47,7 +47,7 @@ def generate_plots(args):
     except ValueError:
         pass
 
-    tm_filter_plots(tm_data, args.ordered_genomes, args.transmap_filtering)
+    tm_filter_plots(tm_data, args.ordered_genomes, args.transmap_filtering, biotypes)
     tm_metrics_plot(tm_metrics, args.ordered_genomes, biotypes, transcript_biotype_map, args.tm_coverage,
                     args.tm_identity)
     tm_para_plot(para_data, args.ordered_genomes, biotypes, transcript_biotype_map, args.paralogy)
@@ -99,7 +99,7 @@ def load_para_data(dbs):
 ###
 
 
-def tm_filter_plots(tm_data, ordered_genomes, tgt):
+def tm_filter_plots(tm_data, ordered_genomes, tgt, biotypes):
     """Plots for the transMap filtering process. The data munging is a huge mess, sorry."""
     data = OrderedDict()
     for genome in ordered_genomes:
@@ -116,15 +116,25 @@ def tm_filter_plots(tm_data, ordered_genomes, tgt):
         title_string = 'transMap paralogous alignment resolution'
         generic_stacked_barplot(combined_df, pdf, title_string, combined_df.index, 'Number of transcripts',
                                 combined_df.columns, 'method', bbox_to_anchor=(1.2, 0.7))
-        for biotype, b_df in df.groupby('biotype'):
-            title_string = 'transMap paralogous alignment resolution for biotype {}'.format(biotype)
+        for biotype in biotypes:
+            b_df = biotype_filter(df, biotype)
+            if b_df is None:
+                continue
             b_df = b_df.transpose()
             try:  # we don't have all genomes. probably a tiny biotype
                 b_df.columns = ordered_genomes
             except ValueError:
+                b_df = b_df.transpose()
+                b_df.genome = pd.Categorical(b_df.genome, ordered_genomes, ordered=True)
+                missing = pd.DataFrame([[genome, biotype, 0, 0, 0, 0] for genome in b_df.genome.cat.categories if genome
+                                        not in list(b_df.genome)])
+                missing.columns = b_df.columns
+                b_df = b_df.append(missing).sort_values('genome').transpose()
+            if b_df.sum(numeric_only=True).sum() == 0:
                 continue
             b_df = b_df.iloc[3:][::-1]
             b_df = b_df.apply(lambda x: pd.to_numeric(x, errors='ignore'))
+            title_string = 'transMap paralogous alignment resolution for biotype {}'.format(biotype)
             generic_stacked_barplot(b_df, pdf, title_string, b_df.index, 'Number of transcripts',
                                     b_df.columns, 'method', bbox_to_anchor=(1.2, 0.7))
 
