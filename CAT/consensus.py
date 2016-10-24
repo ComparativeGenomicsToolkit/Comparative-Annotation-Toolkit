@@ -627,7 +627,7 @@ def calculate_completeness(final_consensus, metrics):
     txs = collections.Counter()
     for aln_id, c in final_consensus:
         # don't count novel transcripts towards completeness
-        if c['transcript_class'] == 'novel':
+        if c['transcript_class'] == 'Novel':
             continue
         genes[c['gene_biotype']].add(c['source_gene'])
         txs[c['transcript_biotype']] += 1

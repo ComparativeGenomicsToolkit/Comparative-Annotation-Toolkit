@@ -148,7 +148,7 @@ def resolve_paralogs(updated_aln_eval_df):
 
     paralog_status = []  # stores the results for a new column
     paralog_metrics = {biotype: {'Alignments discarded': 0, 'Model prediction': 0,
-                                 'Synteny heuristic': 0, 'Arbitarily resolved': 0}
+                                 'Synteny heuristic': 0, 'Arbitrarily resolved': 0}
                        for biotype in set(updated_aln_eval_df.TranscriptBiotype)}
 
     for tx, df in updated_aln_eval_df.groupby('TranscriptId'):
