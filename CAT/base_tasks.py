@@ -11,8 +11,10 @@ import luigi
 from frozendict import frozendict
 from toil.job import Job
 
+import tools.hal
 import tools.fileOps
 import tools.procOps
+import tools.hintsDatabaseInterface
 
 
 class HashableNamespace(argparse.Namespace):
@@ -56,6 +58,8 @@ class PipelineTask(luigi.Task):
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     # consensus options
     resolve_split_genes = luigi.BoolParameter(default=False)
+    cgp_splice_support = luigi.FloatParameter(default=0.8, significant=False)
+    cgp_num_exons = luigi.IntParameter(default=3, significant=False)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=32, significant=False)
@@ -89,9 +93,12 @@ class PipelineTask(luigi.Task):
         args.augustus_species = self.augustus_species
         if self.augustus_hints_db is not None:
             args.augustus_hints_db = os.path.abspath(self.augustus_hints_db)
-            args.augustus_tmr = True if self.augustus else False
+            args.hints_db_has_rnaseq = tools.hintsDatabaseInterface.hints_db_has_rnaseq(self.augustus_hints_db)
+            if self.augustus is True and args.hints_db_has_rnaseq is True:
+                args.augustus_tmr = True
         else:
             args.augustus_hints_db = None
+            args.hints_db_has_rnaseq = False
         args.tm_cfg = os.path.abspath(self.tm_cfg)
         args.tmr_cfg = os.path.abspath(self.tmr_cfg)
         args.augustus_cgp = self.augustus_cgp
@@ -112,6 +119,8 @@ class PipelineTask(luigi.Task):
         args.modes = PipelineTask.get_modes(args)
         args.dbs = PipelineTask.get_databases(args)
         args.max_cores = self.maxCores  # used for HGM
+        args.cgp_splice_support = self.cgp_splice_support
+        args.cgp_num_exons = self.cgp_num_exons
         return args
 
     def get_module_args(self, module, **args):
@@ -243,6 +252,7 @@ class HintsDbTask(luigi.Task):
     hal = luigi.Parameter()
     augustus_hints_db = luigi.Parameter(default='augustus_hints.db')
     work_dir = luigi.Parameter(default=os.path.join(tempfile.gettempdir(), __name__))
+    use_wiggle_hints = luigi.BoolParameter(default=True)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)

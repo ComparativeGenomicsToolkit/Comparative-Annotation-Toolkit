@@ -4,13 +4,9 @@ this can be determined by using tools.nameConversions.strip_alignment_numbers() 
 which have new IDs, we use the name2 field which will have assigned a gene ID to try and align to all protein coding
 transcripts associated with that gene ID.
 
-Alignment is performed in a few different ways:
-1. For each CGP transcript, the in-frame CDS will be aligned using MUSCLE to the in-frame CDS of each protein-coding
-transcript of the assigned parental gene.
-2. For each transMap transcript, it will be aligned via MUSCLE to the assigned parent. If the parent is protein coding
-then the transcript will also undergo in-frame CDS alignment.
-3. For each AugustusTM(R) transcript, it will be aligned both as mRNA and in-frame CDS.
-
+Alignment is only performed on protein coding transcripts. For CGP, the in-frame CDS will be aligned using BLAT to the
+in-frame CDS of each protein coding transcript of the assigned parental gene. For transMap and AugustusTM(R)
+transcripts, two alignments we be performed - full mRNA and in-frame CDS.
 """
 import argparse
 import collections
@@ -44,7 +40,7 @@ def align_transcripts(args, toil_options):
             input_file_ids.ref_genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.ref_genome_fasta)
             input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
             input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
-            input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
+            input_file_ids.ref_db = toil.importFile('file://' + args.ref_db_path)
             input_file_ids.modes = {}
             for mode in args.transcript_modes:
                 input_file_ids.modes[mode] = toil.importFile('file://' + args.transcript_modes[mode]['gp'])
@@ -67,8 +63,7 @@ def setup(job, args, input_file_ids):
     job.fileStore.logToMaster('Beginning Align Transcripts run on {}'.format(args.genome), level=logging.INFO)
     # load all fileStore files necessary
     annotation_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
-    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_db_path)
-    # we have to explicitly place fasta, flat file and gdx with the correct naming scheme for pyfasta
+    ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_db)
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
     ref_genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.ref_genome_fasta,
@@ -88,6 +83,8 @@ def setup(job, args, input_file_ids):
         # begin loading transcripts and sequences
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[tx_mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
+        transcript_dict = {aln_id: tx for aln_id, tx in transcript_dict.iteritems() if
+                           tx_biotype_map[tools.nameConversions.strip_alignment_numbers(aln_id)] == 'protein_coding'}
         for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)

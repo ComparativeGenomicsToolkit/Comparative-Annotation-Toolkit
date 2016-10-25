@@ -89,6 +89,24 @@ class TmEval(MetricsColumns, Base):
     __tablename__ = 'TransMapEvaluation'
 
 
+class TmFilterEval(MetricsColumns, Base):
+    """Table for evaluations from FilterTransMap module. This table is stored in a stacked format for simplicity."""
+    __tablename__ = 'TransMapFilterEvaluation'
+    GeneId = Column(Text, primary_key=True)
+    TranscriptId = Column(Text, primary_key=True)
+    AlignmentId = Column(Text, primary_key=True)
+    TranscriptClass = Column(Text)
+    ParalogStatus = Column(Text)
+    GeneAlternateContigs = Column(Text)
+
+
+class TmFit(Base):
+    """Table for the identity cutoffs found by distribution fitting"""
+    __tablename__ = 'TransMapIdentityCutoffs'
+    TranscriptBiotype = Column(Text, primary_key=True)
+    IdentityCutoff = Column(Float)
+
+
 class TmMetrics(MetricsColumns, Base):
     """Table for evaluations from TransMapMetrics module"""
     __tablename__ = 'TransMapMetrics'
@@ -304,6 +322,28 @@ def load_alignment_evaluation(db_path):
     df = pd.read_sql_table(TmEval.__tablename__, engine)
     df = pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value', fill_value=0)
     return df.reset_index()
+
+
+def load_filter_evaluation(db_path):
+    """
+    Loads the transMap alignment filtering evaluation table
+    :param db_path: path to genome database
+    :return: DataFrame
+    """
+    engine = create_engine('sqlite:///' + db_path)
+    return pd.read_sql_table(TmFilterEval.__tablename__, engine)
+
+
+def load_tm_fit(db_path, biotype='protein_coding'):
+    """
+    Loads the transMap identity fit, necessary to evaluate Augustus transcripts
+    :param db_path: path to genome database
+    :return: float
+    """
+    session = start_session(db_path)
+    query = session.query(TmFit.IdentityCutoff).filter(TmFit.TranscriptBiotype == biotype)
+    r = query.one()[0]
+    return r if r is not None else 0   # handle case where we had no coding paralogs
 
 
 ###

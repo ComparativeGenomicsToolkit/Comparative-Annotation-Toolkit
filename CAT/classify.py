@@ -10,8 +10,8 @@ These classifiers are per-transcript evaluations based on both the transcript al
 2. AlnCoverage: Alignment coverage in transcript space.
 3. AlnIdentity: Alignment identity in transcript space.
 4. Badness: A measure of how bad the alignment is related to Jim Kent's badness score.
-5. NumMissingIntrons: Number of original introns not within a wiggle distance of any introns in the target.
-6. NumMissingExons: Do we lose any exons? Defined based on parent sequence, with wiggle room.
+5. PercentMissingIntrons: Number of original introns not within a wiggle distance of any introns in the target.
+6. PercentMissingExons: Do we lose any exons? Defined based on parent sequence, with wiggle room.
 7. CdsStartStat: Is the CDS likely to be a complete start? Simply extracted from the genePred
 8. CdsEndStat: Is the CDS likely to be a complete stop? Simply extracted from the genePred
 
@@ -60,7 +60,7 @@ import tools.transcripts
 # fuzz distance is counted from both sides of the intron
 fuzz_distance = 7
 # the amount of exon-exon coverage required to consider a exon as present
-num_missing_exons_coverage_cutoff = 0.8
+missing_exons_coverage_cutoff = 0.8
 
 
 def classify(eval_args):
@@ -79,37 +79,33 @@ def classify(eval_args):
         tx_dict = tools.transcripts.get_gene_pred_dict(path_dict['gp'])
         aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
         for aln_mode in aln_modes:
-            # these are the sqlite table names
-            tx_aln_psl_dict = tools.psl.get_alignment_dict(path_dict[aln_mode])
-            mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict)
-            ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict)
+            psl_iter = list(tools.psl.psl_iterator(path_dict[aln_mode]))
+            mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter)
+            ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict)
             results[tools.sqlInterface.tables[aln_mode][tx_mode]['metrics'].__tablename__] = mc_df
             results[tools.sqlInterface.tables[aln_mode][tx_mode]['evaluation'].__tablename__] = ec_df
     return results
 
 
-def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict):
+def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
     """
     Calculates the alignment metrics and the number of missing original introns on this transcript_chunk
     :return: DataFrame
     """
     r = []
-    for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
+    for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         if biotype == 'protein_coding':
             start_ok, stop_ok = start_stop_stat(tx)
             r.append([ref_tx.name2, ref_tx.name, tx.name, 'StartCodon', start_ok])
             r.append([ref_tx.name2, ref_tx.name, tx.name, 'StopCodon', stop_ok])
-        num_missing_introns = calculate_num_missing_introns(ref_tx, tx, psl, aln_mode)
-        num_missing_exons = calculate_num_missing_exons(ref_tx, psl, aln_mode)
-        # calculate number of total introns based on aln_mode
-        num_introns = len(tx.intron_intervals) if aln_mode == 'mRNA' else tx.num_coding_introns
+        percent_missing_introns = calculate_percent_original_introns(ref_tx, tx, psl, aln_mode)
+        percent_missing_exons = calculate_percent_original_exons(ref_tx, psl, aln_mode)
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', psl.coverage])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', psl.identity])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'Badness', psl.badness])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumMissingIntrons', num_missing_introns])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumMissingExons', num_missing_exons])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'NumIntrons', num_introns])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentOriginalIntrons', percent_missing_introns])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentOriginalExons', percent_missing_exons])
     columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
     df = pd.DataFrame(r, columns=columns)
     df.value = pd.to_numeric(df.value)  # coerce all into floats
@@ -119,13 +115,13 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_
     return df
 
 
-def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, tx_aln_psl_dict, seq_dict):
+def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict):
     """
     Calculates the evaluation metrics on this transcript_chunk
     :return: DataFrame
     """
     r = []
-    for ref_tx, tx, psl, biotype in tx_iter(tx_aln_psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
+    for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         indels = find_indels(tx, psl, aln_mode)
         for category, i in indels:
             r.append([ref_tx.name2, ref_tx.name, tx.name, category, i.chromosome, i.start, i.stop, i.strand])
@@ -157,7 +153,7 @@ def start_stop_stat(tx):
     return start_ok, stop_ok
 
 
-def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
+def calculate_percent_original_introns(ref_tx, tx, psl, aln_mode):
     """
     Determines how many of the gaps present in a given transcript are within a wiggle distance of the parent.
 
@@ -170,12 +166,11 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
     :param tx: GenePredTranscript object representing the target transcript
     :param psl: PslRow object representing the mRNA/CDS alignment between ref_tx and tx
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :return: integer value
+    :return: float between 0 and 1 or nan (single exon transcript)
     """
-
     # before we calculate anything, make sure we have introns to lose
     if len(ref_tx.intron_intervals) == 0:
-        return 0
+        return float('nan')
 
     # generate a list of reference introns in current coordinates (mRNA or CDS)
     ref_introns = get_intron_coordinates(ref_tx, aln_mode)
@@ -188,47 +183,45 @@ def calculate_num_missing_introns(ref_tx, tx, psl, aln_mode):
         if p is not None:
             tgt_introns.append(p)
 
-    # if we lost all introns due to CDS filtering, return the number total in the reference
+    # if we lost all introns due to CDS filtering, return nan
     if len(tgt_introns) == 0:
-        return len(ref_introns)
+        return float('nan')
 
-    # count the number of introns not within wiggle distance of each other
-    num_missing = 0
+    # count the number of introns within wiggle distance of each other
+    num_original = 0
     for ref_intron in ref_introns:
         closest = tools.mathOps.find_closest(tgt_introns, ref_intron)
-        if not (closest - fuzz_distance < ref_intron < closest + fuzz_distance):
-            num_missing += 1
-    return num_missing
+        if closest - fuzz_distance < ref_intron < closest + fuzz_distance:
+            num_original += 1
+    return tools.mathOps.format_ratio(num_original, len(ref_introns))
 
 
-def calculate_num_missing_exons(ref_tx, psl, aln_mode):
+def calculate_percent_original_exons(ref_tx, psl, aln_mode):
     """
     Calculates how many reference exons are missing in this transcript.
 
     This is determined by using coordinate translations from the reference exons to the target, determining how many
     of the target bases are covered through brute force
 
-    TODO: This could be made faster by using a sample distance, and only looking every N bases. But less accurate
-
     :param ref_tx: GenePredTranscript object representing the parent transcript
     :param psl: PslRow object representing the mRNA/CDS alignment between ref_tx and tx
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :return: integer value
+    :return: float between 0 and 1
     """
     # convert the reference exons to alignment coordinates.
     # We don't need the original exons because we can't produce useful coordinates here
     # which is why this is a metric and not an evaluation
     ref_exons = get_exon_intervals(ref_tx, aln_mode).values()
     # note that since this PSL is target-referenced, we use target_coordinate_to_query()
-    num_missing = 0
+    num_original = 0
     for exon in ref_exons:
-        deleted_bases = 0
+        present_bases = 0
         for i in xrange(exon.start, exon.stop):
-            if psl.target_coordinate_to_query(i) is None:
-                deleted_bases += 1
-        if tools.mathOps.format_ratio(deleted_bases, len(exon)) >= num_missing_exons_coverage_cutoff:
-            num_missing += 1
-    return num_missing
+            if psl.target_coordinate_to_query(i) is not None:
+                present_bases += 1
+        if tools.mathOps.format_ratio(present_bases, len(exon)) >= missing_exons_coverage_cutoff:
+            num_original += 1
+    return tools.mathOps.format_ratio(num_original, len(ref_exons))
 
 
 ###
@@ -349,11 +342,11 @@ def find_indels(tx, psl, aln_mode):
 ###
 
 
-def tx_iter(psl_dict, ref_tx_dict, tx_dict, tx_biotype_map):
+def tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
     """
     yields tuples of (GenePredTranscript <reference> , GenePredTranscript <target>, PslRow, biotype
     """
-    for psl in psl_dict.itervalues():
+    for psl in psl_iter:
         # this psl is target-referenced
         ref_tx = ref_tx_dict[psl.t_name]
         tx = tx_dict[psl.q_name]

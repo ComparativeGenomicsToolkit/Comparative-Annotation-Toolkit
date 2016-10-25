@@ -6,41 +6,49 @@ Classify transMap transcripts producing the TransMapEvaluation table for each ge
 3. AlignmentPartialMap: Did this transcript not map completely?
 4. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
 5. AlnContainsUnknownBases: Are there any Ns within the transcript alignment?
-6. LongAlignment: Did this transcript align in a insanely long fashion? Indicative of paralogy problems.
-7. Synteny: If this transcript aligned more than once, assign a boolean based on synteny to whether this is the
+6. Synteny: If this transcript aligned more than once, assign a boolean based on synteny to whether this is the
     most probable transcript. This is used to filter for pseudogenes.
+7. TransMapOriginalIntrons: The number of transMap introns within a wiggle distance of a intron in the parent transcript
+   in transcript coordinates.
 """
 import bisect
 import collections
-
 import pandas as pd
 
 import tools.bio
 import tools.nameConversions
 import tools.psl
+import tools.dataOps
+import tools.fileOps
 import tools.transcripts
-
-# hard coded variables
-# hard coded long transMap size. Bigger than 3 megabases is probably a spurious alignment.
-long_tx_size = 3 * 10 ** 6
+import tools.toilInterface
+import tools.procOps
+import tools.tm2hints
+import tools.mathOps
 
 
 def transmap_classify(tm_eval_args):
     """
-    Runs alignment classification based on transMap PSLs, genePreds and the genome FASTA.
+    Runs alignment classification based on transMap PSLs, genePreds and the genome FASTA. Launches a toil pipeline
+    within this module which runs MUSCLE + FastTree on all alignments, reporting the genetic distance
     :param tm_eval_args: argparse Namespace produced by EvaluateTransMap.get_args()
     :return: DataFrame
     """
     psl_dict = tools.psl.get_alignment_dict(tm_eval_args.tm_psl)
+    ref_psl_dict = tools.psl.get_alignment_dict(tm_eval_args.ref_psl)
     gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.tm_gp)
     ref_gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.annotation_gp)
     fasta = tools.bio.get_sequence_dict(tm_eval_args.fasta)
-    r = []
-    paralog_count = paralogy(psl_dict)  # we have to count paralogs globally
+
+    paralog_count, paralog_names = paralogy(psl_dict)  # we have to count paralogs globally
+
     synteny_scores = synteny(ref_gp_dict, gp_dict)  # we also have to score synteny globally
+
+    r = []
     for aln_id, tx in gp_dict.iteritems():
         aln = psl_dict[aln_id]
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+        ref_aln = ref_psl_dict[tx_id]
         gene_id = ref_gp_dict[tx_id].name2
         r.append([aln_id, tx_id, gene_id, 'Paralogy', paralog_count[tools.nameConversions.strip_alignment_numbers(aln_id)]])
         r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
@@ -48,26 +56,32 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'AlnPartialMap', alignment_partial_map(aln)])
         r.append([aln_id, tx_id, gene_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
         r.append([aln_id, tx_id, gene_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, gene_id, 'LongTranscript', long_transcript(tx)])
         r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', aln.coverage])
         r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', aln.identity])
         r.append([aln_id, tx_id, gene_id, 'TransMapBadness', aln.badness])
+        r.append([aln_id, tx_id, gene_id, 'TransMapPercentOriginalIntrons', percent_original_introns(aln, tx, ref_aln)])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
-    df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'], inplace=True)
-    return df
+    return df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'])
+
+
+###
+# Classifiers
+###
 
 
 def paralogy(psl_dict):
     """
     Count the number of occurrences of each parental annotation in the target genome
     :param psl_dict: PslDict from psl module of transMap alignments
-    :return: collections.Counter
+    :return: collections.Counter, collections.defaultdict
     """
-    r = collections.Counter()
+    counts = collections.Counter()
+    names = collections.defaultdict(list)
     for aln_id in psl_dict:
-        r[tools.nameConversions.strip_alignment_numbers(aln_id)] += 1
-    return r
+        counts[tools.nameConversions.strip_alignment_numbers(aln_id)] += 1
+        names[tools.nameConversions.strip_alignment_numbers(aln_id)].append(aln_id)
+    return counts, names
 
 
 def aln_extends_off_contig(aln):
@@ -136,19 +150,9 @@ def aln_contains_unknown_bases(tx, fasta):
     return 'N' in tx.get_mrna(fasta)
 
 
-def long_transcript(tx):
-    """
-    Is this transcript greater in genomic length than long_tx_size?
-
-    :param tx: a GenePredTranscript object
-    :return: boolean
-    """
-    return True if tx.start - tx.stop >= long_tx_size else False
-
-
 def synteny(ref_gp_dict, gp_dict):
     """
-    Attempts to evaluate the synteny of these transcripts. For each transcript, compares the 5 genes up and down stream
+    Attempts to evaluate the synteny of these transcripts. For each transcript, compares the 3 genes up and down stream
     in the reference genome and counts how many match the transMap results.
     :param ref_gp_dict: Dictionary of GenePredTranscript objects from the reference annotation
     :param gp_dict: Dictionary of GenePredTranscript objects from the transMap output
@@ -161,8 +165,7 @@ def synteny(ref_gp_dict, gp_dict):
         """
         interval_dict = collections.defaultdict(lambda: collections.defaultdict(list))
         for tx in tx_dict.itervalues():
-            if len(tx.interval) < long_tx_size:
-                interval_dict[tx.chromosome][tx.name2].append(tx.interval)
+            interval_dict[tx.chromosome][tx.name2].append(tx.interval)
         return interval_dict
 
     def merge_interval_dict(interval_dict):
@@ -173,8 +176,6 @@ def synteny(ref_gp_dict, gp_dict):
                 merged_intervals = tools.intervals.gap_merge_intervals(gene_intervals, float('inf'))
                 assert len(merged_intervals) == 1
                 merged_interval = merged_intervals[0]
-                if len(merged_interval) >= long_tx_size:
-                    continue
                 merged_interval.data = gene_id
                 merged_interval_dict[chrom][gene_id] = merged_interval
         return merged_interval_dict
@@ -205,14 +206,32 @@ def synteny(ref_gp_dict, gp_dict):
     # synteny score algorithm
     scores = {}
     for tx in gp_dict.itervalues():
-        # find the genes from -5 to +5 in the target genome
+        # find the genes from -3 to +3 in the target genome
         target_intervals = tm_chrom_intervals[tx.chromosome]
         target_position = bisect.bisect_left(target_intervals, tx.interval)
-        target_genes = {x.data for x in target_intervals[target_position - 5: target_position + 5]}
+        target_genes = {x.data for x in target_intervals[target_position - 3: target_position + 3]}
         # find the same gene list in the reference genome
         ref_interval = ref_interval_map[tx.name2]
         ref_intervals = ref_chrom_intervals[ref_interval.chromosome]
         ref_position = bisect.bisect_left(ref_intervals, ref_interval)
-        reference_genes = {x.data for x in ref_intervals[ref_position - 5: ref_position + 5]}
+        reference_genes = {x.data for x in ref_intervals[ref_position - 3: ref_position + 3]}
         scores[tx.name] = len(reference_genes & target_genes)
     return scores
+
+
+def percent_original_introns(aln, tx, ref_aln):
+    """
+    Calculates the intron support vector, using code from tm2hints, but shrinking the fuzz distance to match the
+    alignment classifiers.
+    Returns the number of introns that are within wiggle distance
+    :param aln: PslRow object representing the transMapped transcript
+    :param tx: GenePredTranscript object representing the transMapped transcript
+    :param ref_aln: PslRow object representing the reference transcript
+    :return: float between 0 and 1
+    """
+    ref_starts = tools.tm2hints.fix_ref_q_starts(ref_aln)
+    c = 0
+    for i in tx.intron_intervals:
+        if tools.tm2hints.is_fuzzy_intron(i, aln, ref_starts, fuzz_distance=7):
+            c += 1
+    return tools.mathOps.format_ratio(c, len(tx.intron_intervals), resolve_nan=None)

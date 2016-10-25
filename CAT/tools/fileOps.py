@@ -13,6 +13,7 @@ import gzip
 import string
 import random
 import tempfile
+import hashlib
 
 
 class TemporaryFilePath(object):
@@ -224,3 +225,21 @@ def _resolve_fspec(fspec, mode='r'):
         return opengz(fspec, mode)
     else:
         return fspec
+
+
+def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=8):
+    """
+    Calculates a SHA1 hash of a file.
+    :param fspec: path or handle
+    :param hasher: hashing function to use
+    :param blocksize: size of file blocks to work on
+    :param num_characters: Number of characters to use of hex digest
+    :return: integer
+    """
+    fh = _resolve_fspec(fspec)
+    buf = fh.read(blocksize)
+    hasher = hasher()  # instantiate this hashing instance
+    while len(buf) > 0:
+        hasher.update(buf)
+        buf = fh.read(blocksize)
+    return hasher.hexdigest()[:num_characters]

@@ -165,12 +165,12 @@ def merge_results(job, args, input_file_ids, gffChunks):
     for genome in args.genomes:
         # merge all gffChunks of one genome
         genome_gffChunks = [d[genome] for d in gffChunks]
-        j = job.addChildJobFn(joinGenes, genome, args, input_file_ids, genome_gffChunks, memory='8G')
+        j = job.addChildJobFn(joinGenes, genome, input_file_ids, genome_gffChunks, memory='8G')
         mergedGffs[genome] = j.rv()
     return mergedGffs
 
 
-def joinGenes(job, genome, args, input_file_ids, gffChunks):
+def joinGenes(job, genome, input_file_ids, gffChunks):
     """
     uses the auxiliary tool 'joingenes' from the
     Augustus package to intelligently merge gene sets
@@ -193,7 +193,7 @@ def joinGenes(job, genome, args, input_file_ids, gffChunks):
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
     tools.procOps.run_proc(cmd, stdout=jg)
     joined_file_id = job.fileStore.writeGlobalFile(jg)
-    j = job.addFollowOnJobFn(assign_parents, args, genome, input_file_ids, joined_file_id, memory='8G')
+    j = job.addFollowOnJobFn(assign_parents, genome, input_file_ids, joined_file_id, memory='8G')
     return j.rv()
 
 
@@ -233,7 +233,7 @@ def writeGenomeFofn(job, fasta_file_ids):
 ###
 
 
-def assign_parents(job, args, genome, input_file_ids, joined_gff_file_id):
+def assign_parents(job, genome, input_file_ids, joined_gff_file_id):
     """
     Main function for assigning parental genes. Parental gene assignment methodology:
     A) Each CGP transcript is evaluated for overlapping any transMap transcripts. Overlap is defined as having at least
