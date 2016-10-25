@@ -130,10 +130,10 @@ def tm_filter_plots(tm_data, ordered_genomes, tgt, biotypes):
                                         not in list(b_df.genome)])
                 missing.columns = b_df.columns
                 b_df = b_df.append(missing).sort_values('genome').transpose()
-            if b_df.sum(numeric_only=True).sum() == 0:
-                continue
             b_df = b_df.iloc[3:][::-1]
             b_df = b_df.apply(lambda x: pd.to_numeric(x, errors='ignore'))
+            if b_df.sum(numeric_only=True).sum() == 0:
+                continue
             title_string = 'transMap paralogous alignment resolution for biotype {}'.format(biotype)
             generic_stacked_barplot(b_df, pdf, title_string, b_df.index, 'Number of transcripts',
                                     b_df.columns, 'method', bbox_to_anchor=(1.2, 0.7))
