@@ -541,10 +541,10 @@ def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, commo
             if intron_score > 0 and interval not in existing_splices:
                 metrics['Novel isoforms'] += 1
                 metrics['Transcript Modes']['augCGP'] += 1
-                cgp_tx_dict[cgp_tx] = {'transcript_class': 'novel', 'source_gene': gene_id,
+                cgp_tx_dict[cgp_tx] = {'transcript_class': 'Novel', 'source_gene': gene_id,
                                        'failed_gene': failed_gene, 'transcript_mode': 'augCGP',
                                        'transcript_biotype': 'unknown_likely_coding',
-                                       'gene_biotype': 'unknown_likely_coding'}
+                                       'gene_biotype': 'protein_coding'}  # only assigned to coding genes
                 common_name = common_name_map[gene_id]
                 if common_name != gene_id:
                     cgp_tx_dict[cgp_tx]['source_gene_common_name'] = common_name
