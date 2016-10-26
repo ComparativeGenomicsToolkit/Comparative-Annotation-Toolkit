@@ -209,9 +209,9 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
     """
     Loads the intron vector table output by the homGeneMapping module. Returns a DataFrame with
     """
-    def split_intron_string(s):
+    def split_intron_string(s, col):
         """Intron vector is stored as a comma separated string. Turn this into a list."""
-        return map(int, s.RnaSeqSupportIntronVector.split(','))
+        return map(int, s[col].split(','))
 
     def reduce_intron_vectors(s, coding):
         """Reduce the intron vector list, dealing with coding transcripts"""
@@ -246,7 +246,10 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
     intron_df = pd.concat(intron_dfs)
     intron_df = pd.merge(intron_df, ref_df, on=['GeneId', 'TranscriptId'], how='left')
     # start calculating support levels for consensus finding
-    intron_df['RnaSeqSupportIntronVector'] = intron_df.apply(split_intron_string, axis=1)
+    intron_df['RnaSeqSupportIntronVector'] = intron_df.apply(split_intron_string, col='RnaSeqSupportIntronVector',
+                                                             axis=1)
+    intron_df['AnnotationSupportIntronVector'] = intron_df.apply(split_intron_string,
+                                                                 col='AnnotationSupportIntronVector', axis=1)
     intron_df['NumIntrons'] = [len(tx_dict[tx].intron_intervals) for tx in intron_df.AlignmentId]
     intron_df['NumCodingIntrons'] = intron_df.apply(calculate_coding_introns, axis=1)
     intron_df['PercentIntronsSupported'] = intron_df.apply(reduce_intron_vectors, coding=False, axis=1)
@@ -533,15 +536,21 @@ def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, commo
     # extract CGP transcripts and slice the intron vector
     # this will collapse the duplicate vectors into one
     cgp_df = gene_df[tools.nameConversions.aln_id_is_cgp(gene_df.AlignmentId.str)]
-    cgp_introns = {s.AlignmentId: s.RnaSeqSupportIntronVector for _, s in cgp_df.iterrows()}
+    cgp_introns = {s.AlignmentId: [s.RnaSeqSupportIntronVector, s.AnnotationSupportIntronVector]
+                   for _, s in cgp_df.iterrows()}
     cgp_tx_dict = {}
-    for cgp_tx, intron_vector in cgp_introns.iteritems():
+    for cgp_tx, (rnaseq_vector, annotation_vector) in cgp_introns.iteritems():
         cgp_tx_obj = tx_dict[cgp_tx]
-        for interval, intron_score in zip(*[cgp_tx_obj.intron_intervals, intron_vector]):
-            if intron_score > 0 and interval not in existing_splices:
-                metrics['Novel isoforms'] += 1
+        for interval, rnaseq_score, annotation_score in zip(*[cgp_tx_obj.intron_intervals,
+                                                              rnaseq_vector, annotation_vector]):
+            if rnaseq_score > 0 and interval not in existing_splices:
+                if annotation_score > 0:
+                    metrics['Novel isoforms'] += 1
+                    tx_class = 'Novel'
+                else:
+                    tx_class = 'Failing' if failed_gene else 'Passing'
                 metrics['Transcript Modes']['augCGP'] += 1
-                cgp_tx_dict[cgp_tx] = {'transcript_class': 'Novel', 'source_gene': gene_id,
+                cgp_tx_dict[cgp_tx] = {'transcript_class': tx_class, 'source_gene': gene_id,
                                        'failed_gene': failed_gene, 'transcript_mode': 'augCGP',
                                        'transcript_biotype': 'unknown_likely_coding',
                                        'gene_biotype': 'protein_coding'}  # only assigned to coding genes
