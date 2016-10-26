@@ -211,17 +211,17 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
     """
     def split_intron_string(s):
         """Intron vector is stored as a comma separated string. Turn this into a list."""
-        return map(int, s.IntronVector.split(','))
+        return map(int, s.RnaSeqSupportIntronVector.split(','))
 
     def reduce_intron_vectors(s, coding):
         """Reduce the intron vector list, dealing with coding transcripts"""
         if coding is False:
-            num_supported = len([x for x in s.IntronVector if x > 0])
+            num_supported = len([x for x in s.RnaSeqSupportIntronVector if x > 0])
             return tools.mathOps.format_ratio(num_supported, s.NumIntrons)
         else:
             num_supported = 0
             tx = tx_dict[s.AlignmentId]
-            for intron, score in zip(*[tx.intron_intervals, s.IntronVector]):
+            for intron, score in zip(*[tx.intron_intervals, s.RnaSeqSupportIntronVector]):
                 if intron.subset(tx.coding_interval) and score > 0:
                     num_supported += 1
             # we give transcripts with no introns a score of 1 here
@@ -246,13 +246,13 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
     intron_df = pd.concat(intron_dfs)
     intron_df = pd.merge(intron_df, ref_df, on=['GeneId', 'TranscriptId'], how='left')
     # start calculating support levels for consensus finding
-    intron_df['IntronVector'] = intron_df.apply(split_intron_string, axis=1)
+    intron_df['RnaSeqSupportIntronVector'] = intron_df.apply(split_intron_string, axis=1)
     intron_df['NumIntrons'] = [len(tx_dict[tx].intron_intervals) for tx in intron_df.AlignmentId]
     intron_df['NumCodingIntrons'] = intron_df.apply(calculate_coding_introns, axis=1)
     intron_df['PercentIntronsSupported'] = intron_df.apply(reduce_intron_vectors, coding=False, axis=1)
     intron_df['PercentCodingIntronsSupported'] = intron_df.apply(reduce_intron_vectors, coding=True, axis=1)
     # we don't carry along transcript ID because it will conflict with CGP transcript IDs
-    return intron_df[['AlignmentId', 'GeneId', 'IntronVector',
+    return intron_df[['AlignmentId', 'GeneId', 'RnaSeqSupportIntronVector',
                       'PercentIntronsSupported', 'PercentCodingIntronsSupported', 'NumIntrons']]
 
 
@@ -533,7 +533,7 @@ def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, commo
     # extract CGP transcripts and slice the intron vector
     # this will collapse the duplicate vectors into one
     cgp_df = gene_df[tools.nameConversions.aln_id_is_cgp(gene_df.AlignmentId.str)]
-    cgp_introns = {s.AlignmentId: s.IntronVector for _, s in cgp_df.iterrows()}
+    cgp_introns = {s.AlignmentId: s.RnaSeqSupportIntronVector for _, s in cgp_df.iterrows()}
     cgp_tx_dict = {}
     for cgp_tx, intron_vector in cgp_introns.iteritems():
         cgp_tx_obj = tx_dict[cgp_tx]

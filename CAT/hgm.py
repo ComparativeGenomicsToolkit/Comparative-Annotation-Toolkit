@@ -62,7 +62,7 @@ def parse_hgm_gtf(hgm_out):
     parses the hgm output gtfs and creates for each transcript a string with the intron support counts
     For now, we just count for each of the introns in the transcript, the number of species
     in which it has RNA-Seq SJ support (number of "E" in the 'hgm_info' string).
-    But this can be changed later on, e.g. using also the multiplicities, or the presence of the introng
+    But this can be changed later on, e.g. using also the multiplicities, or the presence of the intron
     in (one of) the reference annotation(s) (if "M" is in the 'hgm_info' string, then it is an annotated intron)
     """
     d = collections.defaultdict(lambda: collections.defaultdict(list))
@@ -72,19 +72,18 @@ def parse_hgm_gtf(hgm_out):
         intron_lines = [i.strip().split('\t')[-1] for i in infile if "\tintron\t" in i]
         for attr_line in intron_lines:
             attributes = parse_gtf_attr_line(attr_line)
-            assert 'transcript_id' in attributes
-            support_count = attributes['hgm_info'].count('E')
-            d[attributes['gene_id']][attributes['transcript_id']].append(support_count)
+            d[attributes['gene_id']][attributes['transcript_id']].append(attributes['hgm_info'])
 
     # convert to dataframe, switching the list to a comma separated string
     dd = []
     for gene_id in d:
-        for aln_id, intron_vector in d[gene_id].iteritems():
+        for aln_id, hgm_info in d[gene_id].iteritems():
             tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
-            intron_vector = ','.join(map(str, intron_vector))
-            dd.append([gene_id, tx_id, aln_id, intron_vector])
+            rnaseq_vector = ','.join(map(str, [x.count('E') for x in hgm_info]))
+            annotation_vector = ','.join(map(str, [x.count('M') for x in hgm_info]))
+            dd.append([gene_id, tx_id, aln_id, rnaseq_vector, annotation_vector])
 
     df = pd.DataFrame(dd)
-    df.columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'IntronVector']
+    df.columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector']
     df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
     return df
