@@ -411,17 +411,15 @@ def generate_annotation_hints(job, annotation_hints_file_id, genome):
     tx_dict = tools.transcripts.get_gene_pred_dict(tm_gp)
     hints = []
     for tx_id, tx in tx_dict.iteritems():
-        if tx.cds_size == 0:
-            continue
-        # rather than try to re-do the arithmetic, we will use the get_bed() function to convert this transcript
-        cds_tx = tools.transcripts.Transcript(tx.get_bed(new_start=tx.thick_start, new_stop=tx.thick_stop))
-        for intron in cds_tx.intron_intervals:
+        for intron in tx.intron_intervals:
+            src = 'M' if intron.subset(tx.coding_interval) else 'N'
             r = [intron.chromosome, 'a2h', 'intron', intron.start + 1, intron.stop, 0, intron.strand, '.',
-                 'grp={};src=M;pri=2'.format(tx_id)]
+                 'grp={};src={};pri=2'.format(tx_id, src)]
             hints.append(r)
-        for exon in cds_tx.exon_intervals:
+        for exon in tx.exon_intervals:
+            src = 'M' if exon.subset(tx.coding_interval) else 'N'
             r = [exon.chromosome, 'a2h', 'CDS', exon.start + 1, exon.stop, 0, exon.strand, '.',
-                 'grp={};src=M;pri=2'.format(tx_id)]
+                 'grp={};src={};pri=2'.format(tx_id, src)]
             hints.append(r)
     annotation_hints_gff = tools.fileOps.get_tmp_toil_file()
     tools.fileOps.print_rows(annotation_hints_gff, hints)
