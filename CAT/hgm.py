@@ -21,11 +21,13 @@
 
  authors: Stefanie Koenig, Ian Fiddes
 """
+import os
 import collections
 import pandas as pd
 import tools.fileOps
 import tools.procOps
 import tools.nameConversions
+import tools.transcripts
 
 
 def hgm(args):
@@ -38,6 +40,13 @@ def hgm(args):
     with tools.fileOps.TemporaryFilePath() as gtf_fofn, tools.fileOps.TemporaryDirectoryPath() as temp_dir:
         with open(gtf_fofn, 'w') as outf:
             tools.fileOps.print_rows(outf, args.in_gtf.items())
+            if args.ref_genome not in args.genomes:  # create a dummy GTF for the reference
+                fake_gtf = tools.fileOps.get_tmp_file()
+                tools.fileOps.print_row(outf, [args.ref_genome, fake_gtf])
+            else:
+                fake_gtf = None
+
+        non_coding_gtf = extract_non_coding_introns(args.annotation_gp)
 
         cmd = ['homGeneMapping',
                '--halfile={}'.format(args.hal),
@@ -47,6 +56,33 @@ def hgm(args):
                '--tmpdir={}'.format(temp_dir),
                '--cpu={}'.format(args.num_cpu)]
         tools.procOps.run_proc(cmd, stdout='/dev/null')
+
+        if fake_gtf is not None:
+            os.remove(fake_gtf)
+        os.remove(non_coding_gtf)
+
+
+def extract_non_coding_introns(annotation_gp):
+    """
+    Extracts a GTF file with only the non-coding splice junctions for use by homGeneMapping to recognize if
+    a intron junction is supported by RNA-seq.
+
+    This is done through the complement of intersection. First, we extract the CDS BED records for all coding
+    transcripts. Then, we convert the reference genePred to GTF. We then intersect the first BED with this GTF with the
+    -v flag set, returning only non-coding intervals. Finally, we filter these for intron records and add src=N to
+    the last column.
+
+    :param annotation_gp: genePred of annotation
+    :return: file path
+    """
+    out_gtf = tools.fileOps.get_tmp_file()
+    with open(out_gtf, 'w') as outf:
+        for tx in tools.transcripts.gene_pred_iterator(annotation_gp):
+            for intron in tx.intron_intervals:
+                if not intron.subset(tx.coding_interval):
+                    r = [tx.chromosome, 'tmp', 'intron', intron.start + 1, intron.stop, '.', tx.strand, '.', 'source=N']
+                    tools.fileOps.print_row(outf, r)
+    return out_gtf
 
 
 def parse_gtf_attr_line(attr_line):
