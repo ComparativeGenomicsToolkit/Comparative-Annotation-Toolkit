@@ -42,6 +42,7 @@ def hgm(args):
             tools.fileOps.print_rows(outf, args.in_gtf.items())
             if args.ref_genome not in args.genomes:  # create a dummy GTF for the reference
                 fake_gtf = tools.fileOps.get_tmp_file()
+                open(fake_gtf, 'w').close()
                 tools.fileOps.print_row(outf, [args.ref_genome, fake_gtf])
             else:
                 fake_gtf = None
