@@ -181,6 +181,17 @@ def atomic_install(tmp_path, final_path):
         os.remove(tmp_path)
 
 
+def touch(file_path):
+    """
+    Creates a blank file at file path, ensuring it exists
+    :param file_path: string to file
+    :return: None
+    """
+    ensure_file_dir(file_path)
+    with open(file_path, 'a'):
+        os.utime(file_path, None)
+
+
 def print_row(fspec, line, sep='\t'):
     """
     Convenience function that writes a delimited line to fspec (file handle or file)
@@ -206,7 +217,7 @@ def print_rows(fspec, item_iter, sep='\t'):
 
 def print_iterable(fspec, item_iter):
     """
-    Convenience function that simply writes an iterable of lines to afspec (file handle or file)
+    Convenience function that simply writes an iterable of lines to fspec (file handle or file)
     :param fspec: A open file handle or file path
     :param item_iter: One or more things to write. Assumed to be fully formatted strings with newlines
     """

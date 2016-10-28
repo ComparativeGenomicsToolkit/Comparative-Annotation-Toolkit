@@ -32,22 +32,29 @@ import tools.transcripts
 
 def hgm(args):
     """
-    Main entry function for hgm toil pipeline
+    Main entry function for hgm module. Runs homGeneMapping after extracting non-coding introns from the annotation.
+    Non-coding introns are not stored in the database to make predictions go faster. When we are running homGeneMapping
+    on non-CGP data, we have nothing new for the reference, so we pass a dummy GTF.
     :param args: dictionary of arguments from CAT
     :return: a dictionary with one gtf file per genome
     """
     tools.fileOps.ensure_dir(args.gtf_out_dir)
+
+    non_coding_gff = extract_non_coding_introns(args.annotation_gp)
+
     with tools.fileOps.TemporaryFilePath() as gtf_fofn, tools.fileOps.TemporaryDirectoryPath() as temp_dir:
         with open(gtf_fofn, 'w') as outf:
-            tools.fileOps.print_rows(outf, args.in_gtf.items())
-            if args.ref_genome not in args.genomes:  # create a dummy GTF for the reference
-                fake_gtf = tools.fileOps.get_tmp_file()
-                open(fake_gtf, 'w').close()
-                tools.fileOps.print_row(outf, [args.ref_genome, fake_gtf])
+            for genome, gtf in args.in_gtf.iteritems():
+                if genome != args.ref_genome:
+                    tools.fileOps.print_row(outf, [genome, gtf])
+                else:
+                    tools.fileOps.print_row(outf, [genome, gtf, non_coding_gff])
+            if args.ref_genome not in args.in_gtf:
+                dummy_gtf = tools.fileOps.get_tmp_file()
+                tools.fileOps.touch(dummy_gtf)
+                tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, non_coding_gff])
             else:
-                fake_gtf = None
-
-        non_coding_gtf = extract_non_coding_introns(args.annotation_gp)
+                dummy_gtf = None
 
         cmd = ['homGeneMapping',
                '--halfile={}'.format(args.hal),
@@ -58,9 +65,9 @@ def hgm(args):
                '--cpu={}'.format(args.num_cpu)]
         tools.procOps.run_proc(cmd, stdout='/dev/null')
 
-        if fake_gtf is not None:
-            os.remove(fake_gtf)
-        os.remove(non_coding_gtf)
+    os.remove(non_coding_gff)
+    if dummy_gtf is not None:
+        os.remove(dummy_gtf)
 
 
 def extract_non_coding_introns(annotation_gp):
@@ -117,7 +124,7 @@ def parse_hgm_gtf(hgm_out):
         for aln_id, hgm_info in d[gene_id].iteritems():
             tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
             rnaseq_vector = ','.join(map(str, [x.count('E') for x in hgm_info]))
-            annotation_vector = ','.join(map(str, [x.count('M') for x in hgm_info]))
+            annotation_vector = ','.join(map(str, [sum([x.count('M'), x.count('N')]) for x in hgm_info]))
             dd.append([gene_id, tx_id, aln_id, rnaseq_vector, annotation_vector])
 
     df = pd.DataFrame(dd)
