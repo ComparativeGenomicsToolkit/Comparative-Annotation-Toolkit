@@ -152,27 +152,28 @@ class HgmColumns(object):
     GeneId = Column(Text, primary_key=True)
     TranscriptId = Column(Text, primary_key=True)
     AlignmentId = Column(Text, primary_key=True)
-    IntronVector = Column(Text)
+    RnaSeqSupportIntronVector = Column(Text)
+    AnnotationSupportIntronVector = Column(Text)
 
 
 class TmIntronSupport(HgmColumns, Base):
     """Table for intron support of transMap transcripts from homGeneMapping"""
-    __tablename__ = 'transMap_HgmIntronVector'
+    __tablename__ = 'transMap_Hgm'
 
 
 class AugTmIntronSupport(HgmColumns, Base):
     """Table for intron support of AugustusTM transcripts from homGeneMapping"""
-    __tablename__ = 'augTM_HgmIntronVector'
+    __tablename__ = 'augTM_Hgm'
 
 
 class AugTmrIntronSupport(HgmColumns, Base):
     """Table for intron support of AugustusTMR transcripts from homGeneMapping"""
-    __tablename__ = 'augTMR_HgmIntronVector'
+    __tablename__ = 'augTMR_Hgm'
 
 
 class AugCgpIntronSupport(HgmColumns, Base):
     """Table for intron support of AugustusCGP transcripts from homGeneMapping"""
-    __tablename__ = 'augCGP_HgmIntronVector'
+    __tablename__ = 'augCGP_Hgm'
 
 
 ###
