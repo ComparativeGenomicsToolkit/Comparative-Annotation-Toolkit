@@ -131,14 +131,14 @@ def resolve_paralogs(updated_aln_eval_df):
 
     1. If only one paralog is more likely under the ortholog model, discard the others.
     2. If more than one paralog are more likely under the ortholog model, or we were unable to fit a model, resolve
-       based on a heuristic combination of synteny score and alignment badness.
-       score: 0.10 * coverage + 0.65 * (1 - badness) + 0.25 * (synteny / 6)
+       based on a heuristic combination of synteny score and alignment identity.
+       score: 0.10 * coverage + 0.65 * identity + 0.25 * (synteny / 6)
 
     :param updated_aln_eval_df: DataFrame produced by fit_distributions()
     :return: tuple of (metrics_dict, filtered DataFrame)
     """
     def score_aln(s):
-        return 0.10 * s.TransMapCoverage + 0.65 * (1 - s.TransMapBadness) + 0.25 * (1.0 * s.Synteny / 6)
+        return 0.10 * s.TransMapCoverage + 0.65 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
 
     def apply_label(s):
         return s.TranscriptClass if s.ParalogStatus != 'NotConfident' else 'Failing'
@@ -185,11 +185,10 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
     if you have a high quality assembly, but may be problematic for highly fragmented assemblies.
 
     For each gene, if transcripts on that gene are on multiple sequences, a consensus finding process is performed.
-    For each chromosome a gene maps to, find the weighted average of:
-        0.15 * coverage + 0.65 * (1 - badness) + 0.25 * (synteny / 6)
-    Pick the chromosome with the highest value of this metric.
+    For each chromosome a gene maps to, calculate the same synteny metric in paralog resolution, and then find
+    the chromosome with the highest average metric.
 
-    If the gene biotype is protein_coding, only count coding transcripts.
+    First look only at transcripts which match the gene biotype.
 
     :param paralog_filtered_df: DataFrame produced by resolve_paralogs()
     :param tx_dict: Dictionary mapping alignment IDs to GenePredTranscript objects.
@@ -202,7 +201,7 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
         return gene_biotypes[0]
 
     def chrom_metric(chroms, rec):
-        """finds the sum of of (synteny + 1) * distance for each chrom in chroms"""
+        """Finds the average score for each chromosome scored"""
         r = {}
         tot = len(rec)
         for chrom, vals in chroms.iteritems():
@@ -210,27 +209,20 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
         return r
 
     def score_aln(s):
-        """scores an alignment based on badness, distance and synteny"""
-        return 0.15 * s.TransMapCoverage + 0.65 * (1 - s.TransMapBadness) + 0.25 * (1.0 * s.Synteny / 6)
+        """scores an alignment based on identity, distance and synteny"""
+        return 0.10 * s.TransMapCoverage + 0.65 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
 
-    def find_coding_chromosomes(rec):
-        """create a mapping of genome sequence names to associated protein coding alignment ids and synteny scores"""
+    def find_chromosomes(rec, gene_biotype=None):
+        """create a mapping of genome sequence names to associated alignment ids and synteny scores"""
         chroms = collections.defaultdict(list)
         for _, s in rec.iterrows():
-            if s.TranscriptBiotype != 'protein_coding':
+            if gene_biotype is not None and s.TranscriptBiotype != gene_biotype:
                 continue
             chroms[tx_dict[s.AlignmentId].chromosome].append([s.AlignmentId, score_aln(s)])
         return chroms
 
-    def find_chromosomes(rec):
-        """create a mapping of genome sequence names to associated alignment ids and synteny scores"""
-        chroms = collections.defaultdict(list)
-        for _, s in rec.iterrows():
-            chroms[tx_dict[s.AlignmentId].chromosome].append([s.AlignmentId, score_aln(s)])
-        return chroms
-
     def find_best_chroms(chroms):
-        """finds the best chrom in the chroms dict based on the lowest chrom_metric score"""
+        """finds the best chrom in the chroms dict based on the highest score score"""
         chroms = chrom_metric(chroms, rec)
         s = sorted(chroms.iteritems(), key=lambda (chrom, val): val)
         best_val = s[0][1]
@@ -253,7 +245,7 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
     for gene, rec in paralog_filtered_df.groupby('GeneId'):
         gene_biotype = extract_gene_biotype(rec)
         if gene_biotype == 'protein_coding':
-            chroms = find_coding_chromosomes(rec)
+            chroms = find_chromosomes(rec, gene_biotype)
             if len(chroms) == 0:  # there may be an edge case where a protein coding gene has no coding transcripts
                 chroms = find_chromosomes(rec)
         else:
