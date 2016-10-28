@@ -209,10 +209,6 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
     """
     Loads the intron vector table output by the homGeneMapping module. Returns a DataFrame with
     """
-    def split_intron_string(s, col):
-        """Intron vector is stored as a comma separated string. Turn this into a list."""
-        return map(int, s[col].split(','))
-
     def reduce_intron_vectors(s, coding):
         """Reduce the intron vector list, dealing with coding transcripts"""
         if coding is False:
@@ -246,16 +242,16 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
     intron_df = pd.concat(intron_dfs)
     intron_df = pd.merge(intron_df, ref_df, on=['GeneId', 'TranscriptId'], how='left')
     # start calculating support levels for consensus finding
-    intron_df['RnaSeqSupportIntronVector'] = intron_df.apply(split_intron_string, col='RnaSeqSupportIntronVector',
-                                                             axis=1)
-    intron_df['AnnotationSupportIntronVector'] = intron_df.apply(split_intron_string,
-                                                                 col='AnnotationSupportIntronVector', axis=1)
+    intron_df['RnaSeqSupportIntronVector'] = [map(int, s.RnaSeqSupportIntronVector.split(','))
+                                              for _, s in intron_df.iterrows()]
+    intron_df['AnnotationSupportIntronVector'] = [map(int, s.AnnotationSupportIntronVector.split(','))
+                                                  for _, s in intron_df.iterrows()]
     intron_df['NumIntrons'] = [len(tx_dict[tx].intron_intervals) for tx in intron_df.AlignmentId]
     intron_df['NumCodingIntrons'] = intron_df.apply(calculate_coding_introns, axis=1)
     intron_df['PercentIntronsSupported'] = intron_df.apply(reduce_intron_vectors, coding=False, axis=1)
     intron_df['PercentCodingIntronsSupported'] = intron_df.apply(reduce_intron_vectors, coding=True, axis=1)
     # we don't carry along transcript ID because it will conflict with CGP transcript IDs
-    return intron_df[['AlignmentId', 'GeneId', 'RnaSeqSupportIntronVector',
+    return intron_df[['AlignmentId', 'GeneId', 'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector',
                       'PercentIntronsSupported', 'PercentCodingIntronsSupported', 'NumIntrons']]
 
 
@@ -308,7 +304,12 @@ def load_metrics_evaluations(db_path, transcript_modes, ref_df, tm_eval, coding_
     ref_merged = pd.merge(filtered_df, ref_df, on=['GeneId', 'TranscriptId'], how='left', suffixes=['_Tgt', '_Ref'])
 
     # slice out the tm_eval columns we need to make this easier
-    tm_eval_subset = tm_eval[['TranscriptId', 'ParalogStatus', 'GeneAlternateContigs', 'TranscriptClass', 'Paralogy']]
+    # we may not have GeneAlternateContigs if --resolve-split-genes was not set.
+    try:
+        tm_eval_subset = tm_eval[['TranscriptId', 'ParalogStatus', 'GeneAlternateContigs',
+                                  'TranscriptClass', 'Paralogy']]
+    except KeyError:
+        tm_eval_subset = tm_eval[['TranscriptId', 'ParalogStatus', 'TranscriptClass', 'Paralogy']]
     # we use a left outer join because of CGP transcripts
     merged_df = pd.merge(ref_merged, tm_eval_subset, on='TranscriptId', how='left')
 
@@ -346,7 +347,8 @@ def score_coding_df(merged_df, has_rnaseq_data):
     """
     def evaluation_score(s):
         ifs = s.InFrameStop == 1
-        indel = s.CodingDeletion == 0 or s.CodingInsertion == 0
+        # coding indel data may be missing if we have zero calls. Happens in test data.
+        indel = s.get('CodingDeletion', 0) == 0 or s.get('CodingInsertion', 0) == 0
         start_penalty = 1 if s.StartCodon_Tgt == 0 and s.StartCodon_Ref == 1 else 0
         stop_penalty = 1 if s.StopCodon_Tgt == 0 and s.StopCodon_Ref == 1 else 0
         # using bool -> integer implicit casting here
@@ -418,6 +420,8 @@ def score_non_coding_df(tm_eval, intron_df):
         return s.TranscriptClass
 
     df = tm_eval[tm_eval.TranscriptBiotype != 'protein_coding']
+    if len(df) == 0:
+        return df  # some annotations may have no protein coding transcripts
     # merge in intron support data, if we have it
     if intron_df is not None:
         # left outer join to keep transcripts not in intron dict (single exon)
@@ -478,7 +482,7 @@ def incorporate_tx(best_rows, gene_id, metrics, failed_gene):
         assert best_series.ParalogStatus is not None
         d['paralogy'] = best_series.Paralogy
         d['paralog_status'] = best_series.ParalogStatus
-    if best_series.GeneAlternateContigs is not None:
+    if 'GeneAlternateContigs' in best_series and best_series.GeneAlternateContigs is not None:
         d['gene_alterate_contigs'] = best_series.GeneAlternateContigs
     if best_series.GeneName is not None:
         d['source_gene_common_name'] = best_series.GeneName

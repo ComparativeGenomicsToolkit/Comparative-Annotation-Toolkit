@@ -242,9 +242,21 @@ def fail_rate_plot(consensus_data, ordered_genomes, biotypes, gene_fail_plot_tgt
         ylabel = 'Number of {}s'.format(mode.lower())
         fail_df = json_biotype_counter_to_df(consensus_data, '{} Failed'.format(mode))
         missing_df = json_biotype_counter_to_df(consensus_data, '{} Missing'.format(mode))
-        fail_df.columns = ['biotype', '{} Failed'.format(mode), 'genome']
-        missing_df.columns = ['biotype', '{} Missing'.format(mode), 'genome']
+        try:
+            fail_df.columns = ['biotype', '{} Failed'.format(mode), 'genome']
+        except ValueError:  # we have nothing here
+            fail_df = pd.DataFrame([[biotype, 0, genome] for biotype, genome in itertools.product(biotypes,
+                                                                                                  ordered_genomes)])
+            fail_df.columns = ['biotype', '{} Failed'.format(mode), 'genome']
+        try:
+            missing_df.columns = ['biotype', '{} Missing'.format(mode), 'genome']
+        except ValueError:  # we have nothing here
+            missing_df = pd.DataFrame([[biotype, 0, genome] for biotype, genome in itertools.product(biotypes,
+                                                                                                     ordered_genomes)])
+            missing_df.columns = ['biotype', '{} Missing'.format(mode), 'genome']
         df = pd.merge(fail_df, missing_df, on=['genome', 'biotype'])
+        if len(df) == 0:
+            continue
         df.genome = pd.Categorical(df.genome, ordered_genomes, ordered=True)
         with tgt.open('w') as outf, PdfPages(outf) as pdf:
             tot_df = df.groupby(by=['genome']).aggregate(np.sum).transpose()
