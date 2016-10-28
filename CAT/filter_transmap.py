@@ -50,7 +50,7 @@ def filter_transmap(filter_tm_args, out_target):
             outf.write('\t'.join(tx.get_gene_pred()) + '\n')
 
     # produced update df
-    updated_df = create_new_table(paralog_filtered_df)
+    updated_df = create_new_table(paralog_filtered_df, filter_tm_args.resolve_split_genes)
 
     return metrics, updated_df, fit_df
 
@@ -268,14 +268,16 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
     return split_gene_metrics, final_df
 
 
-def create_new_table(paralog_filtered_df):
+def create_new_table(paralog_filtered_df, resolve_split_genes_flag):
     """
     Clean up this dataframe to write to SQL. I am not using the long form here because it is too hard to reload when
     the columns are not numeric.
     :param paralog_filtered_df: output from either resolve_split_genes() if flag set else resolve_paralogs()
     :return: dataframe to be written to sql
     """
-    df = paralog_filtered_df[['GeneId', 'TranscriptId', 'AlignmentId',
-                              'TranscriptClass', 'ParalogStatus', 'GeneAlternateContigs']]
+    cols = ['GeneId', 'TranscriptId', 'AlignmentId', 'TranscriptClass', 'ParalogStatus']
+    if resolve_split_genes_flag is True:
+        cols.append('GeneAlternateContigs')
+    df = paralog_filtered_df[cols]
     return df.set_index(['TranscriptId', 'AlignmentId'])
 
