@@ -907,11 +907,13 @@ class Hgm(PipelineWrapperTask):
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
         args = argparse.Namespace()
         args.genomes = tgt_genomes
+        args.ref_genome = pipeline_args.ref_genome
         args.hal = pipeline_args.hal
         args.in_gtf = gtf_in_files
         args.gtf_out_dir = base_dir
         args.gtf_out_files = {genome: os.path.join(base_dir, genome + '.gtf') for genome in tgt_genomes}
         args.hints_db = pipeline_args.augustus_hints_db
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         # calculate the number of cores a hgm run should use
         # this is sort of a hack, but the reality is that halLiftover uses a fraction of a CPU most of the time
         max_cpu = min(pipeline_args.max_cores, multiprocessing.cpu_count())
@@ -923,6 +925,8 @@ class Hgm(PipelineWrapperTask):
             raise ToolMissingException('auxiliary program homGeneMapping from the Augustus package not in global path.')
         if not tools.misc.is_exec('halLiftover'):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
+        if not tools.misc.is_exec('bedtools'):
+            raise ToolMissingException('bedtools is required for the homGeneMapping module.')
         if pipeline_args.augustus_hints_db is None:
             raise InvalidInputException('Cannot run homGeneMapping module without a hints database.')
         if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db) is False:

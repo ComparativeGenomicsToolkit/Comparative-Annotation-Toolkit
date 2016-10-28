@@ -168,7 +168,7 @@ def resolve_paralogs(updated_aln_eval_df):
                 paralog_metrics[biotype]['Alignments discarded'] += 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'Confident'])
             else:
-                paralog_metrics[biotype]['Arbitarily resolved'] += 1
+                paralog_metrics[biotype]['Arbitrarily resolved'] += 1
                 paralog_metrics[biotype]['Alignments discarded'] += 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'NotConfident'])
 
