@@ -545,22 +545,28 @@ def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, commo
     cgp_tx_dict = {}
     for cgp_tx, (rnaseq_vector, annotation_vector) in cgp_introns.iteritems():
         cgp_tx_obj = tx_dict[cgp_tx]
-        for interval, rnaseq_score, annotation_score in zip(*[cgp_tx_obj.intron_intervals,
-                                                              rnaseq_vector, annotation_vector]):
-            if rnaseq_score > 0 and interval not in existing_splices:
-                if annotation_score > 0:
-                    metrics['Novel isoforms'] += 1
-                    tx_class = 'Novel'
-                else:
-                    tx_class = 'Failing' if failed_gene else 'Passing'
-                metrics['Transcript Modes']['augCGP'] += 1
-                cgp_tx_dict[cgp_tx] = {'transcript_class': tx_class, 'source_gene': gene_id,
-                                       'failed_gene': failed_gene, 'transcript_mode': 'augCGP',
-                                       'transcript_biotype': 'unknown_likely_coding',
-                                       'gene_biotype': 'protein_coding'}  # only assigned to coding genes
-                common_name = common_name_map[gene_id]
-                if common_name != gene_id:
-                    cgp_tx_dict[cgp_tx]['source_gene_common_name'] = common_name
+        score_iter = zip(*[cgp_tx_obj.intron_intervals, rnaseq_vector, annotation_vector])
+        rnaseq_iter = zip(*[cgp_tx_obj.intron_intervals, rnaseq_vector])
+        # are any of these splices supported by RNA-seq and not annotated in the reference?
+        if any([r_score > 0 and a_score == 0 and i not in existing_splices for i, r_score, a_score in score_iter]):
+            metrics['Novel isoforms'] += 1
+            cgp_tx_dict[cgp_tx] = {'transcript_class': 'Novel', 'source_gene': gene_id,
+                                   'failed_gene': failed_gene, 'transcript_mode': 'augCGP',
+                                   'transcript_biotype': 'unknown_likely_coding',
+                                   'gene_biotype': 'protein_coding'}  # only assigned to coding genes
+            common_name = common_name_map[gene_id]
+            if common_name != gene_id:
+                cgp_tx_dict[cgp_tx]['source_gene_common_name'] = common_name
+        # are any of these splices supported by RNA-seq?
+        elif any([r_score > 0 and i not in existing_splices for i, r_score in rnaseq_iter]):
+            metrics['Transcript Modes']['augCGP'] += 1
+            cgp_tx_dict[cgp_tx] = {'transcript_class': 'Failing' if failed_gene else 'Passing', 'source_gene': gene_id,
+                                   'failed_gene': failed_gene, 'transcript_mode': 'augCGP',
+                                   'transcript_biotype': 'unknown_likely_coding',
+                                   'gene_biotype': 'protein_coding'}  # only assigned to coding genes
+            common_name = common_name_map[gene_id]
+            if common_name != gene_id:
+                cgp_tx_dict[cgp_tx]['source_gene_common_name'] = common_name
     return cgp_tx_dict
 
 
@@ -572,12 +578,15 @@ def deduplicate_consensus(consensus_dict, tx_dict, metrics):
     """
     def resolve_duplicate(tx_list, consensus_dict):
         biotype_txs = [tx for tx in tx_list if
-                       consensus_dict[tx].get('gene_biotype', None) == consensus_dict[tx].get('transcript_biotype', None)]
+                       consensus_dict[tx].get('gene_biotype', None) == consensus_dict[tx].get('transcript_biotype',
+                                                                                              None)]
         if len(biotype_txs) > 0:
-            sorted_scores = sorted([[tx, consensus_dict[tx].get('score', 0)]for tx in biotype_txs], key=lambda (tx, s): -s)
+            sorted_scores = sorted([[tx, consensus_dict[tx].get('score', 0)] for tx in biotype_txs],
+                                   key=lambda (tx, s): -s)
             return sorted_scores[0][0]
         else:
-            sorted_scores = sorted([[tx, consensus_dict[tx].get('score', 0)]for tx in tx_list], key=lambda (tx, s): -s)
+            sorted_scores = sorted([[tx, consensus_dict[tx].get('score', 0)] for tx in tx_list],
+                                   key=lambda (tx, s): -s)
             return sorted_scores[0][0]
 
     def add_duplicate_field(best_tx, tx_list, consensus_dict, deduplicated_consensus):

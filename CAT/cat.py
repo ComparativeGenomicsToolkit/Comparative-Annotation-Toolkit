@@ -1058,7 +1058,7 @@ class AlignTranscriptDriverTask(ToilTask):
         yield self.clone(ReferenceFiles)
 
     def run(self):
-        logger.info('Launching Align Transcript toil pipeline for {}.'.format(self.genome))
+        logger.info('Launching Align Transcript toil pipeline for {} using {}.'.format(self.genome, self.batchSystem))
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'transcript_alignment', self.genome)
         toil_options = self.prepare_toil_options(toil_work_dir)
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
