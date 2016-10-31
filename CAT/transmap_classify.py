@@ -58,7 +58,6 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
         r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', aln.coverage])
         r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', aln.identity])
-        r.append([aln_id, tx_id, gene_id, 'TransMapBadness', aln.badness])
         r.append([aln_id, tx_id, gene_id, 'TransMapPercentOriginalIntrons', percent_original_introns(aln, tx, ref_aln)])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)

@@ -4,6 +4,7 @@ Resolves genes that have transcripts split across chromosomes based on a consens
 combines information from both synteny and phylogenetic distance to determine which contig is likely the parental
 contig. This should be used carefully on genomes that are highly fragmented.
 """
+import logging
 import collections
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ import tools.transcripts
 import tools.mathOps
 
 pd.options.mode.chained_assignment = None
+logger = logging.getLogger(__name__)
 
 
 def filter_transmap(filter_tm_args, out_target):
@@ -29,13 +31,13 @@ def filter_transmap(filter_tm_args, out_target):
     tx_dict = tools.transcripts.get_gene_pred_dict(filter_tm_args.tm_gp)
 
     # fit lognormal distributions to assign categories
-    updated_aln_eval_df, fit_df = fit_distributions(aln_eval_df, ref_df)
+    updated_aln_eval_df, fit_df = fit_distributions(aln_eval_df, ref_df, filter_tm_args.genome)
 
     # store metrics on filtering for plots. This will be written to disk for final plots
     metrics = {}
 
     # resolve paralogs
-    paralog_metrics, paralog_filtered_df = resolve_paralogs(updated_aln_eval_df)
+    paralog_metrics, paralog_filtered_df = resolve_paralogs(updated_aln_eval_df, filter_tm_args.genome)
     metrics['Paralogy'] = paralog_metrics
 
     # resolve split genes, if user requested
@@ -55,7 +57,7 @@ def filter_transmap(filter_tm_args, out_target):
     return metrics, updated_df, fit_df
 
 
-def fit_distributions(aln_eval_df, ref_df):
+def fit_distributions(aln_eval_df, ref_df, genome):
     """
     Fits a mixture model of 2 lognormals to the aln_eval_df identity based on whether the alignments are 1-1 or 1-many
     This is done for every biotype. In the end, a new column is added to the aln_eval_df that says whether a alignment
@@ -78,18 +80,23 @@ def fit_distributions(aln_eval_df, ref_df):
         start, stop = norm.interval(0.99, mu, sigma)
         return np.floor(start), np.ceil(stop)
 
-    def find_cutoff(d):
+    def find_cutoff(d, biotype):
         """Locates the identity cutoff point"""
         unique_start, unique_stop = find_xvals(*d.distributions[0].parameters)
         para_start, para_stop = find_xvals(*d.distributions[1].parameters)
         unique_weight, para_weight = np.exp(d.weights)
-        xvals = np.linspace(min(unique_start, para_start), max(unique_stop, para_stop), 1000)
+        xvals = np.linspace(min(unique_start, para_start), max(unique_stop, para_stop), 5000)
         paravals = para_weight * np.array([norm.pdf(x, *d.distributions[1].parameters) for x in xvals])
         uniquevals = unique_weight * np.array([norm.pdf(x, *d.distributions[0].parameters) for x in xvals])
-        x = xvals[np.argwhere(np.diff(np.sign(uniquevals - paravals)) != 0).reshape(-1)[0]]
+        try:
+            x = xvals[np.argwhere(np.diff(np.sign(uniquevals - paravals)) != 0).reshape(-1)[0]]
+        except IndexError:
+            logger.warning('Unable to get a good identity fit for {} on {}. '
+                           'Cannot establish a cutoff. Using 0.'.format(biotype, genome))
+            return 0
         return reverse_transform(x)
 
-    biotype_df = pd.merge(aln_eval_df, ref_df, on=['TranscriptId'])
+    biotype_df = pd.merge(aln_eval_df, ref_df, on='TranscriptId')
     r = []  # will hold the labels
     identity_cutoffs = []
 
@@ -98,13 +105,17 @@ def fit_distributions(aln_eval_df, ref_df):
         biotype_not_unique = df[df.Paralogy != 1]
         if len(biotype_not_unique) == 0:
             # No paralogous mappings implies all passing
+            logger.info('No paralogous mappings for {} on {}.'.format(biotype, genome))
             r.extend([[aln_id, 'Passing'] for aln_id in df.AlignmentId])
             identity_cutoffs.append([biotype, None])
         elif len(biotype_unique) == 0:
             # Only paralogous mappings implies all failing
+            logger.info('Only paralogous mappings for {} on {}.'.format(biotype, genome))
             r.extend([[aln_id, 'Failing'] for aln_id in df.AlignmentId])
             identity_cutoffs.append([biotype, None])
         else:
+            logger.info('{:,} paralogous mappings and {:,} 1-1 orthologous mappings'
+                        ' for {} on {}.'.format(len(biotype_not_unique), len(biotype_unique), biotype, genome))
             unique_transformed = transform_data(biotype_unique.TransMapIdentity)
             para_transformed = transform_data(biotype_not_unique.TransMapIdentity)
             combined = pd.concat([unique_transformed, para_transformed])
@@ -113,9 +124,13 @@ def fit_distributions(aln_eval_df, ref_df):
             d = GeneralMixtureModel([NormalDistribution(unique_mu, unique_sigma),
                                      NormalDistribution(para_mu, para_sigma)])
             _ = d.fit(combined)
-            cutoff = find_cutoff(d)
+            cutoff = find_cutoff(d, biotype)
             identity_cutoffs.append([biotype, cutoff])
             labels = ['Passing' if ident >= cutoff else 'Failing' for ident in df.TransMapIdentity]
+            num_pass = labels.count('Passing')
+            num_fail = labels.count('Failing')
+            logger.info('Established a {:.2f}% identity boundary for {} on {} resulting in '
+                        '{} passing and {} failing alignments.'.format(cutoff, biotype, genome, num_pass, num_fail))
             r.extend([[aln_id, label] for aln_id, label in zip(*[df.AlignmentId, labels])])
 
     # turn r into a dataframe
@@ -126,7 +141,7 @@ def fit_distributions(aln_eval_df, ref_df):
     return pd.merge(biotype_df, r_df, on='AlignmentId'), ident_df
 
 
-def resolve_paralogs(updated_aln_eval_df):
+def resolve_paralogs(updated_aln_eval_df, genome):
     """
     Resolves paralogs based on likelihood to come from the two lognormal distributions.
 
@@ -169,6 +184,12 @@ def resolve_paralogs(updated_aln_eval_df):
                 paralog_metrics[biotype]['Alignments discarded'] += 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'NotConfident'])
 
+    for biotype in set(updated_aln_eval_df.TranscriptBiotype):
+        tot = paralog_metrics[biotype]['Synteny heuristic'] + paralog_metrics[biotype]['Model prediction'] + \
+              paralog_metrics[biotype]['Arbitrarily resolved']
+        logger.info('Discarded {:,} alignments for {} on {} after paralog resolution. '
+                    '{:,} transcripts remain.'.format(paralog_metrics[biotype]['Alignments discarded'],
+                                                      biotype, genome, tot))
     status_df = pd.DataFrame(paralog_status)
     status_df.columns = ['AlignmentId', 'ParalogStatus']
     merged = pd.merge(status_df, updated_aln_eval_df, on='AlignmentId')  # this filters out paralogous alignments

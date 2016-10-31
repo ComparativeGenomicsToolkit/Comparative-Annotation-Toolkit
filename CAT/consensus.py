@@ -430,8 +430,7 @@ def score_non_coding_df(tm_eval, intron_df):
 
     df['ConsensusScore'] = df.apply(non_coding_consensus_metric, axis=1)
     # rename the identity/coverage columns to match the coding
-    df = df.rename(columns={'TransMapIdentity': 'AlnIdentity', 'TransMapCoverage': 'AlnCoverage',
-                            'TransMapBadness': 'AlnBadness'})
+    df = df.rename(columns={'TransMapIdentity': 'AlnIdentity', 'TransMapCoverage': 'AlnCoverage'})
     df['AlnMode'] = ['mRNA'] * len(df)
     return df
 

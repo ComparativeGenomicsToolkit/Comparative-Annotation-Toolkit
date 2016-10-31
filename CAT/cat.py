@@ -610,6 +610,7 @@ class FilterTransMap(PipelineWrapperTask):
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'filtered_transMap')
         args = argparse.Namespace()
+        args.genome = genome
         args.tm_gp = TransMap.get_args(pipeline_args, genome).tm_gp
         args.filtered_tm_gp = os.path.join(base_dir, genome + '.filtered.gp')
         args.filtered_tm_gtf = os.path.join(base_dir, genome + '.filtered.gtf')
