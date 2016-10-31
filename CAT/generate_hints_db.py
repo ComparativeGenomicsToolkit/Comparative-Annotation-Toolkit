@@ -100,7 +100,7 @@ class GenomeFlatFasta(HintsDbTask):
     hal = luigi.Parameter()
 
     def output(self):
-        path = os.path.abspath(os.path.join(self.work_dir, self.genome + '.fasta'))
+        path = os.path.abspath(os.path.join(self.work_dir, self.genome + '.fa'))
         tools.fileOps.ensure_file_dir(path)
         return luigi.LocalTarget(path)
 
