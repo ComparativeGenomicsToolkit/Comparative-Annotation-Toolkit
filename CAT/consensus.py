@@ -298,7 +298,7 @@ def load_metrics_evaluations(db_path, transcript_modes, ref_df, tm_eval, coding_
     df = pd.concat(dfs)
 
     # coverage filter, much higher than transMap because this is for consensus
-    filtered_df = df[(df.AlnCoverage > 0.5) & (df.AlnIdentity >= coding_cutoff)]
+    filtered_df = df[(df.AlnCoverage > 0.4) & (df.AlnIdentity >= coding_cutoff)]
 
     # bring in biotype and gene information from the ref database
     ref_merged = pd.merge(filtered_df, ref_df, on=['GeneId', 'TranscriptId'], how='left', suffixes=['_Tgt', '_Ref'])
@@ -419,7 +419,7 @@ def score_non_coding_df(tm_eval, intron_df):
             return 'Excellent'
         return s.TranscriptClass
 
-    df = tm_eval[tm_eval.TranscriptBiotype != 'protein_coding']
+    df = tm_eval[(tm_eval.TranscriptBiotype != 'protein_coding') & (tm_eval.TransMapCoverage > 0.4)]
     if len(df) == 0:
         return df  # some annotations may have no protein coding transcripts
     # merge in intron support data, if we have it
