@@ -167,7 +167,8 @@ def generate_consensus(args, genome):
                     gene_consensus_dict[aln_id] = d
         if args.augustus_cgp is True:
             gene_consensus_dict.update(find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id,
-                                                              common_name_map, metrics, failed_gene))
+                                                              common_name_map, metrics, failed_gene,
+                                                              args.cgp_num_exons))
         consensus_dict.update(gene_consensus_dict)
 
     # perform final filtering steps
@@ -529,10 +530,12 @@ def slice_df(df, ix):
         return pd.DataFrame()
 
 
-def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, common_name_map, metrics, failed_gene):
+def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, common_name_map, metrics, failed_gene,
+                           exon_cutoff):
     """
     Finds novel splice junctions in CGP transcripts. If there are any, these get included as a novel isoform.
     """
+    exon_cutoff = max(exon_cutoff, 1)
     existing_splices = set()
     for consensus_tx in gene_consensus_dict:
         existing_splices.update(tx_dict[consensus_tx].intron_intervals)
@@ -541,7 +544,7 @@ def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, commo
     # this will collapse the duplicate vectors into one
     cgp_df = gene_df[tools.nameConversions.aln_id_is_cgp(gene_df.AlignmentId.str)]
     cgp_introns = {s.AlignmentId: [s.RnaSeqSupportIntronVector, s.AnnotationSupportIntronVector]
-                   for _, s in cgp_df.iterrows()}
+                   for _, s in cgp_df.iterrows() if len(tx_dict[s.AlignmentId].intron_intervals) > exon_cutoff}
     cgp_tx_dict = {}
     for cgp_tx, (rnaseq_vector, annotation_vector) in cgp_introns.iteritems():
         cgp_tx_obj = tx_dict[cgp_tx]
