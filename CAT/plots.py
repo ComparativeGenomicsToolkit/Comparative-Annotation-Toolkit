@@ -147,7 +147,8 @@ def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_ma
         df = dict_to_df_with_biotype(tm_metrics[mode], transcript_biotype_map)
         for genome in ordered_genomes:
             df[genome] = 100 * df[genome]
-        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df)
+        xlim = min(df.min(numeric_only=True, skipna=True)), max(df.max(numeric_only=True, skipna=True))
+        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, xlim=xlim)
 
 
 def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_tgt, identity_tgt, score_tgt):
@@ -161,7 +162,8 @@ def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_t
             xlabel = None
         else:
             xlabel = 'Consensus score'
-        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome', xlabel=xlabel)
+        xlim = df[mode].min(skipna=True), df[mode].max(skipna=True)
+        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome', xlim=xlim, xlabel=xlabel)
 
 
 def tm_para_plot(para_data, ordered_genomes, biotypes, transcript_biotype_map, para_tgt):
@@ -362,18 +364,18 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
 ###
 
 
-def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xlabel=None):
+def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xlim=None, xlabel=None):
     """plots for coverage and identity. paired boxplot/violinplot format"""
     if xlabel is None:
         xlabel = 'Percent {}'.format(mode)
     with tgt.open('w') as outf, PdfPages(outf) as pdf:
         title = 'Overall {}'.format(mode)
-        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, pdf, x=x, y=y)
+        generate_boxplot_violin_pair(df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=xlim)
         for biotype in biotypes:
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
                 title = '{} for biotype {}'.format(mode, biotype)
-                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, pdf, x=x, y=y)
+                generate_boxplot_violin_pair(biotype_df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=xlim)
 
 
 ###
@@ -403,7 +405,8 @@ def generic_barplot(data, pdf, xlabel, ylabel, title, row_order=None, x=None, y=
     return g
 
 
-def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, pdf, hue=None, x=None, y=None, close=True):
+def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, pdf, hue=None, x=None, y=None, close=True,
+                                 xlim=(0, 100)):
     """not so generic function that specifically produces a paired boxplot/violinplot"""
     fig, (ax1, ax2) = plt.subplots(ncols=2, sharex=True)
     g1 = sns.boxplot(data=data, x=x, y=y, hue=hue, order=ordered_genomes, palette=choose_palette(ordered_genomes),
@@ -414,6 +417,8 @@ def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, pdf, hue=
     ax1.figure.suptitle(title)
     ax1.set_xlabel(xlabel)
     ax2.set_xlabel(xlabel)
+    ax1.set_xlim(xlim)
+    ax2.set_xlim(xlim)
     sns.despine(trim=True, right=True, top=True, ax=ax1)
     sns.despine(trim=True, left=True, right=True, top=True, ax=ax2)
     ax2.set_ylabel('')
