@@ -1241,7 +1241,6 @@ class Plots(PipelineTask):
         # plots derived from transcript alignment / consensus finding
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
         args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))
-        args.consensus_score = luigi.LocalTarget(os.path.join(base_dir, 'consensus_score.pdf'))
         args.completeness = luigi.LocalTarget(os.path.join(base_dir, 'completeness.pdf'))
         args.categories = luigi.LocalTarget(os.path.join(base_dir, 'transcript_categories.pdf'))
         args.gene_failure = luigi.LocalTarget(os.path.join(base_dir, 'gene_failure.pdf'))

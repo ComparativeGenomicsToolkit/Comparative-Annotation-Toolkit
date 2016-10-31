@@ -105,7 +105,6 @@ def generate_consensus(args, genome):
                'Gene Missing': collections.Counter(),
                'Duplicate transcripts': collections.Counter(),
                'Discarded by strand resolution': 0,
-               'Novel isoforms': 0,
                'Transcript Categories': collections.defaultdict(lambda: collections.Counter()),
                'Coverage': collections.defaultdict(list),
                'Identity': collections.defaultdict(list),
@@ -299,7 +298,7 @@ def load_metrics_evaluations(db_path, transcript_modes, ref_df, tm_eval, coding_
     df = pd.concat(dfs)
 
     # coverage filter, much higher than transMap because this is for consensus
-    filtered_df = df[(df.AlnCoverage > 0.4) & (df.AlnIdentity >= coding_cutoff)]
+    filtered_df = df[(df.AlnCoverage > 0.5) & (df.AlnIdentity >= coding_cutoff)]
 
     # bring in biotype and gene information from the ref database
     ref_merged = pd.merge(filtered_df, ref_df, on=['GeneId', 'TranscriptId'], how='left', suffixes=['_Tgt', '_Ref'])
@@ -444,7 +443,7 @@ def find_novel_transcripts(intron_df, tx_dict, metrics, num_introns, splice_supp
     novel_df = intron_df[intron_df.AlignmentId.isin(novel_transcripts)]
     novel_df = novel_df[(novel_df.PercentIntronsSupported >= splice_support) & (novel_df.NumIntrons > num_introns)]
     novel_genes = set(novel_df.GeneId)
-    metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel transcripts': len(novel_df)}
+    metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel isoforms': 0}
     metrics['Transcript Modes']['augCGP'] += len(novel_df)
     consensus = {}
     for novel_tx in novel_df.AlignmentId:
@@ -552,7 +551,7 @@ def find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id, commo
         rnaseq_iter = zip(*[cgp_tx_obj.intron_intervals, rnaseq_vector])
         # are any of these splices supported by RNA-seq and not annotated in the reference?
         if any([r_score > 0 and a_score == 0 and i not in existing_splices for i, r_score, a_score in score_iter]):
-            metrics['Novel isoforms'] += 1
+            metrics['CGP']['Novel isoforms'] += 1
             cgp_tx_dict[cgp_tx] = {'transcript_class': 'Novel', 'source_gene': gene_id,
                                    'failed_gene': failed_gene, 'transcript_mode': 'augCGP',
                                    'transcript_biotype': 'unknown_likely_coding',

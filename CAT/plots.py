@@ -51,8 +51,7 @@ def generate_plots(args):
     tm_metrics_plot(tm_metrics, args.ordered_genomes, biotypes, transcript_biotype_map, args.tm_coverage,
                     args.tm_identity)
     tm_para_plot(para_data, args.ordered_genomes, biotypes, transcript_biotype_map, args.paralogy)
-    consensus_metrics_plot(consensus_data, args.ordered_genomes, biotypes, args.coverage, args.identity,
-                           args.consensus_score)
+    consensus_metrics_plot(consensus_data, args.ordered_genomes, biotypes, args.coverage, args.identity)
     consensus_splice_plot(consensus_data, args.ordered_genomes, biotypes, args.consensus_splice_support)
     fail_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.gene_failure, args.transcript_failure)
     category_plot(consensus_data, args.ordered_genomes, biotypes, args.categories)
@@ -108,6 +107,7 @@ def tm_filter_plots(tm_data, ordered_genomes, tgt, biotypes):
     df = pd.DataFrame.from_dict(data)
     df = df.transpose().reset_index()
     df.columns = ['genome', 'biotype'] + list(df.columns[2:])
+    df['genome'] = pd.Categorical(df.genome, ordered_genomes, ordered=True)
     with tgt.open('w') as outf, PdfPages(outf) as pdf:
         combined_df = df.groupby('genome').apply(sum).transpose()
         combined_df.columns = ordered_genomes
@@ -151,26 +151,22 @@ def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_ma
         cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, xlim=xlim)
 
 
-def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_tgt, identity_tgt, score_tgt):
+def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_tgt, identity_tgt):
     """plots for consensus coverage, identity, score"""
-    cons_iter = zip(*[['Coverage', 'Identity', 'Consensus Score'],
-                      [coverage_tgt, identity_tgt, score_tgt]])
+    cons_iter = zip(*[['Coverage', 'Identity'],
+                      [coverage_tgt, identity_tgt]])
     for mode, tgt in cons_iter:
         df = json_to_df_with_biotype(consensus_data, mode)
-        if mode != 'Consensus Score':
-            df[mode] = 100 * df[mode]
-            xlabel = None
-        else:
-            xlabel = 'Consensus score'
+        df[mode] = 100 * df[mode]
         xlim = df[mode].min(skipna=True), df[mode].max(skipna=True)
-        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome', xlim=xlim, xlabel=xlabel)
+        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome', xlim=xlim)
 
 
 def tm_para_plot(para_data, ordered_genomes, biotypes, transcript_biotype_map, para_tgt):
     """transMap paralogy plots"""
     def generate_hists(ordered_genomes, df):
-        hists = {genome: np.roll(np.histogram(df[genome].fillna(0), paralogy_bins)[0], -1)
-                 for genome in ordered_genomes}
+        hists = OrderedDict([genome, np.roll(np.histogram(df[genome].fillna(0), paralogy_bins)[0], -1)]
+                 for genome in ordered_genomes)
         hists_df = pd.DataFrame.from_dict(hists)
         return hists_df
 
@@ -304,13 +300,13 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
 def novel_genes_plot(consensus_data, ordered_genomes, novel_plot_tgt):
     with novel_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
         df = json_biotype_counter_to_df(consensus_data, 'CGP')
-        title = 'Novel genes/transcripts predicted by Augustus CGP'
-        g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', hue='CGP', xlabel='',
-                            ylabel='Number of transcripts/genes', row_order=ordered_genomes, title=title)
-        df = json_flat_to_df(consensus_data, 'Novel isoforms')
-        df.columns = ['genome', 'count']
+        title = 'Novel loci predicted by Augustus CGP'
+        gene_df = df[df['CGP'] == 'Novel genes']
+        g = generic_barplot(pdf=pdf, data=gene_df, x='genome', y='count', hue=None, xlabel='',
+                            ylabel='Number of genes', row_order=ordered_genomes, title=title)
+        tx_df = df[df['CGP'] == 'Novel isoforms']
         title = 'Transcripts predicted by Augustus CGP\nand assigned to comparative genes as novel isoforms'
-        g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', hue=None, xlabel='',
+        g = generic_barplot(pdf=pdf, data=tx_df, x='genome', y='count', hue=None, xlabel='',
                             ylabel='Number of transcripts',  row_order=ordered_genomes, title=title)
 
 
