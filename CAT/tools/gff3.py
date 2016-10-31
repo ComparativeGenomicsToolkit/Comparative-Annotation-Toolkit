@@ -12,9 +12,8 @@ import pandas as pd
 import urllib
 import copy
 import re
-import gzip
-import bz2
 import collections
+import fileOps
 from tools import PycbioException
 
 GFF3_HEADER = "##gff-version 3"
@@ -65,7 +64,7 @@ class Feature(object):
     """
 
     def __init__(self, seqname, source, type, start, end, score, strand,
-                 frame, attributes, gff3Set, lineNumber=None):
+                 frame, attributes, gff3Set, lineNumber=None, copy_attrs=False):
         """
         The attributes field is a dict of lists/tupes as attributes maybe
         multi-valued.
@@ -78,7 +77,10 @@ class Feature(object):
         self.score = score
         self.strand = strand
         self.frame = frame
-        self.attributes = copy.deepcopy(attributes)
+        if copy_attrs is True:
+            self.attributes = copy.deepcopy(attributes)
+        else:
+            self.attributes = attributes
         self.gff3Set = gff3Set
         self.lineNumber = lineNumber
         self.parents = set()
@@ -207,7 +209,7 @@ class Gff3Parser(object):
     fully test for conformance.
     """
 
-    def __init__(self, fileName):
+    def __init__(self, fileName, copy_attrs=False):
         """
         If fileName ends with .gz or .bz2, it will decompressed.  If fh is
         specified, then parse the already opened stream, with file name still
@@ -215,17 +217,13 @@ class Gff3Parser(object):
         """
         self.fileName = fileName
         self.lineNumber = 0
+        self.copy_attrs = copy_attrs
 
     def __open(self):
         """
         open input file, optionally with decompression
         """
-        if self.fileName.endswith(".gz"):
-            return gzip.open(self.fileName)
-        elif self.fileName.endswith(".bz2"):
-            return bz2.BZ2File(self.fileName)
-        else:
-            return open(self.fileName)
+        return fileOps.opengz(self.fileName)
 
     # parses `attr=val'; GFF3 spec is not very specific on the allowed values.
     SPLIT_ATTR_RE = re.compile("^([a-zA-Z][^=]*)=(.*)$")
@@ -243,7 +241,7 @@ class Gff3Parser(object):
         val = m.group(2)
         # Split by comma separate then unquote.  Commas in values must be
         # url encoded.
-        return (name, [urllib.unquote(v) for v in val.split(',')])
+        return name, [urllib.unquote(v) for v in val.split(',')]
 
     SPLIT_ATTR_COL_RE = re.compile("; *")
 
@@ -275,7 +273,7 @@ class Gff3Parser(object):
         feature = Feature(urllib.unquote(row[0]), urllib.unquote(row[1]),
                           urllib.unquote(row[2]),
                           int(row[3]), int(row[4]), row[5], row[6], row[7],
-                          self.__parseAttrs(row[8]), gff3Set, self.lineNumber)
+                          self.__parseAttrs(row[8]), gff3Set, self.lineNumber, self.copy_attrs)
         gff3Set.add(feature)
 
     # spaces or comment line
