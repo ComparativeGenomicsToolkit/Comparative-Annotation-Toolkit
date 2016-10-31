@@ -169,10 +169,11 @@ def run_blat_chunk(job, chunk, mode):
     tmp_ref = tools.fileOps.get_tmp_toil_file()
     tmp_tgt = tools.fileOps.get_tmp_toil_file()
     tmp_psl = tools.fileOps.get_tmp_toil_file()
+    tmp_filtered_psl = tools.fileOps.get_tmp_toil_file()
     results = []
     if mode == 'mRNA':
         cmd = ['blat', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
-    else:  # mode == CDS
+    else:  # mode == CDS. Filter these for problematic alignments that happen in edge cases
         cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         with open(tmp_ref, 'w') as tmp_ref_h:
@@ -180,7 +181,11 @@ def run_blat_chunk(job, chunk, mode):
         with open(tmp_tgt, 'w') as tmp_tgt_h:
             tools.bio.write_fasta(tmp_tgt_h, tx_id, tx_seq)
         tools.procOps.run_proc(cmd)
-        results.append(parse_blat(tmp_psl))
+        try:
+            tools.procOps.run_proc(['pslCheck', '-quiet', tmp_psl, '-pass={}'.format(tmp_filtered_psl)])
+        except tools.pipeline.ProcException:
+            pass
+        results.append(parse_blat(tmp_filtered_psl))
     return results
 
 

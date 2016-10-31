@@ -1021,6 +1021,8 @@ class AlignTranscripts(PipelineWrapperTask):
     def validate(self):
         if not tools.misc.is_exec('blat'):
             raise ToolMissingException('BLAT alignment tool not in global path.')
+        if not tools.misc.is_exec('pslCheck'):
+            raise ToolMissingException('pslCheck tool from the Kent toolkit not in global path.')
 
     def requires(self):
         self.validate()
