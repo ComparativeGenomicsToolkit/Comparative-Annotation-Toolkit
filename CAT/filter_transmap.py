@@ -132,13 +132,13 @@ def resolve_paralogs(updated_aln_eval_df):
     1. If only one paralog is more likely under the ortholog model, discard the others.
     2. If more than one paralog are more likely under the ortholog model, or we were unable to fit a model, resolve
        based on a heuristic combination of synteny score and alignment identity.
-       score: 0.10 * coverage + 0.65 * identity + 0.25 * (synteny / 6)
+       score: 0.30 * coverage + 0.35 * identity + 0.25 * (synteny / 6)
 
     :param updated_aln_eval_df: DataFrame produced by fit_distributions()
     :return: tuple of (metrics_dict, filtered DataFrame)
     """
     def score_aln(s):
-        return 0.10 * s.TransMapCoverage + 0.65 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
+        return 0.30 * s.TransMapCoverage + 0.35 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
 
     def apply_label(s):
         return s.TranscriptClass if s.ParalogStatus != 'NotConfident' else 'Failing'
@@ -210,7 +210,7 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
 
     def score_aln(s):
         """scores an alignment based on identity, distance and synteny"""
-        return 0.10 * s.TransMapCoverage + 0.65 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
+        return 0.3 * s.TransMapCoverage + 0.35 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
 
     def find_chromosomes(rec, gene_biotype=None):
         """create a mapping of genome sequence names to associated alignment ids and synteny scores"""
