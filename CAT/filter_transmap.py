@@ -82,9 +82,10 @@ def fit_distributions(aln_eval_df, ref_df):
         """Locates the identity cutoff point"""
         unique_start, unique_stop = find_xvals(*d.distributions[0].parameters)
         para_start, para_stop = find_xvals(*d.distributions[1].parameters)
+        unique_weight, para_weight = np.exp(d.weights)
         xvals = np.linspace(min(unique_start, para_start), max(unique_stop, para_stop), 1000)
-        paravals = np.array([norm.pdf(x, *d.distributions[1].parameters) for x in xvals])
-        uniquevals = np.array([norm.pdf(x, *d.distributions[0].parameters) for x in xvals])
+        paravals = para_weight * np.array([norm.pdf(x, *d.distributions[1].parameters) for x in xvals])
+        uniquevals = unique_weight * np.array([norm.pdf(x, *d.distributions[0].parameters) for x in xvals])
         x = xvals[np.argwhere(np.diff(np.sign(uniquevals - paravals)) != 0).reshape(-1)[0]]
         return reverse_transform(x)
 
@@ -131,19 +132,15 @@ def resolve_paralogs(updated_aln_eval_df):
 
     1. If only one paralog is more likely under the ortholog model, discard the others.
     2. If more than one paralog are more likely under the ortholog model, or we were unable to fit a model, resolve
-       based on a heuristic combination of synteny score and alignment identity.
-       score: 0.30 * coverage + 0.35 * identity + 0.25 * (synteny / 6)
+       based on the synteny score. See calculate_synteny_score
 
     :param updated_aln_eval_df: DataFrame produced by fit_distributions()
     :return: tuple of (metrics_dict, filtered DataFrame)
     """
-    def score_aln(s):
-        return 0.30 * s.TransMapCoverage + 0.35 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
-
     def apply_label(s):
         return s.TranscriptClass if s.ParalogStatus != 'NotConfident' else 'Failing'
 
-    updated_aln_eval_df['Score'] = updated_aln_eval_df.apply(score_aln, axis=1)
+    updated_aln_eval_df['Score'] = updated_aln_eval_df.apply(calculate_synteny_score, axis=1)
     updated_aln_eval_df = updated_aln_eval_df.sort_values(by='Score', ascending=False)
 
     paralog_status = []  # stores the results for a new column
@@ -208,17 +205,13 @@ def resolve_split_genes(paralog_filtered_df, tx_dict):
             r[chrom] = (1.0 * len(vals) / tot) * np.mean(zip(*vals)[1])
         return r
 
-    def score_aln(s):
-        """scores an alignment based on identity, distance and synteny"""
-        return 0.3 * s.TransMapCoverage + 0.35 * s.TransMapIdentity + 0.25 * (1.0 * s.Synteny / 6)
-
     def find_chromosomes(rec, gene_biotype=None):
         """create a mapping of genome sequence names to associated alignment ids and synteny scores"""
         chroms = collections.defaultdict(list)
         for _, s in rec.iterrows():
             if gene_biotype is not None and s.TranscriptBiotype != gene_biotype:
                 continue
-            chroms[tx_dict[s.AlignmentId].chromosome].append([s.AlignmentId, score_aln(s)])
+            chroms[tx_dict[s.AlignmentId].chromosome].append([s.AlignmentId, calculate_synteny_score(s)])
         return chroms
 
     def find_best_chroms(chroms):
@@ -281,3 +274,17 @@ def create_new_table(paralog_filtered_df, resolve_split_genes_flag):
     df = paralog_filtered_df[cols]
     return df.set_index(['TranscriptId', 'AlignmentId'])
 
+
+def calculate_synteny_score(s):
+    """
+    Function to score an alignment. Scoring method:
+    0.2 * coverage + 0.35 * identity + 0.2 * percent_original_introns + 0.25 * synteny
+    :param s: pandas Series
+    :return: float between 0 and 1
+    """
+    r = 0.2 * s.TransMapCoverage + \
+        0.35 * s.TransMapIdentity + \
+        0.2 * s.TransMapPercentOriginalIntrons + \
+        0.25 * (1.0 * s.Synteny / 6)
+    assert 0 <= r <= 1
+    return r
