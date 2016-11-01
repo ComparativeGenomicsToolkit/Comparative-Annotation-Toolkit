@@ -213,7 +213,7 @@ def merge(job, results, args):
 ###
 
 
-def group_transcripts(tx_iter, num_bases=10 ** 6, max_seqs=500):
+def group_transcripts(tx_iter, num_bases=10 ** 6, max_seqs=1000):
     """
     Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
     Helps speed up the execution of BLAT when faced with very large genes

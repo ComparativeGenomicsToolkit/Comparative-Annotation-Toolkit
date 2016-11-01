@@ -221,7 +221,8 @@ def category_plot(consensus_data, ordered_genomes, biotypes, category_plot_tgt):
     df = json_biotype_nested_counter_to_df(consensus_data, 'Transcript Categories')
     title = 'Consensus transcript categories'
     with category_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
-        g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', hue='Transcript Categories', xlabel='',
+        combined_df = df.groupby(['genome', 'Transcript Categories']).aggregate(sum).reset_index()
+        g = generic_barplot(pdf=pdf, data=combined_df, x='genome', y='count', hue='Transcript Categories', xlabel='',
                             ylabel='Number of transcripts', hue_order=['Excellent', 'Passing', 'Failing'],
                             row_order=ordered_genomes, title=title)
         for biotype in biotypes:
