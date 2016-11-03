@@ -166,7 +166,7 @@ def tm_para_plot(para_data, ordered_genomes, biotypes, transcript_biotype_map, p
     """transMap paralogy plots"""
     def generate_hists(ordered_genomes, df):
         hists = OrderedDict([genome, np.roll(np.histogram(df[genome].fillna(0), paralogy_bins)[0], -1)]
-                 for genome in ordered_genomes)
+                             for genome in ordered_genomes)
         hists_df = pd.DataFrame.from_dict(hists)
         return hists_df
 
@@ -222,6 +222,8 @@ def category_plot(consensus_data, ordered_genomes, biotypes, category_plot_tgt):
     title = 'Consensus transcript categories'
     with category_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
         combined_df = df.groupby(['genome', 'Transcript Categories']).aggregate(sum).reset_index()
+        combined_df.genome = pd.Categorical(combined_df.genome, ordered_genomes, ordered=True)
+        combined_df = combined_df.sort_values('genome')
         g = generic_barplot(pdf=pdf, data=combined_df, x='genome', y='count', hue='Transcript Categories', xlabel='',
                             ylabel='Number of transcripts', hue_order=['Excellent', 'Passing', 'Failing'],
                             row_order=ordered_genomes, title=title)

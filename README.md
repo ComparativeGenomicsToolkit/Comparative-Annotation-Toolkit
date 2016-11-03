@@ -78,6 +78,10 @@ Genome = /path/to/fofn OR /path/to/bam1.bam, /path/to/bam2.bam
 
 Note that the BAM field can be populated either with a comma separated list of BAMs or a single file with a line pointing to each BAM (a FOFN, or file-of-file-names). The reference sequence information will be extracted from the HAL alignment.
 
+##RNA-seq libraries
+
+It is **extremely** important that you use high quality RNA-seq. Libraries should be poly-A selected. If they are not, make sure you set the `--no-wiggle-hints` flag in the database construction pipeline!!
+
 #Input
 
 The pipeline has 2 required inputs if run in default mode:
@@ -253,3 +257,61 @@ After consensus finding, a final output gene set is produced in both `GFF3` and 
     comma separated in this tag.
     
 For `GFF3` output, the consensus score is in the score field. For `.gp_info`, it is a column.
+
+
+#Command line options
+
+## CAT
+
+`--hal`: Input HAL alignment file.
+
+`--ref-genome`: Reference genome sequence name. Must be present in HAL.
+
+`--out-dir`: Output directory. Defaults to `./cat_output`.
+
+`--target-genomes`: List of genomes to use. If not set, all non-reference genomes in the HAL are used.
+
+`--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with this value.
+
+`--augustus`: Run AugustusTM(R)?
+
+`--augustus-species`: What Augustus species do we want to use? See the Augustus manual for more information. For mammals, human is a good choice, and this is the default value.
+
+`--augustus-cgp`: Run AugustusCGP?
+
+`--cgp-param`: Parameters file after training CGP on the alignment. Defaults to the default parameters.
+
+`--resolve-split-genes`: Run split gene resolution? Not a good idea if N50 is low.
+
+`--cgp-splice-support`: Percent of splice junctions in a CGP prediction that must be supported by RNA-seq in order for the transcript to be included. Defaults to 0.8.
+
+`--cgp-num-exons`: Number of exons a CGP prediction must have before included. This value is particularly important with noisy RNA-seq.
+
+See below for `toil` options shared with the hints database pipeline.
+
+
+##build\_hints\_db
+
+Constructing the hints database is its own Luigi pipeline, which uses a separate config file. See the section near the top for a description of the config file. 
+
+`--config`: Path to config file.
+
+`--hal`: Path to HAL file.
+
+`--augustus-hints-db`: Path to output sqlite database that will be passed to `CAT`.
+
+`--work-dir`: Defaults to `./hints_work`. Stores the genomes and the hints GFFs. Can be cleaned up after.
+
+`--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with this value.
+
+`--no-wiggle-hints`: Incorporate wiggle hints. These are hints based on expression and not splice junctions, but should be removed if the underlying RNA-seq are either noisy or not poly-A enriched.
+
+
+
+##Toil
+
+The remaining options are passed directly along to `toil`:
+
+`--batchSystem`: Batch system to use. Defaults to singleMachine. If running in singleMachine mode, no cluster jobs will be submitted. In addition, care must be taken to balance the `--maxCores` field with the `--workers` field with the toil resources in `luigi.cfg`. Basically, you want to make sure that your # of toil resources multiplied by your `--maxCores` is fewer than the total number of system cores you want to use. However, I **highly** recommend using a non-local batch system. See the toil documentation for more.
+
+`--maxCores`: The number of cores each `toil` module will use. If submitting to a batch system, this limits the number of concurrent submissions.
