@@ -128,7 +128,7 @@ def generate_consensus(args, genome):
                     metrics['Transcript Failed'][tx_biotype] += 1
                 else:
                     best_rows = find_best_score(tx_df)
-                    aln_id, d = incorporate_tx(best_rows, gene_id, metrics, failed_gene=True)
+                    aln_id, d = incorporate_tx(best_rows, gene_id, metrics, failed_gene=False)
                     gene_consensus_dict[aln_id] = d
         if args.augustus_cgp is True:
             gene_consensus_dict.update(find_novel_cgp_splices(gene_consensus_dict, gene_df, tx_dict, gene_id,
@@ -264,7 +264,7 @@ def load_metrics_evaluations(db_path, transcript_modes, ref_df, tm_eval, coding_
     df = pd.concat(dfs)
 
     # coverage filter, much higher than transMap because this is for consensus
-    filtered_df = df[(df.AlnCoverage > 0.4) & (df.AlnIdentity >= coding_cutoff)]
+    filtered_df = df[(df.AlnCoverage > 0.4)]
 
     # bring in biotype and gene information from the ref database
     ref_merged = pd.merge(filtered_df, ref_df, on=['GeneId', 'TranscriptId'], how='left', suffixes=['_Tgt', '_Ref'])
@@ -272,12 +272,18 @@ def load_metrics_evaluations(db_path, transcript_modes, ref_df, tm_eval, coding_
     # slice out the tm_eval columns we need to make this easier
     # we may not have GeneAlternateContigs if --resolve-split-genes was not set.
     try:
-        tm_eval_subset = tm_eval[['TranscriptId', 'ParalogStatus', 'GeneAlternateContigs',
-                                  'TranscriptClass', 'Paralogy']]
+        tm_eval_subset = tm_eval[['TranscriptId', 'ParalogStatus', 'GeneAlternateContigs', 'Paralogy']]
     except KeyError:
-        tm_eval_subset = tm_eval[['TranscriptId', 'ParalogStatus', 'TranscriptClass', 'Paralogy']]
+        tm_eval_subset = tm_eval[['TranscriptId', 'ParalogStatus', 'Paralogy']]
+
     # we use a left outer join because of CGP transcripts
     merged_df = pd.merge(ref_merged, tm_eval_subset, on='TranscriptId', how='left')
+    # add in transcript class
+
+    def add_class(s):
+        return 'Passing' if s.AlnIdentity >= coding_cutoff else 'Failing'
+
+    merged_df['TranscriptClass'] = merged_df.apply(add_class, axis=1)
 
     # bring in intron support, if we have it
     if intron_df is not None:
@@ -346,10 +352,7 @@ def score_coding_df(merged_df, has_rnaseq_data):
         else:
             if s.TranscriptClass == 'Passing' and evaluation_score(s) == 1:
                 return 'Excellent'
-        # TranscriptClass may start out as nan if this is a TM/TMR/CGP transcript
-        if s.TranscriptClass == 'Failing' or s.TranscriptClass == 'Passing':
-            return s.TranscriptClass
-        return 'Failing'
+        return s.TranscriptClass
 
     merged_df['ConsensusScore'] = merged_df.apply(coding_consensus_metric, axis=1)
     merged_df['TranscriptClass'] = merged_df.apply(calculate_class, axis=1)
@@ -481,7 +484,7 @@ def rescue_failed_gene(gene_df, tx_dict, gene_id, metrics):
     gene_df['RescueScore'] = gene_df.ConsensusScore * tx_lengths
     gene_df = gene_df.sort_values('RescueScore', ascending=False)
     best_rows = find_best_score(gene_df, 'RescueScore')
-    return incorporate_tx(best_rows, gene_id, metrics, failed_gene=False)
+    return incorporate_tx(best_rows, gene_id, metrics, failed_gene=True)
 
 
 def slice_df(df, ix):
