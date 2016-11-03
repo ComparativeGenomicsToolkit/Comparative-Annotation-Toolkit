@@ -9,11 +9,10 @@ These classifiers are per-transcript evaluations based on both the transcript al
 1. PercentUnknownBases: % of mRNA bases that are Ns.
 2. AlnCoverage: Alignment coverage in transcript space.
 3. AlnIdentity: Alignment identity in transcript space.
-4. Badness: A measure of how bad the alignment is related to Jim Kent's badness score.
-5. PercentMissingIntrons: Number of original introns not within a wiggle distance of any introns in the target.
-6. PercentMissingExons: Do we lose any exons? Defined based on parent sequence, with wiggle room.
-7. CdsStartStat: Is the CDS likely to be a complete start? Simply extracted from the genePred
-8. CdsEndStat: Is the CDS likely to be a complete stop? Simply extracted from the genePred
+4. PercentMissingIntrons: Number of original introns not within a wiggle distance of any introns in the target.
+5. PercentMissingExons: Do we lose any exons? Defined based on parent sequence, with wiggle room.
+6. CdsStartStat: Is the CDS likely to be a complete start? Simply extracted from the genePred
+7. CdsEndStat: Is the CDS likely to be a complete stop? Simply extracted from the genePred
 
 <alnMode>_<txMode>_Evaluation:
 
@@ -102,7 +101,6 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
         percent_missing_exons = calculate_percent_original_exons(ref_tx, psl, aln_mode)
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', psl.coverage])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', psl.identity])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'Badness', psl.badness])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentOriginalIntrons', percent_missing_introns])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentOriginalExons', percent_missing_exons])

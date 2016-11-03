@@ -6,8 +6,7 @@ Classify transMap transcripts producing the TransMapEvaluation table for each ge
 3. AlignmentPartialMap: Did this transcript not map completely?
 4. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
 5. AlnContainsUnknownBases: Are there any Ns within the transcript alignment?
-6. Synteny: If this transcript aligned more than once, assign a boolean based on synteny to whether this is the
-    most probable transcript. This is used to filter for pseudogenes.
+6. Synteny: Counts the number of genes in linear order that match up to +/- 3 genes.
 7. TransMapOriginalIntrons: The number of transMap introns within a wiggle distance of a intron in the parent transcript
    in transcript coordinates.
 """

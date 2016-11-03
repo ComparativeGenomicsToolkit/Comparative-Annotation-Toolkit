@@ -68,7 +68,7 @@ def fit_distributions(aln_eval_df, ref_df, genome):
         """transforms identity data to -log(1 - ident) where ident != 1"""
         return -np.log(1 - idents[idents != 1])
 
-    def find_cutoff(biotype_unique, num_sigma=2):
+    def find_cutoff(biotype_unique, num_sigma=1):
         """Locates the MLE identity cutoff"""
         unique_mu, unique_sigma = norm.fit(transform_data(biotype_unique.TransMapIdentity))
         return 1 - np.exp(-(unique_mu - (num_sigma * unique_sigma)))

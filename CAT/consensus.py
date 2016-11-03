@@ -6,55 +6,21 @@ of these, producing a filtered gene set.
 
 This process relies on a combination of metrics and evaluations loaded to a sqlite database by the classify module.
 
-Transcript scoring functions:
-
-structure score = 0.5 * (1 - # missing introns / # parent introns) + 0.5 * (1 - # missing exons / # parent exons)
-This function is a weighted average of the structural changes seen in the alignments.
-# parent introns/exons will be adjusted for CDS alignments to only include coding introns/exons.
-Exists on the range(0, 100)
-
-evaluation penalties = 2 * I(in frame stop)
-                         + I(coding indel)
-                         + I(CdsStartStat = imcpl and == cmpl in reference)
-                         + I(CdsEndStat = imcpl and == cmpl in reference)
-This function uses classifiers in a binary fashion as indicator functions to penalize the final transcript score for
-problems. Only applies to coding transcripts. This function does not penalize transcripts who are messed up in the
-reference, as this would bias towards incorrect Augustus corrections.
-Exists in the range (0, 5) where 0 means no penalties and 5 is the maximum penalty.
-
-evaluation bonus = 2 * I(CdsStartStat == cmpl) + 2 * I(CdsEndStat == cmpl)
-This function looks at the CdsStartStat/CdsEndStat and provides up to 2 bonus points for complete CDS ends.
-Exists in [0, 2, 4]
-
-
-consensus score = 50 * (1 - badness) + 25 * structure score + 25 * # supported junctions
-Exists in the range (0, 100). Higher is better.
-
-coding consensus score = consensus score + cds bonus + evaluation bonus - evaluation penalties
-For coding transcripts consensus.py modifies the consensus score by removing as much as 5 and adding as much as 4
-
-
-These filters throw out low quality alignments via the identity/coverage filter as well as the percent unknown bases.
-The intron inequality is an important filter to preventing retroposed pseudogenes from being assigned as the parent.
-
-If the filter process throws out all transcripts for a gene, then one transcript with the best consensus score will be
-used, regardless of filtering. This transcript will be marked as failing.
 
 GFF3 tags generated in this process:
 1. source_transcript: The name of the parent transcript, if it exists
 2. source_gene: The name of the parent gene, if it exists
 3. source_gene_common_name: The common name of the parent gene, if it is different from the source gene
 4. transcript_mode: The name of the mode of operation that generated this transcript
-5. score: the consensus score of the transcript
-6. alternative_source_transcripts: A comma separated list of alternate IDs for this transcript
-7. failed_gene: This transcript is the single representative for a failed transcript
-8. transcript_class: One of failed, passing, excellent, novel
-9. paralogy: The number of paralogs that were mapped over when transMap mapped this transcript
-10. gene_biotype: gene biotype
-11. transcript_biotype: transcript biotype
-12. paralog_status: confident if the paralog was confidently resolved, not_confident if it was not
-13. alternative_source_transcripts: Other possible transcripts, if this was collapsed as the result of deduplication
-14. gene_alternate_contigs: If the --resolve-split-genes flag was set, contigs that this gene was also found on are
+5. alternative_source_transcripts: A comma separated list of alternate IDs for this transcript
+6. failed_gene: This transcript is the single representative for a failed transcript
+7. transcript_class: One of failed, passing, excellent, novel
+8. paralogy: The number of paralogs that were mapped over when transMap mapped this transcript
+9. gene_biotype: gene biotype
+10. transcript_biotype: transcript biotype
+11. paralog_status: confident if the paralog was confidently resolved, not_confident if it was not
+12. alternative_source_transcripts: Other possible transcripts, if this was collapsed as the result of deduplication
+13. gene_alternate_contigs: If the --resolve-split-genes flag was set, contigs that this gene was also found on are
     comma separated in this tag.
 """
 import collections
@@ -342,7 +308,7 @@ def score_coding_df(merged_df, has_rnaseq_data):
 
     TranscriptClass: Classes were defined based on distribution fits previously as Passing/Failing. We extend that now
     to include the concept of Excellent, which are transcripts who were Passing previously and are now either:
-    w/rnaseq: evaluation score == 1 and rnaseq_support > 0.8
+    w/rnaseq: evaluation score == 1 and rnaseq_support >= 0.8
     w/o rnaseq: evaluation score == 1
     """
     def evaluation_score(s):
