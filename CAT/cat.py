@@ -970,6 +970,7 @@ class HgmDriverTask(PipelineTask):
             yield self.clone(FilterTransMap)
         else:
             raise UserException('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
+        yield self.clone(ReferenceFiles)
 
     def run(self):
         logger.info('Launching homGeneMapping for {}.'.format(self.mode))

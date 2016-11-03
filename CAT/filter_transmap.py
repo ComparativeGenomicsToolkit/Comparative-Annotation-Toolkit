@@ -1,14 +1,16 @@
 """
-Resolves paralogs in transMap output based on phylogenetic distance inferred by FastTree.
+Resolves paralogs in transMap output based on MLE estimate of the distribution of alignment identities in the transMap
+process.
+
 Resolves genes that have transcripts split across chromosomes based on a consensus finding process. This process
 combines information from both synteny and phylogenetic distance to determine which contig is likely the parental
 contig. This should be used carefully on genomes that are highly fragmented.
+
 """
 import logging
 import collections
 import numpy as np
 import pandas as pd
-from pomegranate import NormalDistribution, GeneralMixtureModel
 from scipy.stats import norm
 import tools.nameConversions
 import tools.sqlInterface
@@ -59,42 +61,17 @@ def filter_transmap(filter_tm_args, out_target):
 
 def fit_distributions(aln_eval_df, ref_df, genome):
     """
-    Fits a mixture model of 2 lognormals to the aln_eval_df identity based on whether the alignments are 1-1 or 1-many
-    This is done for every biotype. In the end, a new column is added to the aln_eval_df that says whether a alignment
-    is Failing (more likely under paralog model) or Passing (more likely under paralog model)
+    Fits a normal distribution to the -log(1 - identity) where identity != 1. Uses the MLE estimate to determine
+    a cutoff of identity specific to this genetic distance.
     """
     def transform_data(idents):
         """transforms identity data to -log(1 - ident) where ident != 1"""
         return -np.log(1 - idents[idents != 1])
 
-    def reverse_transform(x):
-        """transforms an identity in reverse back to % id"""
-        return 1 - np.exp(-x)
-
-    def calculate_starting_values(idents):
-        """calculates normal distribution parameters on the quantity log(1 - identity) where identity != 1"""
-        return norm.fit(idents)
-
-    def find_xvals(mu, sigma):
-        """infers the likely useful xvalues by using the interval function to find where 99% of the data are"""
-        start, stop = norm.interval(0.99, mu, sigma)
-        return np.floor(start), np.ceil(stop)
-
-    def find_cutoff(d, biotype):
-        """Locates the identity cutoff point"""
-        unique_start, unique_stop = find_xvals(*d.distributions[0].parameters)
-        para_start, para_stop = find_xvals(*d.distributions[1].parameters)
-        unique_weight, para_weight = np.exp(d.weights)
-        xvals = np.linspace(min(unique_start, para_start), max(unique_stop, para_stop), 5000)
-        paravals = para_weight * np.array([norm.pdf(x, *d.distributions[1].parameters) for x in xvals])
-        uniquevals = unique_weight * np.array([norm.pdf(x, *d.distributions[0].parameters) for x in xvals])
-        try:
-            x = xvals[np.argwhere(np.diff(np.sign(uniquevals - paravals)) != 0).reshape(-1)[0]]
-        except IndexError:
-            logger.warning('Unable to get a good identity fit for {} on {}. '
-                           'Cannot establish a cutoff. Using 0.'.format(biotype, genome))
-            return 0
-        return reverse_transform(x)
+    def find_cutoff(biotype_unique, num_sigma=2):
+        """Locates the MLE identity cutoff"""
+        unique_mu, unique_sigma = norm.fit(transform_data(biotype_unique.TransMapIdentity))
+        return 1 - np.exp(-(unique_mu - (num_sigma * unique_sigma)))
 
     biotype_df = pd.merge(aln_eval_df, ref_df, on='TranscriptId')
     r = []  # will hold the labels
@@ -116,20 +93,12 @@ def fit_distributions(aln_eval_df, ref_df, genome):
         else:
             logger.info('{:,} paralogous mappings and {:,} 1-1 orthologous mappings'
                         ' for {} on {}.'.format(len(biotype_not_unique), len(biotype_unique), biotype, genome))
-            unique_transformed = transform_data(biotype_unique.TransMapIdentity)
-            para_transformed = transform_data(biotype_not_unique.TransMapIdentity)
-            combined = pd.concat([unique_transformed, para_transformed])
-            unique_mu, unique_sigma = calculate_starting_values(unique_transformed)
-            para_mu, para_sigma = calculate_starting_values(para_transformed)
-            d = GeneralMixtureModel([NormalDistribution(unique_mu, unique_sigma),
-                                     NormalDistribution(para_mu, para_sigma)])
-            _ = d.fit(combined)
-            cutoff = find_cutoff(d, biotype)
+            cutoff = find_cutoff(biotype_unique)
             identity_cutoffs.append([biotype, cutoff])
             labels = ['Passing' if ident >= cutoff else 'Failing' for ident in df.TransMapIdentity]
             num_pass = labels.count('Passing')
             num_fail = labels.count('Failing')
-            logger.info('Established a {:.2f}% identity boundary for {} on {} resulting in '
+            logger.info('Established a {:.2%} identity boundary for {} on {} resulting in '
                         '{} passing and {} failing alignments.'.format(cutoff, biotype, genome, num_pass, num_fail))
             r.extend([[aln_id, label] for aln_id, label in zip(*[df.AlignmentId, labels])])
 
