@@ -7,7 +7,6 @@ import itertools
 import logging
 import multiprocessing
 import os
-import tempfile
 from collections import OrderedDict
 
 import luigi
@@ -1295,7 +1294,7 @@ def parse_args():
     parser.add_argument('--ref-genome', required=True)
     parser.add_argument('--annotation', required=True)
     parser.add_argument('--out-dir', default='./cat_output')
-    parser.add_argument('--work-dir', default=os.path.join(tempfile.gettempdir(), __name__))
+    parser.add_argument('--work-dir', default='./cat_work')
     parser.add_argument('--target-genomes', nargs='+', default=None)
     # parallelism
     parser.add_argument('--workers', default=10, type=int)

@@ -18,7 +18,6 @@ import logging
 import os
 import sqlite3
 import argparse
-import tempfile
 
 import luigi
 import luigi.contrib.sqla
@@ -533,7 +532,7 @@ def parse_args():
     parser.add_argument('--config', required=True)
     parser.add_argument('--hal', required=True)
     parser.add_argument('--augustus-hints-db', default='augustus_hints.db')
-    parser.add_argument('--work-dir', default=os.path.join(tempfile.gettempdir(), __name__))
+    parser.add_argument('--work-dir', default='./hints_work')
     parser.add_argument('--no-wiggle-hints', default=False, action='store_true')
     # parallelism
     parser.add_argument('--workers', default=10)

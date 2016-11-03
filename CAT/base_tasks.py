@@ -5,7 +5,6 @@ import argparse
 import json
 import os
 import shutil
-import tempfile
 
 import luigi
 from frozendict import frozendict
@@ -40,7 +39,7 @@ class PipelineTask(luigi.Task):
     ref_genome = luigi.Parameter()
     annotation = luigi.Parameter()
     out_dir = luigi.Parameter(default='./cat_output')
-    work_dir = luigi.Parameter(default=os.path.join(tempfile.gettempdir(), __name__))
+    work_dir = luigi.Parameter(default='./cat_work')
     target_genomes = luigi.TupleParameter(default=None)
     # Debugging option - use this to bypass the dependency graph for specific submodules
     no_evaluate_dependency = luigi.BoolParameter(default=False)
@@ -251,7 +250,7 @@ class HintsDbTask(luigi.Task):
     config = luigi.Parameter()
     hal = luigi.Parameter()
     augustus_hints_db = luigi.Parameter(default='augustus_hints.db')
-    work_dir = luigi.Parameter(default=os.path.join(tempfile.gettempdir(), __name__))
+    work_dir = luigi.Parameter(default='./hints_work')
     no_wiggle_hints = luigi.BoolParameter(default=False)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)

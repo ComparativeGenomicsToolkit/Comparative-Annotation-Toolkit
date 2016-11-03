@@ -269,6 +269,8 @@ For `GFF3` output, the consensus score is in the score field. For `.gp_info`, it
 
 `--out-dir`: Output directory. Defaults to `./cat_output`.
 
+`--work-dir`: Working directory. Defaults to `./cat_work`. Stores all the intermediate files as well as the `toil` jobStore. Can be removed after completion (but not if you want to re-do any steps).
+
 `--target-genomes`: List of genomes to use. If not set, all non-reference genomes in the HAL are used.
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with this value.
