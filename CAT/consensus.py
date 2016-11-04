@@ -112,6 +112,9 @@ def generate_consensus(args, genome):
         gene_biotype = gene_biotype_map[gene_id]
         if len(gene_df) == 0:
             metrics['Gene Missing'][gene_biotype] += 1
+            for tx_id in tx_list:
+                tx_biotype = transcript_biotype_map[tx_id]
+                metrics['Transcript Missing'][tx_biotype] += 1
             continue
         failed_gene = is_failed_df(gene_df)
         if failed_gene is True:

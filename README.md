@@ -55,7 +55,7 @@ This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the
 
 1. Use the `luigi` executable. Installing the luigi package should have placed the `luigi` executable in your path. This wrapper allows you to use the central scheduler, which means you can follow the pipeline workflow via a web UI. The following command will execute the test data set, after you have moved to the `CAT` installation directory:
 `export PYTHONPATH=./ && luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --augustus-hints-db=test_data/vertebrates.db --annotation=test_data/GRCm38.mm10.subset.gff3`
-One other advantage of using the `luigi` executable is that you can start various sub-modules of the pipeline directly and bypass main wrapper. This is useful for re-executing parts of the pipeline. This is done by replacing `RunCat` with specific modules as described in the [modules](#Modules) section.
+One other advantage of using the `luigi` executable is that you can start various sub-modules of the pipeline directly and bypass main wrapper. This is useful for re-executing parts of the pipeline. This is done by replacing `RunCat` with specific modules as described in the [modules](#modules) section.
 2. Run the pipeline directly from the main driver script. The same options are available. There are a few subtle syntax differences due to how `luigi` processes inputs. Test data invocation, also from the `CAT` installation directory:
 `export PYTHONPATH=./ && python cat.py --hal=test_data/vertebrates.hal --ref-genome=mm10 --augustus-hints-db=test_data/vertebrates.db --annotation=test_data/GRCm38.mm10.subset.gff3`
 
@@ -131,7 +131,7 @@ This module will populate the folder `--work-dir/transMap`.
 Resolves paralogs in transMap output based on MLE estimate of the distribution of alignment identities in the transMap
 process. A normal distribution is fit to the -log(1 - identity) where identity != 1, which is simply a transformation of the underlying lognormal distribution. This is performed only on transcripts who map over in a 1-1 fashion. A cutoff is established as one standard deviation from the mean of this fit. 
 
-This process is performed separately for each **transcript biotype** present in the annotation set. *This is one of many reasons why it is very important that your reference be properly biotyped!* Transcript projections whose identity are below the cutoff will be marked as `Failing`, which is a key component of the [consensus finding process](##Consensus).
+This process is performed separately for each **transcript biotype** present in the annotation set. *This is one of many reasons why it is very important that your reference be properly biotyped!* Transcript projections whose identity are below the cutoff will be marked as `Failing`, which is a key component of the [consensus finding process](##consensus).
 
 The output of this step populates the sqlite tables `TransMapFilterEvaluation` and `TransMapIdentityCutoffs` for each target genome. The table `TransMapIdentityCutoffs` records the identity cutoff established for each biotype.
 
@@ -149,11 +149,11 @@ This module will populate the folder `--work-dir/augustus`.
 
 ##AugustusCgp
 
-As [discussed above](#AugustusCGP), this module runs `AugustusCGP`. This process requires a hints database (although no RNA-seq is required, it is highly recommended). Running `AugustusCGP` is trickier than other modes. If your genomes are not closely related to an existing training set, you may need to perform logistic regression to train `AugustusCGP` before execution. A default parameter set is provided. This mode is also computationally intensive, and requires a cluster.
+As [discussed above](#augustuscgp), this module runs `AugustusCGP`. This process requires a hints database (although no RNA-seq is required, it is highly recommended). Running `AugustusCGP` is trickier than other modes. If your genomes are not closely related to an existing training set, you may need to perform logistic regression to train `AugustusCGP` before execution. A default parameter set is provided. This mode is also computationally intensive, and requires a cluster.
 
-Each output transcript are assigned a parental gene, if possible. Parental gene assignment is done by looking to see if this transcript has at least 1 exonic base overlap with any [filtered TransMap](##FilterTransMap). If the transcript overlaps more than one gene, the [Jaccard metric](http://bedtools.readthedocs.io/en/latest/content/tools/jaccard.html) is used to try and resolve the ambiguity. If no gene stands out, this transcript is discarded.
+Each output transcript are assigned a parental gene, if possible. Parental gene assignment is done by looking to see if this transcript has at least 1 exonic base overlap with any [filtered TransMap](##filtertransmap). If the transcript overlaps more than one gene, the [Jaccard metric](http://bedtools.readthedocs.io/en/latest/content/tools/jaccard.html) is used to try and resolve the ambiguity. If no gene stands out, this transcript is discarded.
 
-Transcripts which are not assigned a parental gene will be considered *novel* in the [consensus finding](##Consensus) step. Most often, these are the result of gene family expansion or contraction in the reference. Looking at the raw `transMap` track in the final [assembly hub](##AssemblyHub) will help resolve this.
+Transcripts which are not assigned a parental gene will be considered *novel* in the [consensus finding](##consensus) step. Most often, these are the result of gene family expansion or contraction in the reference. Looking at the raw `transMap` track in the final [assembly hub](##assemblyhub) will help resolve this.
 
 This module will populate the folder `--work-dir/augustus_cgp`.
 
@@ -172,7 +172,7 @@ Which can be interpreted as 'species 0 had 6273 extrinsic hints (RNA-seq coverag
 ##AlignTranscripts
 
 Transcript alignment is only performed on protein coding transcripts. For `AugustusCGP`, only translation alignment is performed, using the in-frame CDS. For `transMap` and `AugustusTM(R)`
-transcripts, two alignments we be performed - full mRNA and in-frame CDS. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#EvaluateTranscripts) module. 
+transcripts, two alignments we be performed - full mRNA and in-frame CDS. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
 
 For `AugustusCGP`, transcripts are aligned to each protein coding transcript present in their assigned parental gene.
 
@@ -211,7 +211,7 @@ BED-like format. In cases where there are multiple problems, they will be additi
 
 Where txMode is one of transMap, augTM, augTMR, augCGP and alnMode is one of CDS or mRNA.
 
-The evaluation tables will be loaded as tracks in the final [assembly hub](##AssemblyHub).
+The evaluation tables will be loaded as tracks in the final [assembly hub](##assemblyhub).
 
 ##Consensus
 
@@ -226,7 +226,7 @@ structure score = 0.7 * percent original introns + 0.2 * percent original exons 
 evaluation score = evaluation score = 1 - (I(in frame stop) + I(coding indel) + I(CdsStartStat = imcpl and == cmpl in reference) + I(CdsEndStat = imcpl and == cmpl in reference)) / 4
 ~~~~
 
-Each transcript is also assigned a class of `Excellent`, `Passing`, `Failing`. `Failing` is defined as transcripts whose identity is below the per-biotype cutoff established in [FilterTransMap](##FilterTransMap). A transcript can be upgraded to `Excellent` by the following:
+Each transcript is also assigned a class of `Excellent`, `Passing`, `Failing`. `Failing` is defined as transcripts whose identity is below the per-biotype cutoff established in [FilterTransMap](##filtertransmap). A transcript can be upgraded to `Excellent` by the following:
 
 ~~~~
 If RNA-seq is provided: evaluation score == 1 and rnaseq_support >= 0.8
@@ -261,7 +261,7 @@ For `GFF3` output, the consensus score is in the score field. For `.gp_info`, it
 
 #Command line options
 
-## CAT
+## CAT / cat.py
 
 `--hal`: Input HAL alignment file.
 
@@ -292,7 +292,7 @@ For `GFF3` output, the consensus score is in the score field. For `.gp_info`, it
 See below for `toil` options shared with the hints database pipeline.
 
 
-##build\_hints\_db
+##BuildHints / generate\_hints\_db.py
 
 Constructing the hints database is its own Luigi pipeline, which uses a separate config file. See the section near the top for a description of the config file. 
 
@@ -306,8 +306,7 @@ Constructing the hints database is its own Luigi pipeline, which uses a separate
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with this value.
 
-`--no-wiggle-hints`: Incorporate wiggle hints. These are hints based on expression and not splice junctions, but should be removed if the underlying RNA-seq are either noisy or not poly-A enriched.
-
+`--no-wiggle-hints`: Do not incorporate wiggle hints. These are hints based on expression and not splice junctions, but should be removed if the underlying RNA-seq are either noisy or not poly-A enriched.
 
 
 ##Toil
