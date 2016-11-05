@@ -51,12 +51,16 @@ Augustus transMap (TM) and augustus transMap-RNA-seq (TMR) are two execution mod
 
 #Running the pipeline
 
-This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the various steps together. As a result, there are two possible ways to execute the pipeline:
+This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the various steps together. As a result, there are two possible ways to execute the pipeline, described below. Both of them require that you start the `luigid` daemon:
 
-1. Use the `luigi` executable. Installing the luigi package should have placed the `luigi` executable in your path. This wrapper allows you to use the central scheduler, which means you can follow the pipeline workflow via a web UI. The following command will execute the test data set, after you have moved to the `CAT` installation directory:
+`luigid --background --logdir luigi_logs`
+
+Which provides the central scheduler as well as the web UI, which can be accessed at `localhost:8082`.
+
+1. Use the `luigi` executable. Installing the luigi package should have placed the `luigi` executable in your path. This wrapper allows you to use the central scheduler. The following command will execute the test data set, after you have moved to the `CAT` installation directory:
 `export PYTHONPATH=./ && luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --augustus-hints-db=test_data/vertebrates.db --annotation=test_data/GRCm38.mm10.subset.gff3`
 One other advantage of using the `luigi` executable is that you can start various sub-modules of the pipeline directly and bypass main wrapper. This is useful for re-executing parts of the pipeline. This is done by replacing `RunCat` with specific modules as described in the [modules](#modules) section.
-2. Run the pipeline directly from the main driver script. The same options are available. There are a few subtle syntax differences due to how `luigi` processes inputs. Test data invocation, also from the `CAT` installation directory:
+2. Run the pipeline directly from the main driver script. The same options are available. The only difference is not requiring ugly syntax for the `--target-genomes` flag. Test data invocation, also from the `CAT` installation directory:
 `export PYTHONPATH=./ && python cat.py --hal=test_data/vertebrates.hal --ref-genome=mm10 --augustus-hints-db=test_data/vertebrates.db --annotation=test_data/GRCm38.mm10.subset.gff3`
 
 #Hints database
@@ -172,7 +176,7 @@ Which can be interpreted as 'species 0 had 6273 extrinsic hints (RNA-seq coverag
 ##AlignTranscripts
 
 Transcript alignment is only performed on protein coding transcripts. For `AugustusCGP`, only translation alignment is performed, using the in-frame CDS. For `transMap` and `AugustusTM(R)`
-transcripts, two alignments we be performed - full mRNA and in-frame CDS. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
+transcripts, two alignments will be performed - full mRNA and in-frame CDS. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
 
 For `AugustusCGP`, transcripts are aligned to each protein coding transcript present in their assigned parental gene.
 
@@ -239,6 +243,27 @@ If `augustusCGP` was ran, transcripts which were not assigned to a parent gene a
 
 After consensus finding, a final output gene set is produced in both `GFF3` and `genePred` format. The `genePred` annotations also have a additional `.gp_info` file that has the additional fields described below.
 
+The output will appear in `--output-dir/consensus`.
+
+##Plots
+
+A large range of plots are produced in `--output-dir/plots`. These include:
+
+1. `cgp_novel.pdf`: The first page shows the number of genes predicted to be novel. These transcripts will have the tag `gene_biotype` tag be `'unknown_likely_coding` as we as not having a `source_gene` tag. The second page shows the number of transcripts which had novel splices and were assigned as new isoforms. These will have the `transcript_biotype` tag be `unknown_likely_coding`.
+2. `completeness.pdf`: The number of genes/transcripts successfully mapped over. The top of the x axis is marked with a red line representing the amount of genes/transcripts the source annotation had.
+3. `consensus_splice_support.pdf`: A paired boxplot and violinplot showing the percent of splice junctions per transcript supported by RNA-seq in any of the genomes in the database. Single exon transcripts are ignored.
+4. `coverage.pdf`: A paired boxplot and violinplot that shows the overall transcript coverage in the *consensus* set. 
+5. `identity.pdf`: A paired boxplot and violinplot that shows the overall transcript identity in the *consensus* set. 
+6. `transmap_coverage.pdf`: A paired boxplot and violinplot that shows the overall transcript coverage in the filtered transMap output.
+7.  `transmap_ identity.pdf`: A paired boxplot and violinplot that shows the overall transcript identity in the filtered transMap output.
+8. `gene_failure.pdf`: The number of genes either missing or failed. Missing are genes which did not have any mappings after filtering. Failed are genes which had mappings but had no transcripts which passed filtering. One longest transcript was chosen for each of these, and they are tagged `failed_gene=True`.
+9. `transcript_failure.pdf`: The number of transcripts either missing or failed. Missing are transcripts which did not have any mappings after filtering. Failed are transcripts which had an identity below the established threshold for their biotype. These were discarded unless their gene had no better candidates. These have the tag `transcript_class=Failed`. 
+10. `paralogy.pdf`: Stacked bar charts of the number of alignments a given source transcript had in each target.
+11. `split_genes.pdf`: The number of genes split if the `--resolve-split-genes` flag was set. The right plot shows the number of transcript alignments removed by resolution.
+12. `transcript_categories.pdf`: Transcripts are categorized either excellent, passing or failing. Excellent transcripts are those well supported by RNA-seq with high identity. For protein coding transcripts, they also must have no frame-shifting indels and valid CDS ends. Passing are transcripts less supported by RNA-seq with high identity. Failing transcripts have identity below the established threshold for their biotype.
+13. `transcript_modes.pdf`: The number of modes that supported a given transcript projection. Applies only to protein coding transcripts. Combinations below 1% of the total are grouped into other. Shows how many modes of analysis agree on a transcript, as well as the rate that augustusTMR rescues missing information.
+
+
 ###GFF3 tags:
 
 1. `source_transcript`: The name of the parent transcript, if it exists.
@@ -275,7 +300,7 @@ For `GFF3` output, the consensus score is in the score field. For `.gp_info`, it
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with this value.
 
-`--augustus`: Run AugustusTM(R)?
+`--augustus`: Run AugustusTM(R)? Running AugustusTMR is determined if a hints database is provided that contains RNA-seq information.
 
 `--augustus-species`: What Augustus species do we want to use? See the Augustus manual for more information. For mammals, human is a good choice, and this is the default value.
 
@@ -316,3 +341,5 @@ The remaining options are passed directly along to `toil`:
 `--batchSystem`: Batch system to use. Defaults to singleMachine. If running in singleMachine mode, no cluster jobs will be submitted. In addition, care must be taken to balance the `--maxCores` field with the `--workers` field with the toil resources in `luigi.cfg`. Basically, you want to make sure that your # of toil resources multiplied by your `--maxCores` is fewer than the total number of system cores you want to use. However, I **highly** recommend using a non-local batch system. See the toil documentation for more.
 
 `--maxCores`: The number of cores each `toil` module will use. If submitting to a batch system, this limits the number of concurrent submissions.
+
+
