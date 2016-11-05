@@ -11,7 +11,7 @@ This pipeline is capable of running both on local cluster hardware as well as on
 2. [bedtools](http://bedtools.readthedocs.io/en/latest/).
 3. [samtools](http://www.htslib.org/) (1.0 or greater).
 
-In addition to the `augustus` binary, the following scripts fro the repository should also be in your path: `transMap2hints.pl`, `homGeneMapping`, `bam2hints`, `bam2wig`, `filterBam`.
+In addition to the `augustus` binary, the following scripts from the augustus repository should also be in your path: `transMap2hints.pl`, `homGeneMapping`, `bam2hints`, `bam2wig`, `filterBam`.
 
 ##External repositories that provide binaries
 
@@ -182,7 +182,7 @@ A series of classifiers that evaluate transcript pairwise alignments for `transM
 
 These classifiers are broken down into 2 groups, which will each end up as a table in the database:
 
-`<alnMode>_<txMode>_Metrics`:
+\<alnMode\>\_\<txMode\>\_Metrics:
 
 These classifiers are per-transcript evaluations based on both the transcript alignment and the genome context.
 
@@ -194,7 +194,7 @@ These classifiers are per-transcript evaluations based on both the transcript al
 7. CdsStartStat: Is the CDS a complete start?
 8. CdsEndStat: Is the CDS a complete stop?
 
-<alnMode>_<txMode>_Evaluation:
+\<alnMode\>\_\<txMode\>\_Evaluation:
 
 These classifiers are per-transcript evaluations based on the transcript alignment.
 Unlike the other two tables, this table stores the actual location of the problems (in genome coordinates) as a
