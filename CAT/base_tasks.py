@@ -251,7 +251,6 @@ class HintsDbTask(luigi.Task):
     hal = luigi.Parameter()
     augustus_hints_db = luigi.Parameter(default='augustus_hints.db')
     work_dir = luigi.Parameter(default='./hints_work')
-    no_wiggle_hints = luigi.BoolParameter(default=False)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=16, significant=False)

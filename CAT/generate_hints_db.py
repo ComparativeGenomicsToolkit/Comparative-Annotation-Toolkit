@@ -6,10 +6,16 @@ Expects a config file to be passed in with the paths to the files. Example:
 [ANNOTATION]
 annotation = /path/to/gff3
 
+[INTRONBAM]
+genome1 = /path/to/non_polyA_bam1.bam, /path/to/non_polyA_bam2.bam
+
 [BAM]
-genome1 = /path/to/bam1.bam, /path/to/bam2.bam
+genome1 = /path/to/fofn
 
 The annotation field is optional, but will help AugustusCGP make better predictions.
+
+BAM annotations can be put either under INTRONBAM or BAM. Any INTRONBAM will only have intron data loaded, and is
+suitable for lower quality RNA-seq.
 
 """
 import collections
@@ -45,34 +51,64 @@ class UserException(Exception):
     pass
 
 
+class MissingFileException(UserException):
+    pass
+
+
 class BuildHints(HintsDbWrapperTask):
     """
     Main entry point. Parses input files, and launches the next task.
     """
     def parse_cfg(self):
         # configspec validates the input config file
-        configspec = ['[ANNOTATION]', '__many__ = string', '[BAM]', '__many__ = list']
+        configspec = ['[ANNOTATION]', '__many__ = string', '[INTRONBAM]', '__many__ = list', '[BAM]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
-        # if a given genome only has one BAM, it is a string. Fix this.
-        for genome in parser['BAM']:
-            path = parser['BAM'][genome]
-            if isinstance(path, str):
-                if not tools.misc.is_bam(path):
-                    # this is a fofn
-                    parser['BAM'][genome] = [x.rstrip() for x in open(path)]
+
+        # convert the config into a new dict, parsing the BAMs
+        cfg = collections.defaultdict(dict)
+        target_genomes = set()
+        if 'ANNOTATION' not in parser:
+            cfg['ANNOTATION'] = {}
+        else:
+            for genome, annot in parser['ANNOTATION'].iteritems():
+                annot = os.path.abspath(annot)
+                if not os.path.exists(annot):
+                    raise MissingFileException('Missing annotation file {}.'.format(annot))
+                cfg['ANNOTATION'][genome] = annot
+                target_genomes.add(genome)
+
+        # if a given genome only has one BAM, it is a string. Fix this. Extract all paths from fofn files.
+        for dtype in ['BAM', 'INTRONBAM']:
+            if dtype not in parser:  # the user does not have to specify all field types
+                cfg[dtype] = {}
+                continue
+            for genome in parser[dtype]:
+                target_genomes.add(genome)
+                path = parser[dtype][genome]
+                if isinstance(path, str):
+                    if not tools.misc.is_bam(path):
+                        # this is a fofn
+                        cfg[dtype][genome] = [os.path.abspath(x.rstrip()) for x in open(path)]
+                    else:
+                        # this is a single BAM
+                        cfg[dtype][genome] = [os.path.abspath(path)]
                 else:
-                    # this is a single BAM
-                    parser['BAM'][genome] = [path]
+                    cfg[dtype][genome] = [os.path.abspath(x) for x in path]
         # do some input validation
-        for genome in parser['BAM']:
-            for bam in parser['BAM'][genome]:
-                assert os.path.exists(bam)
-                assert os.path.exists(bam + '.bai')
-        # TODO: validate all inputs. Some validation happens in the toil pipeline as well.
-        return parser
+        for dtype in ['BAM', 'INTRONBAM']:
+            for genome in cfg[dtype]:
+                for bam in cfg[dtype][genome]:
+                    if not os.path.exists(bam):
+                        raise MissingFileException('Missing BAM {}.'.format(bam))
+                    if not os.path.exists(bam + '.bai'):
+                        raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
+        for genome, annot in cfg['ANNOTATION'].iteritems():
+            if not os.path.exists(annot):
+                raise MissingFileException('Missing annotation file {}.'.format(annot))
+        return cfg, tuple(target_genomes)
 
     def requires(self):
-        cfg = self.parse_cfg()
+        cfg, target_genomes = self.parse_cfg()
         hint_paths = {}
         flat_fasta_paths = {}
         hal = os.path.abspath(self.hal)
@@ -81,13 +117,14 @@ class BuildHints(HintsDbWrapperTask):
             flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=cfg, hal=hal)
             yield flat_fasta
             flat_fasta_paths[genome] = flat_fasta.output().path
-            annotation = cfg['ANNOTATION'].get(genome, None)
-            hints = self.clone(GenerateHints, genome=genome, flat_fasta=flat_fasta.output().path,
-                               annotation=annotation, cfg=cfg)
-            yield hints
-            if genome in cfg['BAM'] or genome in cfg['ANNOTATION']:
+            if genome in target_genomes:
+                annotation = cfg['ANNOTATION'].get(genome, None)
+                hints = self.clone(GenerateHints, genome=genome, flat_fasta=flat_fasta.output().path,
+                                   annotation=annotation, cfg=cfg)
+                yield hints
                 hint_paths[genome] = hints.output().path
-        yield self.clone(BuildDb, cfg=cfg, hint_paths=hint_paths, flat_fasta_paths=flat_fasta_paths, genomes=genomes)
+        yield self.clone(BuildDb, cfg=cfg, hint_paths=hint_paths, flat_fasta_paths=flat_fasta_paths, genomes=genomes,
+                         target_genomes=target_genomes)
 
 
 class GenomeFlatFasta(HintsDbTask):
@@ -122,24 +159,18 @@ class GenerateHints(HintsDbToilTask):
     flat_fasta = luigi.Parameter()
     annotation = luigi.Parameter()
     cfg = luigi.Parameter()
-    no_wiggle_hints = luigi.BoolParameter()
 
     def output(self):
-        hints = os.path.abspath(os.path.join(self.work_dir, self.genome + '.reduced_hints.gff'))
+        hints = os.path.abspath(os.path.join(self.work_dir, self.genome + '.extrinsic_hints.gff'))
         return luigi.LocalTarget(hints)
 
     def run(self):
-        logger.info('Beginning GenerateHints toil pipeline for {}.'.format(self.genome))
+        logger.info('Beginning GenerateHints Toil pipeline for {}.'.format(self.genome))
         work_dir = os.path.abspath(os.path.join(self.work_dir, 'toil', self.genome))
         toil_options = self.prepare_toil_options(work_dir)
         toil_options.defaultMemory = '8G'  # TODO: don't hardcode this.
-        completed = generate_hints(self.genome, self.flat_fasta, self.cfg, self.annotation, self.output().path,
-                                   toil_options, self.no_wiggle_hints)
-        if completed is False:  # we did not have any hints to generate for this genome
-            logger.info('Did not generate hints for {} due to a lack of BAMs/annotation'.format(self.genome))
-            self.output().open('w').close()
-        else:
-            logger.info('Finished generating hints for {}.'.format(self.genome))
+        generate_hints(self.genome, self.flat_fasta, self.cfg, self.annotation, self.output().path, toil_options)
+        logger.info('Finished GenerateHints Toil pipeline for {}.'.format(self.genome))
 
 
 class BuildDb(HintsDbTask):
@@ -152,9 +183,10 @@ class BuildDb(HintsDbTask):
     hint_paths = luigi.Parameter()
     flat_fasta_paths = luigi.Parameter()
     genomes = luigi.TupleParameter()
+    target_genomes = luigi.TupleParameter()
 
     def requires(self):
-        for genome in self.genomes:
+        for genome in self.target_genomes:
             flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=self.cfg)
             annotation = self.cfg['ANNOTATION'].get(genome, None)
             hints = self.clone(GenerateHints, genome=genome, flat_fasta=flat_fasta.output().path,
@@ -167,11 +199,12 @@ class BuildDb(HintsDbTask):
 
     def run(self):
         for genome in self.genomes:
-            logger.info('Loading finished hints for {} into database.'.format(genome))
+            logger.info('Loading sequence fpr {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(self.augustus_hints_db)]
             tools.procOps.run_proc(base_cmd + [self.flat_fasta_paths[genome]])
-            if genome in self.hint_paths and os.path.getsize(self.hint_paths[genome]) > 0:
+            if genome in self.hint_paths:
+                logger.info('Loading hints for {} into database.'.format(genome))
                 tools.procOps.run_proc(base_cmd + [self.hint_paths[genome]])
         logger.info('Indexing database.')
         cmd = ['load2sqlitedb', '--makeIdx', '--clean', '--dbaccess={}'.format(self.augustus_hints_db)]
@@ -205,48 +238,44 @@ class IndexTarget(luigi.Target):
 ###
 
 
-def generate_hints(genome, flat_fasta, cfg, annotation, out_gff_path, toil_options, no_wiggle_hints):
+def generate_hints(genome, flat_fasta, cfg, annotation, out_gff_path, toil_options):
     """
     Entry point for hints database Toil pipeline.
     """
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            if genome in cfg['BAM'] and cfg['BAM'][genome] is not None:
-                logger.info('Validating BAMs for {}.'.format(genome))
+            bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
+            for dtype in ['BAM', 'INTRONBAM']:
+                logger.info('Validating {}s for {}.'.format(dtype, genome))
                 # validate BAMs
                 fasta = pyfasta.Fasta(flat_fasta)
-                fasta_sequences = {x.split()[0] for x in fasta.keys()}
-                for bam_path in cfg['BAM'][genome]:
+                fasta_sequences = {(x.split()[0], len(fasta[x])) for x in fasta.keys()}
+                if genome not in cfg[dtype]:
+                    continue
+                for bam_path in cfg[dtype][genome]:
                     validate_bam_fasta_pairs(bam_path, fasta_sequences, genome)
                     logger.info('BAM {} for {} is valid.'.format(bam_path, genome))
-                logger.info('All BAMs valid for {}, beginning Toil hints pipeline.'.format(genome))
-            # start pipeline
-            if genome in cfg['BAM'] and cfg['BAM'][genome] is not None:
-                bam_file_ids = {}
-                for bam_path in cfg['BAM'][genome]:
                     is_paired = bam_is_paired(bam_path)
-                    bam_file_ids[os.path.basename(bam_path)] = (toil.importFile('file://' + bam_path),
-                                                                toil.importFile('file://' + bam_path + '.bai'),
-                                                                is_paired)
+                    bam_file_ids[dtype][os.path.basename(bam_path)] = (toil.importFile('file://' + bam_path),
+                                                                       toil.importFile('file://' + bam_path + '.bai'),
+                                                                       is_paired)
                     is_paired_str = 'paired' if is_paired else 'not paired'
                     logger.info('BAM {} was inferred to be {}.'.format(os.path.basename(bam_path), is_paired_str))
-            else:
-                bam_file_ids = None
             input_file_ids = {'bams': bam_file_ids,
                               'annotation': toil.importFile('file://' + annotation) if annotation is not None else None}
-            job = Job.wrapJobFn(setup_hints, input_file_ids, genome, no_wiggle_hints)
+            logger.info('{} has {} valid intron-only BAMs and {} valid BAMs. '
+                        'Beginning Toil hints pipeline.'.format(genome, len(bam_file_ids['INTRONBAM']),
+                                                                len(bam_file_ids['BAM'])))
+            job = Job.wrapJobFn(setup_hints, input_file_ids)
             combined_hints = toil.start(job)
         else:
+            logger.info('Restarting Toil hints pipeline for {}.'.format(genome))
             combined_hints = toil.restart()
-        if combined_hints is not None:
-            tools.fileOps.ensure_file_dir(out_gff_path)
-            toil.exportFile(combined_hints, 'file://' + out_gff_path)
-            return True
-        else:
-            return False
+        tools.fileOps.ensure_file_dir(out_gff_path)
+        toil.exportFile(combined_hints, 'file://' + out_gff_path)
 
 
-def setup_hints(job, input_file_ids, genome, no_wiggle_hints):
+def setup_hints(job, input_file_ids):
     """
     Generates hints for a given genome with a list of BAMs. Will add annotation if it exists.
 
@@ -257,31 +286,28 @@ def setup_hints(job, input_file_ids, genome, no_wiggle_hints):
           V generate_annotation_hints ------------------------^
 
     Each main step (filter_bam, cat_sort_bams, build_intron_hints, build_exon_hints) are done on a subset of references
-    and then combined at the cat step.
+    that are then combined at the cat_hints step.
     """
-    job.fileStore.logToMaster('Beginning hints production for {}'.format(genome), level=logging.INFO)
-    # If we have no BAMs, we skip this step
-    if input_file_ids['bams'] is not None:
+    filtered_bam_file_ids = {'BAM': collections.defaultdict(list), 'INTRONBAM': collections.defaultdict(list)}
+    for dtype, bam_dict in input_file_ids['bams'].iteritems():
+        if len(bam_dict) == 0:
+            continue
         # Since BAMs are valid, we can assume that they all share the same header
-        bam_file_id, bai_file_id, is_paired = input_file_ids['bams'].values()[0]
+        bam_file_id, bai_file_id, is_paired = bam_dict.values()[0]
         sam_handle = pysam.Samfile(job.fileStore.readGlobalFile(bam_file_id))
         # generate reference grouping that will be used downstream until final cat step
         grouped_references = [tuple(x) for x in group_references(sam_handle)]
-        filtered_bam_file_ids = collections.defaultdict(list)
-        for original_path, (bam_file_id, bai_file_id, is_paired) in input_file_ids['bams'].iteritems():
+        for original_path, (bam_file_id, bai_file_id, is_paired) in bam_dict.iteritems():
             for reference_subset in grouped_references:
                 j = job.addChildJobFn(filter_bam, bam_file_id, bai_file_id, reference_subset, is_paired)
-                filtered_bam_file_ids[reference_subset].append(j.rv())
-    else:
-        filtered_bam_file_ids = {}
+                filtered_bam_file_ids[dtype][reference_subset].append(j.rv())
     if input_file_ids['annotation'] is not None:
-        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'], genome)
+        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'])
         annotation_hints_file_id = j.rv()
     else:
         annotation_hints_file_id = None
     # returns path to filtered GFF output
-    return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints_file_id,
-                                genome, no_wiggle_hints).rv()
+    return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints_file_id).rv()
 
 
 def filter_bam(job, bam_file_id, bai_file_id, reference_subset, is_paired):
@@ -289,7 +315,6 @@ def filter_bam(job, bam_file_id, bai_file_id, reference_subset, is_paired):
     Slices out a chromosome from a BAM, re-sorts by name, filters the reads, then re-sorts by position.
     filterBam does weird things when piped to stdout, so I don't do that.
     """
-    job.fileStore.logToMaster('Name-sorting and filtering {}'.format(bam_file_id), level=logging.INFO)
     tmp_filtered = tools.fileOps.get_tmp_toil_file(suffix='filtered.bam')
     bam_path = job.fileStore.readGlobalFile(bam_file_id)
     job.fileStore.readGlobalFile(bai_file_id, bam_path + '.bai')
@@ -308,32 +333,24 @@ def filter_bam(job, bam_file_id, bai_file_id, reference_subset, is_paired):
     return filtered_bam_file_id
 
 
-def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, genome, no_wiggle_hints):
+def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id):
     """
     Takes a dictionary mapping reference chunks to filtered BAMs. For each reference chunk, these BAMs will be
     first concatenated then sorted, then passed off to hint building.
     """
-    job.fileStore.logToMaster('Merging BAMs for {}.'.format(genome), level=logging.INFO)
-    # filtered_bam_file_ids may be empty, which signifies that for this genome we have no BAMs
-    if len(filtered_bam_file_ids) > 0:
-        merged_bam_file_ids = {}
-        for ref_group, file_ids in filtered_bam_file_ids.iteritems():
-            merged_bam_file_ids[ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, ref_group, genome).rv()
-    else:
-        merged_bam_file_ids = None
-    return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id,
-                                genome, no_wiggle_hints).rv()
+    merged_bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
+    for dtype in filtered_bam_file_ids:
+        for ref_group, file_ids in filtered_bam_file_ids[dtype].iteritems():
+            merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids).rv()
+    return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id).rv()
 
 
-def cat_sort_bams(job, bam_file_ids, ref_group, genome):
+def cat_sort_bams(job, bam_file_ids):
     """
     Takes a list of bam file IDs and combines/sorts them.
 
     TODO: the 4096 file hack below is hacky. Should only be a problem for very fragmented references.
     """
-    job.fileStore.logToMaster('{}: Concatenating and sorting bams for references: {}'.format(genome,
-                                                                                             ','.join(ref_group)),
-                              level=logging.INFO)
     bamfiles = [job.fileStore.readGlobalFile(x) for x in bam_file_ids]
     # cat only 4095 bams at a time to avoid bash command length problems
     catfile = tools.fileOps.get_tmp_toil_file()
@@ -357,22 +374,18 @@ def cat_sort_bams(job, bam_file_ids, ref_group, genome):
     return job.fileStore.writeGlobalFile(merged)
 
 
-def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, genome, no_wiggle_hints):
+def build_hints(job, merged_bam_file_ids, annotation_hints_file_id):
     """
     Takes the merged BAM for a genome and produces both intron and exon hints.
     """
-    job.fileStore.logToMaster('Building hints for {}'.format(genome))
-    if merged_bam_file_ids is None:
-        intron_hints_file_ids = exon_hints_file_ids = None
-    else:
-        exon_hints_file_ids = None if no_wiggle_hints is True else {}
-        intron_hints_file_ids = {}
-        for ref_group, file_ids in merged_bam_file_ids.iteritems():
-            intron_hints_file_ids[ref_group] = job.addChildJobFn(build_intron_hints, file_ids).rv()
-            if no_wiggle_hints is False:
-                exon_hints_file_ids[ref_group] = job.addChildJobFn(build_exon_hints, file_ids).rv()
-    return job.addFollowOnJobFn(cat_hints, intron_hints_file_ids, exon_hints_file_ids,
-                                annotation_hints_file_id, genome).rv()
+    intron_hints_file_ids = []
+    exon_hints_file_ids = []
+    for dtype in merged_bam_file_ids:
+        for ref_group, file_ids in merged_bam_file_ids[dtype].iteritems():
+            intron_hints_file_ids.append(job.addChildJobFn(build_intron_hints, file_ids).rv())
+            if dtype == 'BAM':
+                exon_hints_file_ids.append(job.addChildJobFn(build_exon_hints, file_ids).rv())
+    return job.addFollowOnJobFn(cat_hints, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_file_id).rv()
 
 
 def build_intron_hints(job, merged_bam_file_id):
@@ -395,14 +408,13 @@ def build_exon_hints(job, merged_bam_file_id):
     return job.fileStore.writeGlobalFile(exon_gff_path)
 
 
-def generate_annotation_hints(job, annotation_hints_file_id, genome):
+def generate_annotation_hints(job, annotation_hints_file_id):
     """
     Converts the annotation file into hints. First converts the gff3 directly to genePred so we can make use
     of the transcript library.
 
     Hints are derived from both CDS exonic intervals and intron intervals
     """
-    job.fileStore.logToMaster('Generating annotation hints for {}'.format(genome), level=logging.INFO)
     annotation_gff3 = job.fileStore.readGlobalFile(annotation_hints_file_id)
     tm_gp = tools.fileOps.get_tmp_toil_file()
     cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
@@ -428,29 +440,17 @@ def generate_annotation_hints(job, annotation_hints_file_id, genome):
     return job.fileStore.writeGlobalFile(annotation_hints_gff)
 
 
-def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints, genome):
+def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_file_id):
     """Returns file ID to combined, sorted hints"""
-    if all(x is None for x in (intron_hints_file_ids, exon_hints_file_ids, annotation_hints)):
-        return None  # we are just loading the genome
-    # load every hint file to this job
-    job.fileStore.logToMaster('Concatenating final hints for {}'.format(genome))
-    if intron_hints_file_ids is not None:
-        intron_hints = [job.fileStore.readGlobalFile(x) for x in intron_hints_file_ids.itervalues()]
-    else:
-        intron_hints = []
-    if exon_hints_file_ids is not None:
-        exon_hints = [job.fileStore.readGlobalFile(x) for x in exon_hints_file_ids.itervalues()]
-    else:
-        exon_hints = []
-    if annotation_hints is not None:
-        annotation_hints = [job.fileStore.readGlobalFile(annotation_hints)]
-    else:
-        annotation_hints = []
-    # generate a temporary file we will cat everything to.
     cat_hints = tools.fileOps.get_tmp_toil_file()
     with open(cat_hints, 'w') as outf:
-        for file in itertools.chain(intron_hints, exon_hints, annotation_hints):
-            for line in open(file):
+        for file_id in itertools.chain(intron_hints_file_ids, exon_hints_file_ids):
+            f = job.fileStore.readGlobalFile(file_id)
+            for line in open(f):
+                outf.write(line)
+        if annotation_hints_file_id is not None:
+            f = job.fileStore.readGlobalFile(annotation_hints_file_id)
+            for line in open(f):
                 outf.write(line)
     cmd = [['sort', '-n', '-k4,4', cat_hints],
            ['sort', '-s', '-n', '-k5,5'],
@@ -469,13 +469,21 @@ def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints,
 
 def validate_bam_fasta_pairs(bam_path, fasta_sequences, genome):
     """
-    Make sure that this BAM is actually aligned to this fasta
+    Make sure that this BAM is actually aligned to this fasta. Every sequence should be the same length. Sequences
+    can exist in the reference that do not exist in the BAM, but not the other way around.
     """
     handle = pysam.Samfile(bam_path, 'rb')
-    if set(handle.references) != fasta_sequences:
-        base_err = 'Error: BAM {} does not have the same sequences as the FASTA for genome {}'
-        err = base_err.format(bam_path, genome)
+    bam_sequences = {(n, s) for n, s in zip(*[handle.references, handle.lengths])}
+    difference = bam_sequences - fasta_sequences
+    if len(difference) > 0:
+        base_err = 'Error: BAM {} has the following sequence/length pairs not found in the {} fasta: {}.'
+        err = base_err.format(bam_path, genome, ','.join(['-'.join(map(str, x)) for x in difference]))
         raise UserException(err)
+    missing_seqs = fasta_sequences - bam_sequences
+    if len(missing_seqs) > 0:
+        base_msg = 'BAM {} does not have the following sequence/length pairs in its header: {}'
+        msg= base_msg.format(bam_path, ','.join(['-'.join(map(str, x)) for x in missing_seqs]))
+        logger.warning(msg)
 
 
 def bam_is_paired(bam_path, num_reads=20000, paired_cutoff=0.75):
@@ -495,7 +503,7 @@ def bam_is_paired(bam_path, num_reads=20000, paired_cutoff=0.75):
         raise UserException("Unable to infer pairing from bamfile {}".format(bam_path))
 
 
-def group_references(sam_handle, num_bases=10 ** 7, max_seqs=500):
+def group_references(sam_handle, num_bases=10 ** 7, max_seqs=1000):
     """
     Group up references by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
     """
@@ -533,7 +541,6 @@ def parse_args():
     parser.add_argument('--hal', required=True)
     parser.add_argument('--augustus-hints-db', default='augustus_hints.db')
     parser.add_argument('--work-dir', default='./hints_work')
-    parser.add_argument('--no-wiggle-hints', default=False, action='store_true')
     # parallelism
     parser.add_argument('--workers', default=10)
     # toil options
