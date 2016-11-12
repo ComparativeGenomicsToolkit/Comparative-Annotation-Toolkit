@@ -320,18 +320,13 @@ def extract_attrs(gff3):
     :param gff3: input gff3
     :returns: DataFrame
     """
-    valid_gene_types = {u'rRNA_gene', u'snRNA_gene', u'pseudogene', u'lincRNA_gene', u'RNA', u'mt_gene',
-                        u'miRNA_gene', u'processed_transcript', u'snoRNA_gene', u'gene'}
-    valid_tx_types = {u'processed_pseudogene', u'pseudogenic_transcript', u'snRNA', u'NMD_transcript_variant',
-                      u'pseudogene', u'processed_transcript', u'lincRNA', u'transcript', u'snoRNA',
-                      u'nc_primary_transcript', u'miRNA', u'aberrant_processed_transcript', u'rRNA'}
     results = {}
     parser = Gff3Parser(gff3)
     tree = parser.parse()
     for gene in tree.roots:
+        if 'gene_id' not in gene.attributes:  # this isn't a gene
+            continue
         try:
-            if gene.type not in valid_gene_types:
-                continue
             gene_id = gene.attributes['gene_id'][0]
             try:
                 gene_biotype = gene.attributes['biotype'][0]
@@ -346,9 +341,9 @@ def extract_attrs(gff3):
                     # this record lacks a common name field. Probably from Ensembl
                     gene_name = gene.attributes['gene_id'][0]
             for tx in gene.children:
+                if 'transcript_id' not in tx.attributes:
+                    continue
                 try:
-                    if tx.type not in valid_tx_types:
-                        continue
                     tx_id = tx.attributes['transcript_id'][0]
                     try:
                         tx_biotype = tx.attributes['biotype'][0]
@@ -361,9 +356,10 @@ def extract_attrs(gff3):
                          'StopCodon': 'stop_codon' in feature_types}
                     results[tx_id] = r
                 except KeyError, e:
-                    raise GFF3Exception('Unable to parse field {} from the input gff3 on line'.format(e, tx.lineNumber))
+                    raise GFF3Exception('Unable to parse field {} from the input gff3 on line {}'.format(e,
+                                                                                                         tx.lineNumber))
         except KeyError, e:
-            raise GFF3Exception('Unable to parse field {} from the input gff3 on line'.format(e, gene.lineNumber))
+            raise GFF3Exception('Unable to parse field {} from the input gff3 on line {}'.format(e, gene.lineNumber))
     df = pd.DataFrame.from_dict(results, orient='index')
     df.StartCodon = pd.to_numeric(df.StartCodon)  # force the types here for better sql dtypes
     df.StopCodon = pd.to_numeric(df.StopCodon)

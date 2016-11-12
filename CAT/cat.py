@@ -293,6 +293,7 @@ class Gff3ToAttrs(PipelineTask):
     """
     Uses the gff3 parser to extract the attributes table, converting the table into a sqlite database.
     """
+    annotation_gp = luigi.Parameter()
     table = tools.sqlInterface.Annotation.__tablename__
 
     def output(self):
@@ -305,6 +306,13 @@ class Gff3ToAttrs(PipelineTask):
                                                           target_table=self.table,
                                                           update_id='_'.join([self.table, digest]))
         return attrs_table
+
+    def validate(self, results):
+        """Ensure that after attribute extraction we have the same number of transcripts"""
+        num_gp_entries = len(open(self.annotation_gp).readlines())
+        if len(results) != num_gp_entries:
+            raise UserException('The number of transcripts parsed out of the gff3 did not match the number present. '
+                                'Please validate your gff3. See the documentation for info.')
 
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
