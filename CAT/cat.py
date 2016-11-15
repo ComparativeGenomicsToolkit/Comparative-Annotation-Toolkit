@@ -293,7 +293,6 @@ class Gff3ToAttrs(PipelineTask):
     """
     Uses the gff3 parser to extract the attributes table, converting the table into a sqlite database.
     """
-    annotation_gp = luigi.Parameter()
     table = tools.sqlInterface.Annotation.__tablename__
 
     def output(self):
@@ -309,7 +308,7 @@ class Gff3ToAttrs(PipelineTask):
 
     def validate(self, results):
         """Ensure that after attribute extraction we have the same number of transcripts"""
-        num_gp_entries = len(open(self.annotation_gp).readlines())
+        num_gp_entries = len(open(self.annotation).readlines())
         if len(results) != num_gp_entries:
             raise UserException('The number of transcripts parsed out of the gff3 did not match the number present. '
                                 'Please validate your gff3. See the documentation for info.')
@@ -317,6 +316,7 @@ class Gff3ToAttrs(PipelineTask):
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         results = tools.gff3.extract_attrs(self.annotation)
+        self.validate(results)
         if 'protein_coding' not in results.TranscriptBiotype[1] or 'protein_coding' not in results.GeneBiotype[1]:
             logger.warning('No protein_coding annotations found!')
         pipeline_args = self.get_pipeline_args()

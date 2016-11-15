@@ -99,7 +99,7 @@ def fit_distributions(aln_eval_df, ref_df, genome):
             num_pass = labels.count('Passing')
             num_fail = labels.count('Failing')
             logger.info('Established a {:.2%} identity boundary for {} on {} resulting in '
-                        '{} passing and {} failing alignments.'.format(cutoff, biotype, genome, num_pass, num_fail))
+                        '{:,} passing and {:,} failing alignments.'.format(cutoff, biotype, genome, num_pass, num_fail))
             r.extend([[aln_id, label] for aln_id, label in zip(*[df.AlignmentId, labels])])
 
     # turn r into a dataframe
