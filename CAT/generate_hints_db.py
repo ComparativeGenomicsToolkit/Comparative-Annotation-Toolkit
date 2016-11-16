@@ -94,7 +94,9 @@ class BuildHints(HintsDbWrapperTask):
                         cfg[dtype][genome] = [os.path.abspath(path)]
                 else:
                     cfg[dtype][genome] = [os.path.abspath(x) for x in path]
-        # do some input validation
+        return cfg, tuple(target_genomes)
+
+    def validate(self, cfg, genomes, target_genomes):
         for dtype in ['BAM', 'INTRONBAM']:
             for genome in cfg[dtype]:
                 for bam in cfg[dtype][genome]:
@@ -102,17 +104,23 @@ class BuildHints(HintsDbWrapperTask):
                         raise MissingFileException('Missing BAM {}.'.format(bam))
                     if not os.path.exists(bam + '.bai'):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
+
         for genome, annot in cfg['ANNOTATION'].iteritems():
             if not os.path.exists(annot):
                 raise MissingFileException('Missing annotation file {}.'.format(annot))
-        return cfg, tuple(target_genomes)
+
+        if all(g in genomes for g in target_genomes) is False:
+            bad_genomes = set(genomes) - set(target_genomes)
+            err_msg = 'Genomes {} present in configuration and not present in HAL'.format(','.join(bad_genomes))
+            raise UserException(err_msg)
 
     def requires(self):
-        cfg, target_genomes = self.parse_cfg()
-        hint_paths = {}
-        flat_fasta_paths = {}
         hal = os.path.abspath(self.hal)
         genomes = tools.hal.extract_genomes(hal)
+        cfg, target_genomes = self.parse_cfg()
+        self.validate(cfg, genomes, target_genomes)
+        hint_paths = {}
+        flat_fasta_paths = {}
         for genome in genomes:
             flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=cfg, hal=hal)
             yield flat_fasta
@@ -199,7 +207,7 @@ class BuildDb(HintsDbTask):
 
     def run(self):
         for genome in self.genomes:
-            logger.info('Loading sequence fpr {} into database.'.format(genome))
+            logger.info('Loading sequence for {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(self.augustus_hints_db)]
             tools.procOps.run_proc(base_cmd + [self.flat_fasta_paths[genome]])
