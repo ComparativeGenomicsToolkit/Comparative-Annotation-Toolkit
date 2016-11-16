@@ -254,13 +254,13 @@ def generate_hints(genome, flat_fasta, cfg, annotation, out_gff_path, toil_optio
                     continue
                 for bam_path in cfg[dtype][genome]:
                     validate_bam_fasta_pairs(bam_path, fasta_sequences, genome)
-                    logger.info('BAM {} for {} is valid.'.format(bam_path, genome))
                     is_paired = bam_is_paired(bam_path)
                     bam_file_ids[dtype][os.path.basename(bam_path)] = (toil.importFile('file://' + bam_path),
                                                                        toil.importFile('file://' + bam_path + '.bai'),
                                                                        is_paired)
                     is_paired_str = 'paired' if is_paired else 'not paired'
-                    logger.info('BAM {} was inferred to be {}.'.format(os.path.basename(bam_path), is_paired_str))
+                    logger.info('BAM {} is valid and was inferred to be {}.'.format(os.path.basename(bam_path),
+                                                                                    is_paired_str))
             input_file_ids = {'bams': bam_file_ids,
                               'annotation': toil.importFile('file://' + annotation) if annotation is not None else None}
             logger.info('{} has {} valid intron-only BAMs and {} valid BAMs. '
