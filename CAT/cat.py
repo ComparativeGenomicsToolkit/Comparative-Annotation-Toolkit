@@ -837,11 +837,13 @@ class AugustusCgp(ToilTask):
             return
         yield self.clone(FilterTransMap), self.clone(Gff3ToAttrs)
 
-    def prepare_cfg(self, pipeline_args):
+    def prepare_cfg(self, pipeline_args, bam_genomes, intron_only_genomes):
         """use the config template to create a config file"""
+        bam_genomes = 'none' if len(bam_genomes) == 0 else ' '.join(bam_genomes)
+        intron_only_genomes = 'none' if len(intron_only_genomes) == 0 else ' '.join(intron_only_genomes)
         template = open(pipeline_args.augustus_cgp_cfg_template).read()
-        cfg = template.format(ref_genome=pipeline_args.ref_genome,
-                              target_genomes=' '.join(pipeline_args.target_genomes))
+        cfg = template.format(ref_genome=pipeline_args.ref_genome, target_genomes=bam_genomes,
+                              intron_target_genomes=intron_only_genomes)
         out_path = tools.fileOps.get_tmp_file()
         with open(out_path, 'w') as outf:
             outf.write(cfg)
@@ -855,13 +857,21 @@ class AugustusCgp(ToilTask):
         else:
             logger.info('Hints database has annotation hints for {}.'.format(pipeline_args.ref_genome))
         genomes_with_hints = []
+        genomes_with_only_intron_hints = []
         for genome in pipeline_args.target_genomes:
             if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db, genome) is True:
-                genomes_with_hints.append(genome)
-        if len(genomes_with_hints) == 0:
+                if tools.hintsDatabaseInterface.genome_has_no_wiggle_hints(pipeline_args.augustus_hints_db, genome) is True:
+                    genomes_with_only_intron_hints.append(genome)
+                else:
+                    genomes_with_hints.append(genome)
+        if len(genomes_with_hints) + len(genomes_with_only_intron_hints) == 0:
             logger.warning('AugustusCGP is being ran without any RNA-seq hints!')
         else:
-            logger.info('RNA-seq hints found for the following genomes: {}.'.format(','.join(genomes_with_hints)))
+            logger.info('RNA-seq hints found for genomes: {}.'.format(','.join(genomes_with_hints)))
+            logger.info('RNA-seq intron-only hits found for genomes: {}.'.format(','.join(genomes_with_only_intron_hints)))
+            no_hints_genomes = set(pipeline_args.target_genomes) - set(genomes_with_only_intron_hints + genomes_with_hints)
+            logger.info('No extrinsic hints found for genomes: {}.'.format(','.join(no_hints_genomes)))
+        return genomes_with_hints, genomes_with_only_intron_hints
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
@@ -869,12 +879,12 @@ class AugustusCgp(ToilTask):
             # TODO: if no database is given (de novo setting),
             # create a new DB with the flattened genomes from the HAL alignment
             raise UserException('Cannot run AugustusCGP without a hints database.')
-        self.evaluate_database(pipeline_args)
+        bam_genomes, intron_only_genomes = self.evaluate_database(pipeline_args)
         logger.info('Launching AugustusCGP toil pipeline.')
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(toil_work_dir)
         cgp_args = self.get_args(pipeline_args)
-        cgp_args.cgp_cfg = self.prepare_cfg(pipeline_args)
+        cgp_args.cgp_cfg = self.prepare_cfg(pipeline_args, bam_genomes, intron_only_genomes)
         augustus_cgp(cgp_args, toil_options)
         logger.info('AugustusCGP toil pipeline completed.')
         # convert each to genePred as well

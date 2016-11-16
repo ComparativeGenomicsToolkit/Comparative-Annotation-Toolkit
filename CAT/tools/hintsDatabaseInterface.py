@@ -82,6 +82,22 @@ def hints_db_has_rnaseq(db_path, genome=None):
     return r
 
 
+def genome_has_no_wiggle_hints(db_path, genome):
+    """
+    Determines if the hints db for a specific genome has wiggle hints
+    :param db_path: path to database
+    :param genome: genome in question
+    :return: boolean
+    """
+    speciesnames, seqnames, hints, featuretypes, session = reflect_hints_db(db_path)
+    query = session.query(hints).filter(hints.source == 'w2h')
+    speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
+    query = query.filter(hints.speciesid == speciesid)
+    r = query.first() is None
+    session.close()
+    return r
+
+
 def hints_db_has_annotation(db_path, genome=None):
     """
     Determines if the hints DB has annotation. Is done by querying for a2h in hints
