@@ -306,9 +306,10 @@ class Gff3ToAttrs(PipelineTask):
                                                           update_id='_'.join([self.table, digest]))
         return attrs_table
 
-    def validate(self, results):
+    def validate(self, pipeline_args, results):
         """Ensure that after attribute extraction we have the same number of transcripts"""
-        num_gp_entries = len(open(self.annotation).readlines())
+        ref_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        num_gp_entries = len(open(ref_gp).readlines())
         if len(results) != num_gp_entries:
             raise UserException('The number of transcripts parsed out of the gff3 did not match the number present. '
                                 'Please validate your gff3. See the documentation for info.')
@@ -316,10 +317,10 @@ class Gff3ToAttrs(PipelineTask):
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         results = tools.gff3.extract_attrs(self.annotation)
-        self.validate(results)
+        pipeline_args = self.get_pipeline_args()
+        self.validate(pipeline_args, results)
         if 'protein_coding' not in results.TranscriptBiotype[1] or 'protein_coding' not in results.GeneBiotype[1]:
             logger.warning('No protein_coding annotations found!')
-        pipeline_args = self.get_pipeline_args()
         database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
             results.to_sql(self.table, engine, if_exists='replace')
