@@ -139,18 +139,18 @@ def resolve_paralogs(updated_aln_eval_df, genome):
         biotype = df.TranscriptBiotype.iloc[0]
         passing = df[df.TranscriptClass == 'Passing']
         if len(passing) == 1:  # we can pick one passing member
-            paralog_metrics[biotype]['Alignments discarded'] += 1
             paralog_metrics[biotype]['Model prediction'] += 1
+            paralog_metrics[biotype]['Alignments discarded'] += len(df) - 1
             paralog_status.append([df.AlignmentId.iloc[0], 'Confident'])
         else:
             highest_score_df = df[df.Score == df.iloc[0].Score]
             if len(highest_score_df) == 1:
                 paralog_metrics[biotype]['Synteny heuristic'] += 1
-                paralog_metrics[biotype]['Alignments discarded'] += 1
+                paralog_metrics[biotype]['Alignments discarded'] += len(df) - 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'Confident'])
             else:
                 paralog_metrics[biotype]['Arbitrarily resolved'] += 1
-                paralog_metrics[biotype]['Alignments discarded'] += 1
+                paralog_metrics[biotype]['Alignments discarded'] += len(df) - 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'NotConfident'])
 
     for biotype in set(updated_aln_eval_df.TranscriptBiotype):
