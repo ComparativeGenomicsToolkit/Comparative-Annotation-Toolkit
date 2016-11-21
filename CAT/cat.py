@@ -852,26 +852,35 @@ class AugustusCgp(ToilTask):
 
     def evaluate_database(self, pipeline_args):
         """warn the user about the database not containing things"""
-        if tools.hintsDatabaseInterface.hints_db_has_annotation(pipeline_args.augustus_hints_db,
-                                                                pipeline_args.ref_genome) is False:
-            logger.warning('AugustusCGP is being ran without any annotation hints!')
-        else:
-            logger.info('Hints database has annotation hints for {}.'.format(pipeline_args.ref_genome))
         genomes_with_hints = []
         genomes_with_only_intron_hints = []
-        for genome in pipeline_args.target_genomes:
+        genomes_with_annotation_hints = []
+        for genome in pipeline_args.target_genomes + [pipeline_args.ref_genome]:
             if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db, genome) is True:
                 if tools.hintsDatabaseInterface.genome_has_no_wiggle_hints(pipeline_args.augustus_hints_db, genome) is True:
                     genomes_with_only_intron_hints.append(genome)
                 else:
                     genomes_with_hints.append(genome)
+            if tools.hintsDatabaseInterface.hints_db_has_annotation(pipeline_args.augustus_hints_db, genome) is True:
+                genomes_with_annotation_hints.append(genome)
+
+        if len(genomes_with_annotation_hints) == 0:
+            logger.warning('AugustusCGP is being ran without any annotation hints!')
+        elif pipeline_args.ref_genome not in genomes_with_annotation_hints:
+            logger.warning('AugustusCGP is being ran without annotation hints on the reference genome!')
+        else:
+            logger.info('Annotation hints found for genomes: {}.'.format(','.join(genomes_with_annotation_hints)))
+
         if len(genomes_with_hints) + len(genomes_with_only_intron_hints) == 0:
             logger.warning('AugustusCGP is being ran without any RNA-seq hints!')
         else:
             logger.info('RNA-seq hints found for genomes: {}.'.format(','.join(genomes_with_hints)))
-            logger.info('RNA-seq intron-only hits found for genomes: {}.'.format(','.join(genomes_with_only_intron_hints)))
+            if len(genomes_with_only_intron_hints) > 0:
+                genome_str = ','.join(genomes_with_only_intron_hints)
+                logger.info('RNA-seq intron-only hits found for genomes: {}.'.format(genome_str))
             no_hints_genomes = set(pipeline_args.target_genomes) - set(genomes_with_only_intron_hints + genomes_with_hints)
-            logger.info('No extrinsic hints found for genomes: {}.'.format(','.join(no_hints_genomes)))
+            if len(no_hints_genomes) > 0:
+                logger.info('No extrinsic hints found for genomes: {}.'.format(','.join(no_hints_genomes)))
         return genomes_with_hints, genomes_with_only_intron_hints
 
     def run(self):

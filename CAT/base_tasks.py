@@ -95,9 +95,12 @@ class PipelineTask(luigi.Task):
             args.hints_db_has_rnaseq = tools.hintsDatabaseInterface.hints_db_has_rnaseq(self.augustus_hints_db)
             if self.augustus is True and args.hints_db_has_rnaseq is True:
                 args.augustus_tmr = True
+            else:
+                args.augustus_tmr = False
         else:
             args.augustus_hints_db = None
             args.hints_db_has_rnaseq = False
+            args.augustus_tmr = False
         args.tm_cfg = os.path.abspath(self.tm_cfg)
         args.tmr_cfg = os.path.abspath(self.tmr_cfg)
         args.augustus_cgp = self.augustus_cgp
