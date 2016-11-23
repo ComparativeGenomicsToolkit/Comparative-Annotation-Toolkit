@@ -28,6 +28,54 @@ class HashableNamespace(argparse.Namespace):
         return reduce(xor, val_iter, first) ^ hash(tuple(self.__dict__.values()))
 
 
+class ToilMixin(object):
+    """
+    Provides shared methods to ToilTask and HintsDbToilTask
+    """
+    resources = {'toil': 1}  # all toil pipelines use 1 toil
+
+    def prepare_toil_options(self, work_dir):
+        """
+        Prepares a Namespace object for Toil which has all defaults, overridden as specified
+        Will see if the jobStore path exists, and if it does, assume that we need to add --restart
+        :param work_dir: Parent directory where toil work will be done. jobStore will be placed inside. Will be used
+        to fill in the workDir class variable.
+        :return: Namespace
+        """
+        job_store = os.path.join(work_dir, 'jobStore')
+        tools.fileOps.ensure_file_dir(job_store)
+        toil_args = self.get_toil_defaults()
+        toil_args.__dict__.update(vars(self))
+        if os.path.exists(job_store):
+            try:
+                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
+                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
+                    shutil.rmtree(job_store)
+                else:
+                    toil_args.restart = True
+            except OSError:
+                toil_args.restart = True
+            except IOError:
+                shutil.rmtree(job_store)
+        if toil_args.workDir is not None:
+            if toil_args.batchSystem == 'parasol' and toil_args.disableCaching is False:
+                raise RuntimeError('Running parasol without disabled caching is a very bad idea.')
+            tools.fileOps.ensure_dir(toil_args.workDir)
+        job_store = 'file:' + job_store
+        toil_args.jobStore = job_store
+        return toil_args
+
+    def get_toil_defaults(self):
+        """
+        Extracts the default toil options as a dictionary, setting jobStore to None
+        :return: dict
+        """
+        parser = Job.Runner.getDefaultArgumentParser()
+        namespace = parser.parse_args([''])  # empty jobStore attribute
+        namespace.jobStore = None  # jobStore attribute will be updated per-batch
+        return namespace
+
+
 class PipelineTask(luigi.Task):
     """
     Base class for all tasks in this pipeline. Has Parameters for all input parameters that will be inherited
@@ -195,53 +243,10 @@ class AbstractAtomicFileTask(PipelineTask):
             tools.procOps.run_proc(cmd, stdout=outf)
 
 
-class ToilTask(PipelineTask):
+class ToilTask(PipelineTask, ToilMixin):
     """
     Task for launching toil pipelines from within luigi.
     """
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
-
-    def prepare_toil_options(self, work_dir):
-        """
-        Prepares a Namespace object for Toil which has all defaults, overridden as specified
-        Will see if the jobStore path exists, and if it does, assume that we need to add --restart
-        :param work_dir: Parent directory where toil work will be done. jobStore will be placed inside. Will be used
-        to fill in the workDir class variable.
-        :return: Namespace
-        """
-        job_store = os.path.join(work_dir, 'jobStore')
-        tools.fileOps.ensure_file_dir(job_store)
-        toil_args = self.get_toil_defaults()
-        toil_args.__dict__.update(vars(self))
-        if os.path.exists(job_store):
-            try:
-                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
-                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
-                    shutil.rmtree(job_store)
-                else:
-                    toil_args.restart = True
-            except OSError:
-                toil_args.restart = True
-            except IOError:
-                shutil.rmtree(job_store)
-        if toil_args.workDir is not None:
-            if toil_args.batchSystem == 'parasol' and toil_args.disableCaching is False:
-                raise RuntimeError('Running parasol without disabled caching is a very bad idea.')
-            tools.fileOps.ensure_dir(toil_args.workDir)
-        job_store = 'file:' + job_store
-        toil_args.jobStore = job_store
-        return toil_args
-
-    def get_toil_defaults(self):
-        """
-        Extracts the default toil options as a dictionary, setting jobStore to None
-        :return: dict
-        """
-        parser = Job.Runner.getDefaultArgumentParser()
-        namespace = parser.parse_args([''])  # empty jobStore attribute
-        namespace.jobStore = None  # jobStore attribute will be updated per-batch
-        return namespace
-
     def __repr__(self):
         """override the PipelineTask repr to report the batch system being used"""
         base_repr = super(ToilTask, self).__repr__()
@@ -274,50 +279,12 @@ class HintsDbWrapperTask(HintsDbTask, luigi.WrapperTask):
     pass
 
 
-class HintsDbToilTask(HintsDbTask):
+class HintsDbToilTask(HintsDbTask, ToilMixin):
     """
     Task for launching toil pipelines from within luigi.
     """
-    resources = {'toil': 1}  # all toil pipelines use 1 toil
-
-    def prepare_toil_options(self, work_dir):
-        """
-        Prepares a Namespace object for Toil which has all defaults, overridden as specified
-        Will see if the jobStore path exists, and if it does, assume that we need to add --restart
-        :param work_dir: Parent directory where toil work will be done. jobStore will be placed inside. Will be used
-        to fill in the workDir class variable.
-        :return: Namespace
-        """
-        job_store = os.path.join(work_dir, 'jobStore')
-        tools.fileOps.ensure_file_dir(job_store)
-        toil_args = self.get_toil_defaults()
-        toil_args.__dict__.update(vars(self))
-        if os.path.exists(job_store):
-            try:
-                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
-                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
-                    shutil.rmtree(job_store)
-                else:
-                    toil_args.restart = True
-            except OSError:
-                toil_args.restart = True
-            except IOError:
-                shutil.rmtree(job_store)
-        job_store = 'file:' + job_store
-        toil_args.jobStore = job_store
-        return toil_args
-
-    def get_toil_defaults(self):
-        """
-        Extracts the default toil options as a dictionary, setting jobStore to None
-        :return: dict
-        """
-        parser = Job.Runner.getDefaultArgumentParser()
-        namespace = parser.parse_args([''])  # empty jobStore attribute
-        namespace.jobStore = None  # jobStore attribute will be updated per-batch
-        return namespace
-
     def __repr__(self):
         """override the PipelineTask repr to report the batch system being used"""
-        base_repr = super(HintsDbToilTask, self).__repr__()
+        base_repr = super(HintsDbTask, self).__repr__()
         return 'Toil' + base_repr + ' using batchSystem {}'.format(self.batchSystem)
+
