@@ -37,4 +37,3 @@ def open_database(path, timeout=6000):
     con = sql.connect(path, timeout=timeout)
     cur = con.cursor()
     return con, cur
-

@@ -254,6 +254,9 @@ class ToilTask(PipelineTask, ToilMixin):
 
 
 class HintsDbTask(luigi.Task):
+    """
+    Base Task for hints database construction.
+    """
     # path to config file
     config = luigi.Parameter()
     hal = luigi.Parameter()
@@ -281,7 +284,7 @@ class HintsDbWrapperTask(HintsDbTask, luigi.WrapperTask):
 
 class HintsDbToilTask(HintsDbTask, ToilMixin):
     """
-    Task for launching toil pipelines from within luigi.
+    Task for launching toil pipelines from within luigi for hints database construction.
     """
     def __repr__(self):
         """override the PipelineTask repr to report the batch system being used"""

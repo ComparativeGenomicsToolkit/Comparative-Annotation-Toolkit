@@ -188,7 +188,6 @@ def start_session(db_path):
     return Session()
 
 
-
 ###
 # Dictionary mapping tables to their respective transcript/alignment modes
 ###

@@ -713,6 +713,8 @@ class Augustus(PipelineWrapperTask):
             args.augustus_tmr = True
             args.augustus_tmr_gp = os.path.join(base_dir, genome + '.augTMR.gp')
             args.augustus_tmr_gtf = os.path.join(base_dir, genome + '.augTMR.gtf')
+        else:
+            args.augustus_tmr = False
         return args
 
     def validate(self):
@@ -855,7 +857,7 @@ class AugustusCgp(ToilTask):
         genomes_with_hints = []
         genomes_with_only_intron_hints = []
         genomes_with_annotation_hints = []
-        for genome in pipeline_args.target_genomes + [pipeline_args.ref_genome]:
+        for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db, genome) is True:
                 if tools.hintsDatabaseInterface.genome_has_no_wiggle_hints(pipeline_args.augustus_hints_db, genome) is True:
                     genomes_with_only_intron_hints.append(genome)
