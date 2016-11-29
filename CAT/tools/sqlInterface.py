@@ -154,6 +154,7 @@ class HgmColumns(object):
     AlignmentId = Column(Text, primary_key=True)
     RnaSeqSupportIntronVector = Column(Text)
     AnnotationSupportIntronVector = Column(Text)
+    AnnotationCdsExonSupportVector = Column(Text)
 
 
 class TmIntronSupport(HgmColumns, Base):

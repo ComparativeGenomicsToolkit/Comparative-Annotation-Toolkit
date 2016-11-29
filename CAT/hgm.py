@@ -109,25 +109,36 @@ def parse_hgm_gtf(hgm_out):
     But this can be changed later on, e.g. using also the multiplicities, or the presence of the intron
     in (one of) the reference annotation(s) (if "M" is in the 'hgm_info' string, then it is an annotated intron)
     """
-    d = collections.defaultdict(lambda: collections.defaultdict(list))
-
+    intron_lines = []
+    cds_lines = []
     with open(hgm_out) as infile:
-        # get last column of all intron lines
-        intron_lines = [i.strip().split('\t')[-1] for i in infile if "\tintron\t" in i]
-        for attr_line in intron_lines:
+        for line in infile:
+            if '\tintron\t' in line:
+                intron_lines.append(line.rstrip().split('\t')[-1])
+            elif '\tCDS\t' in line:
+                cds_lines.append(line.rstrip().split('\t')[-1])
+
+    # make use of the sorted nature of the input GTFs to create a ordered vector
+    d = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list)))
+    for mode, group in zip(*[['intron', 'cds'], [intron_lines, cds_lines]]):
+        for attr_line in group:
             attributes = parse_gtf_attr_line(attr_line)
-            d[attributes['gene_id']][attributes['transcript_id']].append(attributes['hgm_info'])
+            d[attributes['gene_id']][attributes['transcript_id']][mode].append(attributes['hgm_info'])
 
     # convert to dataframe, switching the list to a comma separated string
     dd = []
     for gene_id in d:
-        for aln_id, hgm_info in d[gene_id].iteritems():
+        for aln_id in d[gene_id]:
+            intron_info = d[gene_id][aln_id]['intron']
+            cds_info = d[gene_id][aln_id]['cds']
             tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
-            rnaseq_vector = ','.join(map(str, [x.count('E') for x in hgm_info]))
-            annotation_vector = ','.join(map(str, [sum([x.count('M'), x.count('N')]) for x in hgm_info]))
-            dd.append([gene_id, tx_id, aln_id, rnaseq_vector, annotation_vector])
+            rnaseq_vector = ','.join(map(str, [x.count('E') for x in intron_info]))
+            annotation_vector = ','.join(map(str, [sum([x.count('M'), x.count('N')]) for x in intron_info]))
+            exon_vector = ','.join(map(str, [x.count('M') for x in cds_info]))
+            dd.append([gene_id, tx_id, aln_id, rnaseq_vector, annotation_vector, exon_vector])
 
     df = pd.DataFrame(dd)
-    df.columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector']
+    df.columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector',
+                  'AnnotationCdsExonSupportVector']
     df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
     return df

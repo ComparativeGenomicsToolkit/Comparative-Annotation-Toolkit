@@ -842,6 +842,9 @@ class AugustusCgp(ToilTask):
 
     def prepare_cfg(self, pipeline_args, bam_genomes, intron_only_genomes, annotation_genomes):
         """use the config template to create a config file"""
+        # annotation takes priority over other options
+        bam_genomes -= annotation_genomes
+        intron_only_genomes -= annotation_genomes
         annotation_genomes = 'none' if len(annotation_genomes) == 0 else ' '.join(annotation_genomes)
         bam_genomes = 'none' if len(bam_genomes) == 0 else ' '.join(bam_genomes)
         intron_only_genomes = 'none' if len(intron_only_genomes) == 0 else ' '.join(intron_only_genomes)
@@ -855,17 +858,17 @@ class AugustusCgp(ToilTask):
 
     def evaluate_database(self, pipeline_args):
         """warn the user about the database not containing things"""
-        genomes_with_hints = []
-        genomes_with_only_intron_hints = []
-        genomes_with_annotation_hints = []
+        genomes_with_hints = set()
+        genomes_with_only_intron_hints = set()
+        genomes_with_annotation_hints = set()
         for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db, genome) is True:
                 if tools.hintsDatabaseInterface.genome_has_no_wiggle_hints(pipeline_args.augustus_hints_db, genome) is True:
-                    genomes_with_only_intron_hints.append(genome)
+                    genomes_with_only_intron_hints.add(genome)
                 else:
-                    genomes_with_hints.append(genome)
+                    genomes_with_hints.add(genome)
             if tools.hintsDatabaseInterface.hints_db_has_annotation(pipeline_args.augustus_hints_db, genome) is True:
-                genomes_with_annotation_hints.append(genome)
+                genomes_with_annotation_hints.add(genome)
 
         if len(genomes_with_annotation_hints) == 0:
             logger.warning('AugustusCGP is being ran without any annotation hints!')
@@ -881,10 +884,9 @@ class AugustusCgp(ToilTask):
             if len(genomes_with_only_intron_hints) > 0:
                 genome_str = ','.join(genomes_with_only_intron_hints)
                 logger.info('RNA-seq intron-only hits found for genomes: {}.'.format(genome_str))
-            no_hints_genomes = set(pipeline_args.target_genomes) - set(genomes_with_only_intron_hints +
-                                                                       genomes_with_hints)
+            no_hints_genomes = set(pipeline_args.target_genomes) - (genomes_with_only_intron_hints | genomes_with_hints)
             if len(no_hints_genomes) > 0:
-                logger.info('No extrinsic hints found for genomes: {}.'.format(','.join(no_hints_genomes)))
+                logger.warning('No extrinsic hints found for genomes: {}.'.format(','.join(no_hints_genomes)))
         return genomes_with_hints, genomes_with_only_intron_hints, genomes_with_annotation_hints
 
     def run(self):

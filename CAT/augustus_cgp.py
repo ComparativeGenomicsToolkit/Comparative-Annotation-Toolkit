@@ -152,7 +152,6 @@ def cgp(job, tree, mafChunk, args, input_file_ids, genomic_region):
            '--printOEs=false',
            '--/CompPred/outdir={}'.format(os.getcwd()),
            '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param))]
-
     tools.procOps.run_proc(cmd)
     return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}
 
