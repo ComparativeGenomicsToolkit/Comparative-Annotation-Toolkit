@@ -60,6 +60,8 @@ class BuildHints(HintsDbWrapperTask):
     Main entry point. Parses input files, and launches the next task.
     """
     def parse_cfg(self):
+        if not os.path.exists(self.config):
+            raise MissingFileException('Config file {} not found.'.format(self.config))
         # configspec validates the input config file
         configspec = ['[ANNOTATION]', '__many__ = string', '[INTRONBAM]', '__many__ = list', '[BAM]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
@@ -97,6 +99,11 @@ class BuildHints(HintsDbWrapperTask):
         return cfg, tuple(target_genomes)
 
     def validate(self, cfg, genomes, target_genomes):
+        if len(cfg['BAM']) + len(cfg['INTRONBAM']) + len(cfg['ANNOTATION']) == 0:
+            logger.warning('No RNA-seq or annotations found in config. Will load genomes only.')
+        elif len(cfg['BAM']) + len(cfg['INTRONBAM']):
+            logger.warning('No RNA-seq found in config. Will load genomes and annotation only.')
+
         for dtype in ['BAM', 'INTRONBAM']:
             for genome in cfg[dtype]:
                 for bam in cfg[dtype][genome]:
@@ -194,6 +201,9 @@ class BuildDb(HintsDbTask):
     target_genomes = luigi.TupleParameter()
 
     def requires(self):
+        for genome in self.genomes:
+            flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=self.cfg)
+            yield flat_fasta
         for genome in self.target_genomes:
             flat_fasta = self.clone(GenomeFlatFasta, genome=genome, cfg=self.cfg)
             annotation = self.cfg['ANNOTATION'].get(genome, None)
