@@ -486,7 +486,9 @@ def incorporate_tx(best_rows, gene_id, metrics, failed_gene):
     metrics['Coverage'][best_series.TranscriptBiotype].append(best_series.AlnCoverage)
     metrics['Identity'][best_series.TranscriptBiotype].append(best_series.AlnIdentity)
     metrics['Consensus Score'][best_series.TranscriptBiotype].append(best_series.ConsensusScore)
-    metrics['Splice Support'][best_series.TranscriptBiotype].append(best_series.PercentIntronsSupported)
+    if hasattr(best_series, 'PercentIntronsSupported'):
+        # Add intron support, which we won't have if we don't have RNA-seq
+        metrics['Splice Support'][best_series.TranscriptBiotype].append(best_series.PercentIntronsSupported)
     return best_series.AlignmentId, d
 
 

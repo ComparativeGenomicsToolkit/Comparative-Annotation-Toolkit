@@ -52,7 +52,8 @@ def generate_plots(args):
                     args.tm_identity)
     tm_para_plot(para_data, args.ordered_genomes, biotypes, transcript_biotype_map, args.paralogy)
     consensus_metrics_plot(consensus_data, args.ordered_genomes, biotypes, args.coverage, args.identity)
-    consensus_splice_plot(consensus_data, args.ordered_genomes, biotypes, args.consensus_splice_support)
+    if any('Splice Support' in genome_data for genome_data in consensus_data):
+        consensus_splice_plot(consensus_data, args.ordered_genomes, biotypes, args.consensus_splice_support)
     fail_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.gene_failure, args.transcript_failure)
     category_plot(consensus_data, args.ordered_genomes, biotypes, args.categories)
     completeness_plot(consensus_data, args.ordered_genomes, biotypes, args.completeness, gene_biotype_map,
