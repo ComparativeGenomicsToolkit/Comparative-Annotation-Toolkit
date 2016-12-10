@@ -288,6 +288,6 @@ class HintsDbToilTask(HintsDbTask, ToilMixin):
     """
     def __repr__(self):
         """override the PipelineTask repr to report the batch system being used"""
-        base_repr = super(HintsDbTask, self).__repr__()
+        base_repr = super(HintsDbToilTask, self).__repr__()
         return 'Toil' + base_repr + ' using batchSystem {}'.format(self.batchSystem)
 
