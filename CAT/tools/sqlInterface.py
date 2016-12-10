@@ -154,7 +154,8 @@ class HgmColumns(object):
     AlignmentId = Column(Text, primary_key=True)
     RnaSeqSupportIntronVector = Column(Text)
     AnnotationSupportIntronVector = Column(Text)
-    AnnotationCdsExonSupportVector = Column(Text)
+    AnnotationCdsSupportVector = Column(Text)
+    AnnotationExonSupportVector = Column(Text)
 
 
 class TmIntronSupport(HgmColumns, Base):
@@ -175,6 +176,14 @@ class AugTmrIntronSupport(HgmColumns, Base):
 class AugCgpIntronSupport(HgmColumns, Base):
     """Table for intron support of AugustusCGP transcripts from homGeneMapping"""
     __tablename__ = 'augCGP_Hgm'
+
+
+class AugCgpAlernativeGenes(Base):
+    """Table for recording a list of alternative parental genes for CGP"""
+    __tablename__ = 'augCGP_AlternativeGenes'
+    TranscriptId = Column(Text, primary_key=True)
+    AssignedGeneId = Column(Text)
+    AlternativeGeneIds = Column(Text)
 
 
 ###
@@ -390,4 +399,14 @@ def load_intron_vector(table, session):
     assert any(table == cls for cls in (TmIntronSupport, AugCgpIntronSupport, AugTmIntronSupport,
                                         AugTmrIntronSupport))
     query = session.query(table)
+    return pd.read_sql(query.statement, session.bind)
+
+
+def load_cgp_alternatives(session):
+    """
+    load AugustusCGP parental assignment + alternative parents
+    :param session: Active sqlalchemy session.
+    :return: DataFrame
+    """
+    query = session.query(AugCgpAlernativeGenes)
     return pd.read_sql(query.statement, session.bind)

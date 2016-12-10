@@ -197,9 +197,9 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
             # we give transcripts with no introns a score of 1 here
             return tools.mathOps.format_ratio(num_supported, s.NumCodingIntrons, resolve_nan=1)
 
-    def reduce_exon_vector(s):
-        num_supported = len([x for x in s.AnnotationCdsExonSupportVector if x > 0])
-        return tools.mathOps.format_ratio(num_supported, s.NumIntrons - 1)
+    def reduce_exon_vectors(s):
+        num_supported = len([x for x in s.AnnotationExonSupportVector if x > 0])
+        return tools.mathOps.format_ratio(num_supported, s.NumIntrons + 1)
 
     def calculate_coding_introns(s):
         """calculates the number of coding introns, if this transcript is coding"""
@@ -224,17 +224,18 @@ def load_intron_vectors(db_path, tx_modes, tx_dict, ref_df):
                                                              col='RnaSeqSupportIntronVector', axis=1)
     intron_df['AnnotationSupportIntronVector'] = intron_df.apply(parse_text_vector,
                                                                  col='AnnotationSupportIntronVector', axis=1)
-    intron_df['AnnotationCdsExonSupportVector'] = [map(int, s.AnnotationCdsExonSupportVector.split(','))
-                                                   for _, s in intron_df.iterrows()]
+    intron_df['AnnotationExonSupportVector'] = intron_df.apply(parse_text_vector,
+                                                               col='AnnotationExonSupportVector', axis=1)
     intron_df['NumIntrons'] = [len(tx_dict[tx].intron_intervals) for tx in intron_df.AlignmentId]
     intron_df['NumCodingIntrons'] = intron_df.apply(calculate_coding_introns, axis=1)
     intron_df['PercentIntronsSupported'] = intron_df.apply(reduce_intron_vectors, coding=False, axis=1)
     intron_df['PercentCodingIntronsSupported'] = intron_df.apply(reduce_intron_vectors, coding=True, axis=1)
-    intron_df['PercentExonsSupportedByAnnotation'] = intron_df.apply(reduce_exon_vector, axis=1)
+    intron_df['PercentExonsSupportedByAnnotation'] = intron_df.apply(reduce_exon_vectors, axis=1)
     # we don't carry along transcript ID because it will conflict with CGP transcript IDs
-    return intron_df[['AlignmentId', 'GeneId', 'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector',
-                      'AnnotationCdsExonSupportVector', 'PercentIntronsSupported', 'PercentCodingIntronsSupported',
-                      'PercentExonsSupportedByAnnotation', 'NumIntrons']]
+    return intron_df[['AlignmentId', 'GeneId',
+                      'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector', 'AnnotationExonSupportVector',
+                      'PercentIntronsSupported', 'PercentCodingIntronsSupported', 'PercentExonsSupportedByAnnotation',
+                      'NumIntrons']]
 
 
 def score_alignments(db_path, transcript_modes, ref_df, tm_eval, coding_cutoff, intron_df):
@@ -320,7 +321,8 @@ def score_coding_df(merged_df, has_rnaseq_data):
 
     structure score: how much of the parental transcript structure did we reproduce? Treat single exon transcripts
     as having no missing introns.
-    structure score = 0.7 * percent original introns + 0.2 * percent original exons + 0.1 * evaluation score
+    structure score = 0.5 * percent original introns + 0.2 * percent original exons + 0.1 * evaluation score +
+                      0.3
 
     evaluation score: provides a bonus to transcripts without frameshifts and with proper CDS ends
     evaluation score = 1 - (I(in frame stop)
@@ -423,14 +425,17 @@ def score_non_coding_df(tm_eval, intron_df):
 def find_novel_transcripts(intron_df, tx_dict, metrics, num_introns, splice_support):
     """
     Finds novel transcripts, builds their attributes. Filters CGP based on the num_introns and splice_support user
-    variables. These are over-ridden if every exon is supported by reference annotation. This is useful for retaining
-    single exon gene families such as olfactory receptors.,
+    variables.
+
+    Also finds transcripts which were not assigned a
+
+    These are over-ridden if every exon is supported by reference annotation. This is useful for retaining
+    single exon gene families such as olfactory receptors.
     """
     novel_transcripts = {tx.name: tx.name for tx in tx_dict.itervalues()
                          if tools.nameConversions.aln_id_is_cgp(tx.name2)}
     novel_df = intron_df[intron_df.AlignmentId.isin(novel_transcripts)]
-    novel_df = novel_df[(((novel_df.PercentIntronsSupported >= splice_support) & (novel_df.NumIntrons > num_introns)) |
-                        novel_df.PercentExonsSupportedByAnnotation == 1)]
+    novel_df = novel_df[((novel_df.PercentIntronsSupported >= splice_support) & (novel_df.NumIntrons > num_introns))]
     novel_genes = set(novel_df.GeneId)
     metrics['CGP'] = {'Novel genes': len(novel_genes), 'Novel isoforms': 0}
     metrics['Transcript Modes']['augCGP'] += len(novel_df)

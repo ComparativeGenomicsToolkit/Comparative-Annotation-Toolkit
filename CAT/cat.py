@@ -114,8 +114,7 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(Augustus)
         if self.augustus_cgp is True:
             yield self.clone(AugustusCgp)
-        if pipeline_args.augustus_tmr is True:
-            yield self.clone(Hgm)
+        yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
@@ -781,6 +780,8 @@ class AugustusCgp(ToilTask):
     """
     Task for launching the AugustusCGP toil pipeline
     """
+    tablename = tools.sqlInterface.AugCgpAlernativeGenes.__tablename__
+
     @staticmethod
     def get_args(pipeline_args):
         # add reference to the target genomes
@@ -791,15 +792,19 @@ class AugustusCgp(ToilTask):
         output_gp_files = {genome: os.path.join(base_dir, genome + '.augCGP.gp') for genome in tgt_genomes}
         output_gtf_files = {genome: os.path.join(base_dir, genome + '.augCGP.gtf') for genome in tgt_genomes}
         # transMap files used for assigning parental gene
-        tm_gp_files = {genome: FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                       for genome in pipeline_args.target_genomes}
+        filtered_tm_gp_files = {genome: FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
+                                for genome in pipeline_args.target_genomes}
+        unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+                                  for genome in pipeline_args.target_genomes}
         # add the reference annotation as a pseudo-transMap to assign parents in reference
-        tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
         hints_db = pipeline_args.augustus_hints_db if pipeline_args.augustus_hints_db else None
         args = argparse.Namespace()
         args.genomes = tgt_genomes
         args.fasta_files = fasta_files
-        args.tm_gps = tm_gp_files
+        args.filtered_tm_gps = filtered_tm_gp_files
+        args.unfiltered_tm_gps = unfiltered_tm_gp_files
         args.hal = pipeline_args.hal
         args.ref_genome = pipeline_args.ref_genome
         args.augustus_cgp_gp = output_gp_files
@@ -819,6 +824,16 @@ class AugustusCgp(ToilTask):
         for path_dict in [cgp_args.augustus_cgp_gp, cgp_args.augustus_cgp_gtf]:
             for path in path_dict.itervalues():
                 yield luigi.LocalTarget(path)
+        for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
+            yield self.get_table_targets(genome, pipeline_args)
+
+    def get_table_targets(self, genome, pipeline_args):
+        db = pipeline_args.dbs[genome]
+        tools.fileOps.ensure_file_dir(db)
+        conn_str = 'sqlite:///{}'.format(db)
+        return luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                   target_table=self.tablename,
+                                                   update_id='_'.join([self.tablename, str(hash(pipeline_args))]))
 
     def validate(self):
         if not tools.misc.is_exec('joingenes'):
@@ -856,7 +871,7 @@ class AugustusCgp(ToilTask):
             outf.write(cfg)
         return out_path
 
-    def evaluate_database(self, pipeline_args):
+    def evaluate_hints_database(self, pipeline_args):
         """warn the user about the database not containing things"""
         genomes_with_hints = set()
         genomes_with_only_intron_hints = set()
@@ -889,19 +904,29 @@ class AugustusCgp(ToilTask):
                 logger.warning('No extrinsic hints found for genomes: {}.'.format(','.join(no_hints_genomes)))
         return genomes_with_hints, genomes_with_only_intron_hints, genomes_with_annotation_hints
 
+    def load_alternative_tx_tables(self, pipeline_args, database_dfs):
+        """loads the alternative transcript database for each genome"""
+        for genome, df in database_dfs:
+            sqla_target = self.get_table_targets(genome, pipeline_args)
+            db = pipeline_args.dbs[genome]
+            with tools.sqlite.ExclusiveSqlConnection(db) as engine:
+                df.to_sql(self.tablename, engine, if_exists='replace')
+            sqla_target.touch()
+            logger.info('Loaded table: {}.{}'.format(genome, self.tablename))
+
     def run(self):
         pipeline_args = self.get_pipeline_args()
         if pipeline_args.augustus_hints_db is None:
             # TODO: if no database is given (de novo setting),
             # create a new DB with the flattened genomes from the HAL alignment
             raise UserException('Cannot run AugustusCGP without a hints database.')
-        bam_genomes, intron_only_genomes, annotation_genomes = self.evaluate_database(pipeline_args)
+        bam_genomes, intron_only_genomes, annotation_genomes = self.evaluate_hints_database(pipeline_args)
         logger.info('Launching AugustusCGP toil pipeline.')
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_cgp')
         toil_options = self.prepare_toil_options(toil_work_dir)
         cgp_args = self.get_args(pipeline_args)
         cgp_args.cgp_cfg = self.prepare_cfg(pipeline_args, bam_genomes, intron_only_genomes, annotation_genomes)
-        augustus_cgp(cgp_args, toil_options)
+        database_dfs = augustus_cgp(cgp_args, toil_options)
         logger.info('AugustusCGP toil pipeline completed.')
         # convert each to genePred as well
         for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
@@ -909,6 +934,7 @@ class AugustusCgp(ToilTask):
             gtf_target = luigi.LocalTarget(cgp_args.augustus_cgp_gtf[genome])
             tools.misc.convert_gtf_gp(gp_target, gtf_target)
         logger.info('Finished converting AugustusCGP output.')
+        self.load_alternative_tx_tables(pipeline_args, database_dfs)
 
 
 class Hgm(PipelineWrapperTask):

@@ -19,6 +19,7 @@ import collections
 import itertools
 import logging
 import os
+import pandas as pd
 
 from toil.common import Toil
 from toil.job import Job
@@ -53,16 +54,21 @@ def augustus_cgp(args, toil_options):
             input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
             input_file_ids.fasta = {genome: toil.importFile('file://' + fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
-            input_file_ids.tm_gps = {genome: toil.importFile('file://' + tm_gp)
-                                     for genome, tm_gp in args.tm_gps.iteritems()}
+            input_file_ids.filtered_tm_gps = {genome: toil.importFile('file://' + tm_gp)
+                                              for genome, tm_gp in args.filtered_tm_gps.iteritems()}
+            input_file_ids.unfiltered_tm_gps = {genome: toil.importFile('file://' + tm_gp)
+                                                for genome, tm_gp in args.unfiltered_tm_gps.iteritems()}
             input_file_ids.cgp_cfg = toil.importFile('file://' + args.cgp_cfg)
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G')
             results = toil.start(job)
         else:
             results = toil.restart()
-        for genome in results:
+        dataframes = []
+        for genome, (gff_file_id, df) in results.iteritems():
             tools.fileOps.ensure_file_dir(args.augustus_cgp_gtf[genome])
-            toil.exportFile(results[genome], 'file://' + args.augustus_cgp_gtf[genome])
+            toil.exportFile(gff_file_id, 'file://' + args.augustus_cgp_gtf[genome])
+            dataframes.append([genome, df])
+        return dataframes
 
 
 def setup(job, args, input_file_ids):
@@ -112,8 +118,9 @@ def setup(job, args, input_file_ids):
         gffChunks.append(gffChunk)
 
     # merge all gff files for alignment chunks to one gff for each species
-    mergedGffs = job.addFollowOnJobFn(merge_results, args, input_file_ids, gffChunks, memory='8G').rv()
-    return mergedGffs
+    # results contains pairs of [gff_file_id, dataframe] where the dataframe contains the alternative parental txs
+    results = job.addFollowOnJobFn(merge_results, args, input_file_ids, gffChunks, memory='8G').rv()
+    return results
 
 
 def hal2maf(job, input_file_ids, refGenome, chrom, start, chunkSize, genomic_region):
@@ -160,13 +167,13 @@ def merge_results(job, args, input_file_ids, gffChunks):
     """
     Merges the results using joinGenes. The results have parental genes assigned.
     """
-    mergedGffs = {}
+    results = {}
     for genome in args.genomes:
         # merge all gffChunks of one genome
         genome_gffChunks = [d[genome] for d in gffChunks]
         j = job.addChildJobFn(joinGenes, genome, input_file_ids, genome_gffChunks, memory='8G')
-        mergedGffs[genome] = j.rv()
-    return mergedGffs
+        results[genome] = j.rv()
+    return results
 
 
 def joinGenes(job, genome, input_file_ids, gffChunks):
@@ -248,8 +255,11 @@ def assign_parents(job, genome, input_file_ids, joined_gff_file_id):
     job.fileStore.logToMaster('Assigning parental genes for {}'.format(genome), level=logging.INFO)
     ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_db_path)
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(ref_genome_db)
-    tm_gp_file = job.fileStore.readGlobalFile(input_file_ids.tm_gps[genome])
-    transmap_dict = tools.transcripts.get_gene_pred_dict(tm_gp_file)
+    filtered_tm_gp_file = job.fileStore.readGlobalFile(input_file_ids.filtered_tm_gps[genome])
+    unfiltered_tm_gp_file = job.fileStore.readGlobalFile(input_file_ids.filtered_tm_gps[genome])
+    filtered_transmap_dict = tools.transcripts.get_gene_pred_dict(filtered_tm_gp_file)
+    unfiltered_transmap_dict = tools.transcripts.get_gene_pred_dict(unfiltered_tm_gp_file)
+    filtered_ids = unfiltered_transmap_dict.viewkeys() - filtered_transmap_dict.viewkeys()
 
     # convert GFF to genePred
     cgp_gp = tools.fileOps.get_tmp_toil_file()
@@ -257,55 +267,80 @@ def assign_parents(job, genome, input_file_ids, joined_gff_file_id):
     cmd = ['gtfToGenePred', '-genePredExt', joined_gff, cgp_gp]
     tools.procOps.run_proc(cmd)
     cgp_dict = tools.transcripts.get_gene_pred_dict(cgp_gp)
-    tm_chrom_dict = create_chrom_dict(transmap_dict)
+    tm_chrom_dict = create_chrom_dict(unfiltered_transmap_dict)
     cgp_chrom_dict = create_chrom_dict(cgp_dict)
 
     final_gps = []
     for chrom, tm_tx_by_chromosome in tm_chrom_dict.iteritems():
         for cgp_chunk in tools.dataOps.grouper(cgp_chrom_dict[chrom].iteritems(), 70):
-            j = job.addChildJobFn(assign_parent_chunk, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map)
+            j = job.addChildJobFn(assign_parent_chunk, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, filtered_ids)
             final_gps.append(j.rv())
     return job.addFollowOnJobFn(merge_parent_assignment_chunks, final_gps).rv()
 
 
-def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map):
+def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, filtered_ids):
     """
     Runs a chunk of CGP transcripts on the same chromosome as all transMap transcripts in tm_tx_by_chromosome
+
+    The results are encoded in the gene2 field of each transcript with the following possibilties:
+
+    none:none --> this transcript has no filtered or unfiltered parents. Is a candidate for novelty pending the
+                   homGeneMapping output.
+    none:names --> this transcript has only unfiltered hits. These hits are comma separated. This transcript is a
+                   candidate for the Unknown category, which marks genes which overlap known annotations but which
+                   were not assigned a gene due to paralog resolution. Likely gene family member.
+    name:names --> this transcript was resolved and confidently assigned.
+
     :param tm_tx_by_chromosome: dictionary of GenePredTranscript objects all on the same chromosome
     :param cgp_chunk: Iterable of (cgp_tx_id, cgp_tx) tuples to be analyzed
     :param gene_biotype_map: dictionary mapping gene IDs to biotype
-    :return: list of GenePredTranscript objects which have been resolved
+    :param filtered_ids: Set of transcript IDs which were filtered out
+    :return: list of GenePredTranscript object, comma separated list of alterantive transcripts or None
     """
     resolved_txs = []
     for cgp_tx_id, cgp_tx in cgp_chunk:
-        overlapping_tm_txs = find_tm_overlaps(cgp_tx, tm_tx_by_chromosome)
-        gene_ids = {tx.name2 for tx in overlapping_tm_txs}
-        if len(gene_ids) == 0:
-            gene_name = cgp_tx.name.split('.')[0]
-        elif len(gene_ids) == 1:
-            gene_name = list(gene_ids)[0]
+        unfiltered_overlapping_tm_txs = find_tm_overlaps(cgp_tx, tm_tx_by_chromosome)
+        filtered_overlapping_tm_txs = {tx for tx in unfiltered_overlapping_tm_txs if tx.name not in filtered_ids}
+        unfiltered_gene_ids = {tx.name2 for tx in unfiltered_overlapping_tm_txs}
+        filtered_gene_ids = {tx.name2 for tx in filtered_overlapping_tm_txs}
+        # no parents at all, so this is putative novel
+        if len(unfiltered_gene_ids) == len(filtered_gene_ids) == 0:
+            cgp_tx.name2 = cgp_tx_id.split('.')[0]
+            resolved_txs.append([cgp_tx, None, None])
+        # only filtered parents, so this is putative gene family expansion
+        elif len(filtered_gene_ids) == 0:
+            cgp_tx.name2 = cgp_tx_id.split('.')[0]
+            resolved_txs.append([cgp_tx, None, ','.join(unfiltered_gene_ids)])
+        # we have one or more filtered IDs. attempt to resolve
         else:
-            gene_name = resolve_multiple_genes(cgp_tx, overlapping_tm_txs, gene_biotype_map)
-        if gene_name is not None:  # we can resolve this transcript
-            cgp_tx.name2 = gene_name
-            resolved_txs.append(cgp_tx)
+            resolved_name = resolve_multiple_genes(cgp_tx, filtered_overlapping_tm_txs, gene_biotype_map)
+            if resolved_name is None:
+                continue  # don't save transcripts that can't be resolved
+            cgp_tx.name2 = resolved_name
+            possible_alternative_gene_ids = unfiltered_gene_ids - {resolved_name}
+            resolved_txs.append([cgp_tx, resolved_name, ','.join(possible_alternative_gene_ids)])
     return resolved_txs
 
 
 def merge_parent_assignment_chunks(job, final_gps):
     """
     Merge the chunks of transcripts produced by assign_parent_chunk, converting back to GFF
-    :param final_gps: list of lists of GenePredTranscript objects
-    :return: fileStore ID to a output GFF
+    :param final_gps: paired list of lists of GenePredTranscript objects and alternative tx dicts
+    :return: fileStore ID to a output GFF and a pandas DataFrame to be written to sql
     """
     out_gp = tools.fileOps.get_tmp_toil_file()
     out_gff = tools.fileOps.get_tmp_toil_file()
+    combined_alternatives = []
     with open(out_gp, 'w') as outf:
-        for rec in itertools.chain.from_iterable(final_gps):
-            tools.fileOps.print_row(outf, rec.get_gene_pred())
+        for tx_rec, assigned_id, alt_ids in itertools.chain.from_iterable(final_gps):
+            tools.fileOps.print_row(outf, tx_rec.get_gene_pred())
+            combined_alternatives.append([tx_rec.name, assigned_id, alt_ids])
     cmd = ['genePredToGtf', '-utr', '-honorCdsStat', '-source=AugustusCGP', 'file', out_gp, out_gff]
     tools.procOps.run_proc(cmd)
-    return job.fileStore.writeGlobalFile(out_gff)
+    combined_alternatives = pd.DataFrame(combined_alternatives)
+    combined_alternatives.columns = ['TranscriptId', 'AssignedGeneId', 'AlternativeGeneIds']
+    combined_alternatives = combined_alternatives.set_index('TranscriptId')
+    return job.fileStore.writeGlobalFile(out_gff), combined_alternatives
 
 
 ###
