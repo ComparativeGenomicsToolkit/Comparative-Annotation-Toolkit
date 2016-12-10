@@ -28,31 +28,38 @@ import tools.fileOps
 import tools.procOps
 import tools.nameConversions
 import tools.transcripts
+import tools.hintsDatabaseInterface
 
 
 def hgm(args):
     """
-    Main entry function for hgm module. Runs homGeneMapping after extracting non-coding introns from the annotation.
-    Non-coding introns are not stored in the database to make predictions go faster. When we are running homGeneMapping
-    on non-CGP data, we have nothing new for the reference, so we pass a dummy GTF.
+    Main entry function for hgm module. Runs homGeneMapping after extracting exons and non-coding introns from the
+    annotation. Exons and non-coding introns are not stored in the database to make predictions go faster.
+    When we are running homGeneMapping on non-CGP data, we have no new annotations for the reference, so we pass a
+    dummy GTF.
+
     :param args: dictionary of arguments from CAT
     :return: a dictionary with one gtf file per genome
     """
     tools.fileOps.ensure_dir(args.gtf_out_dir)
-
-    non_coding_gff = extract_non_coding_introns(args.annotation_gp)
+    # keep track of the GTFs we are generating to remove later
+    supplementary_gffs = []
 
     with tools.fileOps.TemporaryFilePath() as gtf_fofn, tools.fileOps.TemporaryDirectoryPath() as temp_dir:
         with open(gtf_fofn, 'w') as outf:
             for genome, gtf in args.in_gtf.iteritems():
                 if genome != args.ref_genome:
-                    tools.fileOps.print_row(outf, [genome, gtf])
+                    supplementary_gff = create_supplementary_gff(args.hints_db, genome)
                 else:
-                    tools.fileOps.print_row(outf, [genome, gtf, non_coding_gff])
+                    supplementary_gff = create_supplementary_gff(args.hints_db, genome, args.annotation_gp)
+                tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
+                supplementary_gffs.append(supplementary_gff)
             if args.ref_genome not in args.in_gtf:
                 dummy_gtf = tools.fileOps.get_tmp_file()
                 tools.fileOps.touch(dummy_gtf)
-                tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, non_coding_gff])
+                supplementary_gff = create_supplementary_gff(args.hints_db, args.ref_genome, args.annotation_gp)
+                tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
+                supplementary_gffs.append(supplementary_gff)
             else:
                 dummy_gtf = None
 
@@ -65,32 +72,75 @@ def hgm(args):
                '--cpu={}'.format(args.num_cpu)]
         tools.procOps.run_proc(cmd, stdout='/dev/null')
 
-    os.remove(non_coding_gff)
+    # cleanup
+    for gff in supplementary_gffs:
+        os.remove(gff)
     if dummy_gtf is not None:
         os.remove(dummy_gtf)
 
 
-def extract_non_coding_introns(annotation_gp):
+def create_supplementary_gff(hints_db, genome, annotation_gp=None):
     """
-    Extracts a GTF file with only the non-coding splice junctions for use by homGeneMapping to recognize if
-    a intron junction is supported by RNA-seq.
-
-    This is done through the complement of intersection. First, we extract the CDS BED records for all coding
-    transcripts. Then, we convert the reference genePred to GTF. We then intersect the first BED with this GTF with the
-    -v flag set, returning only non-coding intervals. Finally, we filter these for intron records and add src=N to
-    the last column.
-
-    :param annotation_gp: genePred of annotation
+    Creates the supplementary GFF which contains exon hints derived from the database as well as non-coding introns
+    and all exons if annotation_gp is passed.
+    :param hints_db: path to the hints database
+    :param genome: current genome
+    :param annotation_gp: annotation genePred, if we have one
     :return: file path
     """
-    out_gtf = tools.fileOps.get_tmp_file()
-    with open(out_gtf, 'w') as outf:
-        for tx in tools.transcripts.gene_pred_iterator(annotation_gp):
-            for intron in tx.intron_intervals:
-                if not intron.subset(tx.coding_interval):
-                    r = [tx.chromosome, 'tmp', 'intron', intron.start + 1, intron.stop, '.', tx.strand, '.', 'source=N']
-                    tools.fileOps.print_row(outf, r)
-    return out_gtf
+    path = tools.fileOps.get_tmp_file(suffix='gff')
+    hints = extract_exon_hints(hints_db, genome)
+    if annotation_gp is not None:
+        hints.extend(extract_exons_non_coding_introns(annotation_gp))
+    with open(path, 'w') as outf:
+        tools.fileOps.print_rows(outf, hints)
+    return path
+
+
+def extract_exons_non_coding_introns(annotation_gp):
+    """
+    Extracts a GTF file with the exons and the non-coding splice junctions for use by homGeneMapping to recognize if
+    a exon or a non-coding intron junction is supported by RNA-seq.
+
+    :param annotation_gp: genePred of annotation
+    :return: list of gff-formatted lists
+    """
+    hints = []
+    for tx in tools.transcripts.gene_pred_iterator(annotation_gp):
+        for intron in tx.intron_intervals:
+            if not intron.subset(tx.coding_interval):
+                r = [tx.chromosome, 'tmp', 'intron', intron.start + 1, intron.stop, '.', tx.strand, '.', 'source=N']
+                hints.append(r)
+        for exon in tx.exon_intervals:
+            r = [tx.chromosome, 'tmp', 'exon', exon.start + 1, exon.stop, '.', tx.strand, '.', 'source=M']
+            hints.append(r)
+    return hints
+
+
+def extract_exon_hints(hints_db, genome):
+    """
+    The hints database only contains exonpart hints. For homGeneMapping, we want to merge these intervals into
+    exon hints, taking the weighted average of the scores as the overall expression. To do this, I make use of bedtools.
+    :param hints_db: Path to the hints database
+    :param genome: Genome in question
+    :return: list of gff-formatted lists
+    """
+    speciesnames, seqnames, hints, featuretypes, session = tools.hintsDatabaseInterface.reflect_hints_db(hints_db)
+    with tools.fileOps.TemporaryFilePath() as outf:
+        with open(outf, 'w') as outf_h:
+            wiggle_iter = tools.hintsDatabaseInterface.get_wiggle_hints(genome, speciesnames, seqnames, hints, session)
+            for seqname, start, end, score in wiggle_iter:
+                outf_h.write('\t'.join(map(str, [seqname, start, end, score])) + '\n')
+        if os.path.getsize(outf) == 0:  # no wiggle hints
+            return []
+        cmd = ['bedtools', 'merge', '-i', outf, '-c', '4', '-o', 'mean']
+        bed = tools.procOps.call_proc_lines(cmd)
+    hints = []
+    for line in bed:
+        chrom, start, end, score = line.split()
+        tags = 'pri=3;source=E;mult={}'.format(score)
+        hints.append([chrom, 'tmp', 'exon', int(start) + 1, end, '.', '.', '.', tags])
+    return hints
 
 
 def parse_gtf_attr_line(attr_line):
@@ -111,16 +161,19 @@ def parse_hgm_gtf(hgm_out):
     """
     intron_lines = []
     cds_lines = []
+    exon_lines = []
     with open(hgm_out) as infile:
         for line in infile:
             if '\tintron\t' in line:
                 intron_lines.append(line.rstrip().split('\t')[-1])
             elif '\tCDS\t' in line:
                 cds_lines.append(line.rstrip().split('\t')[-1])
+            elif '\texon\t' in line:
+                exon_lines.append(line.rstrip().split('\t')[-1])
 
     # make use of the sorted nature of the input GTFs to create a ordered vector
     d = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list)))
-    for mode, group in zip(*[['intron', 'cds'], [intron_lines, cds_lines]]):
+    for mode, group in zip(*[['intron', 'cds', 'exon'], [intron_lines, cds_lines, exon_lines]]):
         for attr_line in group:
             attributes = parse_gtf_attr_line(attr_line)
             d[attributes['gene_id']][attributes['transcript_id']][mode].append(attributes['hgm_info'])
@@ -131,14 +184,16 @@ def parse_hgm_gtf(hgm_out):
         for aln_id in d[gene_id]:
             intron_info = d[gene_id][aln_id]['intron']
             cds_info = d[gene_id][aln_id]['cds']
+            exon_info = d[gene_id][aln_id]['exon']
             tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
             rnaseq_vector = ','.join(map(str, [x.count('E') for x in intron_info]))
             annotation_vector = ','.join(map(str, [sum([x.count('M'), x.count('N')]) for x in intron_info]))
-            exon_vector = ','.join(map(str, [x.count('M') for x in cds_info]))
-            dd.append([gene_id, tx_id, aln_id, rnaseq_vector, annotation_vector, exon_vector])
+            exon_vector = ','.join(map(str, [x.count('M') for x in exon_info]))
+            cds_vector = ','.join(map(str, [x.count('M') for x in cds_info]))
+            dd.append([gene_id, tx_id, aln_id, rnaseq_vector, annotation_vector, cds_vector, exon_vector])
 
     df = pd.DataFrame(dd)
     df.columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector',
-                  'AnnotationCdsExonSupportVector']
+                  'AnnotationCdsSupportVector', 'AnnotationExonSupportVector']
     df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
     return df

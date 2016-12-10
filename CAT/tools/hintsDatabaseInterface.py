@@ -60,9 +60,31 @@ def get_rnaseq_hints(genome, chromosome, start, stop, speciesnames, seqnames, hi
     hints = []
     for h, f in query:
         tags = 'pri=3;src={};mult={}'.format(h.esource, h.mult)
+        # add 1 to both start and end to shift to 1-based
         l = [chromosome, h.source, f.typename, h.start + 1, h.end + 1, h.score, '.', '.', tags]
         hints.append('\t'.join(map(str, l)) + '\n')
-    return '\n'.join(hints)
+    return ''.join(hints)
+
+
+def get_wiggle_hints(genome, speciesnames, seqnames, hints, session):
+    """
+    Extracts all wiggle hints for a genome to a BED format.
+    :param genome: genome (table) to query
+    :param speciesnames: speciesnames Table from reflect_hints_db
+    :param seqnames: seqnames Table from reflect_hints_db
+    :param hints: hints Table from reflect_hints_db
+    :param session: Session object from reflect_hints_db
+    :return: iterator of BED format lists
+    """
+    speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
+    seqs = {x.seqnr: x.seqname for x in session.query(seqnames).filter_by(speciesid=speciesid)}
+    # chunk up the genome to reduce memory usage
+    for seqnr, seqname in seqs.iteritems():
+        query = session.query(hints.start, hints.end, hints.score).filter(
+                sqlalchemy.and_(hints.speciesid.in_(speciesid), hints.source == 'w2h', hints.seqnr == seqnr))
+        for start, end, score in query:
+            # add 1 to end to convert to half-open interval
+            yield seqname, start, end + 1, score
 
 
 def hints_db_has_rnaseq(db_path, genome=None):
