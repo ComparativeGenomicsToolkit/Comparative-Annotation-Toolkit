@@ -86,6 +86,7 @@ class PipelineTask(luigi.Task):
     hal = luigi.Parameter()
     ref_genome = luigi.Parameter()
     annotation = luigi.Parameter()
+    augustus_hints_db = luigi.Parameter()
     out_dir = luigi.Parameter(default='./cat_output')
     work_dir = luigi.Parameter(default='./cat_work')
     target_genomes = luigi.TupleParameter(default=None)
@@ -94,7 +95,6 @@ class PipelineTask(luigi.Task):
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human', significant=False)
-    augustus_hints_db = luigi.Parameter(default=None)
     tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
     # AugustusCGP parameters

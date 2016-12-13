@@ -90,8 +90,8 @@ class RunCat(PipelineWrapperTask):
                     raise UserException('Directory {} is not writeable.'.format(d))
         if not os.path.exists(pipeline_args.annotation):
             raise InputMissingException('Annotation file {} not found.'.format(pipeline_args.annotation))
-        if pipeline_args.augustus_hints_db is not None and not os.path.exists(pipeline_args.augustus_hints_db):
-            raise InputMissingException('Augustus hints DB {} not found.'.format(pipeline_args.augustus_hints_db))
+        if not os.path.exists(pipeline_args.augustus_hints_db):
+            raise InputMissingException('Augustus hints database {} not found.'.format(pipeline_args.augustus_hints_db))
         # TODO: validate augustus species, tm/tmr/cgp/param files.
         if pipeline_args.ref_genome not in pipeline_args.hal_genomes:
             raise InvalidInputException('Reference genome {} not present in HAL.'.format(pipeline_args.ref_genome))
@@ -240,7 +240,7 @@ class ReferenceFiles(PipelineWrapperTask):
 
     ReferenceFiles -> Gff3ToGenePred -> TranscriptBed -> TranscriptFasta -> FlatTranscriptFasta
                             V
-                         FakePsl
+                         FakePsl, TranscriptGtf
     """
     @staticmethod
     def get_args(pipeline_args):
@@ -248,6 +248,7 @@ class ReferenceFiles(PipelineWrapperTask):
         annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
         args = argparse.Namespace()
         args.annotation_gp = os.path.join(base_dir, annotation + '.gp')
+        args.annotation_gtf = os.path.join(base_dir, annotation + '.gtf')
         args.transcript_fasta = os.path.join(base_dir, annotation + '.fa')
         args.transcript_flat_fasta = os.path.join(base_dir, annotation + '.fa.flat')
         args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
@@ -268,6 +269,7 @@ class ReferenceFiles(PipelineWrapperTask):
         yield self.clone(Gff3ToAttrs, **vars(args))
         yield self.clone(TranscriptBed, **vars(args))
         yield self.clone(TranscriptFasta, **vars(args))
+        yield self.clone(TranscriptGtf, **vars(args))
         yield self.clone(FlatTranscriptFasta, **vars(args))
         yield self.clone(FakePsl, **vars(args))
 
@@ -360,6 +362,22 @@ class TranscriptFasta(AbstractAtomicFileTask):
         with self.output().open('w') as outf:
             for name, seq in seqs.iteritems():
                 tools.bio.write_fasta(outf, name, seq)
+
+
+@requires(Gff3ToGenePred)
+class TranscriptGtf(AbstractAtomicFileTask):
+    """
+    Produces a GTF out of the genePred for the reference
+    """
+    annotation_gtf = luigi.Parameter()
+    annotation_gp = luigi.Parameter()
+
+    def output(self):
+        return luigi.LocalTarget(self.annotation_gtf)
+
+    def run(self):
+        logger.info('Extracting reference annotation GTF.')
+        tools.misc.convert_gp_gtf(self.output(), luigi.LocalTarget(self.annotation_gp))
 
 
 @requires(TranscriptFasta)
@@ -973,6 +991,7 @@ class Hgm(PipelineWrapperTask):
         args.gtf_out_dir = base_dir
         args.gtf_out_files = {genome: os.path.join(base_dir, genome + '.gtf') for genome in tgt_genomes}
         args.hints_db = pipeline_args.augustus_hints_db
+        args.annotation_gtf = ReferenceFiles.get_args(pipeline_args).annotation_gtf
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         # calculate the number of cores a hgm run should use
         # this is sort of a hack, but the reality is that halLiftover uses a fraction of a CPU most of the time
@@ -980,21 +999,19 @@ class Hgm(PipelineWrapperTask):
         args.num_cpu = int(tools.mathOps.format_ratio(max_cpu, len(pipeline_args.modes)))
         return args
 
-    def validate(self, pipeline_args):
-        if not tools.misc.is_exec('homGeneMapping'):
-            raise ToolMissingException('auxiliary program homGeneMapping from the Augustus package not in global path.')
+    def validate(self):
+        for tool in ['homGeneMapping', 'join_mult_hints.pl']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('auxiliary program {} from the Augustus '
+                                           'package not in global path.'.format(tool))
         if not tools.misc.is_exec('halLiftover'):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
         if not tools.misc.is_exec('bedtools'):
             raise ToolMissingException('bedtools is required for the homGeneMapping module.')
-        if pipeline_args.augustus_hints_db is None:
-            raise InvalidInputException('Cannot run homGeneMapping module without a hints database.')
-        if tools.hintsDatabaseInterface.hints_db_has_rnaseq(pipeline_args.augustus_hints_db) is False:
-            raise UserException('homGeneMapping should not be ran on a hints database without RNA-seq.')
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
-        self.validate(pipeline_args)
+        self.validate()
         for mode in pipeline_args.modes:
             yield self.clone(HgmDriverTask, mode=mode)
 
@@ -1353,6 +1370,7 @@ def parse_args():
     parser.add_argument('--hal', required=True)
     parser.add_argument('--ref-genome', required=True)
     parser.add_argument('--annotation', required=True)
+    parser.add_argument('--augustus-hints-db', required=None)
     parser.add_argument('--out-dir', default='./cat_output')
     parser.add_argument('--work-dir', default='./cat_work')
     parser.add_argument('--target-genomes', nargs='+', default=None)
@@ -1363,7 +1381,6 @@ def parse_args():
     # augustus TM(R) options
     parser.add_argument('--augustus', action='store_true')
     parser.add_argument('--augustus-species', default='human')
-    parser.add_argument('--augustus-hints-db', default=None)
     parser.add_argument('--tm-cfg', default='augustus_cfgs/extrinsic.ETM1.cfg')
     parser.add_argument('--tmr-cfg', default='augustus_cfgs/extrinsic.ETM2.cfg')
     # augustus CGP options

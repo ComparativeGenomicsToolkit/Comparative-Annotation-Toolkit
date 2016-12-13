@@ -49,15 +49,16 @@ def hgm(args):
         with open(gtf_fofn, 'w') as outf:
             for genome, gtf in args.in_gtf.iteritems():
                 if genome != args.ref_genome:
-                    supplementary_gff = create_supplementary_gff(args.hints_db, genome)
+                    supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
                 else:
-                    supplementary_gff = create_supplementary_gff(args.hints_db, genome, args.annotation_gp)
+                    supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
                 tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
                 supplementary_gffs.append(supplementary_gff)
-            if args.ref_genome not in args.in_gtf:
+            if args.ref_genome not in args.in_gtf:  # we are not running CGP, and so have no GTF for the reference
                 dummy_gtf = tools.fileOps.get_tmp_file()
                 tools.fileOps.touch(dummy_gtf)
-                supplementary_gff = create_supplementary_gff(args.hints_db, args.ref_genome, args.annotation_gp)
+                supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
+                                                             args.annotation_gp)
                 tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
                 supplementary_gffs.append(supplementary_gff)
             else:
@@ -79,22 +80,33 @@ def hgm(args):
         os.remove(dummy_gtf)
 
 
-def create_supplementary_gff(hints_db, genome, annotation_gp=None):
+def create_supplementary_gff(hints_db, in_gtf, genome, annotation_gp=None):
     """
     Creates the supplementary GFF which contains exon hints derived from the database as well as non-coding introns
     and all exons if annotation_gp is passed.
     :param hints_db: path to the hints database
+    :param in_gtf: GTF file for this genome. If we are not doing this on CGP results, and this is the reference genome,
+    this will be the annotation GTF.
     :param genome: current genome
     :param annotation_gp: annotation genePred, if we have one
     :return: file path
     """
-    path = tools.fileOps.get_tmp_file(suffix='gff')
-    hints = extract_exon_hints(hints_db, genome)
+    hints = extract_exon_hints(hints_db, in_gtf, genome)
     if annotation_gp is not None:
         hints.extend(extract_exons_non_coding_introns(annotation_gp))
-    with open(path, 'w') as outf:
+    tmp_path = tools.fileOps.get_tmp_file()
+    with open(tmp_path, 'w') as outf:
         tools.fileOps.print_rows(outf, hints)
-    return path
+    # sort and merge hints on the same intervals
+    cmd = [['sort', '-n', '-k4,4', tmp_path],
+           ['sort', '-s', '-n', '-k5,5'],
+           ['sort', '-s', '-n', '-k3,3'],
+           ['sort', '-s', '-k1,1'],
+           ['join_mult_hints.pl']]
+    supplementary_gff_path = tools.fileOps.get_tmp_file(suffix='gff')
+    tools.procOps.run_proc(cmd, stdout=supplementary_gff_path)
+    os.remove(tmp_path)
+    return supplementary_gff_path
 
 
 def extract_exons_non_coding_introns(annotation_gp):
@@ -117,29 +129,49 @@ def extract_exons_non_coding_introns(annotation_gp):
     return hints
 
 
-def extract_exon_hints(hints_db, genome):
+def extract_exon_hints(hints_db, in_gtf, genome):
     """
     The hints database only contains exonpart hints. For homGeneMapping, we want to merge these intervals into
     exon hints, taking the weighted average of the scores as the overall expression. To do this, I make use of bedtools.
+
+    After I extract the merged averaged exon intervals, I intersect this with the given annotation set for this
+    comparison. I then provide these intervals as exon-hints after merging the hints.
+
     :param hints_db: Path to the hints database
+    :param in_gtf: GTF file for this genome
     :param genome: Genome in question
     :return: list of gff-formatted lists
     """
+    # extract all exonpart hints from the database
     speciesnames, seqnames, hints, featuretypes, session = tools.hintsDatabaseInterface.reflect_hints_db(hints_db)
-    with tools.fileOps.TemporaryFilePath() as outf:
-        with open(outf, 'w') as outf_h:
-            wiggle_iter = tools.hintsDatabaseInterface.get_wiggle_hints(genome, speciesnames, seqnames, hints, session)
-            for seqname, start, end, score in wiggle_iter:
-                outf_h.write('\t'.join(map(str, [seqname, start, end, score])) + '\n')
-        if os.path.getsize(outf) == 0:  # no wiggle hints
-            return []
-        cmd = ['bedtools', 'merge', '-i', outf, '-c', '4', '-o', 'mean']
-        bed = tools.procOps.call_proc_lines(cmd)
+    hints_file = tools.fileOps.get_tmp_file()
+    with open(hints_file, 'w') as outf_h:
+        wiggle_iter = tools.hintsDatabaseInterface.get_wiggle_hints(genome, speciesnames, seqnames, hints, session)
+        for seqname, start, end, score in wiggle_iter:
+            outf_h.write('\t'.join(map(str, [seqname, start, end, score])) + '\n')
+    if os.path.getsize(hints_file) == 0:  # no wiggle hints
+        return []
+    # merge exonpart hints, averaging the coverage
+    merged_hints_file = tools.fileOps.get_tmp_file()
+    cmd = ['bedtools', 'merge', '-i', hints_file, '-c', '4', '-o', 'mean']
+    tools.procOps.run_proc(cmd, stdout=merged_hints_file)
+    # overlap the merged exons with the given GTF, producing a final set.
+    cmd = [['grep', '\texon\t', in_gtf],  # exons only
+           ['cut', '-d', '\t', '-f', '1,4,5'],  # slice into BED format
+           ['sort'],  # sort to make unique
+           ['uniq'],  # make unique to remove duplicate exons
+           ['bedtools', 'intersect', '-a', 'stdin', '-b', merged_hints_file, '-f', '0.8', '-wa', '-wb'],
+           # bedtools reports both entire A and entire B if at least 80% of A overlaps a B
+           ['cut', '-d', '\t', '-f', '1,2,3,7']]  # retain the A positions with the B score
+    bed_plus_1 = tools.procOps.call_proc_lines(cmd)  # these BED-like records are actually GFF intervals
+
     hints = []
-    for line in bed:
+    for line in bed_plus_1:
         chrom, start, end, score = line.split()
         tags = 'pri=3;source=E;mult={}'.format(score)
-        hints.append([chrom, 'tmp', 'exon', int(start) + 1, end, '.', '.', '.', tags])
+        hints.append([chrom, 'tmp', 'exon', start, end, '.', '.', '.', tags])
+    os.remove(hints_file)
+    os.remove(merged_hints_file)
     return hints
 
 
