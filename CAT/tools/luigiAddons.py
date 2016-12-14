@@ -2,6 +2,7 @@
 Addons for Luigi. Includes decorators multiple inheritance and requirements as well as abstract classes extending
 both the Task and Target paradigms.
 """
+import sqlite3
 import luigi
 import luigi.util
 
@@ -74,3 +75,25 @@ class multiple_requires(object):
             def requires(self):
                 return (self.clone(x) for x in tasks_to_require)
         return Wrapped
+
+
+class IndexTarget(luigi.Target):
+    """
+    luigi target that determines if the indices have been built on a hints database.
+    """
+    def __init__(self, db):
+        self.db = db
+
+    def exists(self, timeout=6000):
+        con = sqlite3.connect(self.db, timeout=timeout)
+        cur = con.cursor()
+        r = []
+        for idx in ['gidx', 'hidx']:
+            query = 'PRAGMA index_info("{}")'.format(idx)
+            try:
+                v = cur.execute(query).fetchall()
+            except sqlite3.OperationalError, exc:
+                raise RuntimeError("query failed: {}\nOriginal error message: {}".format(query, exc))
+            if len(v) > 0:
+                r.append(v)
+        return len(r) == 2

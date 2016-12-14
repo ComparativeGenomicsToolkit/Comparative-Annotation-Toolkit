@@ -40,3 +40,14 @@ def find_closest(numeric_list, query_number):
         return after
     else:
         return before
+
+
+def all_disjoint(sets):
+    """http://stackoverflow.com/questions/22432814/check-if-a-collection-of-sets-is-pairwise-disjoint"""
+    all = set()
+    for s in sets:
+        for x in s:
+            if x in all:
+                return False
+            all.add(x)
+    return True

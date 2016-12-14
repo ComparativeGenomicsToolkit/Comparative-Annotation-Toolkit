@@ -70,7 +70,7 @@ def hgm(args):
                '--gtfs={}'.format(gtf_fofn),
                '--outdir={}'.format(args.gtf_out_dir),
                '--tmpdir={}'.format(temp_dir),
-               '--cpu={}'.format(args.num_cpu)]
+               '--cpu={}'.format(args.hgm_cpu)]
         tools.procOps.run_proc(cmd, stdout='/dev/null')
 
     # cleanup

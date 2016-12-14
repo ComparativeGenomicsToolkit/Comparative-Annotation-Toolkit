@@ -2,11 +2,23 @@
 Miscellaneous tools for the pipeline. Some may eventually be refactored into their own modules.
 """
 import itertools
-
+import argparse
 import pysam
 
 import procOps
-from tools.pipeline import ProcException
+from pipeline import ProcException
+
+
+class HashableNamespace(argparse.Namespace):
+    """
+    Adds a __hash__ function to argparse's Namespace. Follows best practices for implementation of __hash__.
+    """
+    def __hash__(self):
+        def xor(x, y):
+            return x ^ hash(y)
+        val_iter = self.__dict__.itervalues()
+        first = hash(val_iter.next())
+        return reduce(xor, val_iter, first) ^ hash(tuple(self.__dict__.values()))
 
 
 def convert_gtf_gp(gp_target, gtf_target):
