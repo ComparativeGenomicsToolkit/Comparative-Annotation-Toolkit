@@ -55,6 +55,11 @@ class MrnaAugTmrEval(EvaluationColumns, Base):
     __tablename__ = 'mRNA_augTMR_Evaluation'
 
 
+class MrnaAugPbEval(EvaluationColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from AugustusPB"""
+    __tablename__ = 'mRNA_augPB_Evaluation'
+
+
 class CdsTmEval(EvaluationColumns, Base):
     """Table for evaluations of CDS alignments of transcripts derived from transMap"""
     __tablename__ = 'CDS_transMap_Evaluation'
@@ -73,6 +78,11 @@ class CdsAugTmrEval(EvaluationColumns, Base):
 class CdsAugCgpEval(EvaluationColumns, Base):
     """Table for evaluations of CDS alignments of transcripts derived from AugustusCGP"""
     __tablename__ = 'CDS_augCGP_Evaluation'
+
+
+class CdsAugPbEval(EvaluationColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusPB"""
+    __tablename__ = 'CDS_augPB_Evaluation'
 
 
 class MetricsColumns(object):
@@ -127,6 +137,11 @@ class MrnaAugTmrMetrics(MetricsColumns, Base):
     __tablename__ = 'mRNA_augTMR_Metrics'
 
 
+class MrnaAugPbMetrics(MetricsColumns, Base):
+    """Table for evaluations of mRNA alignments of transcripts derived from AugustusPB"""
+    __tablename__ = 'mRNA_augPB_Metrics'
+
+
 class CdsTmMetrics(MetricsColumns, Base):
     """Table for evaluations of CDS alignments of transcripts derived from transMap"""
     __tablename__ = 'CDS_transMap_Metrics'
@@ -147,15 +162,22 @@ class CdsAugCgpMetrics(MetricsColumns, Base):
     __tablename__ = 'CDS_augCGP_Metrics'
 
 
+class CdsAugPbMetrics(MetricsColumns, Base):
+    """Table for evaluations of CDS alignments of transcripts derived from AugustusPB"""
+    __tablename__ = 'CDS_augPB_Metrics'
+
+
 class HgmColumns(object):
     """Mixin class for all homGeneMapping tables"""
     GeneId = Column(Text, primary_key=True)
     TranscriptId = Column(Text, primary_key=True)
     AlignmentId = Column(Text, primary_key=True)
-    RnaSeqSupportIntronVector = Column(Text)
-    AnnotationSupportIntronVector = Column(Text)
-    AnnotationCdsSupportVector = Column(Text)
-    AnnotationExonSupportVector = Column(Text)
+    IntronAnnotSupport = Column(Text)
+    IntronRnaSupport = Column(Text)
+    CdsAnnotSupport = Column(Text)
+    CdsRnaSupport = Column(Text)
+    ExonAnnotSupport = Column(Text)
+    ExonRnaSupport = Column(Text)
 
 
 class TmIntronSupport(HgmColumns, Base):
@@ -178,9 +200,22 @@ class AugCgpIntronSupport(HgmColumns, Base):
     __tablename__ = 'augCGP_Hgm'
 
 
+class AugPbIntronSupport(HgmColumns, Base):
+    """Table for intron support of AugustusPB transcripts from homGeneMapping"""
+    __tablename__ = 'augPB_Hgm'
+
+
 class AugCgpAlernativeGenes(Base):
     """Table for recording a list of alternative parental genes for CGP"""
     __tablename__ = 'augCGP_AlternativeGenes'
+    TranscriptId = Column(Text, primary_key=True)
+    AssignedGeneId = Column(Text)
+    AlternativeGeneIds = Column(Text)
+
+
+class AugPbAlernativeGenes(Base):
+    """Table for recording a list of alternative parental genes for IsoSeq"""
+    __tablename__ = 'augPB_AlternativeGenes'
     TranscriptId = Column(Text, primary_key=True)
     AssignedGeneId = Column(Text)
     AlternativeGeneIds = Column(Text)
@@ -204,12 +239,15 @@ def start_session(db_path):
 
 
 tables = {'hgm': {'augCGP': AugCgpIntronSupport, 'augTM': AugTmIntronSupport,
-                  'augTMR': AugTmrIntronSupport, 'transMap': TmIntronSupport},
+                  'augTMR': AugTmrIntronSupport, 'transMap': TmIntronSupport,
+                  'augPB': AugPbIntronSupport},
           'CDS': {'augCGP': {'metrics': CdsAugCgpMetrics, 'evaluation': CdsAugCgpEval},
+                  'augPB': {'metrics': CdsAugPbMetrics, 'evaluation': CdsAugPbEval},
                   'augTM': {'metrics': CdsAugTmMetrics, 'evaluation': CdsAugTmEval},
                   'augTMR': {'metrics': CdsAugTmrMetrics, 'evaluation': CdsAugTmrEval},
                   'transMap': {'metrics': CdsTmMetrics, 'evaluation': CdsTmEval}},
-          'mRNA': {'augTM': {'metrics': MrnaAugTmMetrics, 'evaluation': MrnaAugTmEval},
+          'mRNA': {'augPB': {'metrics': MrnaAugPbMetrics, 'evaluation': MrnaAugPbEval},
+                   'augTM': {'metrics': MrnaAugTmMetrics, 'evaluation': MrnaAugTmEval},
                    'augTMR': {'metrics': MrnaAugTmrMetrics, 'evaluation': MrnaAugTmrEval},
                    'transMap': {'metrics': MrnaTmMetrics, 'evaluation': MrnaTmEval}}}
 
@@ -368,7 +406,7 @@ def load_evaluation(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    assert any(table == cls for cls in (MrnaAugTmrEval, MrnaAugTmEval, MrnaTmEval,
+    assert any(table == cls for cls in (MrnaAugTmrEval, MrnaAugTmEval, MrnaTmEval, MrnaAugPbEval, CdsAugPbEval,
                                         CdsAugCgpEval, CdsAugTmrEval, CdsAugTmEval, CdsTmEval))
     query = session.query(table.GeneId, table.TranscriptId, table.AlignmentId, table.classifier,
                           func.count(table.classifier).label('value')). \
@@ -383,8 +421,9 @@ def load_metrics(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    assert any(table == cls for cls in (MrnaAugTmrMetrics, MrnaAugTmMetrics, MrnaTmMetrics,
-                                        CdsAugCgpMetrics, CdsAugTmrMetrics, CdsAugTmMetrics, CdsTmMetrics))
+    assert any(table == cls for cls in (MrnaAugTmrMetrics, MrnaAugTmMetrics, MrnaTmMetrics, MrnaAugPbMetrics,
+                                        CdsAugCgpMetrics, CdsAugTmrMetrics, CdsAugTmMetrics, CdsTmMetrics,
+                                        CdsAugPbMetrics))
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
 
@@ -396,7 +435,7 @@ def load_intron_vector(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    assert any(table == cls for cls in (TmIntronSupport, AugCgpIntronSupport, AugTmIntronSupport,
+    assert any(table == cls for cls in (TmIntronSupport, AugCgpIntronSupport, AugTmIntronSupport, AugPbIntronSupport,
                                         AugTmrIntronSupport))
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)

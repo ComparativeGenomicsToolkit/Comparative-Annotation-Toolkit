@@ -190,6 +190,9 @@ def parse_hgm_gtf(hgm_out):
     in which it has RNA-Seq SJ support (number of "E" in the 'hgm_info' string).
     But this can be changed later on, e.g. using also the multiplicities, or the presence of the intron
     in (one of) the reference annotation(s) (if "M" is in the 'hgm_info' string, then it is an annotated intron)
+
+    We have 3 feature types and 2 datatypes. Features are intron/cds/exon, data are annotation/RNA-seq.
+    So, in total, we produce 6 vectors for each transcript.
     """
     intron_lines = []
     cds_lines = []
@@ -218,14 +221,21 @@ def parse_hgm_gtf(hgm_out):
             cds_info = d[gene_id][aln_id]['cds']
             exon_info = d[gene_id][aln_id]['exon']
             tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
-            rnaseq_vector = ','.join(map(str, [x.count('E') for x in intron_info]))
-            annotation_vector = ','.join(map(str, [sum([x.count('M'), x.count('N')]) for x in intron_info]))
-            exon_vector = ','.join(map(str, [x.count('M') for x in exon_info]))
-            cds_vector = ','.join(map(str, [x.count('M') for x in cds_info]))
-            dd.append([gene_id, tx_id, aln_id, rnaseq_vector, annotation_vector, cds_vector, exon_vector])
+            # intron vectors
+            intron_annot = ','.join(map(str, [x.count('M') for x in intron_info]))
+            intron_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
+            # cds vectors
+            cds_annot = ','.join(map(str, [x.count('M') for x in intron_info]))
+            cds_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
+            # exon vectors
+            exon_annot = ','.join(map(str, [x.count('M') for x in intron_info]))
+            exon_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
+            dd.append([gene_id, tx_id, aln_id, intron_annot, intron_rna, cds_annot, cds_rna, exon_annot, exon_rna])
 
     df = pd.DataFrame(dd)
-    df.columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'RnaSeqSupportIntronVector', 'AnnotationSupportIntronVector',
-                  'AnnotationCdsSupportVector', 'AnnotationExonSupportVector']
+    df.columns = ['GeneId', 'TranscriptId', 'AlignmentId',
+                  'IntronAnnotSupport', 'IntronRnaSupport',
+                  'CdsAnnotSupport', 'CdsRnaSupport',
+                  'ExonAnnotSupport', 'ExonRnaSupport']
     df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
     return df

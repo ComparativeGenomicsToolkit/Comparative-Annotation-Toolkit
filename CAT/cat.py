@@ -35,6 +35,7 @@ from tools.luigiAddons import multiple_requires, IndexTarget
 from align_transcripts import align_transcripts
 from augustus import augustus
 from augustus_cgp import augustus_cgp
+from augustus_pb import augustus_pb
 from chaining import chaining
 from classify import classify
 from consensus import generate_consensus
@@ -105,6 +106,11 @@ class PipelineTask(luigi.Task):
     augustus_cgp_cfg_template = luigi.Parameter(default='augustus_cfgs/cgp_extrinsic_template.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
+    # AugustusPB parameters
+    augustus_pb = luigi.BoolParameter(default=False)
+    pb_genome_chunksize = luigi.IntParameter(default=2500000, significant=False)
+    pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
+    pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
     # consensus options
     resolve_split_genes = luigi.BoolParameter(default=False)
     # Toil options
@@ -133,12 +139,16 @@ class PipelineTask(luigi.Task):
         args.work_dir = os.path.abspath(self.work_dir)
         args.augustus = self.augustus
         args.augustus_cgp = self.augustus_cgp
+        args.augustus_pb = self.augustus_pb
         args.augustus_species = self.augustus_species
         args.tm_cfg = os.path.abspath(self.tm_cfg)
         args.tmr_cfg = os.path.abspath(self.tmr_cfg)
         args.augustus_cgp = self.augustus_cgp
         args.maf_chunksize = self.maf_chunksize
         args.maf_overlap = self.maf_overlap
+        args.pb_genome_chunksize = self.pb_genome_chunksize
+        args.pb_genome_overlap = self.pb_genome_overlap
+        args.pb_cfg = os.path.abspath(self.pb_cfg)
         args.resolve_split_genes = self.resolve_split_genes
         args.augustus_cgp_cfg_template = os.path.abspath(self.augustus_cgp_cfg_template)
         args.cgp_param = os.path.abspath(self.cgp_param)
@@ -256,9 +266,11 @@ class PipelineTask(luigi.Task):
         if args.ref_genome not in args.cfg['ANNOTATION']:
             raise UserException('Reference genome {} did not have a provided annotation.'.format(self.ref_genome))
 
-        # warn the user if they are providing dubious inputs
+        # raise if the user if the user is providing dubious inputs
         if args.augustus_cgp and len(args.rnaseq_genomes) == 0:
-            logger.warning('AugustusCGP is being ran without any RNA-seq hints!')
+            raise InvalidInputException('AugustusCGP is being ran without any RNA-seq hints!')
+        if args.augustus_pb and len(args.isoseq_genomes) == 0:
+            raise InvalidInputException('AugustusPB is being ran without any IsoSeq hints!')
 
     def get_modes(self, args):
         """returns a tuple of the execution modes being used here"""
@@ -269,6 +281,8 @@ class PipelineTask(luigi.Task):
             modes.append('augTM')
             if len(args.cfg['BAM']) + len(args.cfg['INTRONBAM']) > 0:
                 modes.append('augTMR')
+        if args.augustus_pb is True:
+            modes.append('augPB')
         return tuple(modes)
 
     def get_module_args(self, module, **args):
@@ -434,11 +448,13 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(Augustus)
         if self.augustus_cgp is True:
             yield self.clone(AugustusCgp)
+        if self.augustus_pb is True:
+            yield self.clone(AugustusPb)
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Consensus)
-        yield self.clone(Plots)
+        #yield self.clone(Consensus)
+        #yield self.clone(Plots)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -1171,7 +1187,7 @@ class AugustusDriverTask(ToilTask):
 
     def run(self):
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus', self.genome)
-        logger.info('Launching Augustus toil pipeline on {}.'.format(self.genome))
+        logger.info('Launching AugustusTMR toil pipeline on {}.'.format(self.genome))
         toil_options = self.prepare_toil_options(toil_work_dir)
         augustus_args = self.get_module_args(Augustus, genome=self.genome)
         coding_gp = self.extract_coding_genes(augustus_args)
@@ -1298,6 +1314,82 @@ class AugustusCgp(ToilTask):
         self.load_alternative_tx_tables(pipeline_args, database_dfs)
 
 
+class AugustusPb(PipelineWrapperTask):
+    """
+    Runs AugustusPB. This mode is done on a per-genome basis, but ignores transMap information and and relies only on
+    a combination of IsoSeq and RNA-seq
+    """
+    @staticmethod
+    def get_args(pipeline_args, genome):
+        base_dir = os.path.join(pipeline_args.work_dir, 'augustus_pb')
+        args = tools.misc.HashableNamespace()
+        args.genome = genome
+        args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.unfiltered_tm_gp = TransMap.get_args(pipeline_args, genome).tm_gp
+        args.filtered_tm_gp = FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
+        args.pb_cfg = pipeline_args.pb_cfg
+        args.hints_gff = BuildDb.get_args(pipeline_args, genome).hints_path
+        args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')
+        args.augustus_pb_gp = os.path.join(base_dir, genome + '.augPB.gp')
+        return args
+
+    def validate(self):
+        for tool in ['augustus', 'joingenes']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('Auxiliary program {} from the Augustus package not in path.'.format(tool))
+
+    def requires(self):
+        self.validate()
+        pipeline_args = self.get_pipeline_args()
+        for target_genome in pipeline_args.isoseq_genomes:
+            yield self.clone(AugustusPbDriverTask, genome=target_genome)
+
+
+class AugustusPbDriverTask(ToilTask):
+    """
+    Task for per-genome launching of a toil pipeline for running AugustusPB.
+    """
+    genome = luigi.Parameter()
+    tablename = tools.sqlInterface.AugPbAlernativeGenes.__tablename__
+
+    def output(self):
+        pipeline_args = self.get_pipeline_args()
+        augustus_pb_args = AugustusPb.get_args(pipeline_args, self.genome)
+        yield luigi.LocalTarget(augustus_pb_args.augustus_pb_gp)
+        yield luigi.LocalTarget(augustus_pb_args.augustus_pb_gtf)
+        db = pipeline_args.dbs[self.genome]
+        tools.fileOps.ensure_file_dir(db)
+        conn_str = 'sqlite:///{}'.format(db)
+        yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                  target_table=self.tablename,
+                                                  update_id='_'.join([self.tablename, str(hash(pipeline_args))]))
+
+    def requires(self):
+        return self.clone(FilterTransMap), self.clone(BuildDb)
+
+    def load_alternative_tx_tables(self, pipeline_args, df, sqla_target):
+        """loads the alternative transcript database"""
+        db = pipeline_args.dbs[self.genome]
+        with tools.sqlite.ExclusiveSqlConnection(db) as engine:
+            df.to_sql(self.tablename, engine, if_exists='replace')
+        sqla_target.touch()
+        logger.info('Loaded table: {}.{}'.format(self.genome, self.tablename))
+
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_pb', self.genome)
+        logger.info('Launching AugustusPB toil pipeline on {}.'.format(self.genome))
+        toil_options = self.prepare_toil_options(toil_work_dir)
+        augustus_args = self.get_module_args(AugustusPb, genome=self.genome)
+        df = augustus_pb(augustus_args, toil_options)
+        logger.info('AugustusPB toil pipeline for {} completed.'.format(self.genome))
+        out_gp, out_gtf, sqla_target = list(self.output())
+        tools.misc.convert_gtf_gp(out_gp, out_gtf)
+        logger.info('Finished converting AugustusPB output.')
+        self.load_alternative_tx_tables(pipeline_args, df, sqla_target)
+
+
 class Hgm(PipelineWrapperTask):
     """
     Task for launching the HomGeneMapping toil pipeline. This pipeline finds the cross species RNA-seq and annotation
@@ -1320,6 +1412,10 @@ class Hgm(PipelineWrapperTask):
             # remove reference it may have RNA-seq
             tgt_genomes = pipeline_args.rnaseq_genomes - {pipeline_args.ref_genome}
             gtf_in_files = {genome: Augustus.get_args(pipeline_args, genome).augustus_tmr_gtf
+                            for genome in tgt_genomes}
+        elif mode == 'augPB':
+            tgt_genomes = pipeline_args.isoseq_genomes
+            gtf_in_files = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gtf
                             for genome in tgt_genomes}
         elif mode == 'transMap':
             tgt_genomes = pipeline_args.target_genomes
@@ -1383,6 +1479,8 @@ class HgmDriverTask(PipelineTask):
             yield self.clone(Augustus)
         elif self.mode == 'transMap':
             yield self.clone(FilterTransMap)
+        elif self.mode == 'augPB':
+            yield self.clone(AugustusPb)
         else:
             raise UserException('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
         yield self.clone(BuildDb)
@@ -1433,6 +1531,10 @@ class AlignTranscripts(PipelineWrapperTask):
         if pipeline_args.augustus_cgp is True:
             args.transcript_modes['augCGP'] = {'gp': AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome],
                                                'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
+        if pipeline_args.augustus_pb is True:
+            args.transcript_modes['augPB'] = {'gp': AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp,
+                                              'mRNA': os.path.join(base_dir, genome + '.augPB.mRNA.psl'),
+                                              'CDS': os.path.join(base_dir, genome + '.augPB.CDS.psl')}
         return args
 
     def validate(self):
@@ -1470,6 +1572,8 @@ class AlignTranscriptDriverTask(ToilTask):
             yield self.clone(Augustus)
         if 'augCGP' in alignment_args.transcript_modes:
             yield self.clone(AugustusCgp)
+        if 'augPB' in alignment_args.transcript_modes:
+            yield self.clone(AugustusPb)
         yield self.clone(FilterTransMap)
         yield self.clone(ReferenceFiles)
 
@@ -1498,7 +1602,7 @@ class EvaluateTranscripts(PipelineWrapperTask):
         args.genome = genome
         args.ref_genome = pipeline_args.ref_genome
         # pass along all of the paths from alignment
-        args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes 
+        args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes
         return args
 
     def validate(self):
@@ -1581,6 +1685,8 @@ class Consensus(PipelineWrapperTask):
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tmr_gp)
         if pipeline_args.augustus_cgp is True:
             gp_list.append(AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome])
+        if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
+            gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
         args.gp_list = gp_list
         args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
         args.augustus_cgp = pipeline_args.augustus_cgp

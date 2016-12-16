@@ -9,7 +9,6 @@ hints to Augustus.
 """
 import argparse
 import itertools
-import logging
 
 from toil.common import Toil
 from toil.job import Job
@@ -78,7 +77,6 @@ def setup(job, args, input_file_ids):
             j = job.addChildJobFn(run_augustus_chunk, args, grouped_recs, input_file_ids, mode, cfg_file_id)
             results.append(j.rv())
         return results
-    job.fileStore.logToMaster('Beginning Augustus run on {}.'.format(args.genome), level=logging.INFO)
     # load all fileStore files necessary
     ref_psl = job.fileStore.readGlobalFile(input_file_ids.ref_psl)
     tm_psl = job.fileStore.readGlobalFile(input_file_ids.tm_psl)
@@ -91,8 +89,6 @@ def setup(job, args, input_file_ids):
     tx_dict = tools.transcripts.get_gene_pred_dict(coding_gp)
     tm_results = start_jobs('TM', 100, input_file_ids.tm_cfg)
     if args.augustus_tmr:
-        log_msg = 'Augustus run on {} has a hints database and will run both transMap and transMap-RNAseq modes.'
-        job.fileStore.logToMaster(log_msg.format(args.genome), level=logging.INFO)
         tmr_results = start_jobs('TMR', 50, input_file_ids.tmr_cfg)
     else:
         tmr_results = None

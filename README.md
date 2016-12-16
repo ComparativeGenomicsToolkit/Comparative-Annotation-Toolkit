@@ -51,19 +51,17 @@ Augustus transMap (TM) and augustus transMap-RNA-seq (TMR) are two execution mod
 
 #Running the pipeline
 
-This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the various steps together. As a result, there are two possible ways to execute the pipeline, described below. Both of them require that you start the `luigid` daemon:
+This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the various steps together. First, start the `luigid` daemon:
 
 `luigid --background --logdir luigi_logs`
 
-Which provides the central scheduler as well as the web UI, which can be accessed at `localhost:8082`.
+Which provides the central scheduler as well as the web UI, which can be accessed at `localhost:8082`. If you don't want to use the daemon, add the flag `--local-scheduler` to the invocation.
 
-1. Use the `luigi` executable. Installing the luigi package should have placed the `luigi` executable in your path. This wrapper allows you to use the central scheduler. The following command will execute the test data set, after you have moved to the `CAT` installation directory:
-`export PYTHONPATH=./ && luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --augustus-hints-db=test_data/vertebrates.db --annotation=test_data/GRCm38.mm10.subset.gff3`
-One other advantage of using the `luigi` executable is that you can start various sub-modules of the pipeline directly and bypass main wrapper. This is useful for re-executing parts of the pipeline. This is done by replacing `RunCat` with specific modules as described in the [modules](#modules) section.
-2. Run the pipeline directly from the main driver script. The same options are available. The only difference is not requiring ugly syntax for the `--target-genomes` flag. Test data invocation, also from the `CAT` installation directory:
-`export PYTHONPATH=./ && python cat.py --hal=test_data/vertebrates.hal --ref-genome=mm10 --augustus-hints-db=test_data/vertebrates.db --annotation=test_data/GRCm38.mm10.subset.gff3`
+To run the test data, change directories to the CAT installation folder and do the following:
 
-#Hints database
+`export PYTHONPATH=./ && luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --config=test_config.cfg`
+
+#Config file
 A major component of producing high quality comparative annotations is making use of RNA-seq information. This information is used as hints to the `augustus` gene finding tool along with `transMap`, and is a major component of cleaning up transcript projections. This is also useful if you run the `augustusCGP` portion of the pipeline.
 
 If you are running `augustusCGP`, then a hints database is required. At minimum, the hints database must be loaded with the genome sequence information for each target genome. Including transcript annotations for the high quality genomes in the alignment is highly recommended.
@@ -78,13 +76,16 @@ Genome = /path/to/reference/gff3
 
 [BAM]
 Genome = /path/to/fofn OR /path/to/bam1.bam, /path/to/bam2.bam
+
+[INTRONBAM]
+Genome = /path/to/fofn/of/noisy/rnaseq
 ~~~~
 
-Note that the BAM field can be populated either with a comma separated list of BAMs or a single file with a line pointing to each BAM (a FOFN, or file-of-file-names). The reference sequence information will be extracted from the HAL alignment.
+Note that the BAM/INTRONBAM fields can be populated either with a comma separated list of BAMs or a single file with a line pointing to each BAM (a FOFN, or file-of-file-names). The reference sequence information will be extracted from the HAL alignment.
 
 ##RNA-seq libraries
 
-It is **extremely** important that you use high quality RNA-seq. Libraries should be poly-A selected. If they are not, make sure you set the `--no-wiggle-hints` flag in the database construction pipeline!!
+It is **extremely** important that you use high quality RNA-seq. Libraries should be poly-A selected and paired end with a minimum read length of 75bp. If any of these are not true, it is advisable to place these libraries in the INTRONBAM field. Any genome can have a mix of BAM and INTRONBAM hints.
 
 #Input
 
@@ -330,9 +331,6 @@ Constructing the hints database is its own Luigi pipeline, which uses a separate
 `--work-dir`: Defaults to `./hints_work`. Stores the genomes and the hints GFFs. Can be cleaned up after.
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with this value.
-
-`--no-wiggle-hints`: Do not incorporate wiggle hints. These are hints based on expression and not splice junctions, but should be removed if the underlying RNA-seq are either noisy or not poly-A enriched.
-
 
 ##Toil
 
