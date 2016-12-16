@@ -221,6 +221,15 @@ class AugPbAlernativeGenes(Base):
     AlternativeGeneIds = Column(Text)
 
 
+class IsoSeqIntronIntervals(Base):
+    """Table for recording all distinct intron vectors present in a IsoSeq hints file"""
+    __tablename__ = 'augPB_IntronIntervals'
+    SequenceId = Column(Integer, primary_key=True)
+    chromosome = Column(Text)
+    start = Column(Integer)
+    stop = Column(Integer)
+
+
 ###
 # Wrapper functions for setting up sessions
 ###

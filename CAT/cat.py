@@ -17,9 +17,11 @@ import luigi
 import luigi.contrib.sqla
 from luigi.util import requires
 from toil.job import Job
+import pandas as pd
 
 import tools.bio
 import tools.fileOps
+import tools.intervals
 import tools.gff3
 import tools.hal
 import tools.misc
@@ -450,6 +452,7 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(AugustusCgp)
         if self.augustus_pb is True:
             yield self.clone(AugustusPb)
+            yield self.clone(AugustusPbIntronVector)
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
@@ -635,7 +638,7 @@ class Gff3ToAttrs(PipelineTask):
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
-        database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
+        database = pipeline_args.dbs[pipeline_args.ref_genome]
         tools.fileOps.ensure_file_dir(database)
         conn_str = 'sqlite:///{}'.format(database)
         digest = tools.fileOps.hashfile(pipeline_args.annotation)
@@ -664,7 +667,7 @@ class Gff3ToAttrs(PipelineTask):
         self.validate(pipeline_args, results)
         if 'protein_coding' not in results.TranscriptBiotype[1] or 'protein_coding' not in results.GeneBiotype[1]:
             logger.warning('No protein_coding annotations found!')
-        database = self.__class__.get_database(pipeline_args, pipeline_args.ref_genome)
+        database = pipeline_args.dbs[pipeline_args.ref_genome]
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
             results.to_sql(self.table, engine, if_exists='replace')
         self.output().touch()
@@ -1328,7 +1331,11 @@ class AugustusPb(PipelineWrapperTask):
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.unfiltered_tm_gp = TransMap.get_args(pipeline_args, genome).tm_gp
         args.filtered_tm_gp = FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
+        args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.pb_cfg = pipeline_args.pb_cfg
+        args.pb_genome_chunksize = pipeline_args.pb_genome_chunksize
+        args.pb_genome_overlap = pipeline_args.pb_genome_overlap
+        args.species = pipeline_args.augustus_species
         args.hints_gff = BuildDb.get_args(pipeline_args, genome).hints_path
         args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')
         args.augustus_pb_gp = os.path.join(base_dir, genome + '.augPB.gp')
@@ -1500,6 +1507,74 @@ class HgmDriverTask(PipelineTask):
                 df.to_sql(tablename, engine, if_exists='replace')
             sqla_target.touch()
             logger.info('Loaded table: {}.{}'.format(genome, tablename))
+
+
+class AugustusPbIntronVector(PipelineWrapperTask):
+    """
+    Constructs a database table representing all unique intron vectors from a IsoSeq dataset, based on the hints
+    produced. This is a supplement to the homGeneMapping approach, but within the individual species in question.
+    """
+    @staticmethod
+    def get_args(pipeline_args, genome):
+        args = tools.misc.HashableNamespace()
+        args.genome = genome
+        args.hints_gff = BuildDb.get_args(pipeline_args, genome).hints_path
+        return args
+
+    def requires(self):
+        pipeline_args = self.get_pipeline_args()
+        for genome in pipeline_args.isoseq_genomes:
+            yield self.clone(AugustusPbIntronVectorDriverTask, genome=genome)
+
+
+class AugustusPbIntronVectorDriverTask(PipelineTask):
+    """
+    Driver task for AugustusPbIntronVector
+    """
+    genome = luigi.Parameter()
+    tablename = tools.sqlInterface.IsoSeqIntronIntervals.__tablename__
+
+    def output(self):
+        pipeline_args = self.get_pipeline_args()
+        db = pipeline_args.dbs[self.genome]
+        tools.fileOps.ensure_file_dir(db)
+        conn_str = 'sqlite:///{}'.format(db)
+        return luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                   target_table=self.tablename,
+                                                   update_id='_'.join([self.tablename, str(hash(pipeline_args))]))
+
+    def requires(self):
+        yield self.clone(AugustusPb)
+
+    def construct_intervals(self, hints):
+        """
+        Converts the IsoSeq intron hints into groups of distinct intervals
+        """
+        lines = [x.split() for x in open(hints) if 'PB' in x]
+        groups = collections.defaultdict(set)
+        for l in lines:
+            if l[2] != 'intron':
+                continue
+            attrs = dict([x.split('=') for x in l[-1].split(';')])
+            if 'grp' not in attrs:  # not all introns get confidently assigned a group
+                continue
+            groups[attrs['grp']].add(tools.intervals.ChromosomeInterval(l[0], int(l[3]), int(l[4]), '.'))
+
+        # isolate unique interval groups
+        intervals = {frozenset(intervals) for intervals in groups.itervalues()}
+        for i, interval_grp in enumerate(intervals):
+            for interval in interval_grp:
+                yield i, interval.chromosome, interval.start, interval.stop
+
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        intron_args = AugustusPbIntronVector.get_args(pipeline_args, self.genome)
+        df = pd.DataFrame(self.construct_intervals(intron_args.hints_gff))
+        df.columns = ['SequenceId', 'chromosome', 'start', 'stop']
+        with tools.sqlite.ExclusiveSqlConnection(pipeline_args.dbs[self.genome]) as engine:
+            df.to_sql(self.tablename, engine, if_exists='replace')
+        self.output().touch()
+        logger.info('Loaded table {}.{}'.format(self.genome, self.tablename))
 
 
 class AlignTranscripts(PipelineWrapperTask):
@@ -1721,9 +1796,12 @@ class ConsensusDriverTask(PipelineTask):
         return luigi.LocalTarget(consensus_args.consensus_gp), luigi.LocalTarget(consensus_args.metrics_json)
 
     def requires(self):
+        pipeline_args = self.get_pipeline_args()
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Hgm)
+        if pipeline_args.augustus_pb:
+            yield self.clone(AugustusPbIntronVector)
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
