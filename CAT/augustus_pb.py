@@ -114,8 +114,9 @@ def join_genes(job, input_file_ids, predictions):
             outf.write(local_path + '\n')
 
     jg = tools.fileOps.get_tmp_toil_file()
-    cmd = [['joingenes', '-f', fofn, '-o', '/dev/stdout'],
-           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
+    cmd = [['joingenes', '-f', fofn, '-o', '/dev/stdout', '--alternatives'],
+           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+           ['sed', ' s/jg/augPB_/g']]
     tools.procOps.run_proc(cmd, stdout=jg)
     joined_file_id = job.fileStore.writeGlobalFile(jg)
     j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,

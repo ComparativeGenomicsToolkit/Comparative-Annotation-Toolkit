@@ -1606,7 +1606,7 @@ class AlignTranscripts(PipelineWrapperTask):
         if pipeline_args.augustus_cgp is True:
             args.transcript_modes['augCGP'] = {'gp': AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome],
                                                'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
-        if pipeline_args.augustus_pb is True:
+        if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
             args.transcript_modes['augPB'] = {'gp': AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.augPB.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.augPB.CDS.psl')}

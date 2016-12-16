@@ -178,7 +178,8 @@ def join_genes(job, genome, input_file_ids, gffChunks):
 
     jg = tools.fileOps.get_tmp_toil_file()
     cmd = [['joingenes', '-f', fofn, '-o', '/dev/stdout'],
-           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t']]
+           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+           ['sed', ' s/jg/augCGP_/g']]
     tools.procOps.run_proc(cmd, stdout=jg)
     joined_file_id = job.fileStore.writeGlobalFile(jg)
     j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,

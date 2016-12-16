@@ -70,6 +70,7 @@ def setup(job, args, input_file_ids):
                                                                      prefix='ref_genome', upper=False)
     # load required reference data into memory
     tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
+    gene_tx_map = tools.sqlInterface.get_gene_transcript_map(ref_genome_db)
     ref_transcript_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     # will hold a mapping of output file paths to lists of Promise objects containing output
     results = collections.defaultdict(list)
@@ -96,7 +97,6 @@ def setup(job, args, input_file_ids):
     if 'augCGP' in args.transcript_modes:
         cgp_cds_path = args.transcript_modes['augCGP']['CDS']
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
-        gene_tx_map = tools.sqlInterface.get_gene_transcript_map(ref_genome_db)
         tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
         augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids.modes['augCGP'])
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
@@ -114,11 +114,11 @@ def setup(job, args, input_file_ids):
         # begin loading transcripts and sequences
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes['augPB'])
         # don't filter for coding only
-        transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
+        pb_transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
         for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
-            seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
-                                               ref_genome_fasta, aln_mode)
-            for chunk in group_transcripts(seq_iter):
+            pb_transcript_seq_iter = get_pb_sequences(pb_transcript_dict, ref_transcript_dict, genome_fasta,
+                                                      ref_genome_fasta, gene_tx_map, aln_mode)
+            for chunk in group_transcripts(pb_transcript_seq_iter):
                 j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode)
                 results[out_path].append(j.rv())
 
@@ -149,7 +149,7 @@ def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_ge
     transcripts. Only returns CDS sequences for coding transcripts.
     """
     for cgp_id, tx in transcript_dict.iteritems():
-        if 'jg' in tx.name2:
+        if 'augCGP' in tx.name2:
             continue  # this transcript was not assigned any parents
         ref_tx_ids = gene_tx_map[tx.name2]
         tx_seq = tx.get_cds(genome_fasta, in_frame=True)
@@ -171,7 +171,7 @@ def get_pb_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_gen
     transcripts
     """
     for pb_id, tx in transcript_dict.iteritems():
-        if 'jg' in tx.name2:
+        if 'augPB' in tx.name2:
             continue  # this transcript was not assigned any parents
         ref_tx_ids = gene_tx_map[tx.name2]
         tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)

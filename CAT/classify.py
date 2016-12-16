@@ -9,8 +9,8 @@ These classifiers are per-transcript evaluations based on both the transcript al
 1. PercentUnknownBases: % of mRNA bases that are Ns.
 2. AlnCoverage: Alignment coverage in transcript space.
 3. AlnIdentity: Alignment identity in transcript space.
-4. PercentMissingIntrons: Number of original introns not within a wiggle distance of any introns in the target.
-5. PercentMissingExons: Do we lose any exons? Defined based on parent sequence, with wiggle room.
+4. PercentOriginalMissingIntrons: Number of original introns within a wiggle distance of any introns in the target.
+5. PercentOriginalExons: Do we lose any exons? Defined based on parent sequence, with wiggle room.
 6. CdsStartStat: Is the CDS likely to be a complete start? Simply extracted from the genePred
 7. CdsEndStat: Is the CDS likely to be a complete stop? Simply extracted from the genePred
 
@@ -34,6 +34,7 @@ txMode:
 2) augTM
 3) augTMR
 4) augCGP
+5) augPB
 
 alnMode:
 1) CDS
