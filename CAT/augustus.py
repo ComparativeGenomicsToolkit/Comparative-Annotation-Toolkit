@@ -9,7 +9,6 @@ hints to Augustus.
 """
 import argparse
 import itertools
-import logging
 
 from toil.common import Toil
 from toil.job import Job
@@ -78,7 +77,6 @@ def setup(job, args, input_file_ids):
             j = job.addChildJobFn(run_augustus_chunk, args, grouped_recs, input_file_ids, mode, cfg_file_id)
             results.append(j.rv())
         return results
-    job.fileStore.logToMaster('Beginning Augustus run on {}.'.format(args.genome), level=logging.INFO)
     # load all fileStore files necessary
     ref_psl = job.fileStore.readGlobalFile(input_file_ids.ref_psl)
     tm_psl = job.fileStore.readGlobalFile(input_file_ids.tm_psl)
@@ -91,8 +89,6 @@ def setup(job, args, input_file_ids):
     tx_dict = tools.transcripts.get_gene_pred_dict(coding_gp)
     tm_results = start_jobs('TM', 100, input_file_ids.tm_cfg)
     if args.augustus_tmr:
-        log_msg = 'Augustus run on {} has a hints database and will run both transMap and transMap-RNAseq modes.'
-        job.fileStore.logToMaster(log_msg.format(args.genome), level=logging.INFO)
         tmr_results = start_jobs('TMR', 50, input_file_ids.tmr_cfg)
     else:
         tmr_results = None
@@ -113,7 +109,7 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
     cfg_file = job.fileStore.readGlobalFile(cfg_file_id)
-    if args.augustus_hints_db is not None:
+    if args.augustus_tmr:
         hints_db_file = job.fileStore.readGlobalFile(input_file_ids.augustus_hints_db)
         speciesnames, seqnames, hints, featuretypes, session = reflect_hints_db(hints_db_file)
     # start iteratively running Augustus on this chunk
@@ -125,7 +121,7 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
         start = max(tm_tx.start - padding, 0)
         stop = min(tm_tx.stop + padding, len(genome_fasta[chromosome]))
         tm_hints = tools.tm2hints.tm_to_hints(tm_tx, tm_psl, ref_psl)
-        if args.augustus_hints_db is not None:
+        if args.augustus_tmr:
             rnaseq_hints = get_rnaseq_hints(args.genome, chromosome, start, stop, speciesnames, seqnames, hints,
                                             featuretypes, session)
             hint = ''.join([tm_hints, rnaseq_hints])
@@ -134,7 +130,8 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
         transcript = run_augustus(hint, genome_fasta, tm_tx, cfg_file, start, stop, args.augustus_species, mode)
         if transcript is not None:
             results.extend(transcript)
-    session.close()
+    if args.augustus_tmr:
+        session.close()
     return results
 
 

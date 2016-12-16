@@ -105,6 +105,23 @@ def setup(job, args, input_file_ids):
         for chunk in group_transcripts(cgp_transcript_seq_iter):
             j = job.addChildJobFn(run_blat_chunk, chunk, 'CDS')
             results[cgp_cds_path].append(j.rv())
+
+    # if we ran AugustusPB, align mRNA + CDS
+    if 'augPB' in args.transcript_modes:
+        # output file paths
+        mrna_path = args.transcript_modes['augPB']['mRNA']
+        cds_path = args.transcript_modes['augPB']['CDS']
+        # begin loading transcripts and sequences
+        gp_path = job.fileStore.readGlobalFile(input_file_ids.modes['augPB'])
+        # don't filter for coding only
+        transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
+        for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
+            seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
+                                               ref_genome_fasta, aln_mode)
+            for chunk in group_transcripts(seq_iter):
+                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode)
+                results[out_path].append(j.rv())
+
     if len(results) == 0:
         err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
         raise RuntimeError(err_msg)
@@ -129,7 +146,7 @@ def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_ge
                       tx_biotype_map):
     """
     Generator for CGP transcripts. Same as get_alignment_sequences, but will resolve name2 field into all target
-    transcripts
+    transcripts. Only returns CDS sequences for coding transcripts.
     """
     for cgp_id, tx in transcript_dict.iteritems():
         if 'jg' in tx.name2:
@@ -146,6 +163,24 @@ def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_ge
             assert len(ref_tx_seq) % 3 == 0, ref_tx_id
             if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
                 yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
+
+
+def get_pb_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, gene_tx_map, mode):
+    """
+    Generator for PB transcripts. Same as get_alignment_sequences, but will resolve name2 field into all target
+    transcripts
+    """
+    for pb_id, tx in transcript_dict.iteritems():
+        if 'jg' in tx.name2:
+            continue  # this transcript was not assigned any parents
+        ref_tx_ids = gene_tx_map[tx.name2]
+        tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)
+        for ref_tx_id in ref_tx_ids:
+            ref_tx = ref_transcript_dict[ref_tx_id]
+            ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta,
+                                                                                                 in_frame=True)
+            if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
+                yield pb_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
 def run_blat_chunk(job, chunk, mode):
