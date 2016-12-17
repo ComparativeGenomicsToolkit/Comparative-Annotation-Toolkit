@@ -110,7 +110,7 @@ class PipelineTask(luigi.Task):
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     # AugustusPB parameters
     augustus_pb = luigi.BoolParameter(default=False)
-    pb_genome_chunksize = luigi.IntParameter(default=2500000, significant=False)
+    pb_genome_chunksize = luigi.IntParameter(default=20000000, significant=False)
     pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
     # consensus options
@@ -452,7 +452,7 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(AugustusCgp)
         if self.augustus_pb is True:
             yield self.clone(AugustusPb)
-            yield self.clone(AugustusPbIntronVector)
+            yield self.clone(IsoSeqIntronVectors)
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
@@ -686,8 +686,11 @@ class TranscriptBed(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Converting annotation genePred to BED.')
-        cmd = ['genePredToBed', self.annotation_gp, '/dev/stdout']
-        self.run_cmd(cmd)
+        # something is wrong with genePredToBed
+        # atomicity is lost here
+        cmd = ['genePredToBed', self.annotation_gp, self.output().path]
+        #cmd = ['genePredToBed', self.annotation_gp, '/dev/stdout']
+        #self.run_cmd(cmd)
 
 
 @multiple_requires(GenomeFlatFasta, TranscriptBed)
@@ -1509,7 +1512,7 @@ class HgmDriverTask(PipelineTask):
             logger.info('Loaded table: {}.{}'.format(genome, tablename))
 
 
-class AugustusPbIntronVector(PipelineWrapperTask):
+class IsoSeqIntronVectors(PipelineWrapperTask):
     """
     Constructs a database table representing all unique intron vectors from a IsoSeq dataset, based on the hints
     produced. This is a supplement to the homGeneMapping approach, but within the individual species in question.
@@ -1524,12 +1527,12 @@ class AugustusPbIntronVector(PipelineWrapperTask):
     def requires(self):
         pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.isoseq_genomes:
-            yield self.clone(AugustusPbIntronVectorDriverTask, genome=genome)
+            yield self.clone(IsoSeqIntronVectorsDriverTask, genome=genome)
 
 
-class AugustusPbIntronVectorDriverTask(PipelineTask):
+class IsoSeqIntronVectorsDriverTask(PipelineTask):
     """
-    Driver task for AugustusPbIntronVector
+    Driver task for IsoSeqIntronVectors
     """
     genome = luigi.Parameter()
     tablename = tools.sqlInterface.IsoSeqIntronIntervals.__tablename__
@@ -1568,7 +1571,7 @@ class AugustusPbIntronVectorDriverTask(PipelineTask):
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
-        intron_args = AugustusPbIntronVector.get_args(pipeline_args, self.genome)
+        intron_args = IsoSeqIntronVectors.get_args(pipeline_args, self.genome)
         df = pd.DataFrame(self.construct_intervals(intron_args.hints_gff))
         df.columns = ['SequenceId', 'chromosome', 'start', 'stop']
         with tools.sqlite.ExclusiveSqlConnection(pipeline_args.dbs[self.genome]) as engine:
@@ -1801,7 +1804,7 @@ class ConsensusDriverTask(PipelineTask):
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Hgm)
         if pipeline_args.augustus_pb:
-            yield self.clone(AugustusPbIntronVector)
+            yield self.clone(IsoSeqIntronVectors)
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)

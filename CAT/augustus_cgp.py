@@ -76,50 +76,38 @@ def setup(job, args, input_file_ids):
 
     # list of dicts, each storing all gffs for one alignment chunk
     # key: genome, value: file handle to gff
-    gffChunks = []
+    gff_chunks = []
 
-    # calculate alignment chunks
     # TODO: do not split within genic regions of the reference genome
+    chrom_sizes = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
 
-    # overlap length between two consecutive alignment chunks
-    overlap = args.overlap
-    # length of alignment chunk with respect to the reference genome
-    chunkSize = args.chunksize
-
-    aliChunks = []  # stores all alignment chunks as tuples [chrom, start, chunkSize]
-    chromSizes = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
-    for chrom, chromSize in tools.fileOps.iter_lines(chromSizes):
-        start = 0
-        while start + chunkSize < int(chromSize):
-            aliChunks.append([chrom, start, chunkSize])
-            start = start + chunkSize - overlap                  # start of next alignment chunk
-        aliChunks.append([chrom, start, int(chromSize) - start])   # last alignment chunk
-
-    for chrom, start, end in aliChunks:
-        # export alignment chunks from hal to maf
-        j = job.addChildJobFn(hal2maf, input_file_ids, args.ref_genome, chrom, start, end, memory='8G')
-        mafChunk = j.rv()
-        # run AugustusCGP on alignment chunk
-        cgp_job = j.addFollowOnJobFn(cgp, tree, mafChunk, args, input_file_ids, memory='8G')
-        gffChunk = cgp_job.rv()
-        gffChunks.append(gffChunk)
+    for chrom, chrom_size in tools.fileOps.iter_lines(chrom_sizes):
+        chrom_size = int(chrom_size)
+        for start in xrange(0, chrom_size, args.chunksize - args.overlap):
+            chunksize = args.chunksize if start + args.chunksize <= chrom_size else chrom_size - start
+            j = job.addChildJobFn(hal2maf, input_file_ids, args.ref_genome, chrom, start, chunksize, memory='8G')
+            maf_chunk = j.rv()
+            # run AugustusCGP on alignment chunk
+            cgp_job = j.addFollowOnJobFn(cgp, tree, maf_chunk, args, input_file_ids, memory='8G')
+            gff_chunk = cgp_job.rv()
+            gff_chunks.append(gff_chunk)
 
     # merge all gff files for alignment chunks to one gff for each species
     # results contains pairs of [gff_file_id, dataframe] where the dataframe contains the alternative parental txs
-    results = job.addFollowOnJobFn(merge_results, args, input_file_ids, gffChunks, memory='8G').rv()
+    results = job.addFollowOnJobFn(merge_results, args, input_file_ids, gff_chunks, memory='8G').rv()
     return results
 
 
-def hal2maf(job, input_file_ids, refGenome, chrom, start, chunkSize):
+def hal2maf(job, input_file_ids, ref_genome, chrom, start, chunk_size):
     """
     exports hal to maf on a genomic region specified by (genome, seq, start, len)
     """
     hal = job.fileStore.readGlobalFile(input_file_ids.hal)
-    mafChunk = tools.fileOps.get_tmp_toil_file()
-    cmd = ['hal2maf', '--noAncestors', '--noDupes', '--refGenome', refGenome,
-           '--refSequence', chrom, '--start', start, '--length', chunkSize, hal, mafChunk]
+    maf_chunk = tools.fileOps.get_tmp_toil_file()
+    cmd = ['hal2maf', '--noAncestors', '--noDupes', '--refGenome', ref_genome,
+           '--refSequence', chrom, '--start', start, '--length', chunk_size, hal, maf_chunk]
     tools.procOps.run_proc(cmd)
-    return job.fileStore.writeGlobalFile(mafChunk)
+    return job.fileStore.writeGlobalFile(maf_chunk)
 
 
 def cgp(job, tree, mafChunk, args, input_file_ids):
@@ -147,20 +135,20 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
     return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}
 
 
-def merge_results(job, args, input_file_ids, gffChunks):
+def merge_results(job, args, input_file_ids, gff_chunks):
     """
     Merges the results using joinGenes. The results have parental genes assigned.
     """
     results = {}
     for genome in args.genomes:
-        # merge all gffChunks of one genome
-        genome_gffChunks = [d[genome] for d in gffChunks]
-        j = job.addChildJobFn(join_genes, genome, input_file_ids, genome_gffChunks, memory='8G')
+        # merge all gff_chunks of one genome
+        genome_gff_chunks = [d[genome] for d in gff_chunks]
+        j = job.addChildJobFn(join_genes, genome, input_file_ids, genome_gff_chunks, memory='8G')
         results[genome] = j.rv()
     return results
 
 
-def join_genes(job, genome, input_file_ids, gffChunks):
+def join_genes(job, genome, input_file_ids, gff_chunks):
     """
     uses the auxiliary tool 'joingenes' from the
     Augustus package to intelligently merge gene sets
@@ -172,7 +160,7 @@ def join_genes(job, genome, input_file_ids, gffChunks):
     """
     fofn = tools.fileOps.get_tmp_toil_file()
     with open(fofn, 'w') as outf:
-        for chunk in gffChunks:
+        for chunk in gff_chunks:
             local_path = job.fileStore.readGlobalFile(chunk)
             outf.write(local_path + '\n')
 

@@ -55,19 +55,11 @@ def setup(job, args, input_file_ids):
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
 
-    chunks = []
-    for chrom in genome_fasta:
-        start = 0
-        chrom_size = len(genome_fasta[chrom])
-        while start + args.pb_genome_chunksize < chrom_size:
-            chunks.append([chrom, start, args.pb_genome_chunksize])
-            start = start + args.pb_genome_chunksize - args.pb_genome_overlap  # next chunk
-        chunks.append([chrom, start, chrom_size - start])  # last chunk
-
     predictions = []
-    for chrom, start, stop in chunks:
-        j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, stop)
-        predictions.append(j.rv())
+    for chrom in genome_fasta:
+        for start in xrange(0, len(genome_fasta[chrom]), args.pb_genome_chunksize - args.pb_genome_overlap):
+            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, start + args.pb_genome_overlap)
+            predictions.append(j.rv())
 
     # results contains a pair of [gff_file_id, dataframe] where the dataframe contains the alternative parental txs
     results = job.addFollowOnJobFn(join_genes, input_file_ids, predictions, memory='8G').rv()
@@ -84,7 +76,7 @@ def augustus_pb_chunk(job, args, input_file_ids, chrom, start, stop):
     pb_cfg = job.fileStore.readGlobalFile(input_file_ids.pb_cfg)
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     tools.bio.write_fasta(tmp_fasta, chrom, genome_fasta[chrom][start:stop])
-    hints_out = tools.fileOps.get_tmp_toil_file()
+    results = tools.fileOps.get_tmp_toil_file()
 
     cmd = ['augustus', '--UTR=1', '--softmasking=1', '--allow_hinted_splicesites=atac',
            '--alternatives-from-evidence=1',
@@ -93,8 +85,8 @@ def augustus_pb_chunk(job, args, input_file_ids, chrom, start, stop):
            '--species={}'.format(args.species),
            '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(stop),
            tmp_fasta]
-    tools.procOps.run_proc(cmd, stdout=hints_out)
-    return job.fileStore.writeGlobalFile(hints_out)
+    tools.procOps.run_proc(cmd, stdout=results)
+    return job.fileStore.writeGlobalFile(results)
 
 
 def join_genes(job, input_file_ids, predictions):
