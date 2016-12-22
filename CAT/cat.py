@@ -1765,14 +1765,20 @@ class Consensus(PipelineWrapperTask):
         # grab the genePred of every mode
         args = tools.misc.HashableNamespace()
         gp_list = [TransMap.get_args(pipeline_args, genome).tm_gp]
+        args.tx_modes = ['transMap']
+        args.denovo_tx_modes = []
         if pipeline_args.augustus is True:
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tm_gp)
+            args.tx_modes.append('augTM')
         if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tmr_gp)
+            args.tx_modes.append('augTMR')
         if pipeline_args.augustus_cgp is True:
             gp_list.append(AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome])
+            args.denovo_tx_modes.append('augCGP')
         if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
+            args.denovo_tx_modes.append('augPB')
         args.gp_list = gp_list
         args.genome = genome
         args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()

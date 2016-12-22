@@ -89,7 +89,7 @@ def generate_consensus(args):
     consensus_dict = {}
 
     # if we ran in either denovo mode, load those data and detect novel genes
-    if args.denovo_tx_modes is not None:
+    if len(args.denovo_tx_modes) > 0:
         metrics['denovo'] = {}
         for tx_mode in args.denovo_tx_modes:
             metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor mapping': 0, 'Putative novel': 0,
@@ -135,7 +135,7 @@ def generate_consensus(args):
                     best_rows = find_best_score(tx_df)
                     aln_id, d = incorporate_tx(best_rows, gene_id, metrics, args.hints_db_has_rnaseq, failed_gene=False)
                     gene_consensus_dict[aln_id] = d
-        if args.denovo_tx_modes is not None:
+        if len(args.denovo_tx_modes) > 0:
             denovo_gene_df = slice_df(denovo_df, gene_id)
             denovo_gene_df = denovo_gene_df.set_index('AlignmentId')
             gene_consensus_dict.update(find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id,
