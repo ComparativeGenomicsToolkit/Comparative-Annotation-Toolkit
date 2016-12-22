@@ -42,6 +42,7 @@ id_template = '{genome:.10}_{tag_type}{unique_id:07d}'
 
 def generate_consensus(args):
     """
+    Main consensus finding logic.
 
     :param args: Argument namespace from luigi
     """
@@ -60,13 +61,13 @@ def generate_consensus(args):
     coding_cutoff = tools.sqlInterface.load_tm_fit(args.db_path)
     # load the homGeneMapping data for transMap/augTM/augTMR
     tx_modes = [x for x in args.tx_modes if x in ['transMap', 'augTM', 'augTMR']]
-    hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
+    hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode, args.in_species_rna_support_only) for tx_mode in tx_modes])
     # load the alignment metrics data
     metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
     # combine and filter the results
     merged_df = combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, args.intron_rnaseq_support,
                                        args.exon_rnaseq_support, args.intron_annot_support, args.exon_annot_support,
-                                       args.original_introns, coding_cutoff)
+                                       args.original_introns, coding_cutoff, args.in_species_rna_support_only)
     scored_df = score_merged_df(merged_df, args.hints_db_has_rnaseq)
 
     # store some metrics for plotting
@@ -191,18 +192,27 @@ def calculate_vector_support(s, resolve_nan=None, num_digits=4):
                                             num_digits=num_digits)
 
 
-def load_hgm_vectors(db_path, tx_mode):
+def load_hgm_vectors(db_path, tx_mode, in_species_rna_support_only):
     """
     Loads the intron vector table output by the homGeneMapping module. Returns a DataFrame with the parsed vectors
     as well as the combined score based on tx_mode -- for augCGP we look at the CDS score rather than the exon score
     because CGP has a coding-only model.
+
+    Based on the user flag --in_species_rna_support_only, we decide which version of support to look at.
     """
     session = tools.sqlInterface.start_session(db_path)
     intron_table = tools.sqlInterface.tables['hgm'][tx_mode]
     hgm_df = tools.sqlInterface.load_intron_vector(intron_table, session)
+
     # start calculating support levels for consensus finding
-    for col in ['IntronAnnotSupport', 'IntronRnaSupport', 'CdsAnnotSupport',
-                'CdsRnaSupport', 'ExonAnnotSupport', 'ExonRnaSupport']:
+    if in_species_rna_support_only is True:
+        cols = ['IntronAnnotSupport', 'IntronRnaSupport', 'CdsAnnotSupport',
+                'CdsRnaSupport', 'ExonAnnotSupport', 'ExonRnaSupport']
+    else:
+        cols = ['IntronAnnotSupport', 'IntronRnaSupport', 'CdsAnnotSupport',
+                'AllSpeciesCdsRnaSupport', 'AllSpeciesExonAnnotSupport', 'AllSpeciesExonRnaSupport']
+
+    for col in cols:
         hgm_df[col] = hgm_df[col].apply(parse_text_vector)
         hgm_df[col + 'Percent'] = hgm_df[col].apply(calculate_vector_support)
     return hgm_df
@@ -245,7 +255,8 @@ def load_alt_names(db_path, denovo_tx_modes):
 
 
 def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq_support, exon_rnaseq_support,
-                           intron_annot_support, exon_annot_support, original_introns, coding_cutoff):
+                           intron_annot_support, exon_annot_support, original_introns, coding_cutoff,
+                           in_species_rna_support_only):
     """
     Updates the DataFrame based on support levels. For each of these user tunable values, all transcripts
     which match the criteria are tagged as Supported.
@@ -259,6 +270,7 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
     :param exon_annot_support: Value 0-100. Percent of exons supported by the reference.
     :param original_introns: Value 0-100. Percent of introns that must be supported by this specific annotation.
     :param coding_cutoff: Lognormal fit derived cutoff for coding transcripts. Used to filter TM/TMR alignments.
+    :param in_species_rna_support_only: Should we use the homGeneMapping vectors within-species or all-species?
     :return: dataframe with the Supported field added
     """
     # combine all of these dataframes
@@ -267,14 +279,21 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
     # we add the suffixes to keep track of which StartCodon/StopCodon was reference vs. target
     merged_df = pd.merge(metrics_hgm_tm_df, ref_df, on=['GeneId', 'TranscriptId'], suffixes=['_Tgt', '_Ref'])
     # huge ugly filtering expression
-    filt = (((merged_df.TranscriptBiotype == 'protein_coding') & (merged_df.AlnIdentity >= coding_cutoff)) &
-            (merged_df.OriginalIntronsPercent >= original_introns) &
-            (merged_df.IntronAnnotSupportPercent >= intron_annot_support) &
-            (merged_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
-            (merged_df.ExonAnnotSupportPercent >= exon_annot_support) &
-            (merged_df.ExonRnaSupportPercent >= exon_rnaseq_support))
-    merged_df['Supported'] = ~filt
-    return merged_df
+    if in_species_rna_support_only is True:
+        filt = (((merged_df.TranscriptBiotype == 'protein_coding') & (merged_df.AlnIdentity >= coding_cutoff)) &
+                (merged_df.OriginalIntronsPercent >= original_introns) &
+                (merged_df.IntronAnnotSupportPercent >= intron_annot_support) &
+                (merged_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
+                (merged_df.ExonAnnotSupportPercent >= exon_annot_support) &
+                (merged_df.ExonRnaSupportPercent >= exon_rnaseq_support))
+    else:
+        filt = (((merged_df.TranscriptBiotype == 'protein_coding') & (merged_df.AlnIdentity >= coding_cutoff)) &
+                (merged_df.OriginalIntronsPercent >= original_introns) &
+                (merged_df.IntronAnnotSupportPercent >= intron_annot_support) &
+                (merged_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
+                (merged_df.ExonAnnotSupportPercent >= exon_annot_support) &
+                (merged_df.ExonRnaSupportPercent >= exon_rnaseq_support))
+    return merged_df[filt]
 
 
 def score_merged_df(merged_df, hints_db_has_rnaseq):
@@ -418,7 +437,6 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
     # add information to the overall metrics
     if best_series.TranscriptBiotype == 'protein_coding':
         metrics['Transcript Modes'][transcript_modes] += 1
-    metrics['Transcript Supported'][best_series.TranscriptBiotype] += best_series.Supported  # implict bool cast
     metrics['Coverage'][best_series.TranscriptBiotype].append(100 * best_series.AlnCoverage)
     metrics['Identity'][best_series.TranscriptBiotype].append(100 * best_series.AlnIdentity)
     if hints_db_has_rnaseq is True:

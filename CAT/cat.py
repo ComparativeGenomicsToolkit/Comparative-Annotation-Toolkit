@@ -125,6 +125,7 @@ class PipelineTask(luigi.Task):
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
     in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
+    rebuild_consensus = luigi.BoolParameter(default=False, significant=True)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=8, significant=False)
@@ -176,6 +177,7 @@ class PipelineTask(luigi.Task):
         args.denovo_exon_support = self.denovo_exon_support
         args.require_pacbio_support = self.require_pacbio_support
         args.in_species_rna_support_only = self.in_species_rna_support_only
+        args.rebuild_consensus = self.rebuild_consensus
         
         args.hal_genomes = tuple(tools.hal.extract_genomes(self.hal))
         if self.target_genomes is None:
@@ -1527,7 +1529,7 @@ class HgmDriverTask(PipelineTask):
         tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
         for genome, sqla_target in itertools.izip(*[hgm_args.genomes, self.output()]):
             # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
-            df = parse_hgm_gtf(hgm_args.gtf_out_files[genome])
+            df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome)
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
                 df.to_sql(tablename, engine, if_exists='replace')
             sqla_target.touch()
@@ -1772,6 +1774,7 @@ class Consensus(PipelineWrapperTask):
         if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
         args.gp_list = gp_list
+        args.genome = genome
         args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
         args.augustus_cgp = pipeline_args.augustus_cgp
         args.db_path = pipeline_args.dbs[genome]
@@ -1802,6 +1805,11 @@ class Consensus(PipelineWrapperTask):
         self.validate()
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
+            if pipeline_args.rebuild_consensus is True:
+                args = Consensus.get_args(pipeline_args, target_genome)
+                os.remove(args.consensus_gp)
+                os.remove(args.consensus_gp_info)
+                os.remove(args.consensus_gff3)
             yield self.clone(ConsensusDriverTask, genome=target_genome)
 
 
@@ -1827,7 +1835,7 @@ class ConsensusDriverTask(PipelineTask):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         consensus_gp, metrics_json = self.output()
-        metrics_dict = generate_consensus(consensus_args, self.genome)
+        metrics_dict = generate_consensus(consensus_args)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 

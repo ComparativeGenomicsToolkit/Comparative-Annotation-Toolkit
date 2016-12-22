@@ -137,12 +137,17 @@ class CdsAugTmrMetrics(MetricsColumns, Base):
     __tablename__ = 'CDS_augTMR_Metrics'
 
 
-
 class HgmColumns(object):
     """Mixin class for all homGeneMapping tables"""
     GeneId = Column(Text, primary_key=True)
     TranscriptId = Column(Text, primary_key=True)
     AlignmentId = Column(Text, primary_key=True)
+    AllSpeciesIntronAnnotSupport = Column(Text)
+    AllSpeciesIntronRnaSupport = Column(Text)
+    AllSpeciesCdsAnnotSupport = Column(Text)
+    AllSpeciesCdsRnaSupport = Column(Text)
+    AllSpeciesExonAnnotSupport = Column(Text)
+    AllSpeciesExonRnaSupport = Column(Text)
     IntronAnnotSupport = Column(Text)
     IntronRnaSupport = Column(Text)
     CdsAnnotSupport = Column(Text)

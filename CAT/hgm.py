@@ -183,7 +183,7 @@ def parse_gtf_attr_line(attr_line):
     return attrs
 
 
-def parse_hgm_gtf(hgm_out):
+def parse_hgm_gtf(hgm_out, genome):
     """
     parses the hgm output gtfs and creates for each transcript a string with the intron support counts
     For now, we just count for each of the introns in the transcript, the number of species
@@ -191,14 +191,55 @@ def parse_hgm_gtf(hgm_out):
     But this can be changed later on, e.g. using also the multiplicities, or the presence of the intron
     in (one of) the reference annotation(s) (if "M" is in the 'hgm_info' string, then it is an annotated intron)
 
+    We calculate this as both the in-species and all-species vectors.
+
     We have 3 feature types and 2 datatypes. Features are intron/cds/exon, data are annotation/RNA-seq.
-    So, in total, we produce 6 vectors for each transcript.
+    So, in total, we produce (3 * 2 ) * 2 = 12 vectors for each transcript.
     """
+    def calculate_all_species(intron_info, cds_info, exon_info):
+        # intron vectors
+        intron_annot = ','.join(map(str, [x.count('M') + x.count('N') for x in intron_info]))
+        intron_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
+        # cds vectors
+        cds_annot = ','.join(map(str, [x.count('M') for x in cds_info]))
+        cds_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in cds_info]))
+        # exon vectors
+        exon_annot = ','.join(map(str, [x.count('M') for x in exon_info]))
+        exon_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in exon_info]))
+        return [intron_annot, intron_rna, cds_annot, cds_rna, exon_annot, exon_rna]
+
+    def calculate_in_species(intron_info, cds_info, exon_info, species_id):
+        def parse_entry(entry, species_id):
+            recs = entry.split(',')
+            for x in recs:
+                if x[0] == species_id:
+                    return x[1:]
+            return ''
+
+        # intron vectors
+        intron_annot = ','.join(map(str, [parse_entry(x, species_id).count('M') +
+                                          parse_entry(x, species_id).count('N') for x in intron_info]))
+        intron_rna = ','.join(map(str, [parse_entry(x, species_id).count('E') +
+                                        parse_entry(x, species_id).count('PB') for x in intron_info]))
+        # cds vectors
+        cds_annot = ','.join(map(str, [parse_entry(x, species_id).count('M') for x in cds_info]))
+        cds_rna = ','.join(map(str, [parse_entry(x, species_id).count('E') +
+                                     parse_entry(x, species_id).count('PB') for x in cds_info]))
+        # exon vectors
+        exon_annot = ','.join(map(str, [parse_entry(x, species_id).count('M') for x in exon_info]))
+        exon_rna = ','.join(map(str, [parse_entry(x, species_id).count('E') +
+                                      parse_entry(x, species_id).count('PB') for x in exon_info]))
+        return [intron_annot, intron_rna, cds_annot, cds_rna, exon_annot, exon_rna]
+
     intron_lines = []
     cds_lines = []
     exon_lines = []
+    species_map = {}
     with open(hgm_out) as infile:
         for line in infile:
+            if line.startswith('#') and line != '###\n':
+                _, species_id, species = line.split()
+                species_map[species] = species_id
             if '\tintron\t' in line:
                 intron_lines.append(line.rstrip().split('\t')[-1])
             elif '\tCDS\t' in line:
@@ -206,6 +247,7 @@ def parse_hgm_gtf(hgm_out):
             elif '\texon\t' in line:
                 exon_lines.append(line.rstrip().split('\t')[-1])
 
+    species_id = species_map[genome]
     # make use of the sorted nature of the input GTFs to create a ordered vector
     d = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list)))
     for mode, group in zip(*[['intron', 'cds', 'exon'], [intron_lines, cds_lines, exon_lines]]):
@@ -221,19 +263,15 @@ def parse_hgm_gtf(hgm_out):
             cds_info = d[gene_id][aln_id]['cds']
             exon_info = d[gene_id][aln_id]['exon']
             tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
-            # intron vectors
-            intron_annot = ','.join(map(str, [x.count('M') for x in intron_info]))
-            intron_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
-            # cds vectors
-            cds_annot = ','.join(map(str, [x.count('M') for x in cds_info]))
-            cds_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in cds_info]))
-            # exon vectors
-            exon_annot = ','.join(map(str, [x.count('M') + x.count('N') for x in exon_info]))
-            exon_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in exon_info]))
-            dd.append([gene_id, tx_id, aln_id, intron_annot, intron_rna, cds_annot, cds_rna, exon_annot, exon_rna])
+            all_species_vectors = calculate_all_species(intron_info, cds_info, exon_info)
+            in_species_vectors = calculate_in_species(intron_info, cds_info, exon_info, species_id)
+            dd.append([gene_id, tx_id, aln_id] + all_species_vectors + in_species_vectors)
 
     df = pd.DataFrame(dd)
     df.columns = ['GeneId', 'TranscriptId', 'AlignmentId',
+                  'AllSpeciesIntronAnnotSupport', 'AllSpeciesIntronRnaSupport',
+                  'AllSpeciesCdsAnnotSupport', 'AllSpeciesCdsRnaSupport',
+                  'AllSpeciesExonAnnotSupport', 'AllSpeciesExonRnaSupport',
                   'IntronAnnotSupport', 'IntronRnaSupport',
                   'CdsAnnotSupport', 'CdsRnaSupport',
                   'ExonAnnotSupport', 'ExonRnaSupport']
