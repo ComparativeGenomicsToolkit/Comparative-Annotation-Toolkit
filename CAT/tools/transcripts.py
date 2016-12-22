@@ -410,7 +410,7 @@ class GenePredTranscript(Transcript):
             offset = self.offset
             return cds[offset:len(cds) - ((len(cds) - offset) % 3)]
 
-    def get_gene_pred(self, name=None, start_offset=None, stop_offset=None, name2=None, uid=None):
+    def get_gene_pred(self, name=None, start_offset=None, stop_offset=None, name2=None, score=None):
         """
         Returns this transcript as a genePred transcript.
         If start_offset or stop_offset are set (chromosome coordinates), then this record will be changed to only
@@ -436,9 +436,9 @@ class GenePredTranscript(Transcript):
         exon_frames = ",".join(map(str, self.exon_frames))
         # change names if desired
         name2 = self.name2 if name2 is None else name2
-        uid = self.id if uid is None else uid
+        score = self.score if score is None else score
         return map(str, [name, chrom, strand, start, stop, thick_start, thick_stop, block_count,
-                         exon_starts, exon_ends, uid, name2, self.cds_start_stat, self.cds_end_stat,
+                         exon_starts, exon_ends, score, name2, self.cds_start_stat, self.cds_end_stat,
                          exon_frames])
 
 

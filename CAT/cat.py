@@ -123,6 +123,8 @@ class PipelineTask(luigi.Task):
     denovo_num_introns = luigi.IntParameter(default=0, significant=False)
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
+    require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
+    in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=8, significant=False)
@@ -172,6 +174,8 @@ class PipelineTask(luigi.Task):
         args.denovo_num_introns = self.denovo_num_introns
         args.denovo_splice_support = self.denovo_splice_support
         args.denovo_exon_support = self.denovo_exon_support
+        args.require_pacbio_support = self.require_pacbio_support
+        args.in_species_rna_support_only = self.in_species_rna_support_only
         
         args.hal_genomes = tuple(tools.hal.extract_genomes(self.hal))
         if self.target_genomes is None:
@@ -1778,6 +1782,7 @@ class Consensus(PipelineWrapperTask):
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')
         args.consensus_gff3 = os.path.join(base_dir, genome + '.gff3')
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
+        # user configurable options on how consensus finding should work
         args.intron_rnaseq_support = pipeline_args.intron_rnaseq_support
         args.exon_rnaseq_support = pipeline_args.exon_rnaseq_support
         args.intron_annot_support = pipeline_args.intron_annot_support
@@ -1786,6 +1791,8 @@ class Consensus(PipelineWrapperTask):
         args.denovo_num_introns = pipeline_args.denovo_num_introns
         args.denovo_splice_support = pipeline_args.denovo_splice_support
         args.denovo_exon_support = pipeline_args.denovo_exon_support
+        args.require_pacbio_support = pipeline_args.require_pacbio_support
+        args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         return args
 
     def validate(self):
