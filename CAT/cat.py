@@ -114,7 +114,15 @@ class PipelineTask(luigi.Task):
     pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
     # consensus options
-    resolve_split_genes = luigi.BoolParameter(default=False)
+    resolve_split_genes = luigi.BoolParameter(default=False, significant=False)
+    intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
+    exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
+    intron_annot_support = luigi.IntParameter(default=80, significant=False)
+    exon_annot_support = luigi.IntParameter(default=80, significant=False)
+    original_intron_support = luigi.IntParameter(default=80, significant=False)
+    denovo_num_introns = luigi.IntParameter(default=0, significant=False)
+    denovo_splice_support = luigi.IntParameter(default=0, significant=False)
+    denovo_exon_support = luigi.IntParameter(default=0, significant=False)
     # Toil options
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=8, significant=False)
@@ -154,6 +162,16 @@ class PipelineTask(luigi.Task):
         args.resolve_split_genes = self.resolve_split_genes
         args.augustus_cgp_cfg_template = os.path.abspath(self.augustus_cgp_cfg_template)
         args.cgp_param = os.path.abspath(self.cgp_param)
+        
+        # user specified flags for consensus finding
+        args.intron_rnaseq_support = self.intron_rnaseq_support
+        args.exon_rnaseq_support = self.exon_rnaseq_support
+        args.intron_annot_support = self.intron_annot_support
+        args.exon_annot_support = self.exon_annot_support
+        args.original_intron_support = self.original_intron_support
+        args.denovo_num_introns = self.denovo_num_introns
+        args.denovo_splice_support = self.denovo_splice_support
+        args.denovo_exon_support = self.denovo_exon_support
         
         args.hal_genomes = tuple(tools.hal.extract_genomes(self.hal))
         if self.target_genomes is None:
@@ -456,7 +474,7 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
-        #yield self.clone(Consensus)
+        yield self.clone(Consensus)
         #yield self.clone(Plots)
 
 
@@ -1760,6 +1778,14 @@ class Consensus(PipelineWrapperTask):
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')
         args.consensus_gff3 = os.path.join(base_dir, genome + '.gff3')
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
+        args.intron_rnaseq_support = pipeline_args.intron_rnaseq_support
+        args.exon_rnaseq_support = pipeline_args.exon_rnaseq_support
+        args.intron_annot_support = pipeline_args.intron_annot_support
+        args.exon_annot_support = pipeline_args.exon_annot_support
+        args.original_intron_support = pipeline_args.original_intron_support
+        args.denovo_num_introns = pipeline_args.denovo_num_introns
+        args.denovo_splice_support = pipeline_args.denovo_splice_support
+        args.denovo_exon_support = pipeline_args.denovo_exon_support
         return args
 
     def validate(self):
