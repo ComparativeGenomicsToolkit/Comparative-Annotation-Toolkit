@@ -9,10 +9,10 @@ These classifiers are per-transcript evaluations based on both the transcript al
 1. PercentUnknownBases: % of mRNA bases that are Ns.
 2. AlnCoverage: Alignment coverage in transcript space.
 3. AlnIdentity: Alignment identity in transcript space.
-4. PercentOriginalMissingIntrons: Number of original introns within a wiggle distance of any introns in the target.
-5. PercentOriginalExons: Do we lose any exons? Defined based on parent sequence, with wiggle room.
-6. CdsStartStat: Is the CDS likely to be a complete start? Simply extracted from the genePred
-7. CdsEndStat: Is the CDS likely to be a complete stop? Simply extracted from the genePred
+4. OriginalIntronVector: Number of original introns within a wiggle distance of any introns in the target. Different
+   from the intron support calculated by homGeneMapping because it verifies the actual isoform.
+5. CdsStartStat: Is the CDS likely to be a complete start? Simply extracted from the genePred
+6. CdsEndStat: Is the CDS likely to be a complete stop? Simply extracted from the genePred
 
 <alnMode>_<txMode>_Evaluation:
 
@@ -59,8 +59,6 @@ import tools.transcripts
 # fuzz distance is the distance between introns allowed in intron coordinates before triggering NumMissingIntrons
 # fuzz distance is counted from both sides of the intron
 fuzz_distance = 7
-# the amount of exon-exon coverage required to consider a exon as present
-missing_exons_coverage_cutoff = 0.8
 
 
 def classify(eval_args):
@@ -98,16 +96,14 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
             start_ok, stop_ok = start_stop_stat(tx)
             r.append([ref_tx.name2, ref_tx.name, tx.name, 'StartCodon', start_ok])
             r.append([ref_tx.name2, ref_tx.name, tx.name, 'StopCodon', stop_ok])
-        percent_missing_introns = calculate_percent_original_introns(ref_tx, tx, psl, aln_mode)
-        percent_missing_exons = calculate_percent_original_exons(ref_tx, psl, aln_mode)
+        original_intron_vector = calculate_original_intron_vector(ref_tx, tx, psl, aln_mode)
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', psl.coverage])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', psl.identity])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnGoodness', 100 * (1 - psl.badness)])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentOriginalIntrons', percent_missing_introns])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentOriginalExons', percent_missing_exons])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'OriginalIntrons', original_intron_vector])
     columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
     df = pd.DataFrame(r, columns=columns)
-    df.value = pd.to_numeric(df.value)  # coerce all into floats
     df = df.sort_values(columns)
     df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
     assert len(r) == len(df)
@@ -152,7 +148,7 @@ def start_stop_stat(tx):
     return start_ok, stop_ok
 
 
-def calculate_percent_original_introns(ref_tx, tx, psl, aln_mode):
+def calculate_original_intron_vector(ref_tx, tx, psl, aln_mode):
     """
     Determines how many of the gaps present in a given transcript are within a wiggle distance of the parent.
 
@@ -165,11 +161,11 @@ def calculate_percent_original_introns(ref_tx, tx, psl, aln_mode):
     :param tx: GenePredTranscript object representing the target transcript
     :param psl: PslRow object representing the mRNA/CDS alignment between ref_tx and tx
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :return: float between 0 and 1 or nan (single exon transcript)
+    :return: list
     """
     # before we calculate anything, make sure we have introns to lose
     if len(ref_tx.intron_intervals) == 0:
-        return float('nan')
+        return None
 
     # generate a list of reference introns in current coordinates (mRNA or CDS)
     ref_introns = get_intron_coordinates(ref_tx, aln_mode)
@@ -182,45 +178,19 @@ def calculate_percent_original_introns(ref_tx, tx, psl, aln_mode):
         if p is not None:
             tgt_introns.append(p)
 
-    # if we lost all introns due to CDS filtering, return nan
+    # if we lost all introns due to CDS filtering, return a vector of all 0s
     if len(tgt_introns) == 0:
-        return float('nan')
+        return ','.join(['0'] * len(ref_tx.intron_intervals))
 
     # count the number of introns within wiggle distance of each other
-    num_original = 0
+    intron_vector = []
     for ref_intron in ref_introns:
         closest = tools.mathOps.find_closest(tgt_introns, ref_intron)
         if closest - fuzz_distance < ref_intron < closest + fuzz_distance:
-            num_original += 1
-    return tools.mathOps.format_ratio(num_original, len(ref_introns))
-
-
-def calculate_percent_original_exons(ref_tx, psl, aln_mode):
-    """
-    Calculates how many reference exons are missing in this transcript.
-
-    This is determined by using coordinate translations from the reference exons to the target, determining how many
-    of the target bases are covered through brute force
-
-    :param ref_tx: GenePredTranscript object representing the parent transcript
-    :param psl: PslRow object representing the mRNA/CDS alignment between ref_tx and tx
-    :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :return: float between 0 and 1
-    """
-    # convert the reference exons to alignment coordinates.
-    # We don't need the original exons because we can't produce useful coordinates here
-    # which is why this is a metric and not an evaluation
-    ref_exons = get_exon_intervals(ref_tx, aln_mode).values()
-    # note that since this PSL is target-referenced, we use target_coordinate_to_query()
-    num_original = 0
-    for exon in ref_exons:
-        present_bases = 0
-        for i in xrange(exon.start, exon.stop):
-            if psl.target_coordinate_to_query(i) is not None:
-                present_bases += 1
-        if tools.mathOps.format_ratio(present_bases, len(exon)) >= missing_exons_coverage_cutoff:
-            num_original += 1
-    return tools.mathOps.format_ratio(num_original, len(ref_exons))
+            intron_vector.append(1)
+        else:
+            intron_vector.append(0)
+    return ','.join(map(str, intron_vector))
 
 
 ###
