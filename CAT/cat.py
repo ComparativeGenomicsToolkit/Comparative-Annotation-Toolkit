@@ -1593,7 +1593,6 @@ class AlignTranscripts(PipelineWrapperTask):
         args.ref_genome_fasta = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).fasta
         args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
-        args.db_path = PipelineTask.get_database(pipeline_args, genome)
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
         args.transcript_modes = {'transMap': {'gp': FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp,
@@ -1607,13 +1606,6 @@ class AlignTranscripts(PipelineWrapperTask):
             args.transcript_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
                                                'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
                                                'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
-        if pipeline_args.augustus_cgp is True:
-            args.transcript_modes['augCGP'] = {'gp': AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome],
-                                               'CDS': os.path.join(base_dir, genome + '.augCGP.CDS.psl')}
-        if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
-            args.transcript_modes['augPB'] = {'gp': AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp,
-                                              'mRNA': os.path.join(base_dir, genome + '.augPB.mRNA.psl'),
-                                              'CDS': os.path.join(base_dir, genome + '.augPB.CDS.psl')}
         return args
 
     def validate(self):
@@ -1642,17 +1634,12 @@ class AlignTranscriptDriverTask(ToilTask):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
         for mode, paths in alignment_args.transcript_modes.iteritems():
             for aln_type in ['CDS', 'mRNA']:
-                if aln_type in paths:
-                    yield luigi.LocalTarget(paths[aln_type])
+                yield luigi.LocalTarget(paths[aln_type])
 
     def requires(self):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
         if 'augTM' in alignment_args.transcript_modes:
             yield self.clone(Augustus)
-        if 'augCGP' in alignment_args.transcript_modes:
-            yield self.clone(AugustusCgp)
-        if 'augPB' in alignment_args.transcript_modes:
-            yield self.clone(AugustusPb)
         yield self.clone(FilterTransMap)
         yield self.clone(ReferenceFiles)
 
@@ -1706,8 +1693,6 @@ class EvaluateDriverTask(PipelineTask):
         tables = []
         for aln_mode in ['mRNA', 'CDS']:
             for tx_mode in eval_args.transcript_modes.iterkeys():
-                if tx_mode == 'augCGP' and aln_mode == 'mRNA':
-                    continue
                 names = [x.__tablename__ for x in tools.sqlInterface.tables[aln_mode][tx_mode].values()]
                 tables.extend(names)
         return tables
@@ -1720,8 +1705,6 @@ class EvaluateDriverTask(PipelineTask):
         """Load the results into the SQLite database"""
         with tools.sqlite.ExclusiveSqlConnection(eval_args.db_path) as engine:
             for table, target in self.pair_table_output(eval_args).iteritems():
-                if table not in results:
-                    continue
                 df = results[table]
                 df.to_sql(table, engine, if_exists='replace')
                 target.touch()

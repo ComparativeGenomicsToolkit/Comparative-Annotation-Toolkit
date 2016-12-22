@@ -83,21 +83,21 @@ def fit_distributions(aln_eval_df, ref_df, genome):
         if len(biotype_not_unique) == 0:
             # No paralogous mappings implies all passing
             logger.info('No paralogous mappings for {} on {}.'.format(biotype, genome))
-            r.extend([[aln_id, 'Passing'] for aln_id in df.AlignmentId])
+            r.extend([[aln_id, 'passing'] for aln_id in df.AlignmentId])
             identity_cutoffs.append([biotype, None])
         elif len(biotype_unique) == 0:
             # Only paralogous mappings implies all failing
             logger.info('Only paralogous mappings for {} on {}.'.format(biotype, genome))
-            r.extend([[aln_id, 'Failing'] for aln_id in df.AlignmentId])
+            r.extend([[aln_id, 'failing'] for aln_id in df.AlignmentId])
             identity_cutoffs.append([biotype, None])
         else:
             logger.info('{:,} paralogous mappings and {:,} 1-1 orthologous mappings'
                         ' for {} on {}.'.format(len(biotype_not_unique), len(biotype_unique), biotype, genome))
             cutoff = find_cutoff(biotype_unique)
             identity_cutoffs.append([biotype, cutoff])
-            labels = ['Passing' if ident >= cutoff else 'Failing' for ident in df.TransMapIdentity]
-            num_pass = labels.count('Passing')
-            num_fail = labels.count('Failing')
+            labels = ['passing' if ident >= cutoff else 'failing' for ident in df.TransMapIdentity]
+            num_pass = labels.count('passing')
+            num_fail = labels.count('failing')
             logger.info('Established a {:.2%} identity boundary for {} on {} resulting in '
                         '{:,} passing and {:,} failing alignments.'.format(cutoff, biotype, genome, num_pass, num_fail))
             r.extend([[aln_id, label] for aln_id, label in zip(*[df.AlignmentId, labels])])
@@ -122,7 +122,7 @@ def resolve_paralogs(updated_aln_eval_df, genome):
     :return: tuple of (metrics_dict, filtered DataFrame)
     """
     def apply_label(s):
-        return s.TranscriptClass if s.ParalogStatus != 'NotConfident' else 'Failing'
+        return s.TranscriptClass if s.ParalogStatus != 'NotConfident' else 'failing'
 
     updated_aln_eval_df['Score'] = updated_aln_eval_df.apply(calculate_synteny_score, axis=1)
     updated_aln_eval_df = updated_aln_eval_df.sort_values(by='Score', ascending=False)
@@ -137,7 +137,7 @@ def resolve_paralogs(updated_aln_eval_df, genome):
             paralog_status.append([df.AlignmentId.iloc[0], None])
             continue
         biotype = df.TranscriptBiotype.iloc[0]
-        passing = df[df.TranscriptClass == 'Passing']
+        passing = df[df.TranscriptClass == 'passing']
         if len(passing) == 1:  # we can pick one passing member
             paralog_metrics[biotype]['Model prediction'] += 1
             paralog_metrics[biotype]['Alignments discarded'] += len(df) - 1
