@@ -55,11 +55,6 @@ class MrnaAugTmrEval(EvaluationColumns, Base):
     __tablename__ = 'mRNA_augTMR_Evaluation'
 
 
-class MrnaAugPbEval(EvaluationColumns, Base):
-    """Table for evaluations of mRNA alignments of transcripts derived from AugustusPB"""
-    __tablename__ = 'mRNA_augPB_Evaluation'
-
-
 class CdsTmEval(EvaluationColumns, Base):
     """Table for evaluations of CDS alignments of transcripts derived from transMap"""
     __tablename__ = 'CDS_transMap_Evaluation'
@@ -73,16 +68,6 @@ class CdsAugTmEval(EvaluationColumns, Base):
 class CdsAugTmrEval(EvaluationColumns, Base):
     """Table for evaluations of CDS alignments of transcripts derived from AugustusTMR"""
     __tablename__ = 'CDS_augTMR_Evaluation'
-
-
-class CdsAugCgpEval(EvaluationColumns, Base):
-    """Table for evaluations of CDS alignments of transcripts derived from AugustusCGP"""
-    __tablename__ = 'CDS_augCGP_Evaluation'
-
-
-class CdsAugPbEval(EvaluationColumns, Base):
-    """Table for evaluations of CDS alignments of transcripts derived from AugustusPB"""
-    __tablename__ = 'CDS_augPB_Evaluation'
 
 
 class MetricsColumns(object):
@@ -137,11 +122,6 @@ class MrnaAugTmrMetrics(MetricsColumns, Base):
     __tablename__ = 'mRNA_augTMR_Metrics'
 
 
-class MrnaAugPbMetrics(MetricsColumns, Base):
-    """Table for evaluations of mRNA alignments of transcripts derived from AugustusPB"""
-    __tablename__ = 'mRNA_augPB_Metrics'
-
-
 class CdsTmMetrics(MetricsColumns, Base):
     """Table for evaluations of CDS alignments of transcripts derived from transMap"""
     __tablename__ = 'CDS_transMap_Metrics'
@@ -156,15 +136,6 @@ class CdsAugTmrMetrics(MetricsColumns, Base):
     """Table for evaluations of CDS alignments of transcripts derived from AugustusTMR"""
     __tablename__ = 'CDS_augTMR_Metrics'
 
-
-class CdsAugCgpMetrics(MetricsColumns, Base):
-    """Table for evaluations of CDS alignments of transcripts derived from AugustusCGP"""
-    __tablename__ = 'CDS_augCGP_Metrics'
-
-
-class CdsAugPbMetrics(MetricsColumns, Base):
-    """Table for evaluations of CDS alignments of transcripts derived from AugustusPB"""
-    __tablename__ = 'CDS_augPB_Metrics'
 
 
 class HgmColumns(object):
@@ -251,13 +222,10 @@ def start_session(db_path):
 tables = {'hgm': {'augCGP': AugCgpIntronSupport, 'augTM': AugTmIntronSupport,
                   'augTMR': AugTmrIntronSupport, 'transMap': TmIntronSupport,
                   'augPB': AugPbIntronSupport},
-          'CDS': {'augCGP': {'metrics': CdsAugCgpMetrics, 'evaluation': CdsAugCgpEval},
-                  'augPB': {'metrics': CdsAugPbMetrics, 'evaluation': CdsAugPbEval},
-                  'augTM': {'metrics': CdsAugTmMetrics, 'evaluation': CdsAugTmEval},
+          'CDS': {'augTM': {'metrics': CdsAugTmMetrics, 'evaluation': CdsAugTmEval},
                   'augTMR': {'metrics': CdsAugTmrMetrics, 'evaluation': CdsAugTmrEval},
                   'transMap': {'metrics': CdsTmMetrics, 'evaluation': CdsTmEval}},
-          'mRNA': {'augPB': {'metrics': MrnaAugPbMetrics, 'evaluation': MrnaAugPbEval},
-                   'augTM': {'metrics': MrnaAugTmMetrics, 'evaluation': MrnaAugTmEval},
+          'mRNA': {'augTM': {'metrics': MrnaAugTmMetrics, 'evaluation': MrnaAugTmEval},
                    'augTMR': {'metrics': MrnaAugTmrMetrics, 'evaluation': MrnaAugTmrEval},
                    'transMap': {'metrics': MrnaTmMetrics, 'evaluation': MrnaTmEval}}}
 
@@ -416,8 +384,8 @@ def load_evaluation(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    assert any(table == cls for cls in (MrnaAugTmrEval, MrnaAugTmEval, MrnaTmEval, MrnaAugPbEval, CdsAugPbEval,
-                                        CdsAugCgpEval, CdsAugTmrEval, CdsAugTmEval, CdsTmEval))
+    assert any(table == cls for cls in (MrnaAugTmrEval, MrnaAugTmEval, MrnaTmEval,
+                                        CdsAugTmrEval, CdsAugTmEval, CdsTmEval))
     query = session.query(table.GeneId, table.TranscriptId, table.AlignmentId, table.classifier,
                           func.count(table.classifier).label('value')). \
         group_by(table.AlignmentId, table.TranscriptId, table.classifier)
@@ -431,9 +399,8 @@ def load_metrics(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    assert any(table == cls for cls in (MrnaAugTmrMetrics, MrnaAugTmMetrics, MrnaTmMetrics, MrnaAugPbMetrics,
-                                        CdsAugCgpMetrics, CdsAugTmrMetrics, CdsAugTmMetrics, CdsTmMetrics,
-                                        CdsAugPbMetrics))
+    assert any(table == cls for cls in (MrnaAugTmrMetrics, MrnaAugTmMetrics, MrnaTmMetrics,
+                                        CdsAugTmrMetrics, CdsAugTmMetrics, CdsTmMetrics))
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
 
@@ -458,6 +425,6 @@ def load_alternatives(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    #assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes
+    assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
