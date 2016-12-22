@@ -128,44 +128,33 @@ def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, f
     """
     Runs a chunk of CGP transcripts on the same chromosome as all transMap transcripts in tm_tx_by_chromosome
 
-    The results are encoded in the gene2 field of each transcript with the following possibilities:
-
-    none:none --> this transcript has no filtered or unfiltered parents. Is a candidate for novelty pending the
-                   homGeneMapping output.
-    none:names --> this transcript has only unfiltered hits. These hits are comma separated. This transcript is a
-                   candidate for the Unknown category, which marks genes which overlap known annotations but which
-                   were not assigned a gene due to paralog resolution. Likely gene family member.
-    name:names --> this transcript was resolved and confidently assigned.
-
     :param tm_tx_by_chromosome: dictionary of GenePredTranscript objects all on the same chromosome
     :param cgp_chunk: Iterable of (cgp_tx_id, cgp_tx) tuples to be analyzed
     :param gene_biotype_map: dictionary mapping gene IDs to biotype
     :param filtered_ids: Set of transcript IDs which were filtered out
-    :return: list of GenePredTranscript object, comma separated list of alternative transcripts or None
+    :return: list to be turned into a dataframe. See merge_parent_assignment_chunks()
     """
-    resolved_txs = []
+    r = []
     for cgp_tx_id, cgp_tx in cgp_chunk:
+        # find the names of both filtered and unfiltered transMap transcript IDs that overlap
         unfiltered_overlapping_tm_txs = find_tm_overlaps(cgp_tx, tm_tx_by_chromosome)
         filtered_overlapping_tm_txs = {tx for tx in unfiltered_overlapping_tm_txs if tx.name not in filtered_ids}
-        unfiltered_gene_ids = {tx.name2 for tx in unfiltered_overlapping_tm_txs}
+        # extract only gene names for the filtered set
         filtered_gene_ids = {tx.name2 for tx in filtered_overlapping_tm_txs}
-        # no parents at all, so this is putative novel
-        if len(unfiltered_gene_ids) == len(filtered_gene_ids) == 0:
-            cgp_tx.name2 = cgp_tx_id.split('.')[0]
-            resolved_txs.append([cgp_tx, None, None])
-        # only filtered parents, so this is putative gene family expansion
-        elif len(filtered_gene_ids) == 0:
-            cgp_tx.name2 = cgp_tx_id.split('.')[0]
-            resolved_txs.append([cgp_tx, None, ','.join(unfiltered_gene_ids)])
-        # we have one or more filtered IDs. attempt to resolve
-        else:
-            resolved_name = resolve_multiple_genes(cgp_tx, filtered_overlapping_tm_txs, gene_biotype_map)
+        if len(filtered_gene_ids) > 0:  # we have at least one match
+            if len(filtered_gene_ids) > 1:  # we have more than one match, so resolve it
+                resolved_name = resolve_multiple_genes(cgp_tx, filtered_overlapping_tm_txs, gene_biotype_map)
+            elif len(filtered_gene_ids) == 1:  # yay, we have exactly one match
+                resolved_name = list(filtered_gene_ids)[0]
             if resolved_name is None:
                 continue  # don't save transcripts that can't be resolved
-            cgp_tx.name2 = resolved_name
-            possible_alternative_gene_ids = unfiltered_gene_ids - {resolved_name}
-            resolved_txs.append([cgp_tx, resolved_name, ','.join(possible_alternative_gene_ids)])
-    return resolved_txs
+        else:
+            resolved_name = None  # we have no matches, which means putative novel
+
+        # find only genes for the unfiltered set that are not present in the filtered set
+        alternative_gene_ids = ','.join({tx.name2 for tx in unfiltered_overlapping_tm_txs} - {resolved_name})
+        r.append([cgp_tx, resolved_name, alternative_gene_ids])
+    return r
 
 
 def merge_parent_assignment_chunks(job, final_gps):

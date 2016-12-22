@@ -1208,7 +1208,7 @@ class AugustusCgp(ToilTask):
     """
     Task for launching the AugustusCGP toil pipeline
     """
-    tablename = tools.sqlInterface.AugCgpAlernativeGenes.__tablename__
+    tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
 
     @staticmethod
     def get_args(pipeline_args):
@@ -1361,7 +1361,7 @@ class AugustusPbDriverTask(ToilTask):
     Task for per-genome launching of a toil pipeline for running AugustusPB.
     """
     genome = luigi.Parameter()
-    tablename = tools.sqlInterface.AugPbAlernativeGenes.__tablename__
+    tablename = tools.sqlInterface.AugPbAlternativeGenes.__tablename__
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
