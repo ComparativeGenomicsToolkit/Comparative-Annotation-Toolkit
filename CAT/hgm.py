@@ -225,11 +225,11 @@ def parse_hgm_gtf(hgm_out):
             intron_annot = ','.join(map(str, [x.count('M') for x in intron_info]))
             intron_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
             # cds vectors
-            cds_annot = ','.join(map(str, [x.count('M') for x in intron_info]))
-            cds_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
+            cds_annot = ','.join(map(str, [x.count('M') for x in cds_info]))
+            cds_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in cds_info]))
             # exon vectors
-            exon_annot = ','.join(map(str, [x.count('M') for x in intron_info]))
-            exon_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
+            exon_annot = ','.join(map(str, [x.count('M') + x.count('N') for x in exon_info]))
+            exon_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in exon_info]))
             dd.append([gene_id, tx_id, aln_id, intron_annot, intron_rna, cds_annot, cds_rna, exon_annot, exon_rna])
 
     df = pd.DataFrame(dd)
