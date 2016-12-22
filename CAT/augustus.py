@@ -115,7 +115,7 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
     # start iteratively running Augustus on this chunk
     results = []
     for tm_tx, ref_tx, tm_psl, ref_psl in grouped_recs.itervalues():
-        if len(tm_tx) > 3 * 10 ** 6:  # no huge transcripts
+        if len(tm_tx) > 3 * 10 ** 6:  # no huge transcripts -- this should be prefiltered however
             continue
         chromosome = tm_tx.chromosome
         start = max(tm_tx.start - padding, 0)

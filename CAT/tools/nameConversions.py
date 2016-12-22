@@ -55,7 +55,7 @@ def aln_id_is_transmap(aln_id):
 
 
 def aln_id_is_augustus_tm(aln_id):
-    return aln_id.startsiwth('augTM=')
+    return aln_id.startswith('augTM=')
 
 
 def aln_id_is_augustus_tmr(aln_id):
@@ -68,6 +68,10 @@ def aln_id_is_cgp(aln_id):
 
 def aln_id_is_pb(aln_id):
     return aln_id.startswith('augPB-')
+
+
+def aln_id_is_denovo(aln_id):
+    return aln_id_is_pb(aln_id) or aln_id_is_cgp(aln_id)
 
 
 def alignment_type(aln_id):

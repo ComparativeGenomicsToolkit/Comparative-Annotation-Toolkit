@@ -152,7 +152,8 @@ def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, f
             resolved_name = None  # we have no matches, which means putative novel
 
         # find only genes for the unfiltered set that are not present in the filtered set
-        alternative_gene_ids = ','.join({tx.name2 for tx in unfiltered_overlapping_tm_txs} - {resolved_name})
+        alternative_gene_ids = {tx.name2 for tx in unfiltered_overlapping_tm_txs} - {resolved_name}
+        alternative_gene_ids = ','.join(alternative_gene_ids) if len(alternative_gene_ids) > 0 else None
         r.append([cgp_tx, resolved_name, alternative_gene_ids])
     return r
 

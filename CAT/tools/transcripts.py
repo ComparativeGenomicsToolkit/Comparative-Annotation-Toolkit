@@ -342,7 +342,7 @@ class GenePredTranscript(Transcript):
     also tell you whether the CDS is complete on both ends, and the frame information of each exon.
     """
     # adding slots for new fields
-    __slots__ = ('cds_start_stat', 'cds_end_stat', 'exon_frames', 'name2', 'id')
+    __slots__ = ('cds_start_stat', 'cds_end_stat', 'exon_frames', 'name2', 'score')
 
     def __init__(self, gene_pred_tokens):
         name = gene_pred_tokens[0]
@@ -355,7 +355,7 @@ class GenePredTranscript(Transcript):
         block_count = gene_pred_tokens[7]
         exon_starts = gene_pred_tokens[8]
         exon_ends = gene_pred_tokens[9]
-        self.id = gene_pred_tokens[10]
+        self.score = gene_pred_tokens[10]
         self.name2 = gene_pred_tokens[11]
         self.cds_start_stat = gene_pred_tokens[12]
         self.cds_end_stat = gene_pred_tokens[13]
