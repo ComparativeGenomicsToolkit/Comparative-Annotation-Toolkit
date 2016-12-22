@@ -1593,6 +1593,7 @@ class AlignTranscripts(PipelineWrapperTask):
         args.ref_genome_fasta = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).fasta
         args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.db_path = PipelineTask.get_database(pipeline_args, genome)
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
         args.transcript_modes = {'transMap': {'gp': FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp,

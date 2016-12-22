@@ -1,8 +1,10 @@
 """
-Toil pipeline to align all transcripts in a source genePred to a target genePred. For non-CGP transcripts,
-this can be determined by using tools.nameConversions.strip_alignment_numbers() on the name field. For CGP transcripts,
-which have new IDs, we use the name2 field which will have assigned a gene ID to try and align to all protein coding
-transcripts associated with that gene ID.
+Toil pipeline to align all transcripts in a source genePred to a target genePred. For non-CGP/PB transcripts,
+this can be determined by using tools.nameConversions.strip_alignment_numbers() on the name field.
+
+De-novo predictions by CGP/PB may or may not have been assigned a gene ID. If they have been, then they need to be found
+by looking in the relevant SQL table. Alignment will be performed to every transcript associated with the assigned
+gene ID.
 
 Alignment is only performed on protein coding transcripts. For CGP, the in-frame CDS will be aligned using BLAT to the
 in-frame CDS of each protein coding transcript of the assigned parental gene. For transMap and AugustusTM(R)
@@ -41,6 +43,7 @@ def align_transcripts(args, toil_options):
             input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
             input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
             input_file_ids.ref_db = toil.importFile('file://' + args.ref_db_path)
+            input_file_ids.db = toil.importFile('file://' + args.db_path)
             input_file_ids.modes = {}
             for mode in args.transcript_modes:
                 input_file_ids.modes[mode] = toil.importFile('file://' + args.transcript_modes[mode]['gp'])
@@ -64,6 +67,7 @@ def setup(job, args, input_file_ids):
     # load all fileStore files necessary
     annotation_gp = job.fileStore.readGlobalFile(input_file_ids.annotation_gp)
     ref_genome_db = job.fileStore.readGlobalFile(input_file_ids.ref_db)
+    genome_db = job.fileStore.readGlobalFile(input_file_ids.db)
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
     ref_genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.ref_genome_fasta,
@@ -95,19 +99,25 @@ def setup(job, args, input_file_ids):
 
     # if we ran AugustusCGP, align those CDS sequences
     if 'augCGP' in args.transcript_modes:
+        session = tools.sqlInterface.start_session(genome_db)
+        table = tools.sqlInterface.AugCgpAlternativeGenes
+        alt_names = tools.sqlInterface.load_alternatives(table, session).set_index('TranscriptId')
         cgp_cds_path = args.transcript_modes['augCGP']['CDS']
         # CGP transcripts have multiple assignments based on the name2 identifier, which contains a gene ID
         tx_biotype_map = tools.sqlInterface.get_transcript_biotype_map(ref_genome_db)
         augustus_cgp_gp = job.fileStore.readGlobalFile(input_file_ids.modes['augCGP'])
         cgp_transcript_dict = tools.transcripts.get_gene_pred_dict(augustus_cgp_gp)
-        cgp_transcript_seq_iter = get_cgp_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
-                                                    ref_genome_fasta, gene_tx_map, tx_biotype_map)
+        cgp_transcript_seq_iter = get_denovo_sequences(cgp_transcript_dict, ref_transcript_dict, genome_fasta,
+                                                       ref_genome_fasta, gene_tx_map, tx_biotype_map, alt_names, 'CDS')
         for chunk in group_transcripts(cgp_transcript_seq_iter):
             j = job.addChildJobFn(run_blat_chunk, chunk, 'CDS')
             results[cgp_cds_path].append(j.rv())
 
     # if we ran AugustusPB, align mRNA + CDS
     if 'augPB' in args.transcript_modes:
+        session = tools.sqlInterface.start_session(genome_db)
+        table = tools.sqlInterface.AugPbAlternativeGenes
+        alt_names = tools.sqlInterface.load_alternatives(table, session).set_index('TranscriptId')
         # output file paths
         mrna_path = args.transcript_modes['augPB']['mRNA']
         cds_path = args.transcript_modes['augPB']['CDS']
@@ -116,8 +126,8 @@ def setup(job, args, input_file_ids):
         # don't filter for coding only
         pb_transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
         for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
-            pb_transcript_seq_iter = get_pb_sequences(pb_transcript_dict, ref_transcript_dict, genome_fasta,
-                                                      ref_genome_fasta, gene_tx_map, aln_mode)
+            pb_transcript_seq_iter = get_denovo_sequences(pb_transcript_dict, ref_transcript_dict, genome_fasta,
+                                                          ref_genome_fasta, gene_tx_map, alt_names, aln_mode)
             for chunk in group_transcripts(pb_transcript_seq_iter):
                 j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode)
                 results[out_path].append(j.rv())
@@ -142,45 +152,23 @@ def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, 
             yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
-def get_cgp_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, gene_tx_map,
-                      tx_biotype_map):
+def get_denovo_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, gene_tx_map, alt_names,
+                         aln_mode):
     """
-    Generator for CGP transcripts. Same as get_alignment_sequences, but will resolve name2 field into all target
-    transcripts. Only returns CDS sequences for coding transcripts.
+    Generator for denovo transcripts. Uses the alternative tables to find transcripts to align to.
     """
-    for cgp_id, tx in transcript_dict.iteritems():
-        if 'augCGP' in tx.name2:
+    for d_id, tx in transcript_dict.iteritems():
+        gene_id = alt_names.ix[d_id].AssignedGeneId
+        if gene_id is None:
             continue  # this transcript was not assigned any parents
-        ref_tx_ids = gene_tx_map[tx.name2]
-        tx_seq = tx.get_cds(genome_fasta, in_frame=True)
-        assert len(tx_seq) % 3 == 0, cgp_id
-        for ref_tx_id in ref_tx_ids:
-            biotype = tx_biotype_map[ref_tx_id]
-            if biotype != 'protein_coding':
-                continue
-            ref_tx = ref_transcript_dict[ref_tx_id]
-            ref_tx_seq = ref_tx.get_cds(ref_genome_fasta, in_frame=True)
-            assert len(ref_tx_seq) % 3 == 0, ref_tx_id
-            if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
-                yield cgp_id, tx_seq, ref_tx_id, ref_tx_seq
-
-
-def get_pb_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, gene_tx_map, mode):
-    """
-    Generator for PB transcripts. Same as get_alignment_sequences, but will resolve name2 field into all target
-    transcripts
-    """
-    for pb_id, tx in transcript_dict.iteritems():
-        if 'augPB' in tx.name2:
-            continue  # this transcript was not assigned any parents
-        ref_tx_ids = gene_tx_map[tx.name2]
-        tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)
+        ref_tx_ids = gene_tx_map[gene_id]
+        tx_seq = tx.get_mrna(genome_fasta) if aln_mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)
         for ref_tx_id in ref_tx_ids:
             ref_tx = ref_transcript_dict[ref_tx_id]
-            ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta,
-                                                                                                 in_frame=True)
+            ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if aln_mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta,
+                                                                                                     in_frame=True)
             if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
-                yield pb_id, tx_seq, ref_tx_id, ref_tx_seq
+                yield d_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
 def run_blat_chunk(job, chunk, mode):
