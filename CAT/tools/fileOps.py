@@ -240,7 +240,7 @@ def _resolve_fspec(fspec, mode='r'):
 
 def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=8):
     """
-    Calculates a SHA1 hash of a file.
+    Calculates a SHA256 hash of a file.
     :param fspec: path or handle
     :param hasher: hashing function to use
     :param blocksize: size of file blocks to work on

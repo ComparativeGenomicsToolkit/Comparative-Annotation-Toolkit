@@ -21,6 +21,28 @@ class HashableNamespace(argparse.Namespace):
         return reduce(xor, val_iter, first) ^ hash(tuple(self.__dict__.values()))
 
 
+class PipelineNamespace(object):
+    """
+    A Hashable namespace that maintains knowledge of whether a member is significant and thus should be hashed.
+    Used to maintain information on the pipeline state but allow users to change insignificant features without forcing
+    the pipeline to rerun expensive modules.
+    """
+    def __init__(self):
+        self.significant = {}
+
+    def set(self, name, val, significant=True):
+        setattr(self, name, val)
+        self.significant[name] = significant
+
+    def __hash__(self):
+        def xor(x, y):
+            return x ^ hash(y)
+        vals = tuple(name for name in self.__dict__ if name != 'significant' and self.significant[name])
+        val_iter = iter(vals)
+        first = hash(val_iter.next())
+        return reduce(xor, val_iter, first) ^ hash(vals)
+
+
 def convert_gtf_gp(gp_target, gtf_target):
     """converts a GTF to genePred"""
     cmd = ['gtfToGenePred', '-genePredExt', gtf_target.path, '/dev/stdout']

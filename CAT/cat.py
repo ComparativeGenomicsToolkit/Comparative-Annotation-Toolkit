@@ -145,61 +145,62 @@ class PipelineTask(luigi.Task):
 
     def get_pipeline_args(self):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
-        args = tools.misc.HashableNamespace()
-        args.hal = os.path.abspath(self.hal)
-        args.ref_genome = self.ref_genome
-        args.out_dir = os.path.abspath(self.out_dir)
-        args.work_dir = os.path.abspath(self.work_dir)
-        args.augustus = self.augustus
-        args.augustus_cgp = self.augustus_cgp
-        args.augustus_pb = self.augustus_pb
-        args.augustus_species = self.augustus_species
-        args.tm_cfg = os.path.abspath(self.tm_cfg)
-        args.tmr_cfg = os.path.abspath(self.tmr_cfg)
-        args.augustus_cgp = self.augustus_cgp
-        args.maf_chunksize = self.maf_chunksize
-        args.maf_overlap = self.maf_overlap
-        args.pb_genome_chunksize = self.pb_genome_chunksize
-        args.pb_genome_overlap = self.pb_genome_overlap
-        args.pb_cfg = os.path.abspath(self.pb_cfg)
-        args.resolve_split_genes = self.resolve_split_genes
-        args.augustus_cgp_cfg_template = os.path.abspath(self.augustus_cgp_cfg_template)
-        args.cgp_param = os.path.abspath(self.cgp_param)
+        args = tools.misc.PipelineNamespace()
+        args.set('hal', os.path.abspath(self.hal), True)
+        args.set('ref_genome', self.ref_genome, True)
+        args.set('out_dir', os.path.abspath(self.out_dir), True)
+        args.set('work_dir', os.path.abspath(self.work_dir), True)
+        args.set('augustus', self.augustus, True)
+        args.set('augustus_cgp', self.augustus_cgp, True)
+        args.set('augustus_pb', self.augustus_pb, True)
+        args.set('augustus_species', self.augustus_species, True)
+        args.set('tm_cfg', os.path.abspath(self.tm_cfg), True)
+        args.set('tmr_cfg', os.path.abspath(self.tmr_cfg), True)
+        args.set('augustus_cgp', self.augustus_cgp, True)
+        args.set('maf_chunksize', self.maf_chunksize, True)
+        args.set('maf_overlap', self.maf_overlap, True)
+        args.set('pb_genome_chunksize', self.pb_genome_chunksize, True)
+        args.set('pb_genome_overlap', self.pb_genome_overlap, True)
+        args.set('pb_cfg', os.path.abspath(self.pb_cfg), True)
+        args.set('resolve_split_genes', self.resolve_split_genes, True)
+        args.set('augustus_cgp_cfg_template', os.path.abspath(self.augustus_cgp_cfg_template), True)
+        args.set('cgp_param', os.path.abspath(self.cgp_param), True)
         
         # user specified flags for consensus finding
-        args.intron_rnaseq_support = self.intron_rnaseq_support
-        args.exon_rnaseq_support = self.exon_rnaseq_support
-        args.intron_annot_support = self.intron_annot_support
-        args.exon_annot_support = self.exon_annot_support
-        args.original_intron_support = self.original_intron_support
-        args.denovo_num_introns = self.denovo_num_introns
-        args.denovo_splice_support = self.denovo_splice_support
-        args.denovo_exon_support = self.denovo_exon_support
-        args.require_pacbio_support = self.require_pacbio_support
-        args.in_species_rna_support_only = self.in_species_rna_support_only
-        args.rebuild_consensus = self.rebuild_consensus
+        args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
+        args.set('exon_rnaseq_support', self.exon_rnaseq_support, False)
+        args.set('intron_annot_support', self.intron_annot_support, False)
+        args.set('exon_annot_support', self.exon_annot_support, False)
+        args.set('original_intron_support', self.original_intron_support, False)
+        args.set('denovo_num_introns', self.denovo_num_introns, False)
+        args.set('denovo_splice_support', self.denovo_splice_support, False)
+        args.set('denovo_exon_support', self.denovo_exon_support, False)
+        args.set('require_pacbio_support', self.require_pacbio_support, False)
+        args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
+        args.set('rebuild_consensus', self.rebuild_consensus, False)
         
-        args.hal_genomes = tuple(tools.hal.extract_genomes(self.hal))
+        args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal)), True)
         if self.target_genomes is None:
-            args.target_genomes = tuple(set(args.hal_genomes) - {self.ref_genome})
+            args.set('target_genomes', tuple(set(args.hal_genomes) - {self.ref_genome}), True)
         else:
-            args.target_genomes = tuple([x for x in self.target_genomes])
+            args.set('target_genomes', tuple([x for x in self.target_genomes]), True)
 
-        args.cfg = self.parse_cfg()
-        args.modes = self.get_modes(args)
-        args.augustus_tmr = True if 'augTMR' in args.modes else False
-        args.dbs = PipelineTask.get_databases(args)
-        args.annotation = args.cfg['ANNOTATION'][args.ref_genome]
-        args.hints_db = os.path.join(args.work_dir, 'hints_database', 'hints.db')
-        args.rnaseq_genomes = frozenset(set(args.cfg['INTRONBAM'].keys()) | set(args.cfg['BAM'].keys()))
-        args.intron_only_genomes = frozenset(set(args.cfg['INTRONBAM'].keys()) - set(args.cfg['BAM'].keys()))
-        args.isoseq_genomes = frozenset(set(args.cfg['ISO_SEQ_BAM'].keys()))
-        args.annotation_genomes = frozenset(set(args.cfg['ANNOTATION'].keys()))
+        args.set('cfg', self.parse_cfg(), True)
+        args.set('modes', self.get_modes(args), True)
+        args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
+        args.set('dbs', PipelineTask.get_databases(args), True)
+        args.set('annotation', args.cfg['ANNOTATION'][args.ref_genome], True)
+        args.set('hints_db', os.path.join(args.work_dir, 'hints_database', 'hints.db'), True)
+        args.set('rnaseq_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) | set(args.cfg['BAM'].keys())), True)
+        args.set('intron_only_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) - set(args.cfg['BAM'].keys())), True)
+        args.set('isoseq_genomes', frozenset(set(args.cfg['ISO_SEQ_BAM'].keys())), True)
+        args.set('annotation_genomes', frozenset(set(args.cfg['ANNOTATION'].keys())), True)
         self.validate_cfg(args)
 
         # calculate the number of cores a hgm run should use
         # this is sort of a hack, but the reality is that halLiftover uses a fraction of a CPU most of the time
-        args.hgm_cpu = int(tools.mathOps.format_ratio(multiprocessing.cpu_count(), len(args.modes)))
+        num_cpu = int(tools.mathOps.format_ratio(multiprocessing.cpu_count(), len(args.modes)))
+        args.set('hgm_cpu', num_cpu, False)
         return args
 
     def parse_cfg(self):
@@ -710,11 +711,8 @@ class TranscriptBed(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Converting annotation genePred to BED.')
-        # something is wrong with genePredToBed
-        # atomicity is lost here
-        cmd = ['genePredToBed', self.annotation_gp, self.output().path]
-        #cmd = ['genePredToBed', self.annotation_gp, '/dev/stdout']
-        #self.run_cmd(cmd)
+        cmd = ['genePredToBed', self.annotation_gp, '/dev/stdout']
+        self.run_cmd(cmd)
 
 
 @multiple_requires(GenomeFlatFasta, TranscriptBed)
@@ -1813,9 +1811,12 @@ class Consensus(PipelineWrapperTask):
         for target_genome in pipeline_args.target_genomes:
             if pipeline_args.rebuild_consensus is True:
                 args = Consensus.get_args(pipeline_args, target_genome)
-                os.remove(args.consensus_gp)
-                os.remove(args.consensus_gp_info)
-                os.remove(args.consensus_gff3)
+                try:
+                    os.remove(args.consensus_gp)
+                    os.remove(args.consensus_gp_info)
+                    os.remove(args.consensus_gff3)
+                except OSError:
+                    pass
             yield self.clone(ConsensusDriverTask, genome=target_genome)
 
 

@@ -67,7 +67,7 @@ def generate_consensus(args):
     # combine and filter the results
     merged_df = combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, args.intron_rnaseq_support,
                                        args.exon_rnaseq_support, args.intron_annot_support, args.exon_annot_support,
-                                       args.original_introns, coding_cutoff, args.in_species_rna_support_only)
+                                       args.original_intron_support, coding_cutoff, args.in_species_rna_support_only)
     scored_df = score_merged_df(merged_df, args.hints_db_has_rnaseq)
 
     # store some metrics for plotting
@@ -255,7 +255,7 @@ def load_alt_names(db_path, denovo_tx_modes):
 
 
 def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq_support, exon_rnaseq_support,
-                           intron_annot_support, exon_annot_support, original_introns, coding_cutoff,
+                           intron_annot_support, exon_annot_support, original_intron_support, coding_cutoff,
                            in_species_rna_support_only):
     """
     Updates the DataFrame based on support levels. For each of these user tunable values, all transcripts
@@ -268,7 +268,7 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
     :param exon_rnaseq_support: Value 0-100. Percent of exons supported by RNA-seq.
     :param intron_annot_support: Value 0-100. Percent of introns supported by the reference.
     :param exon_annot_support: Value 0-100. Percent of exons supported by the reference.
-    :param original_introns: Value 0-100. Percent of introns that must be supported by this specific annotation.
+    :param original_intron_support: Value 0-100. Percent of introns that must be supported by this specific annotation.
     :param coding_cutoff: Lognormal fit derived cutoff for coding transcripts. Used to filter TM/TMR alignments.
     :param in_species_rna_support_only: Should we use the homGeneMapping vectors within-species or all-species?
     :return: dataframe with the Supported field added
@@ -281,14 +281,14 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
     # huge ugly filtering expression
     if in_species_rna_support_only is True:
         filt = (((merged_df.TranscriptBiotype == 'protein_coding') & (merged_df.AlnIdentity >= coding_cutoff)) &
-                (merged_df.OriginalIntronsPercent >= original_introns) &
+                (merged_df.OriginalIntronsPercent >= original_intron_support) &
                 (merged_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (merged_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
                 (merged_df.ExonAnnotSupportPercent >= exon_annot_support) &
                 (merged_df.ExonRnaSupportPercent >= exon_rnaseq_support))
     else:
         filt = (((merged_df.TranscriptBiotype == 'protein_coding') & (merged_df.AlnIdentity >= coding_cutoff)) &
-                (merged_df.OriginalIntronsPercent >= original_introns) &
+                (merged_df.OriginalIntronsPercent >= original_intron_support) &
                 (merged_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (merged_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
                 (merged_df.ExonAnnotSupportPercent >= exon_annot_support) &
