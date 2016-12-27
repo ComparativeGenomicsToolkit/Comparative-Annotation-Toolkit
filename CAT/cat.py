@@ -119,7 +119,7 @@ class PipelineTask(luigi.Task):
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     intron_annot_support = luigi.IntParameter(default=80, significant=False)
     exon_annot_support = luigi.IntParameter(default=80, significant=False)
-    original_intron_support = luigi.IntParameter(default=80, significant=False)
+    original_intron_support = luigi.IntParameter(default=50, significant=False)
     denovo_num_introns = luigi.IntParameter(default=0, significant=False)
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)

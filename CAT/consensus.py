@@ -61,14 +61,17 @@ def generate_consensus(args):
     coding_cutoff = tools.sqlInterface.load_tm_fit(args.db_path)
     # load the homGeneMapping data for transMap/augTM/augTMR
     tx_modes = [x for x in args.tx_modes if x in ['transMap', 'augTM', 'augTMR']]
-    hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode, args.in_species_rna_support_only) for tx_mode in tx_modes])
+    hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
     # load the alignment metrics data
     metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
     # combine and filter the results
     merged_df = combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, args.intron_rnaseq_support,
                                        args.exon_rnaseq_support, args.intron_annot_support, args.exon_annot_support,
                                        args.original_intron_support, coding_cutoff, args.in_species_rna_support_only)
-    scored_df = score_merged_df(merged_df, args.hints_db_has_rnaseq)
+    if len(merged_df) == 0:
+        raise RuntimeError('No transcripts pass filtering for species {}. '
+                           'Consider lowering requirements. Please see the manual.'.format(args.genome))
+    scored_df = score_merged_df(merged_df, args.hints_db_has_rnaseq, args.in_species_rna_support_only)
 
     # store some metrics for plotting
     metrics = {'Gene Failed': collections.Counter(),
@@ -192,26 +195,20 @@ def calculate_vector_support(s, resolve_nan=None, num_digits=4):
                                             num_digits=num_digits)
 
 
-def load_hgm_vectors(db_path, tx_mode, in_species_rna_support_only):
+def load_hgm_vectors(db_path, tx_mode):
     """
     Loads the intron vector table output by the homGeneMapping module. Returns a DataFrame with the parsed vectors
     as well as the combined score based on tx_mode -- for augCGP we look at the CDS score rather than the exon score
     because CGP has a coding-only model.
-
-    Based on the user flag --in_species_rna_support_only, we decide which version of support to look at.
     """
     session = tools.sqlInterface.start_session(db_path)
     intron_table = tools.sqlInterface.tables['hgm'][tx_mode]
     hgm_df = tools.sqlInterface.load_intron_vector(intron_table, session)
 
     # start calculating support levels for consensus finding
-    if in_species_rna_support_only is True:
-        cols = ['IntronAnnotSupport', 'IntronRnaSupport', 'CdsAnnotSupport',
-                'CdsRnaSupport', 'ExonAnnotSupport', 'ExonRnaSupport']
-    else:
-        cols = ['IntronAnnotSupport', 'IntronRnaSupport', 'CdsAnnotSupport',
-                'AllSpeciesCdsRnaSupport', 'AllSpeciesExonAnnotSupport', 'AllSpeciesExonRnaSupport']
-
+    cols = ['IntronAnnotSupport', 'ExonAnnotSupport', 'CdsAnnotSupport',
+            'CdsRnaSupport', 'ExonRnaSupport', 'IntronRnaSupport',
+            'AllSpeciesCdsRnaSupport', 'AllSpeciesExonRnaSupport', 'AllSpeciesIntronRnaSupport']
     for col in cols:
         hgm_df[col] = hgm_df[col].apply(parse_text_vector)
         hgm_df[col + 'Percent'] = hgm_df[col].apply(calculate_vector_support)
@@ -290,13 +287,13 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
         filt = (((merged_df.TranscriptBiotype == 'protein_coding') & (merged_df.AlnIdentity >= coding_cutoff)) &
                 (merged_df.OriginalIntronsPercent >= original_intron_support) &
                 (merged_df.IntronAnnotSupportPercent >= intron_annot_support) &
-                (merged_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
+                (merged_df.AllSpeciesIntronRnaSupportPercent >= intron_rnaseq_support) &
                 (merged_df.ExonAnnotSupportPercent >= exon_annot_support) &
-                (merged_df.ExonRnaSupportPercent >= exon_rnaseq_support))
+                (merged_df.AllSpeciesExonRnaSupportPercent >= exon_rnaseq_support))
     return merged_df[filt]
 
 
-def score_merged_df(merged_df, hints_db_has_rnaseq):
+def score_merged_df(merged_df, hints_db_has_rnaseq, in_species_rna_support_only):
     """
     Scores the alignments. The score is the additive combination of the following features:
     1) Alignment goodness.
@@ -316,13 +313,19 @@ def score_merged_df(merged_df, hints_db_has_rnaseq):
         if tools.nameConversions.aln_id_is_cgp(s.AlignmentId):
             annot_support = s.CdsAnnotSupportPercent + s.IntronAnnotSupportPercent
             if hints_db_has_rnaseq:
-                rna_support = s.CdsRnaSupportPercent + s.IntronRnaSupportPercent
+                if in_species_rna_support_only:
+                    rna_support = s.CdsRnaSupportPercent + s.IntronRnaSupportPercent
+                else:
+                    rna_support = s.AllSpeciesCdsRnaSupportPercent + s.AllSpeciesIntronRnaSupportPercent
             else:
                 rna_support = 0
         else:
             annot_support = s.CdsAnnotSupportPercent + s.IntronAnnotSupportPercent
             if hints_db_has_rnaseq:
-                rna_support = s.ExonRnaSupportPercent + s.IntronRnaSupportPercent
+                if in_species_rna_support_only:
+                    rna_support = s.ExonRnaSupportPercent + s.IntronRnaSupportPercent
+                else:
+                    rna_support = s.AllSpeciesExonRnaSupportPercent + s.AllSpeciesIntronRnaSupportPercent
             else:
                 rna_support = 0
         return annot_support + rna_support + s.AlnGoodness
@@ -386,6 +389,12 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             d['transcript_modes'] = tx_mode
             consensus_dict[aln_id] = d
             metrics['Transcript Modes'][tx_mode] += 1
+            d['exon_rna_support'] = s.ExonRnaSupport
+            d['cds_rna_support'] = s.CdsRnaSupport
+            d['intron_rna_support'] = s.IntronRnaSupport
+            d['exon_annotation_support'] = s.ExonAnnotSupport
+            d['cds_annotation_support'] = s.CdsAnnotSupport
+            d['intron_annotation_support'] = s.IntronAnnotSupport
 
 
 def is_failed_df(df):
@@ -514,7 +523,11 @@ def find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id, co
             tx_class = 'poor_alignment'
         denovo_tx_dict[aln_id] = {'transcript_class': tx_class, 'source_gene': gene_id, 'failed_gene': failed_gene,
                                   'transcript_biotype': 'unknown_likely_coding', 'gene_biotype': gene_biotype,
-                                  'intron_rna_support': 1, 'transcript_modes': tx_mode}
+                                  'intron_rna_support': s.IntronRnaSupport, 'exon_rna_support': s.ExonRnaSupport,
+                                  'cds_rna_support': s.CdsRnaSupport, 'transcript_modes': tx_mode,
+                                  'exon_annotation_support': s.ExonAnnotSupport,
+                                  'intron_annotation_support': s.IntronAnnotSupport,
+                                  'cds_annotation_support': s.CdsAnnotSupport}
         common_name = common_name_map[gene_id]
         if common_name != gene_id:
             denovo_tx_dict[aln_id]['source_gene_common_name'] = common_name
@@ -619,7 +632,7 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
         for tx, attrs in final_consensus:
             tx_obj = copy.deepcopy(tx_dict[tx])
             tx_obj.name = id_template.format(genome=genome, tag_type='T', unique_id=tx_count)
-            tx_obj.id = attrs.get('score', 0)
+            tx_obj.score = attrs.get('score', 0)
             tx_count += 1
             source_gene = attrs.get('source_gene', tx_obj.name2)
             if source_gene not in genes_seen:
@@ -652,8 +665,11 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     def convert_attrs(attrs, id_field):
         """converts the attrs dict to a attributes field. assigns name to the gene common name for display"""
         attrs['ID'] = id_field
-        score = attrs.get('score', '.')
-        del attrs['score']  # remove score since it will go in the score column
+        if 'score' in attrs:
+            score = attrs['score']
+            del attrs['score']
+        else:
+            score = '.'
         if 'source_gene_common_name' in attrs:
             attrs['Name'] = attrs['source_gene_common_name']
         # don't include the support vectors in the string, they will be placed in their respective places
@@ -693,23 +709,26 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         """generates intron and exon records"""
         attrs['Parent'] = tx_id
         # exon records
-        for i, (exon, exon_frame) in enumerate(zip(*[tx_obj.exon_intervals, tx_obj.exon_frames]), 1):
+        cds_i = 0  # keep track of position of CDS in case of entirely non-coding exons
+        for i, (exon, exon_frame) in enumerate(zip(*[tx_obj.exon_intervals, tx_obj.exon_frames])):
+            attrs['rna_support'] = find_feature_support(attrs, 'exon_rna_support', i)
+            attrs['reference_support'] = find_feature_support(attrs, 'exon_annotation_support', i)
             score, attrs_field = convert_attrs(attrs, 'exon:{}:{}'.format(tx_id, i))
-            attrs_field['rna_support'] = find_feature_support(attrs, 'exon_rna_support', i)
-            attrs_field['reference_support'] = find_feature_support(attrs, 'exon_annotation_support', i)
             yield [chrom, 'CAT', 'exon', exon.start + 1, exon.stop + 1, score, exon.strand, '.', attrs_field]
             cds_interval = exon.intersection(tx_obj.coding_interval)
             if cds_interval is not None:
-                score, attrs_field = convert_attrs(attrs, 'CDS:{}:{}'.format(tx_id, i))
-                attrs_field['rna_support'] = find_feature_support(attrs, 'cds_rna_support', i)
-                attrs_field['reference_support'] = find_feature_support(attrs, 'cds_annotation_support', i)
+                attrs['rna_support'] = find_feature_support(attrs, 'cds_rna_support', cds_i)
+                attrs['reference_support'] = find_feature_support(attrs, 'cds_annotation_support', cds_i)
+                score, attrs_field = convert_attrs(attrs, 'CDS:{}:{}'.format(tx_id, cds_i))
+                cds_i += 1
                 yield [chrom, 'CAT', 'CDS', cds_interval.start + 1, cds_interval.stop + 1, score, exon.strand,
                        convert_frame(exon_frame), attrs_field]
+
         # intron records
         for i, intron in enumerate(tx_obj.intron_intervals):
+            attrs['rna_support'] = find_feature_support(attrs, 'intron_rna_support', i)
+            attrs['reference_support'] = find_feature_support(attrs, 'intron_annotation_support', i)
             score, attrs_field = convert_attrs(attrs, 'exon:{}:{}'.format(tx_id, i))
-            attrs_field['rna_support'] = find_feature_support(attrs, 'intron_rna_support', i)
-            attrs_field['reference_support'] = find_feature_support(attrs, 'intron_annotation_support', i)
             yield [chrom, 'CAT', 'intron', intron.start + 1, intron.stop + 1, score, intron.strand, '.', attrs_field]
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
