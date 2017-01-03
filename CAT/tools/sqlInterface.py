@@ -1,6 +1,7 @@
 """
 Functions to interface with the sqlite databases produced by various steps of the annotation pipeline
 """
+import intervals
 import collections
 
 import pandas as pd
@@ -198,7 +199,8 @@ class AugPbAlternativeGenes(AlternativeGeneIdColumns, Base):
 class IsoSeqIntronIntervals(Base):
     """Table for recording all distinct intron vectors present in a IsoSeq hints file"""
     __tablename__ = 'augPB_IntronIntervals'
-    SequenceId = Column(Integer, primary_key=True)
+    index = Column(Integer, primary_key=True)
+    SequenceId = Column(Integer)
     chromosome = Column(Text)
     start = Column(Integer)
     stop = Column(Integer)
@@ -372,6 +374,23 @@ def load_tm_fit(db_path, biotype='protein_coding'):
     query = session.query(TmFit.IdentityCutoff).filter(TmFit.TranscriptBiotype == biotype)
     r = query.one()[0]
     return r if r is not None else 0   # handle case where we had no coding paralogs
+
+
+def load_pb_intron_intervals(db_path):
+    """
+    Loads the table augPB_IntronIntervals, constructing actual ChromosomeInterval objects.
+    :param db_path: path to genome db
+    :return: Set of frozensets which contain intervals.
+    """
+    def convert_chrom_interval(s):
+        return intervals.ChromosomeInterval(s.chromosome, s.start, s.stop, '.')
+
+    engine = create_engine('sqlite:///' + db_path)
+    df = pd.read_sql_table(IsoSeqIntronIntervals.__tablename__, engine, index_col='index')
+    pb_intervals = set()
+    for s_id, d in df.groupby('SequenceId'):
+        pb_intervals.add(frozenset([convert_chrom_interval(s) for _, s in d.iterrows()]))
+    return pb_intervals
 
 
 ###
