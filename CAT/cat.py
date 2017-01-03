@@ -90,6 +90,10 @@ class PipelineTask(luigi.Task):
     by all downstream tools.
 
     Provides useful methods for handling parameters being passed between modules.
+
+    Note: significant here is not the same as significant in get_pipeline_args. Significant here is for the luigi
+    scheduler to know which parameters define a unique task ID. This would come into play if multiple instances of this
+    pipeline are being run on the same scheduler at once.
     """
     hal = luigi.Parameter()
     ref_genome = luigi.Parameter()
@@ -119,7 +123,7 @@ class PipelineTask(luigi.Task):
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     intron_annot_support = luigi.IntParameter(default=80, significant=False)
     exon_annot_support = luigi.IntParameter(default=80, significant=False)
-    original_intron_support = luigi.IntParameter(default=50, significant=False)
+    original_intron_support = luigi.IntParameter(default=80, significant=False)
     denovo_num_introns = luigi.IntParameter(default=0, significant=False)
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
@@ -1583,12 +1587,12 @@ class IsoSeqIntronVectorsDriverTask(PipelineTask):
             attrs = dict([x.split('=') for x in l[-1].split(';')])
             if 'grp' not in attrs:  # not all introns get confidently assigned a group
                 continue
-            groups[attrs['grp']].add(tools.intervals.ChromosomeInterval(l[0], int(l[3]), int(l[4]), '.'))
+            groups[attrs['grp']].add(tools.intervals.ChromosomeInterval(l[0], int(l[3]) - 1, int(l[4]), '.'))
 
         # isolate unique interval groups
         intervals = {frozenset(intervals) for intervals in groups.itervalues()}
         for i, interval_grp in enumerate(intervals):
-            for interval in interval_grp:
+            for interval in sorted(interval_grp):
                 yield i, interval.chromosome, interval.start, interval.stop
 
     def run(self):

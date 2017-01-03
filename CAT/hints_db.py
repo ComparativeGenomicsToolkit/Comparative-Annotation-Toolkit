@@ -275,7 +275,7 @@ def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_
     """Returns file ID to combined, sorted hints"""
     cat_hints = tools.fileOps.get_tmp_toil_file()
     with open(cat_hints, 'w') as outf:
-        for file_id in itertools.chain(intron_hints_file_ids, exon_hints_file_ids, iso_seq_hints_file_ids):
+        for file_id in itertools.chain(intron_hints_file_ids, exon_hints_file_ids):
             f = job.fileStore.readGlobalFile(file_id)
             for line in open(f):
                 outf.write(line)
@@ -290,6 +290,12 @@ def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_
            ['join_mult_hints.pl']]
     combined_hints = tools.fileOps.get_tmp_toil_file()
     tools.procOps.run_proc(cmd, stdout=combined_hints)
+    # don't add the IsoSeq until after join_mult_hints because we don't want them to be joined
+    with open(combined_hints, 'a') as outf:
+        for file_id in iso_seq_hints_file_ids:
+            f = job.fileStore.readGlobalFile(file_id)
+            for line in open(f):
+                outf.write(line)
     return job.fileStore.writeGlobalFile(combined_hints)
 
 
