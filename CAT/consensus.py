@@ -78,15 +78,14 @@ def generate_consensus(args):
                'Transcript Failed': collections.Counter(),
                'Transcript Missing': collections.Counter(),
                'Gene Missing': collections.Counter(),
-               'Transcript Supported': collections.Counter(),
                'Transcript Modes': collections.Counter(),  # coding only
                'Duplicate transcripts': collections.Counter(),
                'Discarded by strand resolution': 0,
                'Coverage': collections.defaultdict(list),
                'Identity': collections.defaultdict(list),
-               'Consensus Score': collections.defaultdict(list),
                'Splice Support': collections.defaultdict(list),
                'Exon Support': collections.defaultdict(list),
+               'CDS Support': collections.defaultdict(list),
                'IsoSeq Transcript Valdiation': collections.Counter()}
 
     # stores a mapping of alignment IDs to tags for the final consensus set
@@ -481,8 +480,9 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
     metrics['Coverage'][best_series.TranscriptBiotype].append(100 * best_series.AlnCoverage)
     metrics['Identity'][best_series.TranscriptBiotype].append(100 * best_series.AlnIdentity)
     if hints_db_has_rnaseq is True:
-        metrics['Splice Support'][best_series.TranscriptBiotype].append(best_series.IntronAnnotSupportPercent)
-        metrics['Exon Support'][best_series.TranscriptBiotype].append(best_series.ExonAnnotSupportPercent)
+        metrics['Splice Support'][best_series.TranscriptBiotype].append(best_series.IntronRnaSupportPercent)
+        metrics['Exon Support'][best_series.TranscriptBiotype].append(best_series.ExonRnaSupportPercent)
+        metrics['CDS Support'][best_series.TranscriptBiotype].append(best_series.CdsRnaSupportPercent)
     return best_series.AlignmentId, d
 
 
