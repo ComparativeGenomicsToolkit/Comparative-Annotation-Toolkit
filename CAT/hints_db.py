@@ -49,7 +49,7 @@ def hints_db(hints_args, toil_options):
                     bam_file_ids[dtype][os.path.basename(bam_path)] = validate_import_bam(toil, bam_path,
                                                                                           fasta_sequences,
                                                                                           hints_args.genome)
-                    logger.info('{} {} is valid.'.format(dtype, os.path.basename(bam_path)))
+                    logger.info('{} {} ({}) is valid.'.format(dtype, os.path.basename(bam_path), hints_args.genome))
 
             # load the IsoSeq data, if we have any
             iso_seq_file_ids = []

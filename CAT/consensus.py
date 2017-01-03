@@ -86,6 +86,9 @@ def generate_consensus(args):
                'Splice Support': collections.defaultdict(list),
                'Exon Support': collections.defaultdict(list),
                'CDS Support': collections.defaultdict(list),
+               'Original Introns': collections.defaultdict(list),
+               'Splice Annotation Support': collections.defaultdict(list),
+               'Exon Annotation Support': collections.defaultdict(list),
                'IsoSeq Transcript Valdiation': collections.Counter()}
 
     # stores a mapping of alignment IDs to tags for the final consensus set
@@ -382,15 +385,18 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             if is_possible_paralog(s):
                 d['transcript_class'] = 'possible_paralog'
                 metrics['denovo'][tx_mode]['Possible paralog'] += 1
+                metrics['Transcript Modes'][tx_mode] += 1
             # if we have no alternatives assigned, but we have any sign of mapped over annotations,
             # this may be a poor mapping
             elif is_poor_alignment(s):
                 d['transcript_class'] = 'poor_alignment'
                 metrics['denovo'][tx_mode]['Poor mapping'] += 1
+                metrics['Transcript Modes'][tx_mode] += 1
             # this is looking pretty novel, could still be a mapping problem in a complex region though
             else:
                 d['transcript_class'] = 'putative_novel'
                 metrics['denovo'][tx_mode]['Putative novel'] += 1
+                metrics['Transcript Modes'][tx_mode] += 1
             d['transcript_modes'] = tx_mode
             consensus_dict[aln_id] = d
             metrics['Transcript Modes'][tx_mode] += 1
@@ -400,7 +406,9 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             d['exon_annotation_support'] = ','.join(map(str, s.ExonAnnotSupport))
             d['cds_annotation_support'] = ','.join(map(str, s.CdsAnnotSupport))
             d['intron_annotation_support'] = ','.join(map(str, s.IntronAnnotSupport))
-
+            metrics['Splice Support']['unknown_likely_coding'].append(s.IntronRnaSupportPercent)
+            metrics['Exon Support']['unknown_likely_coding'].append(s.ExonRnaSupportPercent)
+            metrics['CDS Support']['unknown_likely_coding'].append(s.CdsRnaSupportPercent)
 
 def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_dict, metrics, require_pacbio_support):
     """
@@ -479,10 +487,12 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
         metrics['Transcript Modes'][transcript_modes] += 1
     metrics['Coverage'][best_series.TranscriptBiotype].append(100 * best_series.AlnCoverage)
     metrics['Identity'][best_series.TranscriptBiotype].append(100 * best_series.AlnIdentity)
-    if hints_db_has_rnaseq is True:
-        metrics['Splice Support'][best_series.TranscriptBiotype].append(best_series.IntronRnaSupportPercent)
-        metrics['Exon Support'][best_series.TranscriptBiotype].append(best_series.ExonRnaSupportPercent)
-        metrics['CDS Support'][best_series.TranscriptBiotype].append(best_series.CdsRnaSupportPercent)
+    metrics['Splice Support'][best_series.TranscriptBiotype].append(best_series.IntronRnaSupportPercent)
+    metrics['Exon Support'][best_series.TranscriptBiotype].append(best_series.ExonRnaSupportPercent)
+    metrics['CDS Support'][best_series.TranscriptBiotype].append(best_series.CdsRnaSupportPercent)
+    metrics['Splice Annotation Support'][best_series.TranscriptBiotype].append(best_series.IntronAnnotSupportPercent)
+    metrics['Exon Annotation Support'][best_series.TranscriptBiotype].append(best_series.ExonAnnotSupportPercent)
+    metrics['Original Introns'][best_series.TranscriptBiotype].append(best_series.OriginalIntronsPercent)
     return best_series.AlignmentId, d
 
 
@@ -564,6 +574,9 @@ def find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id, co
         common_name = common_name_map[gene_id]
         if common_name != gene_id:
             denovo_tx_dict[aln_id]['source_gene_common_name'] = common_name
+        metrics['Splice Support']['unknown_likely_coding'].append(s.IntronRnaSupportPercent)
+        metrics['Exon Support']['unknown_likely_coding'].append(s.ExonRnaSupportPercent)
+        metrics['CDS Support']['unknown_likely_coding'].append(s.CdsRnaSupportPercent)
     return denovo_tx_dict
 
 
