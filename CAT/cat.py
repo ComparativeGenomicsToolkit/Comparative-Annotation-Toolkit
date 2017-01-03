@@ -197,7 +197,8 @@ class PipelineTask(luigi.Task):
         args.set('hints_db', os.path.join(args.work_dir, 'hints_database', 'hints.db'), True)
         args.set('rnaseq_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) | set(args.cfg['BAM'].keys())), True)
         args.set('intron_only_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) - set(args.cfg['BAM'].keys())), True)
-        args.set('isoseq_genomes', frozenset(set(args.cfg['ISO_SEQ_BAM'].keys())), True)
+        # don't include the reference genome as a isoseq_genome; we do not run AugustusPB on it
+        args.set('isoseq_genomes', frozenset(set(args.cfg['ISO_SEQ_BAM'].keys()) - {self.ref_genome}), True)
         args.set('annotation_genomes', frozenset(set(args.cfg['ANNOTATION'].keys())), True)
         self.validate_cfg(args)
 
@@ -1446,11 +1447,11 @@ class Hgm(PipelineWrapperTask):
                             for genome in tgt_genomes}
         elif mode == 'augTMR':
             # remove reference it may have RNA-seq
-            tgt_genomes = pipeline_args.rnaseq_genomes - {pipeline_args.ref_genome}
+            tgt_genomes = (pipeline_args.rnaseq_genomes & set(pipeline_args.target_genomes)) - {pipeline_args.ref_genome}
             gtf_in_files = {genome: Augustus.get_args(pipeline_args, genome).augustus_tmr_gtf
                             for genome in tgt_genomes}
         elif mode == 'augPB':
-            tgt_genomes = pipeline_args.isoseq_genomes
+            tgt_genomes = set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes
             gtf_in_files = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gtf
                             for genome in tgt_genomes}
         elif mode == 'transMap':
