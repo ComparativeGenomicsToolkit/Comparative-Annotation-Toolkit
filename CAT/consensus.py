@@ -86,7 +86,8 @@ def generate_consensus(args):
                'Identity': collections.defaultdict(list),
                'Consensus Score': collections.defaultdict(list),
                'Splice Support': collections.defaultdict(list),
-               'Exon Support': collections.defaultdict(list)}
+               'Exon Support': collections.defaultdict(list),
+               'IsoSeq Transcript Valdiation': collections.Counter()}
 
     # stores a mapping of alignment IDs to tags for the final consensus set
     consensus_dict = {}
@@ -149,6 +150,11 @@ def generate_consensus(args):
     # perform final filtering steps
     deduplicated_consensus = deduplicate_consensus(consensus_dict, tx_dict, metrics)
     deduplicated_strand_resolved_consensus = resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics)
+
+    if 'augPB' in args.denovo_tx_modes:
+        deduplicated_strand_resolved_consensus = validate_pacbio_splices(deduplicated_strand_resolved_consensus,
+                                                                         args.db_path, tx_dict, metrics,
+                                                                         args.require_pacbio_support)
 
     # sort by genomic interval for prettily increasing numbers
     final_consensus = sorted(deduplicated_strand_resolved_consensus,
@@ -389,12 +395,38 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             d['transcript_modes'] = tx_mode
             consensus_dict[aln_id] = d
             metrics['Transcript Modes'][tx_mode] += 1
-            d['exon_rna_support'] = s.ExonRnaSupport
-            d['cds_rna_support'] = s.CdsRnaSupport
-            d['intron_rna_support'] = s.IntronRnaSupport
-            d['exon_annotation_support'] = s.ExonAnnotSupport
-            d['cds_annotation_support'] = s.CdsAnnotSupport
-            d['intron_annotation_support'] = s.IntronAnnotSupport
+            d['exon_rna_support'] = ','.join(map(str, s.ExonRnaSupport))
+            d['cds_rna_support'] = ','.join(map(str, s.CdsRnaSupport))
+            d['intron_rna_support'] = ','.join(map(str, s.IntronRnaSupport))
+            d['exon_annotation_support'] = ','.join(map(str, s.ExonAnnotSupport))
+            d['cds_annotation_support'] = ','.join(map(str, s.CdsAnnotSupport))
+            d['intron_annotation_support'] = ','.join(map(str, s.IntronAnnotSupport))
+
+
+def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_dict, metrics, require_pacbio_support):
+    """
+    Tag transcripts as having PacBio support.
+    If users passed the --require-pacbio-support, remove any transcript which does not have support.
+
+    TODO: consider doing fuzzy matching due to noisy nature of PacBio reads.
+    """
+    pb_intervals = tools.sqlInterface.load_pb_intron_intervals(db_path)
+    pb_resolved_consensus = []
+    for tx_id, d in deduplicated_strand_resolved_consensus:
+        tx = tx_dict[tx_id]
+        # remove strand information from the existing intervals
+        intervals = frozenset([tools.intervals.ChromosomeInterval(i.chromosome, i.start, i.stop, '.')
+                               for i in tx.intron_intervals])
+        if intervals in pb_intervals:
+            d['pacbio_isoform_supported'] = True
+            metrics['IsoSeq Transcript Valdiation'][True] += 1
+            pb_resolved_consensus.append([tx_id, d])
+        elif require_pacbio_support is False:
+            d['pacbio_isoform_supported'] = False
+            metrics['IsoSeq Transcript Valdiation'][False] += 1
+            pb_resolved_consensus.append([tx_id, d])
+        # if require_pacbio_support is True, then we don't save this transcript
+    return pb_resolved_consensus
 
 
 def is_failed_df(df):
@@ -425,15 +457,15 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
          'gene_biotype': best_series.GeneBiotype,
          'transcript_class': best_series.TranscriptClass,
          'transcript_biotype': best_series.TranscriptBiotype,
-         'exon_annotation_support': best_series.ExonAnnotSupport,
-         'intron_annotation_support': best_series.IntronAnnotSupport}
+         'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
+         'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport))}
     if best_series.TranscriptBiotype == 'protein_coding':
-        d['cds_annotation_support'] = best_series.CdsAnnotSupport
+        d['cds_annotation_support'] = ','.join(map(str, best_series.CdsAnnotSupport))
     if hints_db_has_rnaseq is True:
-        d['exon_rna_support'] = best_series.ExonRnaSupport
-        d['intron_rna_support'] = best_series.IntronRnaSupport
+        d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
+        d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
         if best_series.TranscriptBiotype == 'protein_coding':
-            d['cds_rna_support'] = best_series.CdsRnaSupport
+            d['cds_rna_support'] = ','.join(map(str, best_series.CdsRnaSupport))
     if best_series.Paralogy > 1:
         assert best_series.ParalogStatus is not None
         d['paralogy'] = best_series.Paralogy
@@ -523,11 +555,12 @@ def find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id, co
             tx_class = 'poor_alignment'
         denovo_tx_dict[aln_id] = {'transcript_class': tx_class, 'source_gene': gene_id, 'failed_gene': failed_gene,
                                   'transcript_biotype': 'unknown_likely_coding', 'gene_biotype': gene_biotype,
-                                  'intron_rna_support': s.IntronRnaSupport, 'exon_rna_support': s.ExonRnaSupport,
-                                  'cds_rna_support': s.CdsRnaSupport, 'transcript_modes': tx_mode,
-                                  'exon_annotation_support': s.ExonAnnotSupport,
-                                  'intron_annotation_support': s.IntronAnnotSupport,
-                                  'cds_annotation_support': s.CdsAnnotSupport}
+                                  'intron_rna_support': ','.join(map(str, s.IntronRnaSupport)),
+                                  'exon_rna_support': ','.join(map(str, s.ExonRnaSupport)),
+                                  'cds_rna_support': ','.join(map(str, s.CdsRnaSupport)), 'transcript_modes': tx_mode,
+                                  'exon_annotation_support': ','.join(map(str, s.ExonAnnotSupport)),
+                                  'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport)),
+                                  'cds_annotation_support': ','.join(map(str, s.CdsAnnotSupport))}
         common_name = common_name_map[gene_id]
         if common_name != gene_id:
             denovo_tx_dict[aln_id]['source_gene_common_name'] = common_name
