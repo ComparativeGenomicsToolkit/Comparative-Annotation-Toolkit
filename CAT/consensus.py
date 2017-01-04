@@ -410,6 +410,7 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             metrics['Exon Support']['unknown_likely_coding'].append(s.ExonRnaSupportPercent)
             metrics['CDS Support']['unknown_likely_coding'].append(s.CdsRnaSupportPercent)
 
+
 def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_dict, metrics, require_pacbio_support):
     """
     Tag transcripts as having PacBio support.

@@ -487,7 +487,7 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
-        #yield self.clone(Plots)
+        yield self.clone(Plots)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -1762,6 +1762,16 @@ class Consensus(PipelineWrapperTask):
     """
     Construct the consensus gene sets making use of the classification databases.
     """
+    def __init__(self, *args, **kwargs):
+        """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
+        super(PipelineWrapperTask, self).__init__(*args, **kwargs)
+        # To force execution, we just remove all outputs before `complete()` is called
+        if self.rebuild_consensus is True:
+            outputs = luigi.task.flatten(self.output())
+            for out in outputs:
+                if out.exists():
+                    os.remove(self.output().path)
+
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
@@ -1814,14 +1824,6 @@ class Consensus(PipelineWrapperTask):
         self.validate()
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
-            if pipeline_args.rebuild_consensus is True:
-                args = Consensus.get_args(pipeline_args, target_genome)
-                try:
-                    os.remove(args.consensus_gp)
-                    os.remove(args.consensus_gp_info)
-                    os.remove(args.consensus_gff3)
-                except OSError:
-                    pass
             yield self.clone(ConsensusDriverTask, genome=target_genome)
 
 
@@ -1872,15 +1874,17 @@ class Plots(PipelineTask):
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
         args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))
         args.completeness = luigi.LocalTarget(os.path.join(base_dir, 'completeness.pdf'))
-        args.categories = luigi.LocalTarget(os.path.join(base_dir, 'transcript_categories.pdf'))
         args.gene_failure = luigi.LocalTarget(os.path.join(base_dir, 'gene_failure.pdf'))
         args.transcript_failure = luigi.LocalTarget(os.path.join(base_dir, 'transcript_failure.pdf'))
-        args.consensus_splice_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_splice_support.pdf'))
-        if 'augTM' in pipeline_args.modes or 'augTMR' in pipeline_args.modes or 'augCGP' in pipeline_args.modes:
-            args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
+        args.consensus_extrinsic_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_extrinsic_support.pdf'))
+        args.consensus_annot_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_annotation_support.pdf'))
+        args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
         # plots that depend on execution mode
-        if 'augCGP' in pipeline_args.modes:
-            args.novel = luigi.LocalTarget(os.path.join(base_dir, 'cgp_novel.pdf'))
+        if 'augCGP' in pipeline_args.modes or 'augPB' in pipeline_args.modes:
+            args.denovo = luigi.LocalTarget(os.path.join(base_dir, 'denovo.pdf'))
+        if 'augPB' in pipeline_args.modes:
+            args.pb_support = luigi.LocalTarget(os.path.join(base_dir, 'IsoSeq_isoform_validation.pdf'))
+            args.pb_genomes = pipeline_args.isoseq_genomes
         if pipeline_args.resolve_split_genes is True:
             args.split_genes = luigi.LocalTarget(os.path.join(base_dir, 'split_genes.pdf'))
         # input data
@@ -1891,6 +1895,7 @@ class Plots(PipelineTask):
         args.annotation_db = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.dbs = OrderedDict([[genome, PipelineTask.get_database(pipeline_args, genome)]
                                 for genome in ordered_genomes])
+        args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         return args
 
     def output(self):
