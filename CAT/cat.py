@@ -1306,8 +1306,13 @@ class AugustusCgp(ToilTask):
         intron_only_genomes = pipeline_args.intron_only_genomes - (bam_genomes | pipeline_args.annotation_genomes)
         if not tools.mathOps.all_disjoint([bam_genomes, intron_only_genomes, pipeline_args.annotation_genomes]):
             raise UserException('Error in CGP configuration. Not all genome groups are disjoint.')
-        annotation_genomes = 'none' if len(pipeline_args.annotation_genomes) == 0 else \
-            ' '.join(pipeline_args.annotation_genomes)
+        # if --target-genomes is set, remove these genomes from the groups
+        target_genomes = set(pipeline_args.target_genomes)
+        target_genomes.add(pipeline_args.ref_genome)
+        annotation_genomes = pipeline_args.annotation_genomes & target_genomes
+        bam_genomes = bam_genomes & target_genomes
+        intron_only_genomes = intron_only_genomes & target_genomes
+        annotation_genomes = 'none' if len(pipeline_args.annotation_genomes) == 0 else ' '.join(annotation_genomes)
         bam_genomes = 'none' if len(bam_genomes) == 0 else ' '.join(bam_genomes)
         intron_only_genomes = 'none' if len(intron_only_genomes) == 0 else ' '.join(intron_only_genomes)
         template = open(pipeline_args.augustus_cgp_cfg_template).read()
