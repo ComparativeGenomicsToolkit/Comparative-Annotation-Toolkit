@@ -81,3 +81,9 @@ def pairwise(iterable):
     """s -> (s0, s1), (s2, s3), (s4, s5), ..."""
     a = iter(iterable)
     return itertools.izip(a, a)
+
+
+def sort_gff(input_file, output_file):
+    """Sorts a GFF format file by column 1 (chromosome) then column 4(start integer)"""
+    cmd = [['sort', '-n', '-k4,4', input_file], ['sort', '-s', '-n', '-k5,5'], ['sort', '-s', '-k1,1']]
+    procOps.run_proc(cmd, stdout=output_file)

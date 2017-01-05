@@ -283,9 +283,10 @@ def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_
             f = job.fileStore.readGlobalFile(annotation_hints_file_id)
             for line in open(f):
                 outf.write(line)
+    # sorted so that hints that should be summarized are below each other
     cmd = [['sort', '-n', '-k4,4', cat_hints],
            ['sort', '-s', '-n', '-k5,5'],
-           ['sort', '-s', '-n', '-k3,3'],
+           ['sort', '-s', '-k3,3'],
            ['sort', '-s', '-k1,1'],
            ['join_mult_hints.pl']]
     combined_hints = tools.fileOps.get_tmp_toil_file()
@@ -296,7 +297,10 @@ def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_
             f = job.fileStore.readGlobalFile(file_id)
             for line in open(f):
                 outf.write(line)
-    return job.fileStore.writeGlobalFile(combined_hints)
+    # sort the combined hints, now sorting by chrom and start
+    sorted_combined_hints = tools.fileOps.get_tmp_toil_file()
+    tools.misc.sort_gff(combined_hints, sorted_combined_hints)
+    return job.fileStore.writeGlobalFile(sorted_combined_hints)
 
 
 ###

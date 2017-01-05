@@ -7,6 +7,7 @@ import collections
 import procOps
 import fileOps
 import dataOps
+import misc
 import sqlInterface
 import transcripts
 
@@ -86,7 +87,7 @@ def calculate_jaccard(cgp_tx, filtered_overlapping_tm_txs):
 ###
 
 
-def assign_parents(job, ref_db_file_id, filtered_tm_gp_file_id, unfiltered_tm_gp_file_id, joined_gff_file_id):
+def assign_parents(job, ref_db_file_id, filtered_tm_gp_file_id, unfiltered_tm_gp_file_id, joined_gff_file_id, mode):
     """
     Main function for assigning parental genes. Parental gene assignment methodology:
     A) Each CGP transcript is evaluated for overlapping any transMap transcripts. Overlap is defined as having at least
@@ -121,7 +122,7 @@ def assign_parents(job, ref_db_file_id, filtered_tm_gp_file_id, unfiltered_tm_gp
         for cgp_chunk in dataOps.grouper(cgp_chrom_dict[chrom].iteritems(), 70):
             j = job.addChildJobFn(assign_parent_chunk, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, filtered_ids)
             final_gps.append(j.rv())
-    return job.addFollowOnJobFn(merge_parent_assignment_chunks, final_gps).rv()
+    return job.addFollowOnJobFn(merge_parent_assignment_chunks, final_gps, mode).rv()
 
 
 def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, filtered_ids):
@@ -147,10 +148,10 @@ def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, f
             elif len(filtered_gene_ids) == 1:  # yay, we have exactly one match
                 resolved_name = list(filtered_gene_ids)[0]
             if resolved_name is None:
+                r.append([None, None, None])
                 continue  # don't save transcripts that can't be resolved
         else:
             resolved_name = None  # we have no matches, which means putative novel
-
         # find only genes for the unfiltered set that are not present in the filtered set
         alternative_gene_ids = {tx.name2 for tx in unfiltered_overlapping_tm_txs} - {resolved_name}
         alternative_gene_ids = ','.join(alternative_gene_ids) if len(alternative_gene_ids) > 0 else None
@@ -158,22 +159,29 @@ def assign_parent_chunk(job, tm_tx_by_chromosome, cgp_chunk, gene_biotype_map, f
     return r
 
 
-def merge_parent_assignment_chunks(job, final_gps):
+def merge_parent_assignment_chunks(job, final_gps, mode):
     """
     Merge the chunks of transcripts produced by assign_parent_chunk, converting back to GFF
     :param final_gps: paired list of lists of GenePredTranscript objects and alternative tx dicts
-    :return: fileStore ID to a output GFF and a pandas DataFrame to be written to sql
+    :param mode: Augustus mode being ran here
+    :return: fileStore ID to a output GFF and a pandas DataFrame to be written to sql, integer count of failed txs
     """
     out_gp = fileOps.get_tmp_toil_file()
     out_gff = fileOps.get_tmp_toil_file()
     combined_alternatives = []
+    fail_count = 0  # count of discarded transcripts
     with open(out_gp, 'w') as outf:
         for tx_rec, assigned_id, alt_ids in itertools.chain.from_iterable(final_gps):
+            if tx_rec is None:
+                fail_count += 1
+                continue
             fileOps.print_row(outf, tx_rec.get_gene_pred())
             combined_alternatives.append([tx_rec.name, assigned_id, alt_ids])
-    cmd = ['genePredToGtf', '-utr', '-honorCdsStat', '-source=AugustusCGP', 'file', out_gp, out_gff]
+    cmd = ['genePredToGtf', '-utr', '-honorCdsStat', '-source={}'.format(mode), 'file', out_gp, out_gff]
     procOps.run_proc(cmd)
     combined_alternatives = pd.DataFrame(combined_alternatives)
     combined_alternatives.columns = ['TranscriptId', 'AssignedGeneId', 'AlternativeGeneIds']
     combined_alternatives = combined_alternatives.set_index('TranscriptId')
-    return job.fileStore.writeGlobalFile(out_gff), combined_alternatives
+    sorted_out_gff = fileOps.get_tmp_toil_file()
+    misc.sort_gff(out_gff, sorted_out_gff)
+    return job.fileStore.writeGlobalFile(sorted_out_gff), combined_alternatives, fail_count

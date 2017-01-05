@@ -100,7 +100,7 @@ def create_supplementary_gff(hints_db, in_gtf, genome, annotation_gp=None):
     # sort and merge hints on the same intervals
     cmd = [['sort', '-n', '-k4,4', tmp_path],
            ['sort', '-s', '-n', '-k5,5'],
-           ['sort', '-s', '-n', '-k3,3'],
+           ['sort', '-s', '-k3,3'],
            ['sort', '-s', '-k1,1'],
            ['join_mult_hints.pl']]
     supplementary_gff_path = tools.fileOps.get_tmp_file(suffix='gff')

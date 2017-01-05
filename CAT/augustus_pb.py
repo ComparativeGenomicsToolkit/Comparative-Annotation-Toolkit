@@ -3,10 +3,12 @@ Runs AugustusPB on a target genome
 """
 
 import argparse
+import collections
 from toil.common import Toil
 from toil.job import Job
 
 import tools.bio
+import tools.misc
 import tools.dataOps
 import tools.fileOps
 import tools.intervals
@@ -39,12 +41,14 @@ def augustus_pb(args, toil_options):
             input_file_ids.pb_cfg = toil.importFile('file://' + args.pb_cfg)
             input_file_ids.hints_gff = toil.importFile('file://' + args.hints_gff)
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G')
-            gtf_file_id, df = toil.start(job)
+            raw_gtf_file_id, (gtf_file_id, df, fail_count) = toil.start(job)
         else:
-            gtf_file_id, df = toil.restart()
+            raw_gtf_file_id, (gtf_file_id, df, fail_count) = toil.restart()
+        tools.fileOps.ensure_file_dir(args.augustus_pb_raw_gtf)
+        toil.exportFile(raw_gtf_file_id, 'file://' + args.augustus_pb_raw_gtf)
         tools.fileOps.ensure_file_dir(args.augustus_pb_gtf)
         toil.exportFile(gtf_file_id, 'file://' + args.augustus_pb_gtf)
-        return df
+        return df, fail_count
 
 
 def setup(job, args, input_file_ids):
@@ -55,13 +59,30 @@ def setup(job, args, input_file_ids):
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
 
-    predictions = []
+    # calculate overlapping intervals. If the final interval is small (<= 50% of total interval size), merge it
+    intervals = collections.defaultdict(list)
     for chrom in genome_fasta:
-        for start in xrange(0, len(genome_fasta[chrom]), args.pb_genome_chunksize - args.pb_genome_overlap):
-            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, start + args.pb_genome_overlap)
+        chrom_size = len(genome_fasta[chrom])
+        for start in xrange(0, chrom_size, args.chunksize - args.overlap):
+            stop = min(start + args.chunksize, chrom_size)
+            intervals[chrom].append([start, stop])
+
+    for chrom, interval_list in intervals.iteritems():
+        if len(interval_list) < 2:
+            continue
+        last_start, last_stop = interval_list[-1]
+        if last_stop - last_start <= 0.5 * args.chunksize:
+            del interval_list[-1]
+            interval_list[-1][-1] = last_stop
+
+    predictions = []
+    for chrom, interval_list in intervals.iteritems():
+        for start, stop in interval_list:
+            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, stop)
             predictions.append(j.rv())
 
-    # results contains a pair of [gff_file_id, dataframe] where the dataframe contains the alternative parental txs
+    # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
+    # where the dataframe contains the alternative parental txs and fail_count is the # of transcripts discarded
     results = job.addFollowOnJobFn(join_genes, input_file_ids, predictions, memory='8G').rv()
     return results
 
@@ -73,6 +94,12 @@ def augustus_pb_chunk(job, args, input_file_ids, chrom, start, stop):
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
     hints = job.fileStore.readGlobalFile(input_file_ids.hints_gff)
+
+    # slice out only the relevant hints
+    hints_subset = tools.fileOps.get_tmp_toil_file()
+    cmd = ['awk', '($1 == "{}" && $4 >= {} && $5 <= {}) {{print $0}}'.format(chrom, start, stop)]
+    tools.procOps.run_proc(cmd, stdin=hints, stdout=hints_subset)
+
     pb_cfg = job.fileStore.readGlobalFile(input_file_ids.pb_cfg)
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     tools.bio.write_fasta(tmp_fasta, chrom, genome_fasta[chrom][start:stop])
@@ -80,7 +107,7 @@ def augustus_pb_chunk(job, args, input_file_ids, chrom, start, stop):
 
     cmd = ['augustus', '--UTR=1', '--softmasking=1', '--allow_hinted_splicesites=atac',
            '--alternatives-from-evidence=1',
-           '--hintsfile={}'.format(hints),
+           '--hintsfile={}'.format(hints_subset),
            '--extrinsicCfgFile={}'.format(pb_cfg),
            '--species={}'.format(args.species),
            '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(stop),
@@ -99,19 +126,25 @@ def join_genes(job, input_file_ids, predictions):
 
     Calls out to the parental gene assignment pipeline
     """
-    fofn = tools.fileOps.get_tmp_toil_file()
-    with open(fofn, 'w') as outf:
+    raw_gtf_file = tools.fileOps.get_tmp_toil_file()
+    with open(raw_gtf_file, 'w') as raw_handle:
         for chunk in predictions:
             local_path = job.fileStore.readGlobalFile(chunk)
-            outf.write(local_path + '\n')
+            for line in open(local_path):
+                raw_handle.write(line)
 
-    jg = tools.fileOps.get_tmp_toil_file()
-    cmd = [['joingenes', '-f', fofn, '-o', '/dev/stdout', '--alternatives'],
+    # sort the GTF
+    sorted_raw_gtf_file = tools.fileOps.get_tmp_toil_file()
+    tools.misc.sort_gff(raw_gtf_file, sorted_raw_gtf_file)
+
+    join_genes_file = tools.fileOps.get_tmp_toil_file()
+    cmd = [['joingenes', '-g', sorted_raw_gtf_file, '-o', '/dev/stdout', '--alternatives'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
            ['sed', ' s/jg/augPB-/g']]
-    tools.procOps.run_proc(cmd, stdout=jg)
-    joined_file_id = job.fileStore.writeGlobalFile(jg)
+    tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    joined_file_id = job.fileStore.writeGlobalFile(join_genes_file)
+    raw_gtf_file_id = job.fileStore.writeGlobalFile(sorted_raw_gtf_file)
     j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,
                              input_file_ids.filtered_tm_gp, input_file_ids.unfiltered_tm_gp,
-                             joined_file_id, memory='8G')
-    return j.rv()
+                             joined_file_id, 'AugustusPB', memory='8G')
+    return raw_gtf_file_id, j.rv()

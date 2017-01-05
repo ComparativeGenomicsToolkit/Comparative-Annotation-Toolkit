@@ -20,6 +20,7 @@ import tools.intervals
 import tools.nameConversions
 import tools.procOps
 import tools.psl
+import tools.misc
 import tools.tm2hints
 import tools.toilInterface
 import tools.transcripts
@@ -170,11 +171,15 @@ def merge(job, tm_results, tmr_results):
     tmp_results_file = tools.fileOps.get_tmp_toil_file()
     # I have no idea why I have to wrap this in a list() call. Some edge case bug with print_rows()?
     tools.fileOps.print_rows(tmp_results_file, list(itertools.chain.from_iterable(tm_results)))
-    tm_results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
+    sorted_results_file = tools.fileOps.get_tmp_toil_file()
+    tools.misc.sort_gff(tmp_results_file, sorted_results_file)
+    tm_results_file_id = job.fileStore.writeGlobalFile(sorted_results_file)
     if tmr_results is not None:
-        tmp_results_file = tools.fileOps.get_tmp_toil_file()
-        tools.fileOps.print_rows(tmp_results_file, list(itertools.chain.from_iterable(tmr_results)))
-        tmr_results_file_id = job.fileStore.writeGlobalFile(tmp_results_file)
+        tmp_tmr_results_file = tools.fileOps.get_tmp_toil_file()
+        tools.fileOps.print_rows(tmp_tmr_results_file, list(itertools.chain.from_iterable(tmr_results)))
+        sorted_tmr_results_file = tools.fileOps.get_tmp_toil_file()
+        tools.misc.sort_gff(tmp_tmr_results_file, sorted_tmr_results_file)
+        tmr_results_file_id = job.fileStore.writeGlobalFile(sorted_tmr_results_file)
     else:
         tmr_results_file_id = None
     return tm_results_file_id, tmr_results_file_id

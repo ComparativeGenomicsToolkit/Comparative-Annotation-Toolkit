@@ -724,7 +724,9 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         return score, ';'.join(attrs_str)
 
     def find_feature_support(attrs, feature, i):
-        return bool(attrs[feature][i])
+        """Extracts the boolean value from the comma delimited string"""
+        vals = map(bool, attrs[feature].split(','))
+        return vals[i]
 
     def generate_gene_record(chrom, tx_objs, gene_id, attrs):
         """calculates the gene interval for this list of tx"""

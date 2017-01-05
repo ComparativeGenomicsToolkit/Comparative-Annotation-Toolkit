@@ -1246,6 +1246,7 @@ class AugustusCgp(ToilTask):
         # output
         output_gp_files = {genome: os.path.join(base_dir, genome + '.augCGP.gp') for genome in tgt_genomes}
         output_gtf_files = {genome: os.path.join(base_dir, genome + '.augCGP.gtf') for genome in tgt_genomes}
+        raw_output_gtf_files = {genome: os.path.join(base_dir, genome + '.raw.augCGP.gtf') for genome in tgt_genomes}
         # transMap files used for assigning parental gene
         filtered_tm_gp_files = {genome: FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
                                 for genome in pipeline_args.target_genomes}
@@ -1263,6 +1264,7 @@ class AugustusCgp(ToilTask):
         args.ref_genome = pipeline_args.ref_genome
         args.augustus_cgp_gp = output_gp_files
         args.augustus_cgp_gtf = output_gtf_files
+        args.augustus_cgp_raw_gtf = raw_output_gtf_files
         args.species = pipeline_args.augustus_species
         args.chunksize = pipeline_args.maf_chunksize
         args.overlap = pipeline_args.maf_overlap
@@ -1275,7 +1277,7 @@ class AugustusCgp(ToilTask):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         cgp_args = self.get_args(pipeline_args)
-        for path_dict in [cgp_args.augustus_cgp_gp, cgp_args.augustus_cgp_gtf]:
+        for path_dict in [cgp_args.augustus_cgp_gp, cgp_args.augustus_cgp_gtf, cgp_args.augustus_cgp_raw_gtf]:
             for path in path_dict.itervalues():
                 yield luigi.LocalTarget(path)
         for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
@@ -1341,8 +1343,12 @@ class AugustusCgp(ToilTask):
         toil_options = self.prepare_toil_options(toil_work_dir)
         cgp_args = self.get_args(pipeline_args)
         cgp_args.cgp_cfg = self.prepare_cgp_cfg(pipeline_args)
-        database_dfs = augustus_cgp(cgp_args, toil_options)
-        logger.info('AugustusCGP toil pipeline completed.')
+        database_dfs, fail_counts = augustus_cgp(cgp_args, toil_options)
+        log_msg = 'AugustusCGP toil pipeline completed. Due to overlapping multiple transMap genes, the following ' \
+                  'number of predictions were discarded:\n'
+        for genome, count in fail_counts:
+            log_msg += '{}:{}\n'.format(genome, count)
+        logger.info(log_msg)
         # convert each to genePred as well
         for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):
             gp_target = luigi.LocalTarget(cgp_args.augustus_cgp_gp[genome])
@@ -1368,12 +1374,13 @@ class AugustusPb(PipelineWrapperTask):
         args.filtered_tm_gp = FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.pb_cfg = pipeline_args.pb_cfg
-        args.pb_genome_chunksize = pipeline_args.pb_genome_chunksize
-        args.pb_genome_overlap = pipeline_args.pb_genome_overlap
+        args.chunksize = pipeline_args.pb_genome_chunksize
+        args.overlap = pipeline_args.pb_genome_overlap
         args.species = pipeline_args.augustus_species
         args.hints_gff = BuildDb.get_args(pipeline_args, genome).hints_path
         args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')
         args.augustus_pb_gp = os.path.join(base_dir, genome + '.augPB.gp')
+        args.augustus_pb_raw_gtf = os.path.join(base_dir, genome + '.raw.augPB.gtf')
         return args
 
     def validate(self):
@@ -1400,6 +1407,7 @@ class AugustusPbDriverTask(ToilTask):
         augustus_pb_args = AugustusPb.get_args(pipeline_args, self.genome)
         yield luigi.LocalTarget(augustus_pb_args.augustus_pb_gp)
         yield luigi.LocalTarget(augustus_pb_args.augustus_pb_gtf)
+        yield luigi.LocalTarget(augustus_pb_args.augustus_pb_raw_gtf)
         db = pipeline_args.dbs[self.genome]
         tools.fileOps.ensure_file_dir(db)
         conn_str = 'sqlite:///{}'.format(db)
@@ -1424,9 +1432,10 @@ class AugustusPbDriverTask(ToilTask):
         logger.info('Launching AugustusPB toil pipeline on {}.'.format(self.genome))
         toil_options = self.prepare_toil_options(toil_work_dir)
         augustus_args = self.get_module_args(AugustusPb, genome=self.genome)
-        df = augustus_pb(augustus_args, toil_options)
-        logger.info('AugustusPB toil pipeline for {} completed.'.format(self.genome))
-        out_gp, out_gtf, sqla_target = list(self.output())
+        df, fail_count = augustus_pb(augustus_args, toil_options)
+        logger.info('AugustusPB toil pipeline for {} completed. {} transcript predictions were discarded due to '
+                    'overlapping multiple transMap genes.'.format(self.genome, fail_count))
+        out_gp, out_gtf, out_raw_gtf, sqla_target = list(self.output())
         tools.misc.convert_gtf_gp(out_gp, out_gtf)
         logger.info('Finished converting AugustusPB output.')
         self.load_alternative_tx_tables(pipeline_args, df, sqla_target)
@@ -1498,7 +1507,7 @@ class Hgm(PipelineWrapperTask):
 class HgmDriverTask(PipelineTask):
     """
     Task for running each individual instance of the Hgm pipeline. Dumps the results into a sqlite database
-    Also produces a GTF file that is parsed into this database, but this file is not explicitly tracked by Luigi.
+    Also produces a GTF file that is parsed into this database.
     """
     mode = luigi.Parameter()
 
@@ -1513,6 +1522,8 @@ class HgmDriverTask(PipelineTask):
             yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                       target_table=tablename,
                                                       update_id='_'.join([tablename, str(hash(pipeline_args))]))
+        for f in hgm_args.gtf_out_files.itervalues():
+            yield luigi.LocalTarget(f)
 
     def requires(self):
         if self.mode == 'augCGP':
