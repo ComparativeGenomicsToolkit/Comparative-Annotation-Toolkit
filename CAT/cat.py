@@ -1345,9 +1345,9 @@ class AugustusCgp(ToilTask):
         cgp_args.cgp_cfg = self.prepare_cgp_cfg(pipeline_args)
         database_dfs, fail_counts = augustus_cgp(cgp_args, toil_options)
         log_msg = 'AugustusCGP toil pipeline completed. Due to overlapping multiple transMap genes, the following ' \
-                  'number of predictions were discarded:\n'
+                  'number of predictions were discarded: '
         for genome, count in fail_counts:
-            log_msg += '{}:{}\n'.format(genome, count)
+            log_msg += '{}: {}, '.format(genome, count)
         logger.info(log_msg)
         # convert each to genePred as well
         for genome in itertools.chain(pipeline_args.target_genomes, [pipeline_args.ref_genome]):

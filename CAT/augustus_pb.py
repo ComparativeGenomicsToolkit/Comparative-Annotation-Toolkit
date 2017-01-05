@@ -133,17 +133,13 @@ def join_genes(job, input_file_ids, predictions):
             for line in open(local_path):
                 raw_handle.write(line)
 
-    # sort the GTF
-    sorted_raw_gtf_file = tools.fileOps.get_tmp_toil_file()
-    tools.misc.sort_gff(raw_gtf_file, sorted_raw_gtf_file)
-
     join_genes_file = tools.fileOps.get_tmp_toil_file()
-    cmd = [['joingenes', '-g', sorted_raw_gtf_file, '-o', '/dev/stdout', '--alternatives'],
+    cmd = [['joingenes', '-g', raw_gtf_file, '-o', '/dev/stdout', '--alternatives'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
            ['sed', ' s/jg/augPB-/g']]
     tools.procOps.run_proc(cmd, stdout=join_genes_file)
     joined_file_id = job.fileStore.writeGlobalFile(join_genes_file)
-    raw_gtf_file_id = job.fileStore.writeGlobalFile(sorted_raw_gtf_file)
+    raw_gtf_file_id = job.fileStore.writeGlobalFile(raw_gtf_file)
     j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,
                              input_file_ids.filtered_tm_gp, input_file_ids.unfiltered_tm_gp,
                              joined_file_id, 'AugustusPB', memory='8G')
