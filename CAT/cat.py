@@ -814,7 +814,6 @@ class BuildDb(PipelineTask):
                 raise ToolMissingException('Auxiliary program {} not found on path.'.format(tool))
 
     def requires(self):
-        yield self.clone(ReferenceFiles)
         pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.hal_genomes:
             hints_args = BuildDb.get_args(pipeline_args, genome)
@@ -854,7 +853,7 @@ class GenerateHints(ToilTask):
         return luigi.LocalTarget(self.hints_args.hints_path)
 
     def requires(self):
-        return self.clone(PrepareFiles)
+        return self.clone(PrepareFiles), self.clone(ReferenceFiles)
 
     def run(self):
         logger.info('Beginning GenerateHints Toil pipeline for {}.'.format(self.genome))

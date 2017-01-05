@@ -40,7 +40,7 @@ def hints_db(hints_args, toil_options):
     fasta_sequences = {(x.split()[0], len(fasta[x])) for x in fasta.keys()}
     with Toil(toil_options) as toil:
         if not toil.options.restart:
-            # load the RNA-seq data, if we hvae any
+            # load the RNA-seq data, if we have any
             bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
             for dtype in ['BAM', 'INTRONBAM']:
                 if hints_args.genome not in hints_args.cfg[dtype]:
