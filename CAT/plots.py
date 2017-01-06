@@ -57,7 +57,7 @@ def generate_plots(args):
                            title='Reference annotation support',
                            tgt=args.consensus_annot_support)
     consensus_support_plot(consensus_data, args.ordered_genomes, biotypes,
-                           modes=['Splice Support', 'Exon Support', 'CDS Support'],
+                           modes=['Splice Support', 'Exon Support'],
                            title='Single species extrinsic support' if args.in_species_rna_support_only else 'All species extrinsic support',
                            tgt=args.consensus_extrinsic_support)
     fail_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.gene_failure, args.transcript_failure)
@@ -70,6 +70,8 @@ def generate_plots(args):
         split_genes_plot(tm_data, args.ordered_genomes, args.split_genes)
     if 'pb_support' in args:
         pb_support_plot(consensus_data, args.ordered_genomes, args.pb_genomes, args.pb_support)
+    if 'improvement' in args:
+        improvement_plot(consensus_data, args.ordered_genomes, args.improvement)
 
 
 ###
@@ -362,6 +364,23 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
                                     palette=choose_palette(ordered_genomes))
                 adjust_plot(g, gene_biotype_count, tx_biotype_count)
                 multipage_close(pdf, tight_layout=False)
+
+
+def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
+    with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf:
+        for genome in ordered_genomes:
+            data = pd.DataFrame(consensus_data[genome]['Evaluation Improvement'])
+            data.columns = ['TransMapOriginalIntrons', 'TransMapIntronAnnotSupport', 'TransMapIntronRnaSupport',
+                            'OriginalIntrons', 'IntronAnnotSupport', 'IntronRnaSupport']
+            fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
+            sns.regplot(x=data['TransMapOriginalIntrons'], y=data['OriginalIntrons'], ax=ax1)
+            ax1.title('Original intron percent')
+            sns.regplot(x=data['TransMapIntronAnnotSupport'], y=data['IntronAnnotSupport'], ax=ax2)
+            ax2.title('Intron annotation support percent')
+            sns.regplot(x=data['TransMapIntronRnaSupport'], y=data['IntronRnaSupport'], ax=ax3)
+            ax3.title('Intron RNA support percent')
+            fig.suptitle('AUGUSTUS metric improvement for {}'.format(genome))
+            multipage_close(pdf, tight_layout=True)
 
 
 ###

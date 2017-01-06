@@ -128,6 +128,7 @@ class PipelineTask(luigi.Task):
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
+    minimum_coverage = luigi.IntParameter(default=40, significant=False)
     in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
     rebuild_consensus = luigi.BoolParameter(default=False, significant=True)
     # Toil options
@@ -179,6 +180,7 @@ class PipelineTask(luigi.Task):
         args.set('denovo_num_introns', self.denovo_num_introns, False)
         args.set('denovo_splice_support', self.denovo_splice_support, False)
         args.set('denovo_exon_support', self.denovo_exon_support, False)
+        args.set('minimum_coverage', self.minimum_coverage, False)
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
@@ -1545,7 +1547,6 @@ class HgmDriverTask(PipelineTask):
         databases = self.__class__.get_databases(pipeline_args)
         tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
         for genome, sqla_target in itertools.izip(*[hgm_args.genomes, self.output()]):
-            # stores a dict with key=transcript_id and value=intron_support_count (e.g. "4,3,4,5")
             df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome)
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
                 df.to_sql(tablename, engine, if_exists='replace')
@@ -1827,6 +1828,7 @@ class Consensus(PipelineWrapperTask):
         args.denovo_num_introns = pipeline_args.denovo_num_introns
         args.denovo_splice_support = pipeline_args.denovo_splice_support
         args.denovo_exon_support = pipeline_args.denovo_exon_support
+        args.minimum_coverage = pipeline_args.minimum_coverage
         args.require_pacbio_support = pipeline_args.require_pacbio_support
         args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         return args
@@ -1894,6 +1896,8 @@ class Plots(PipelineTask):
         args.consensus_annot_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_annotation_support.pdf'))
         args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
         # plots that depend on execution mode
+        if pipeline_args.augustus is True:
+            args.improvement = luigi.LocalTarget(os.path.join(base_dir, 'augustus_improvement.pdf'))
         if 'augCGP' in pipeline_args.modes or 'augPB' in pipeline_args.modes:
             args.denovo = luigi.LocalTarget(os.path.join(base_dir, 'denovo.pdf'))
         if 'augPB' in pipeline_args.modes:
