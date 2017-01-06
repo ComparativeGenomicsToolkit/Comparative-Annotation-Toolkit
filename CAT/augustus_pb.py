@@ -127,14 +127,16 @@ def join_genes(job, input_file_ids, predictions):
     Calls out to the parental gene assignment pipeline
     """
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
-    with open(raw_gtf_file, 'w') as raw_handle:
+    raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
+    with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
         for chunk in predictions:
             local_path = job.fileStore.readGlobalFile(chunk)
+            fofn_handle.write(local_path + '\n')
             for line in open(local_path):
                 raw_handle.write(line)
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
-    cmd = [['joingenes', '-g', raw_gtf_file, '-o', '/dev/stdout', '--alternatives'],
+    cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout', '--alternatives'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
            ['sed', ' s/jg/augPB-/g']]
     tools.procOps.run_proc(cmd, stdout=join_genes_file)
