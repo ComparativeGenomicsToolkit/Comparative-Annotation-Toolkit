@@ -1851,7 +1851,9 @@ class ConsensusDriverTask(PipelineTask):
 
     def output(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
-        return luigi.LocalTarget(consensus_args.consensus_gp), luigi.LocalTarget(consensus_args.metrics_json)
+        yield luigi.LocalTarget(consensus_args.consensus_gp)
+        yield luigi.LocalTarget(consensus_args.metrics_json)
+        yield luigi.LocalTarget(consensus_args.consensus_gff3)
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
@@ -1864,7 +1866,7 @@ class ConsensusDriverTask(PipelineTask):
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
-        consensus_gp, metrics_json = self.output()
+        consensus_gp, metrics_json, consensus_gff3 = self.output()
         metrics_dict = generate_consensus(consensus_args)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
