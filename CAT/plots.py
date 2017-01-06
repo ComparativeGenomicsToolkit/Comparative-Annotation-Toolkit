@@ -369,17 +369,23 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
 def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
     with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf:
         for genome in ordered_genomes:
-            data = pd.DataFrame(consensus_data[genome]['Evaluation Improvement'])
+            data = pd.DataFrame(consensus_data[genome]['Evaluation Improvement']['changes'])
+            unchanged = consensus_data[genome]['Evaluation Improvement']['unchanged']
+            if len(data) == 0:
+                continue
             data.columns = ['TransMapOriginalIntrons', 'TransMapIntronAnnotSupport', 'TransMapIntronRnaSupport',
                             'OriginalIntrons', 'IntronAnnotSupport', 'IntronRnaSupport']
-            fig, (ax1, ax2, ax3) = plt.subplots(ncols=3)
-            sns.regplot(x=data['TransMapOriginalIntrons'], y=data['OriginalIntrons'], ax=ax1)
-            ax1.title('Original intron percent')
-            sns.regplot(x=data['TransMapIntronAnnotSupport'], y=data['IntronAnnotSupport'], ax=ax2)
-            ax2.title('Intron annotation support percent')
-            sns.regplot(x=data['TransMapIntronRnaSupport'], y=data['IntronRnaSupport'], ax=ax3)
-            ax3.title('Intron RNA support percent')
-            fig.suptitle('AUGUSTUS metric improvement for {}'.format(genome))
+            fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, sharex=True, sharey=True)
+            ax1.set_xlim(0, 105)
+            ax1.set_ylim(0, 105)
+            sns.regplot(x=data['TransMapOriginalIntrons'], y=data['OriginalIntrons'], ax=ax1,
+                        color=sns.color_palette()[0], marker='+', scatter_kws={"s": 5})
+            sns.regplot(x=data['TransMapIntronAnnotSupport'], y=data['IntronAnnotSupport'], ax=ax2,
+                        color=sns.color_palette()[1], marker='+', scatter_kws={"s": 5})
+            sns.regplot(x=data['TransMapIntronRnaSupport'], y=data['IntronRnaSupport'], ax=ax3,
+                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 5})
+            fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}. '
+                         '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             multipage_close(pdf, tight_layout=True)
 
 

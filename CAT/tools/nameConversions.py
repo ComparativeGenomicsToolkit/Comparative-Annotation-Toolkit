@@ -16,10 +16,10 @@ def remove_alignment_number(aln_id, aln_re=re.compile("-[0-9]+$")):
     return aln_re.split(aln_id)[0]
 
 
-def remove_augustus_alignment_number(aln_id, aug_re=re.compile("^aug(TM|TMR)-")):
+def remove_augustus_alignment_number(aln_id, aug_re=re.compile("^aug(TM|TMR|CGP|PB)-")):
     """
     removes the alignment numbers prepended by AugustusTM/AugustusTMR
-    Format: aug(TM|TMR)-ENSMUST00000169901.2-1
+    Format: aug(TM|TMR|CGP|PB)-ENSMUST00000169901.2-1
     :param aln_id: name string
     :param aug_re: compiled regular expression
     :return: string
@@ -51,11 +51,11 @@ def aln_id_is_transmap(aln_id):
     :param aln_id: name string
     :return: boolean
     """
-    return True if remove_alignment_number(aln_id) != aln_id else False
+    return True if remove_augustus_alignment_number(aln_id) == aln_id and remove_alignment_number(aln_id) != aln_id else False
 
 
 def aln_id_is_augustus_tm(aln_id):
-    return aln_id.startswith('augTM=')
+    return aln_id.startswith('augTM-')
 
 
 def aln_id_is_augustus_tmr(aln_id):

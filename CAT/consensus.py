@@ -53,6 +53,9 @@ def generate_consensus(args):
     tx_dict = tools.transcripts.load_gps(args.gp_list)
     # load reference annotation information
     ref_df = tools.sqlInterface.load_annotation(args.ref_db_path)
+    ref_biotype_counts = collections.Counter(ref_df.TranscriptBiotype)
+    coding_count = ref_biotype_counts['protein_coding']
+    non_coding_count = sum(y for x, y in ref_biotype_counts.iteritems() if x != 'protein_coding')
     # gene transcript map to iterate over so that we capture missing gene information
     gene_transcript_map = tools.sqlInterface.get_gene_transcript_map(args.ref_db_path)
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(args.ref_db_path)
@@ -77,10 +80,10 @@ def generate_consensus(args):
     if len(coding_df) + len(non_coding_df) == 0:
         raise RuntimeError('No transcripts pass filtering for species {}. '
                            'Consider lowering requirements. Please see the manual.'.format(args.genome))
-    elif len(coding_df) == 0:
+    elif len(coding_df) == 0 and coding_count > 0:
         logger.warning('No protein coding transcripts pass filtering for species {}. '
                        'Consider lowering requirements. Please see the manual.'.format(args.genome))
-    elif len(non_coding_df) == 0:
+    elif len(non_coding_df) == 0 and non_coding_count > 0:
         logger.warning('No non-coding transcripts pass filtering for species {}. '
                        'Consider lowering requirements. Please see the manual.'.format(args.genome))
     scored_coding_df, scored_non_coding_df = score_filtered_dfs(coding_df, non_coding_df,
@@ -180,7 +183,7 @@ def generate_consensus(args):
     calculate_completeness(final_consensus, metrics)
     # add some interesting metrics on how much using Augustus modes improved our results
     if 'augTM' or 'augTMR' in tx_modes:
-        calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, metrics)
+        calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df, metrics)
 
     # write out results. consensus tx dict has the unique names
     consensus_gene_dict = write_consensus_gps(args.consensus_gp, args.consensus_gp_info,
@@ -203,7 +206,7 @@ def load_transmap_evals(db_path):
     # combine transMap evaluation and transMap filtering into one table
     # the transMap filtering columns are used for tags in the output
     merged = pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
-    # remove the AlignmentId column to make the future merges work
+    # remove the AlignmentId column -- paralog resolution made it unnecessary
     return merged.drop('AlignmentId', axis=1)
 
 
@@ -376,8 +379,9 @@ def score_filtered_dfs(coding_df, non_coding_df, in_species_rna_support_only):
             rna_support = s.AllSpeciesExonRnaSupportPercent + s.AllSpeciesIntronRnaSupportPercent
         return goodness + s.IntronAnnotSupportPercent + s.ExonAnnotSupportPercent + orig_intron + rna_support
 
-    coding_df['TranscriptScore'] = coding_df.apply(score, axis=1)
-    non_coding_df['TranscriptScore'] = non_coding_df.apply(score, axis=1)
+    for df in [coding_df, non_coding_df]:
+        if len(df) > 0:
+            df['TranscriptScore'] = df.apply(score, axis=1)
     return coding_df, non_coding_df
 
 
@@ -707,24 +711,28 @@ def calculate_completeness(final_consensus, metrics):
     metrics['Completeness'] = {'Gene': genes, 'Transcript': txs}
 
 
-def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, metrics):
+def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df, metrics):
     """For coding transcripts, how much did we improve the metrics?"""
-    df = scored_df.reset_index()
+    tm_df = tm_eval_df.reset_index()[['TransMapOriginalIntronsPercent', 'TranscriptId']]
+    hgm_df_subset = hgm_df[hgm_df['AlignmentId'].apply(tools.nameConversions.aln_id_is_transmap)]
+    hgm_df_subset = hgm_df_subset[['TranscriptId', 'IntronAnnotSupportPercent', 'IntronRnaSupportPercent']]
+    tm_df = pd.merge(tm_df, hgm_df_subset, on='TranscriptId')
+    df = pd.merge(tm_df, scored_df.reset_index(), on='TranscriptId', suffixes=['TransMap', ''])
     df = df.set_index('AlignmentId')
-    tm_df = tm_eval_df.reset_index()
-    tm_df = tm_df.set_index('AlignmentId')
-    metrics['Evaluation Improvement'] = []
+    metrics['Evaluation Improvement'] = {'changes': [], 'unchanged': 0}
     for aln_id, c in final_consensus:
-        if c['TranscriptBiotype'] != 'protein_coding':
+        if c['transcript_biotype'] != 'protein_coding':
             continue
-        s = df.ix[aln_id]
-        tm_s = tm_df.ix[tools.nameConversions.remove_augustus_alignment_number(aln_id)]
-        metrics['Evaluation Improvement'].append([tm_s.TransMapOriginalIntronsPercent,
-                                                  tm_s.IntronAnnotSupportPercent,
-                                                  tm_s.IntronRnaSupportPercent,
-                                                  s.OriginalIntronsPercent,
-                                                  s.IntronAnnotSupportPercent,
-                                                  s.IntronRnaSupportPercent])
+        if tools.nameConversions.aln_id_is_transmap(aln_id):
+            metrics['Evaluation Improvement']['unchanged'] += 1
+            continue
+        tx_s = df.ix[aln_id]
+        metrics['Evaluation Improvement']['changes'].append([tx_s.TransMapOriginalIntronsPercent,
+                                                             tx_s.IntronAnnotSupportPercentTransMap,
+                                                             tx_s.IntronRnaSupportPercentTransMap,
+                                                             tx_s.OriginalIntronsPercent,
+                                                             tx_s.IntronAnnotSupportPercent,
+                                                             tx_s.IntronRnaSupportPercent])
 
 
 def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dict, genome):
