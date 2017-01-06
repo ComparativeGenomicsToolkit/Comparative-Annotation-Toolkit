@@ -268,13 +268,12 @@ def create_new_table(paralog_filtered_df, resolve_split_genes_flag):
 def calculate_synteny_score(s):
     """
     Function to score an alignment. Scoring method:
-    0.2 * coverage + 0.35 * identity + 0.2 * percent_original_introns + 0.25 * synteny
+    0.2 * coverage + 0.3 * identity + 0.5 * synteny
     :param s: pandas Series
     :return: float between 0 and 1
     """
-    r = 0.2 * s.TransMapCoverage + \
-        0.35 * s.TransMapIdentity + \
-        0.2 * s.TransMapPercentOriginalIntrons + \
-        0.25 * (1.0 * s.Synteny / 6)
+    r = 0.002 * s.TransMapCoverage + \
+        0.003 * s.TransMapIdentity + \
+        0.5 * (1.0 * s.Synteny / 6)
     assert 0 <= r <= 1
     return r

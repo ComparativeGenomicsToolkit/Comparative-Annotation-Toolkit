@@ -55,9 +55,10 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'AlnPartialMap', alignment_partial_map(aln)])
         r.append([aln_id, tx_id, gene_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
         r.append([aln_id, tx_id, gene_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', aln.coverage])
-        r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', aln.identity])
-        r.append([aln_id, tx_id, gene_id, 'TransMapPercentOriginalIntrons', percent_original_introns(aln, tx, ref_aln)])
+        r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', 100 * aln.coverage])
+        r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', 100 * aln.identity])
+        r.append([aln_id, tx_id, gene_id, 'TransMapGoodness', 100 * (1 - aln.badness)])
+        r.append([aln_id, tx_id, gene_id, 'TransMapOriginalIntronsPercent', percent_original_introns(aln, tx, ref_aln)])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
     return df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'])
@@ -225,11 +226,11 @@ def percent_original_introns(aln, tx, ref_aln):
     :param aln: PslRow object representing the transMapped transcript
     :param tx: GenePredTranscript object representing the transMapped transcript
     :param ref_aln: PslRow object representing the reference transcript
-    :return: float between 0 and 1
+    :return: float between 0 and 100
     """
     ref_starts = tools.tm2hints.fix_ref_q_starts(ref_aln)
     c = 0
     for i in tx.intron_intervals:
         if tools.tm2hints.is_fuzzy_intron(i, aln, ref_starts, fuzz_distance=7):
             c += 1
-    return tools.mathOps.format_ratio(c, len(tx.intron_intervals), resolve_nan=None)
+    return 100 * tools.mathOps.format_ratio(c, len(tx.intron_intervals), resolve_nan=None)
