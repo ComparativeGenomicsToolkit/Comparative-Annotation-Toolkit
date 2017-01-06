@@ -516,9 +516,8 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
          'transcript_class': best_series.TranscriptClass,
          'transcript_biotype': best_series.TranscriptBiotype,
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
-         'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport))}
-    if best_series.TranscriptBiotype == 'protein_coding':
-        d['cds_annotation_support'] = ','.join(map(str, best_series.CdsAnnotSupport))
+         'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport)),
+         'cds_annotation_support': ','.join(map(str, best_series.CdsAnnotSupport))}
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
