@@ -192,9 +192,6 @@ def parse_hgm_gtf(hgm_out, genome):
     in (one of) the reference annotation(s) (if "M" is in the 'hgm_info' string, then it is an annotated intron)
 
     We calculate this as both the in-species and all-species vectors.
-
-    We have 3 feature types and 2 datatypes. Features are intron/cds/exon, data are annotation/RNA-seq.
-    So, in total, we produce (3 * 2 ) * 2 = 12 vectors for each transcript.
     """
     def calculate_annot_support(intron_info, cds_info, exon_info):
         intron_annot = ','.join(map(str, [x.count('M') + x.count('N') for x in intron_info]))
@@ -202,13 +199,12 @@ def parse_hgm_gtf(hgm_out, genome):
         exon_annot = ','.join(map(str, [x.count('M') for x in exon_info]))
         return [intron_annot, cds_annot, exon_annot]
 
-    def calculate_all_species(intron_info, cds_info, exon_info):
+    def calculate_all_species(intron_info, exon_info):
         intron_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in intron_info]))
-        cds_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in cds_info]))
         exon_rna = ','.join(map(str, [x.count('E') + x.count('PB') for x in exon_info]))
-        return [intron_rna, cds_rna, exon_rna]
+        return [intron_rna, exon_rna]
 
-    def calculate_in_species(intron_info, cds_info, exon_info, species_id):
+    def calculate_in_species(intron_info, exon_info, species_id):
         def parse_entry(entry, species_id):
             recs = entry.split(',')
             for x in recs:
@@ -218,11 +214,9 @@ def parse_hgm_gtf(hgm_out, genome):
 
         intron_rna = ','.join(map(str, [parse_entry(x, species_id).count('E') +
                                         parse_entry(x, species_id).count('PB') for x in intron_info]))
-        cds_rna = ','.join(map(str, [parse_entry(x, species_id).count('E') +
-                                     parse_entry(x, species_id).count('PB') for x in cds_info]))
         exon_rna = ','.join(map(str, [parse_entry(x, species_id).count('E') +
                                       parse_entry(x, species_id).count('PB') for x in exon_info]))
-        return [intron_rna, cds_rna, exon_rna]
+        return [intron_rna, exon_rna]
 
     intron_lines = []
     cds_lines = []
@@ -256,15 +250,15 @@ def parse_hgm_gtf(hgm_out, genome):
             cds_info = d[gene_id][aln_id]['cds']
             exon_info = d[gene_id][aln_id]['exon']
             tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
-            all_species_vectors = calculate_all_species(intron_info, cds_info, exon_info)
-            in_species_vectors = calculate_in_species(intron_info, cds_info, exon_info, species_id)
+            all_species_vectors = calculate_all_species(intron_info, exon_info)
+            in_species_vectors = calculate_in_species(intron_info, exon_info, species_id)
             annot_support_vectors = calculate_annot_support(intron_info, cds_info, exon_info)
             dd.append([gene_id, tx_id, aln_id] + all_species_vectors + in_species_vectors + annot_support_vectors)
 
     df = pd.DataFrame(dd)
     df.columns = ['GeneId', 'TranscriptId', 'AlignmentId',
-                  'AllSpeciesIntronRnaSupport', 'AllSpeciesCdsRnaSupport', 'AllSpeciesExonRnaSupport',
-                  'IntronRnaSupport', 'CdsRnaSupport', 'ExonRnaSupport',
+                  'AllSpeciesIntronRnaSupport', 'AllSpeciesExonRnaSupport',
+                  'IntronRnaSupport', 'ExonRnaSupport',
                   'IntronAnnotSupport', 'CdsAnnotSupport', 'ExonAnnotSupport']
     df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
     return df
