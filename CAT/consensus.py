@@ -25,12 +25,13 @@ GFF3 tags generated in this process:
 14: transcript_modes: The mode(s) that generated this transcript
 """
 import collections
-import copy
 import luigi
+import copy
 import logging
 import pandas as pd
 
 import tools.intervals
+import tools.misc
 import tools.mathOps
 import tools.fileOps
 import tools.sqlInterface
@@ -509,7 +510,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
     # construct the tags for this transcript
     d = {'source_transcript': best_series.name,
          'source_gene': gene_id,
-         'score': round(best_series.AlnGoodness, 3),
+         'score': int(1000 * round(best_series.AlnGoodness, 3)),
          'failed_gene': failed_gene,
          'transcript_modes': transcript_modes,
          'gene_biotype': best_series.GeneBiotype,
@@ -773,11 +774,6 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     """
     Write the consensus set in gff3 format
     """
-    def convert_frame(exon_frame):
-        """converts genePred-style exonFrame to GFF-style phase"""
-        mapping = {0: 0, 1: 2, 2: 1, -1: '.'}
-        return mapping[exon_frame]
-
     def convert_attrs(attrs, id_field):
         """converts the attrs dict to a attributes field. assigns name to the gene common name for display"""
         attrs['ID'] = id_field
@@ -809,7 +805,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
                        'alternative_source_transcripts', 'paralog_status', 'gene_alterate_contigs']
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
         score, attrs_field = convert_attrs(attrs, gene_id)
-        return [chrom, 'CAT', 'gene', intervals[0].start + 1, intervals[-1].stop + 1, score, strand, '.', attrs_field]
+        return [chrom, 'CAT', 'gene', intervals[0].start + 1, intervals[-1].stop, score, strand, '.', attrs_field]
 
     def generate_transcript_record(chrom, tx_obj, attrs):
         """generates transcript records, calls generate_exon_records to generate those too"""
@@ -817,7 +813,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         gene_id = tx_obj.name2
         attrs['Parent'] = gene_id
         score, attrs_field = convert_attrs(attrs, tx_id)
-        yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop + 1, score, tx_obj.strand, '.', attrs_field]
+        yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop, score, tx_obj.strand, '.', attrs_field]
         for line in generate_intron_exon_records(chrom, tx_obj, tx_id, attrs):
             yield line
         for line in generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
@@ -828,45 +824,39 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs['Parent'] = tx_id
         # exon records
         cds_i = 0  # keep track of position of CDS in case of entirely non-coding exons
+        gtf_coding_interval = tx_obj.get_gtf_coding_interval()  # GTF/GFF3 intervals do not include the stop codon
         for i, (exon, exon_frame) in enumerate(zip(*[tx_obj.exon_intervals, tx_obj.exon_frames])):
             attrs['rna_support'] = find_feature_support(attrs, 'exon_rna_support', i)
             attrs['reference_support'] = find_feature_support(attrs, 'exon_annotation_support', i)
             score, attrs_field = convert_attrs(attrs, 'exon:{}:{}'.format(tx_id, i))
-            yield [chrom, 'CAT', 'exon', exon.start + 1, exon.stop + 1, score, exon.strand, '.', attrs_field]
-            cds_interval = exon.intersection(tx_obj.coding_interval)
+            yield [chrom, 'CAT', 'exon', exon.start + 1, exon.stop, score, exon.strand, '.', attrs_field]
+            cds_interval = exon.intersection(gtf_coding_interval)
             if cds_interval is not None:
                 attrs['reference_support'] = find_feature_support(attrs, 'cds_annotation_support', cds_i)
                 score, attrs_field = convert_attrs(attrs, 'CDS:{}:{}'.format(tx_id, cds_i))
                 cds_i += 1
-                yield [chrom, 'CAT', 'CDS', cds_interval.start + 1, cds_interval.stop + 1, score, exon.strand,
-                       convert_frame(exon_frame), attrs_field]
+                yield [chrom, 'CAT', 'CDS', cds_interval.start + 1, cds_interval.stop, score, exon.strand,
+                       tools.transcripts.convert_frame(exon_frame), attrs_field]
 
         # intron records
         for i, intron in enumerate(tx_obj.intron_intervals):
             attrs['rna_support'] = find_feature_support(attrs, 'intron_rna_support', i)
             attrs['reference_support'] = find_feature_support(attrs, 'intron_annotation_support', i)
             score, attrs_field = convert_attrs(attrs, 'exon:{}:{}'.format(tx_id, i))
-            yield [chrom, 'CAT', 'intron', intron.start + 1, intron.stop + 1, score, intron.strand, '.', attrs_field]
+            yield [chrom, 'CAT', 'intron', intron.start + 1, intron.stop, score, intron.strand, '.', attrs_field]
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
         """generate start/stop codon GFF3 records, handling frame appropriately"""
-        cds_frames = [x for x in tx_obj.exon_frames if x != -1]
         if tx_obj.cds_start_stat == 'cmpl':
             score, attrs_field = convert_attrs(attrs, 'start_codon:{}'.format(tx_id))
-            start, stop = tools.transcripts.get_start_interval(tx_obj)
-            if tx_obj.strand == '-':
-                start_frame = convert_frame(cds_frames[-1])
-            else:
-                start_frame = convert_frame(cds_frames[0])
-            yield [chrom, 'CAT', 'start_codon', start + 1, stop + 1, score, tx_obj.strand, start_frame, attrs_field]
+            for interval in tx_obj.get_start_intervals():
+                yield [chrom, 'CAT', 'start_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
+                       interval.data, attrs_field]
         if tx_obj.cds_end_stat == 'cmpl':
             score, attrs_field = convert_attrs(attrs, 'stop_codon:{}'.format(tx_id))
-            start, stop = tools.transcripts.get_stop_interval(tx_obj)
-            if tx_obj.strand == '-':
-                stop_frame = convert_frame(cds_frames[-1])
-            else:
-                stop_frame = convert_frame(cds_frames[0])
-            yield [chrom, 'CAT', 'stop_codon', start + 1, stop + 1, score, tx_obj.strand, stop_frame, attrs_field]
+            for interval in tx_obj.get_stop_intervals():
+                yield [chrom, 'CAT', 'start_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
+                       interval.data, attrs_field]
 
     # main gff3 writing logic
     consensus_gff3 = luigi.LocalTarget(consensus_gff3)

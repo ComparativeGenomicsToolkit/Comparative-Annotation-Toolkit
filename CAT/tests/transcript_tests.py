@@ -368,7 +368,7 @@ class ComplicatedTranscript1(unittest.TestCase):
         self.assertEqual(self.t.get_bed(new_start=1, new_stop=12),
                          ['chr1', '1', '10', 'A', '0', '+', '8', '10', '0,128,0', '2', '3,4', '0,5'])
         self.assertEqual(self.t.get_bed(new_start=19, new_stop=19),
-                         ['chr1', '19', '19', 'A', '0', '+', '19', '19', '0,128,0', '1', '0', '0'])
+                         ['chr1', '19', '19', 'A', '0', '+', '0', '0', '0,128,0', '1', '0', '0'])
         self.assertEqual(self.t.get_bed(new_start=1, new_stop=4),
                          ['chr1', '1', '4', 'A', '0', '+', '0', '0', '0,128,0', '1', '3', '0'])
 
@@ -487,7 +487,7 @@ class ComplicatedTranscript2(unittest.TestCase):
         self.assertEqual(self.t.get_bed(new_start=17),
                          ['chr1', '17', '20', 'A', '0', '-', '0', '0', '0,128,0', '1', '3', '0'])
         self.assertEqual(self.t.get_bed(new_start=10, new_stop=17),
-                                        ['chr1', '13', '16', 'A', '0', '-', '13', '16', '0,128,0', '1', '3', '0'])
+                         ['chr1', '13', '16', 'A', '0', '-', '13', '16', '0,128,0', '1', '3', '0'])
 
 
 class SingleExonTranscript1(unittest.TestCase):
@@ -835,11 +835,11 @@ class PositiveStrandGenePredTranscript(PositiveStrandTranscriptTests):
 
     def setUp(self):
         self.tokens = ['A', 'chr1', '+', '2', '15', '4', '13', '3', '2,7,12', '6,10,15', '1',
-                                             'q2', 'cmpl', 'cmpl', '2,0,0']
+                       'q2', 'cmpl', 'cmpl', '2,1,1']
         self.t = GenePredTranscript(self.tokens)
         self.transcript_seq = 'ATTCTGGCTA'
         self.cds_seq = 'TCTGGC'
-        self.amino_acid = 'LA'  # this transcript has a offset of 2, so the first in-frame codon is TGG
+        self.amino_acid = 'L'  # this transcript has a offset of 2, so the first in-frame codon is TGG
         self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sequences(self):
@@ -867,7 +867,7 @@ class NegativeStrandGenePredTranscript(NegativeStrandTranscriptTests):
 
     def setUp(self):
         self.tokens = ['A', 'chr1', '-', '2', '15', '4', '13', '3', '2,7,12', '6,10,15', '1',
-                                    'q2', 'cmpl', 'cmpl', '0,0,1']
+                                    'q2', 'cmpl', 'cmpl', '2,2,1']
         self.t = GenePredTranscript(self.tokens)
         self.transcript_seq = 'TAGCCAGAAT'
         self.cds_seq = 'GCCAGA'

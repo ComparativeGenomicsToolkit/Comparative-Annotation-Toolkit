@@ -3,6 +3,8 @@ Library mathematical operations
 """
 import bisect
 import math
+from operator import itemgetter
+from itertools import groupby
 
 
 def format_ratio(numerator, denominator, num_digits=None, resolve_nan=None):
@@ -51,3 +53,8 @@ def all_disjoint(sets):
                 return False
             all.add(x)
     return True
+
+
+def find_intervals(data):
+    for k, g in groupby(enumerate(data), lambda (i, x): i - x):
+        yield map(itemgetter(1), g)

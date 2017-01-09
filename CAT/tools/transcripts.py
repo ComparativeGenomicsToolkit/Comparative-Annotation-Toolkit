@@ -4,8 +4,7 @@ chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
 from itertools import izip
 
-from misc import pairwise
-from mathOps import find_closest
+from mathOps import find_closest, find_intervals
 from bio import reverse_complement, translate_sequence
 from fileOps import iter_lines
 from intervals import ChromosomeInterval
@@ -113,6 +112,20 @@ class Transcript(object):
             start = self.start + self.block_starts[i - 1] + self.block_sizes[i - 1]
             intron_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand))
         return intron_intervals
+
+    def get_gtf_coding_interval(self):
+        """
+        GTF/GFF3 files do not include the stop codon as part of the CDS. For this reason, we have a special case.
+
+        Using the get_bed() functionality to achieve this.
+        """
+        if self.strand == '+':
+            bed = self.get_bed(new_stop=self.cds_coordinate_to_chromosome(self.cds_size - 3),
+                               new_start=self.thick_start)
+        else:
+            bed = self.get_bed(new_start=self.cds_coordinate_to_chromosome(self.cds_size - 3),
+                               new_stop=self.thick_stop)
+        return Transcript(bed).coding_interval
 
     def get_bed(self, rgb=None, name=None, new_start=None, new_stop=None):
         """
@@ -304,61 +317,33 @@ class Transcript(object):
         """
         Returns one or more ChromosomeInterval objects that represents the starting CDS interval for this transcript.
         More than one may exist if the codon is split over a splice junction.
-
-        To do this I abuse the slicing functionality in get_bed()
-
-        While the first start_codon feature is by definition in-frame, subsequent features may not be.
         """
-        start = self.cds_coordinate_to_chromosome(0)
-        stop = self.cds_coordinate_to_chromosome(3)
-        if self.strand == '-':
-            start, stop = stop + 1, start + 1
-        bed = self.get_bed(new_start=start, new_stop=stop)
-        start_obj = Transcript(bed)
-        i = 0
-        start_obj.exon_intervals[0].data = {'frame': i}
-        if len(start_obj.exon_intervals) == 1:
-            return start_obj.exon_intervals
-        else:
-            for prev_e, e in pairwise(start_obj.exon_intervals):
-                i += len(prev_e)
-                assert i <= 2
-                # convert from GFF style frames to Mark's exonFrames
-                if i == 2 and self.strand == '+':
-                    i = 1
-                e.data = {'frame': i}
-            return start_obj.exon_intervals
+        assert self.cds_size >= 3
+        positions = sorted([self.cds_coordinate_to_chromosome(x) for x in range(3)])
+        merged_intervals = list(find_intervals(positions))
+        intervals = [ChromosomeInterval(self.chromosome, i[0], i[-1] + 1, self.strand) for i in merged_intervals]
+        assert sum(len(x) for x in intervals) == 3
+        c = 0
+        for i in intervals:
+            i.data = convert_frame(c)
+            c += len(i)
+        return intervals
 
     def get_stop_intervals(self):
         """
         Returns one or more ChromosomeInterval objects that represents the ending CDS interval for this transcript.
         More than one may exist if the codon is split over a splice junction.
-
-        To do this I abuse the slicing functionality in get_bed()
         """
-        if self.strand == '-':
-            stop = self.cds_coordinate_to_chromosome(self.cds_size - 4)
-            start = self.cds_coordinate_to_chromosome(self.cds_size - 1) + 1
-
-        start = self.cds_coordinate_to_chromosome(self.cds_size - 4) + 1
-        stop = self.cds_coordinate_to_chromosome(self.cds_size - 1) + 1
-        if self.strand == '-':
-            start, stop = stop, start
-        bed = self.get_bed(new_start=start, new_stop=stop)
-        start_obj = Transcript(bed)
-        i = 0
-        start_obj.exon_intervals[0].data = {'frame': i}
-        if len(start_obj.exon_intervals) == 1:
-            return start_obj.exon_intervals
-        else:
-            for prev_e, e in pairwise(start_obj.exon_intervals):
-                i += len(prev_e)
-                assert i <= 2
-                # convert from GFF style frames to Mark's exonFrames
-                if i == 2 and self.strand == '+':
-                    i = 1
-                e.data = {'frame': i}
-            return start_obj.exon_intervals
+        assert self.cds_size >= 3
+        positions = sorted([self.cds_coordinate_to_chromosome(x) for x in range(self.cds_size - 3, self.cds_size)])
+        merged_intervals = list(find_intervals(positions))
+        intervals = [ChromosomeInterval(self.chromosome, i[0], i[-1] + 1, self.strand) for i in merged_intervals]
+        assert sum(len(x) for x in intervals) == 3
+        c = 0
+        for i in intervals:
+            i.data = convert_frame(c)
+            c += len(i)
+        return intervals
 
 
 class GenePredTranscript(Transcript):
@@ -453,7 +438,22 @@ class GenePredTranscript(Transcript):
         If new_start or new_stop are set (chromosome coordinates), then this record will be changed to only
         show results within that region, which is defined in chromosome coordinates. The frames field will be properly
         adjusted, and the cds_start_stat/cds_end_stat fields will change to 'unk' if they are moved
+
+        TODO: If this is a transMap transcript, and there were coding indels, the frame information will change to
+        reflect the new arrangement and the implicit indel information will be lost.
         """
+        name = self.name if name is None else name
+        name2 = self.name2 if name2 is None else name2
+        score = self.score if score is None else score
+
+        # if no resizing, just return what we have
+        if new_start is None and new_stop is None:
+            exon_starts = ','.join(map(str, [exon.start for exon in self.exon_intervals]))
+            exon_ends = ','.join(map(str, [exon.stop for exon in self.exon_intervals]))
+            exon_frames = ','.join(map(str, self.exon_frames))
+            return map(str, [name, self.chromosome, self.strand, self.start, self.stop, self.thick_start,
+                             self.thick_stop, len(self.exon_intervals), exon_starts, exon_ends, score, name2,
+                             self.cds_start_stat, self.cds_end_stat, exon_frames])
         if new_start is not None and new_stop is not None:
             assert new_start <= new_stop
         if new_start is not None:
@@ -464,9 +464,6 @@ class GenePredTranscript(Transcript):
             assert new_stop <= self.stop
         else:
             new_stop = self.stop
-        name = self.name if name is None else name
-        name2 = self.name2 if name2 is None else name2
-        score = self.score if score is None else score
 
         # start slicing out intervals, adjusting the frames
         new_interval = ChromosomeInterval(self.chromosome, new_start, new_stop, self.strand)
@@ -474,33 +471,43 @@ class GenePredTranscript(Transcript):
         exon_frames = []
         exon_iter = self.exon_intervals if self.strand == '+' else self.exon_intervals[::-1]
         frame_iter = self.exon_frames if self.strand == '+' else reversed(self.exon_frames)
-        starting_frame = [f for f in frame_iter if f != -1][0]
-        cds_counter = 0  # keep track of total CDS bases encountered
-        cds_flag = False
-        for exon in exon_iter:
-            new_exon = exon.intersection(new_interval)
-            if new_exon is None:
-                continue
-            exon_intervals.append(new_exon)
-            coding_exon = exon.intersection(self.coding_interval)
-            if coding_exon is None:
-                exon_frames.append(-1)
-            elif cds_flag is False:
-                cds_flag = True
-                exon_frames.append(starting_frame)
-                cds_counter += len(coding_exon) + starting_frame
-            else:
-                exon_frames.append(cds_counter % 3)
-                cds_counter += len(coding_exon)
 
+        # attempt to find the first frame. If there is none, then we have a non-coding transcript and this is easy
+        try:
+            starting_frame = [f for f in frame_iter if f != -1][0]
+        except IndexError:  # non-coding transcript
+            exon_intervals = [exon.intersection(new_interval) for exon in exon_iter]
+            exon_frames = [-1] * len(exon_intervals)
+        else:  # start following frame to adjust for resized transcript
+            cds_counter = 0  # keep track of total CDS bases encountered
+            cds_flag = False
+            for exon in exon_iter:
+                new_exon = exon.intersection(new_interval)
+                if new_exon is None:
+                    continue
+                exon_intervals.append(new_exon)
+                coding_exon = exon.intersection(self.coding_interval)
+                if coding_exon is None:
+                    exon_frames.append(-1)
+                elif cds_flag is False:
+                    cds_flag = True
+                    exon_frames.append(starting_frame)
+                    cds_counter += len(coding_exon) + starting_frame
+                else:
+                    exon_frames.append(cds_counter % 3)
+                    cds_counter += len(coding_exon)
+
+        # flip back around negative strand transcripts
         if self.strand == '-':
             exon_intervals = exon_intervals[::-1]
             exon_frames = exon_frames[::-1]
 
+        # if new_start or new_stop were intronic coordinates, fix this
         if new_start != exon_intervals[0].start:
             new_start = exon_intervals[0].start
         if new_stop != exon_intervals[-1].stop:
             new_stop = exon_intervals[-1].stop
+
         thick_start = max(self.thick_start, new_start)
         thick_stop = min(self.thick_stop, new_stop)
         cds_start_stat = 'unk' if thick_start != self.thick_start else self.cds_start_stat
@@ -567,3 +574,9 @@ def load_gps(gp_list):
                 raise RuntimeError('Attempted to add duplicate GenePredTranscript object with name {}'.format(t.name))
             r[t.name] = t
     return r
+
+
+def convert_frame(exon_frame):
+    """converts genePred-style exonFrame to GFF-style phase"""
+    mapping = {0: 0, 1: 2, 2: 1, -1: '.'}
+    return mapping[exon_frame]
