@@ -156,7 +156,6 @@ def translate_sequence(sequence):
         result.append(codon_to_amino_acid(sequence[i: i + 3]))
     if len(sequence) % 3 == 2:
         c = codon_to_amino_acid(sequence[i + 3:] + 'N')
-        assert len(c) == 3, sequence
         if c != '?':
             result.append(c)
     return ''.join(result)

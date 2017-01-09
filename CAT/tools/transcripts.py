@@ -4,6 +4,8 @@ chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
 from itertools import izip
 
+from misc import pairwise
+from mathOps import find_closest
 from bio import reverse_complement, translate_sequence
 from fileOps import iter_lines
 from intervals import ChromosomeInterval
@@ -125,80 +127,43 @@ class Transcript(object):
             assert new_start <= new_stop
         if new_start is not None:
             assert new_start >= self.start
+        else:
+            new_start = self.start
         if new_stop is not None:
             assert new_stop <= self.stop
+        else:
+            new_stop = self.stop
         rgb = self.rgb if rgb is None else rgb
         name = self.name if name is None else name
-        if new_start is None and new_stop is None:
-            block_starts = ",".join(map(str, self.block_starts))
-            block_sizes = ",".join(map(str, self.block_sizes))
-            return map(str, [self.chromosome, self.start, self.stop, name, self.score, self.strand,
-                             self.thick_start, self.thick_stop, rgb, self.block_count, block_sizes, block_starts])
-        elif new_start == new_stop:
-            return map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand,
-                             new_start, new_stop, rgb, 1, 0, 0])
 
-        def _move_start(exon_intervals, block_count, block_starts, block_sizes, start, new_start):
-            to_remove = len([x for x in exon_intervals if x.start <= new_start and x.stop <= new_start])
-            assert to_remove < len(exon_intervals)
-            if to_remove > 0:
-                block_count -= to_remove
-                block_sizes = block_sizes[to_remove:]
-                start += block_starts[to_remove]
-                new_block_starts = [0]
-                for i in xrange(to_remove, len(block_starts) - 1):
-                    new_block_starts.append(block_starts[i + 1] - block_starts[i] + new_block_starts[-1])
-                block_starts = new_block_starts
-            if new_start > start:
-                block_sizes[0] += start - new_start
-                block_starts[1:] = [x + start - new_start for x in block_starts[1:]]
-                start = new_start
-            return start, block_count, block_starts, block_sizes
+        if self.chromosome_coordinate_to_mrna(new_start) is None:
+            new_start = find_closest([x.start for x in self.exon_intervals], new_start)
+        if self.chromosome_coordinate_to_mrna(new_stop) is None:
+            new_stop = find_closest([x.stop for x in self.exon_intervals], new_stop)
 
-        def _move_stop(exon_intervals, block_count, block_starts, block_sizes, stop, start, new_stop):
-            to_remove = len([x for x in exon_intervals if x.stop >= new_stop and x.start >= new_stop])
-            assert to_remove < len(exon_intervals)
-            if to_remove > 0:
-                block_count -= to_remove
-                block_sizes = block_sizes[:-to_remove]
-                block_starts = block_starts[:-to_remove]
-                assert len(block_sizes) == len(block_starts)
-                if len(block_sizes) == 0:
-                    block_sizes = block_starts = [0]
-                    block_count = 1
-                stop = start + block_sizes[-1] + block_starts[-1]
-            if start + block_starts[-1] < new_stop < stop:
-                block_sizes[-1] = new_stop - start - block_starts[-1]
-                stop = new_stop
-            return stop, block_count, block_starts, block_sizes
+        # start slicing out intervals
+        new_interval = ChromosomeInterval(self.chromosome, new_start, new_stop, self.strand)
+        exon_intervals = []
+        for exon in self.exon_intervals:
+            new_exon = exon.intersection(new_interval)
+            if new_exon is None:
+                continue
+            exon_intervals.append(new_exon)
 
-        start = int(self.start)
-        stop = int(self.stop)
-        thick_start = int(self.thick_start)
-        thick_stop = int(self.thick_stop)
-        exon_intervals = self.exon_intervals
-        block_count = int(self.block_count)
-        block_starts = map(int, self.block_starts)
-        block_sizes = map(int, self.block_sizes)
-
-        if new_start is not None and new_start > self.start:
-            start, block_count, block_starts, block_sizes = _move_start(exon_intervals, block_count,
-                                                                        block_starts, block_sizes, start,
-                                                                        new_start)
-        if new_stop is not None and new_stop < self.stop:
-            stop, block_count, block_starts, block_sizes = _move_stop(exon_intervals, block_count,
-                                                                      block_starts, block_sizes, stop,
-                                                                      start, new_stop)
-        if start > thick_start:
-            thick_start = start
-        if stop < thick_stop:
-            thick_stop = stop
-        if (start > thick_stop and stop > thick_stop) or (start < thick_start and stop < thick_start):
+        # if new_start or new_stop were not within the exonic intervals, adjust them
+        if new_start != exon_intervals[0].start:
+            new_start = exon_intervals[0].start
+        if new_stop != exon_intervals[-1].stop:
+            new_stop = exon_intervals[-1].stop
+        thick_start = max(self.thick_start, new_start)
+        thick_stop = min(self.thick_stop, new_stop)
+        if thick_start >= self.thick_stop or thick_stop < self.thick_start:
             thick_start = 0
             thick_stop = 0
-        block_starts = ",".join(map(str, block_starts))
-        block_sizes = ",".join(map(str, block_sizes))
-        return map(str, [self.chromosome, start, stop, name, self.score, self.strand, thick_start, thick_stop,
+        block_count = len(exon_intervals)
+        block_sizes = ','.join(map(str, [len(x) for x in exon_intervals]))
+        block_starts = ','.join(map(str, [x.start - new_start for x in exon_intervals]))
+        return map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start, thick_stop,
                          rgb, block_count, block_sizes, block_starts])
 
     def chromosome_coordinate_to_mrna(self, coord):
@@ -335,6 +300,66 @@ class Transcript(object):
             return ''
         return translate_sequence(self.get_cds(seq_dict).upper())
 
+    def get_start_intervals(self):
+        """
+        Returns one or more ChromosomeInterval objects that represents the starting CDS interval for this transcript.
+        More than one may exist if the codon is split over a splice junction.
+
+        To do this I abuse the slicing functionality in get_bed()
+
+        While the first start_codon feature is by definition in-frame, subsequent features may not be.
+        """
+        start = self.cds_coordinate_to_chromosome(0)
+        stop = self.cds_coordinate_to_chromosome(3)
+        if self.strand == '-':
+            start, stop = stop + 1, start + 1
+        bed = self.get_bed(new_start=start, new_stop=stop)
+        start_obj = Transcript(bed)
+        i = 0
+        start_obj.exon_intervals[0].data = {'frame': i}
+        if len(start_obj.exon_intervals) == 1:
+            return start_obj.exon_intervals
+        else:
+            for prev_e, e in pairwise(start_obj.exon_intervals):
+                i += len(prev_e)
+                assert i <= 2
+                # convert from GFF style frames to Mark's exonFrames
+                if i == 2 and self.strand == '+':
+                    i = 1
+                e.data = {'frame': i}
+            return start_obj.exon_intervals
+
+    def get_stop_intervals(self):
+        """
+        Returns one or more ChromosomeInterval objects that represents the ending CDS interval for this transcript.
+        More than one may exist if the codon is split over a splice junction.
+
+        To do this I abuse the slicing functionality in get_bed()
+        """
+        if self.strand == '-':
+            stop = self.cds_coordinate_to_chromosome(self.cds_size - 4)
+            start = self.cds_coordinate_to_chromosome(self.cds_size - 1) + 1
+
+        start = self.cds_coordinate_to_chromosome(self.cds_size - 4) + 1
+        stop = self.cds_coordinate_to_chromosome(self.cds_size - 1) + 1
+        if self.strand == '-':
+            start, stop = stop, start
+        bed = self.get_bed(new_start=start, new_stop=stop)
+        start_obj = Transcript(bed)
+        i = 0
+        start_obj.exon_intervals[0].data = {'frame': i}
+        if len(start_obj.exon_intervals) == 1:
+            return start_obj.exon_intervals
+        else:
+            for prev_e, e in pairwise(start_obj.exon_intervals):
+                i += len(prev_e)
+                assert i <= 2
+                # convert from GFF style frames to Mark's exonFrames
+                if i == 2 and self.strand == '+':
+                    i = 1
+                e.data = {'frame': i}
+            return start_obj.exon_intervals
+
 
 class GenePredTranscript(Transcript):
     """
@@ -365,12 +390,12 @@ class GenePredTranscript(Transcript):
         block_ends = [int(x) for x in exon_ends.split(',') if x != '']
         block_sizes = ",".join(map(str, [e - s for e, s in izip(block_ends, block_starts)]))
         block_starts = ",".join(map(str, [x - int(start) for x in block_starts]))
-        bed_tokens = [chrom, start, stop, name, '0', strand, thick_start, thick_stop, '0', block_count, block_sizes,
-                      block_starts]
+        bed_tokens = [chrom, start, stop, name, self.score, strand, thick_start, thick_stop, '0', block_count,
+                      block_sizes, block_starts]
         super(GenePredTranscript, self).__init__(bed_tokens)
 
     def __repr__(self):
-        return 'GenePredTranscript({})'.format(self.get_bed())
+        return 'GenePredTranscript({})'.format(self.get_gene_pred())
 
     @property
     def offset(self):
@@ -384,6 +409,18 @@ class GenePredTranscript(Transcript):
         if offset == 3:
             offset = 0
         return offset
+
+    def _get_exon_intervals(self):
+        """
+        Overrides _get_exon_intervals to attach frame information to the intervals
+        :return: List of ChromosomeIntervals
+        """
+        exon_intervals = []
+        for block_size, block_start, frame in izip(*(self.block_sizes, self.block_starts, self.exon_frames)):
+            start = self.start + block_start
+            stop = self.start + block_start + block_size
+            exon_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand, data={'frame': frame}))
+        return exon_intervals
 
     def get_protein_sequence(self, seq_dict):
         """
@@ -410,36 +447,70 @@ class GenePredTranscript(Transcript):
             offset = self.offset
             return cds[offset:len(cds) - ((len(cds) - offset) % 3)]
 
-    def get_gene_pred(self, name=None, start_offset=None, stop_offset=None, name2=None, score=None):
+    def get_gene_pred(self, name=None, new_start=None, new_stop=None, name2=None, score=None):
         """
         Returns this transcript as a genePred transcript.
-        If start_offset or stop_offset are set (chromosome coordinates), then this record will be changed to only
-        show results within that region, which is defined in chromosome coordinates.
-        TODO: if the functionality to resize this is used, exon frame information will be incorrect.
+        If new_start or new_stop are set (chromosome coordinates), then this record will be changed to only
+        show results within that region, which is defined in chromosome coordinates. The frames field will be properly
+        adjusted, and the cds_start_stat/cds_end_stat fields will change to 'unk' if they are moved
         """
-        bed_rec = self.get_bed(name=name, new_start=start_offset, new_stop=stop_offset)
-        chrom = bed_rec[0]
-        start = int(bed_rec[1])
-        stop = int(bed_rec[2])
-        name = bed_rec[3]
-        strand = bed_rec[5]
-        thick_start = int(bed_rec[6])
-        thick_stop = int(bed_rec[7])
-        block_count = int(bed_rec[9])
-        block_sizes = map(int, bed_rec[10].split(","))
-        block_starts = map(int, bed_rec[11].split(","))
-        # convert BED fields to genePred fields
-        exon_starts = [start + x for x in block_starts]
-        exon_ends = [x + y for x, y in zip(*[exon_starts, block_sizes])]
-        exon_starts = ",".join(map(str, exon_starts))
-        exon_ends = ",".join(map(str, exon_ends))
-        exon_frames = ",".join(map(str, self.exon_frames))
-        # change names if desired
+        if new_start is not None and new_stop is not None:
+            assert new_start <= new_stop
+        if new_start is not None:
+            assert new_start >= self.start
+        else:
+            new_start = self.start
+        if new_stop is not None:
+            assert new_stop <= self.stop
+        else:
+            new_stop = self.stop
+        name = self.name if name is None else name
         name2 = self.name2 if name2 is None else name2
         score = self.score if score is None else score
-        return map(str, [name, chrom, strand, start, stop, thick_start, thick_stop, block_count,
-                         exon_starts, exon_ends, score, name2, self.cds_start_stat, self.cds_end_stat,
-                         exon_frames])
+
+        # start slicing out intervals, adjusting the frames
+        new_interval = ChromosomeInterval(self.chromosome, new_start, new_stop, self.strand)
+        exon_intervals = []
+        exon_frames = []
+        exon_iter = self.exon_intervals if self.strand == '+' else self.exon_intervals[::-1]
+        frame_iter = self.exon_frames if self.strand == '+' else reversed(self.exon_frames)
+        starting_frame = [f for f in frame_iter if f != -1][0]
+        cds_counter = 0  # keep track of total CDS bases encountered
+        cds_flag = False
+        for exon in exon_iter:
+            new_exon = exon.intersection(new_interval)
+            if new_exon is None:
+                continue
+            exon_intervals.append(new_exon)
+            coding_exon = exon.intersection(self.coding_interval)
+            if coding_exon is None:
+                exon_frames.append(-1)
+            elif cds_flag is False:
+                cds_flag = True
+                exon_frames.append(starting_frame)
+                cds_counter += len(coding_exon) + starting_frame
+            else:
+                exon_frames.append(cds_counter % 3)
+                cds_counter += len(coding_exon)
+
+        if self.strand == '-':
+            exon_intervals = exon_intervals[::-1]
+            exon_frames = exon_frames[::-1]
+
+        if new_start != exon_intervals[0].start:
+            new_start = exon_intervals[0].start
+        if new_stop != exon_intervals[-1].stop:
+            new_stop = exon_intervals[-1].stop
+        thick_start = max(self.thick_start, new_start)
+        thick_stop = min(self.thick_stop, new_stop)
+        cds_start_stat = 'unk' if thick_start != self.thick_start else self.cds_start_stat
+        cds_end_stat = 'unk' if thick_stop != self.thick_stop else self.cds_end_stat
+        exon_count = len(exon_intervals)
+        exon_starts = ','.join(map(str, [exon.start for exon in exon_intervals]))
+        exon_ends = ','.join(map(str, [exon.stop for exon in exon_intervals]))
+        exon_frames = ','.join(map(str, exon_frames))
+        return map(str, [name, self.chromosome, self.strand, new_start, new_stop, thick_start, thick_stop, exon_count,
+                         exon_starts, exon_ends, score, name2, cds_start_stat, cds_end_stat, exon_frames])
 
 
 def get_gene_pred_dict(gp_file):
@@ -496,17 +567,3 @@ def load_gps(gp_list):
                 raise RuntimeError('Attempted to add duplicate GenePredTranscript object with name {}'.format(t.name))
             r[t.name] = t
     return r
-
-
-def get_start_interval(tx):
-    if tx.strand == '+':
-        return tx.thick_start, tx.thick_start + 3
-    else:
-        return tx.thick_stop - 3, tx.thick_stop
-
-
-def get_stop_interval(tx):
-    if tx.strand == '-':
-        return tx.thick_start, tx.thick_start + 3
-    else:
-        return tx.thick_stop - 3, tx.thick_stop
