@@ -1,6 +1,7 @@
 """
 Miscellaneous tools for the pipeline. Some may eventually be refactored into their own modules.
 """
+import re
 import itertools
 import argparse
 import pysam
@@ -87,3 +88,11 @@ def sort_gff(input_file, output_file):
     """Sorts a GFF format file by column 1 (chromosome) then column 4(start integer)"""
     cmd = [['sort', '-n', '-k4,4', input_file], ['sort', '-s', '-n', '-k5,5'], ['sort', '-s', '-k1,1']]
     procOps.run_proc(cmd, stdout=output_file)
+
+
+def parse_gtf_attr_line(attr_line):
+    """parse a GTF attributes line"""
+    attr_line = [x.split(' ') for x in re.split('; +', attr_line.replace('"', ''))]
+    attr_line[-1][-1] = attr_line[-1][-1].rstrip().replace(';', '')
+    attrs = dict(attr_line)
+    return attrs

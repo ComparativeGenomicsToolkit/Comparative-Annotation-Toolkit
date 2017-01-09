@@ -25,6 +25,7 @@ import os
 import collections
 import pandas as pd
 import tools.fileOps
+import tools.misc
 import tools.procOps
 import tools.nameConversions
 import tools.transcripts
@@ -175,14 +176,6 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     return hints
 
 
-def parse_gtf_attr_line(attr_line):
-    """parse a GTF attributes line"""
-    attr_line = [x.split(' ') for x in attr_line.replace('"', '').split('; ')]
-    attr_line[-1][-1] = attr_line[-1][-1].replace(';', '')
-    attrs = dict(attr_line)
-    return attrs
-
-
 def parse_hgm_gtf(hgm_out, genome):
     """
     parses the hgm output gtfs and creates for each transcript a string with the intron support counts
@@ -239,7 +232,7 @@ def parse_hgm_gtf(hgm_out, genome):
     d = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list)))
     for mode, group in zip(*[['intron', 'cds', 'exon'], [intron_lines, cds_lines, exon_lines]]):
         for attr_line in group:
-            attributes = parse_gtf_attr_line(attr_line)
+            attributes = tools.misc(attr_line)
             d[attributes['gene_id']][attributes['transcript_id']][mode].append(attributes['hgm_info'])
 
     # convert to dataframe, switching the list to a comma separated string
