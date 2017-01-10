@@ -176,7 +176,11 @@ def join_genes(job, genome, input_file_ids, gff_chunks):
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
-           ['sed', ' s/jg/augCGP-/g']]
+           ['sed', ' s/jg/augCGP-/g'],
+           ['sort', '-n', '-k4,4'],
+           ['sort', '-s', '-n', '-k5,5'],
+           ['sort', '-s', '-k3,3'],
+           ['sort', '-s', '-k1,1']]
     tools.procOps.run_proc(cmd, stdout=join_genes_file)
     joined_file_id = job.fileStore.writeGlobalFile(join_genes_file)
     raw_gtf_file_id = job.fileStore.writeGlobalFile(raw_gtf_file)

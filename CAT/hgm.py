@@ -215,8 +215,12 @@ def parse_hgm_gtf(hgm_out, genome):
     cds_lines = []
     exon_lines = []
     species_map = {}
+    seen_lines = set()  # filter out duplicate lines. Happens in CGP/PB.
     with open(hgm_out) as infile:
         for line in infile:
+            if line in seen_lines:
+                continue
+            seen_lines.add(line)
             if line.startswith('#') and line != '###\n':
                 _, species_id, species = line.split()
                 species_map[species] = species_id
@@ -232,7 +236,7 @@ def parse_hgm_gtf(hgm_out, genome):
     d = collections.defaultdict(lambda: collections.defaultdict(lambda: collections.defaultdict(list)))
     for mode, group in zip(*[['intron', 'cds', 'exon'], [intron_lines, cds_lines, exon_lines]]):
         for attr_line in group:
-            attributes = tools.misc(attr_line)
+            attributes = tools.misc.parse_gtf_attr_line(attr_line)
             d[attributes['gene_id']][attributes['transcript_id']][mode].append(attributes['hgm_info'])
 
     # convert to dataframe, switching the list to a comma separated string
@@ -242,7 +246,10 @@ def parse_hgm_gtf(hgm_out, genome):
             intron_info = d[gene_id][aln_id]['intron']
             cds_info = d[gene_id][aln_id]['cds']
             exon_info = d[gene_id][aln_id]['exon']
-            tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+            if tools.nameConversions.aln_id_is_denovo(aln_id):
+                tx_id = aln_id
+            else:
+                tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
             all_species_vectors = calculate_all_species(intron_info, exon_info)
             in_species_vectors = calculate_in_species(intron_info, exon_info, species_id)
             annot_support_vectors = calculate_annot_support(intron_info, cds_info, exon_info)
