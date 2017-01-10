@@ -456,7 +456,7 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             d['exon_rna_support'] = ','.join(map(str, s.ExonRnaSupport))
             d['intron_rna_support'] = ','.join(map(str, s.IntronRnaSupport))
             d['exon_annotation_support'] = ','.join(map(str, s.ExonAnnotSupport))
-            d['cds_annotation_support'] = ','.join(map(str, s.CdsAnnotSupport))
+            #d['cds_annotation_support'] = ','.join(map(str, s.CdsAnnotSupport))
             d['intron_annotation_support'] = ','.join(map(str, s.IntronAnnotSupport))
             metrics['Splice Support']['unknown_likely_coding'].append(s.IntronRnaSupportPercent)
             metrics['Exon Support']['unknown_likely_coding'].append(s.ExonRnaSupportPercent)
@@ -517,8 +517,8 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
          'transcript_class': best_series.TranscriptClass,
          'transcript_biotype': best_series.TranscriptBiotype,
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
-         'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport)),
-         'cds_annotation_support': ','.join(map(str, best_series.CdsAnnotSupport))}
+         'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport))}#,
+         #'cds_annotation_support': ','.join(map(str, best_series.CdsAnnotSupport))}
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
@@ -617,8 +617,8 @@ def find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id, co
                                   'exon_rna_support': ','.join(map(str, s.ExonRnaSupport)),
                                   'transcript_modes': tx_mode,
                                   'exon_annotation_support': ','.join(map(str, s.ExonAnnotSupport)),
-                                  'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport)),
-                                  'cds_annotation_support': ','.join(map(str, s.CdsAnnotSupport))}
+                                  'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport))}#,
+                                  #'cds_annotation_support': ','.join(map(str, s.CdsAnnotSupport))}
         common_name = common_name_map[gene_id]
         if common_name != gene_id:
             denovo_tx_dict[aln_id]['source_gene_common_name'] = common_name
@@ -832,7 +832,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             yield [chrom, 'CAT', 'exon', exon.start + 1, exon.stop, score, exon.strand, '.', attrs_field]
             cds_interval = exon.intersection(gtf_coding_interval)
             if cds_interval is not None:
-                attrs['reference_support'] = find_feature_support(attrs, 'cds_annotation_support', cds_i)
+                #attrs['reference_support'] = find_feature_support(attrs, 'cds_annotation_support', cds_i)
                 score, attrs_field = convert_attrs(attrs, 'CDS:{}:{}'.format(tx_id, cds_i))
                 cds_i += 1
                 yield [chrom, 'CAT', 'CDS', cds_interval.start + 1, cds_interval.stop, score, exon.strand,
@@ -842,7 +842,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         for i, intron in enumerate(tx_obj.intron_intervals):
             attrs['rna_support'] = find_feature_support(attrs, 'intron_rna_support', i)
             attrs['reference_support'] = find_feature_support(attrs, 'intron_annotation_support', i)
-            score, attrs_field = convert_attrs(attrs, 'exon:{}:{}'.format(tx_id, i))
+            score, attrs_field = convert_attrs(attrs, 'intron:{}:{}'.format(tx_id, i))
             yield [chrom, 'CAT', 'intron', intron.start + 1, intron.stop, score, intron.strand, '.', attrs_field]
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
