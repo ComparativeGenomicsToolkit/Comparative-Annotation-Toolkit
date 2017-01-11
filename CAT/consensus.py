@@ -433,7 +433,8 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             # validate the support level
             if is_supported(s, tx) is False:
                 metrics['discarded'][tx_mode]['Discarded'] += 1
-            d = {'gene_biotype': 'unknown_likely_coding', 'transcript_biotype': 'unknown_likely_coding'}
+            d = {'gene_biotype': 'unknown_likely_coding', 'transcript_biotype': 'unknown_likely_coding',
+                 'alignment_id': aln_id}
             # if we have alternatives, this is not novel but could be a gene family expansion
             if is_possible_paralog(s):
                 d['transcript_class'] = 'possible_paralog'
@@ -516,7 +517,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
          'gene_biotype': best_series.GeneBiotype,
          'transcript_class': best_series.TranscriptClass,
          'transcript_biotype': best_series.TranscriptBiotype,
-         'alignment_id': best_series.AlignmentId,
+         'alignment_id': str(best_series.AlignmentId),
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
          'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport))}#,
          #'cds_annotation_support': ','.join(map(str, best_series.CdsAnnotSupport))}
@@ -620,7 +621,8 @@ def find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id, co
                                   'exon_rna_support': ','.join(map(str, s.ExonRnaSupport)),
                                   'transcript_modes': tx_mode,
                                   'exon_annotation_support': ','.join(map(str, s.ExonAnnotSupport)),
-                                  'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport))}#,
+                                  'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport)),
+                                  'alignment_id': aln_id}#,
                                   #'cds_annotation_support': ','.join(map(str, s.CdsAnnotSupport))}
         common_name = common_name_map[gene_id]
         if common_name != gene_id:
