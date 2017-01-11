@@ -220,7 +220,7 @@ class ChromosomeInterval(object):
 
 def gap_merge_intervals(intervals, gap):
     """
-    Merge gaps between a iterable of ChromosomeIntervals.
+    Merge gaps between a iterable of ChromosomeIntervals. Will fail if they are not on the same chromosome.
     :param intervals: Iterable of ChromosomeIntervals
     :param gap: integer value of gap size to merge.
     :return: List of new ChromosomeIntervals.

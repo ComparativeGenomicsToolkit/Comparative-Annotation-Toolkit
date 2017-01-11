@@ -516,6 +516,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
          'gene_biotype': best_series.GeneBiotype,
          'transcript_class': best_series.TranscriptClass,
          'transcript_biotype': best_series.TranscriptBiotype,
+         'alignment_id': best_series.AlignmentId,
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
          'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport))}#,
          #'cds_annotation_support': ','.join(map(str, best_series.CdsAnnotSupport))}
@@ -526,10 +527,12 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
         assert best_series.ParalogStatus is not None
         d['paralogy'] = best_series.Paralogy
         d['paralog_status'] = best_series.ParalogStatus
-    if 'GeneAlternateContigs' in best_series and best_series.GeneAlternateContigs is not None:
-        d['gene_alterate_contigs'] = best_series.GeneAlternateContigs
+    if best_series.GeneAlternateContigs is not None:
+        d['gene_alternate_contigs'] = best_series.GeneAlternateContigs
     if best_series.GeneName is not None:
         d['source_gene_common_name'] = best_series.GeneName
+    if best_series.SplitGene is True:
+        d['split_gene'] = True
 
     # add information to the overall metrics
     if best_series.TranscriptBiotype == 'protein_coding':
@@ -742,8 +745,9 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
     gene_count = 0
     tx_count = 1
     consensus_gene_dict = DefaultOrderedDict(lambda: DefaultOrderedDict(list))  # used to make gff3 next
+    # if the --resolve-split-genes flag is not set, we may have the same parent on multiple chromosomes
     gp_infos = []
-    genes_seen = set()
+    genes_seen = collections.defaultdict(set)
     consensus_gp = luigi.LocalTarget(consensus_gp)
     with consensus_gp.open('w') as out_gp:
         for tx, attrs in final_consensus:
@@ -753,7 +757,7 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
             tx_count += 1
             source_gene = attrs.get('source_gene', tx_obj.name2)
             if source_gene not in genes_seen:
-                genes_seen.add(source_gene)
+                genes_seen[tx_obj.chromosome].add(source_gene)
                 gene_count += 1
             tx_obj.name2 = id_template.format(genome=genome, tag_type='G', unique_id=gene_count)
             out_gp.write('\t'.join(tx_obj.get_gene_pred()) + '\n')
@@ -793,17 +797,25 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         vals = map(bool, attrs[feature].split(','))
         return vals[i]
 
-    def generate_gene_record(chrom, tx_objs, gene_id, attrs):
+    def generate_gene_record(chrom, tx_objs, gene_id, attrs_list):
         """calculates the gene interval for this list of tx"""
+        def find_all_tx_modes(attrs_list):
+            tx_modes = set()
+            for attrs in attrs_list:
+                tx_modes.update(attrs['transcript_modes'].split(','))
+            return ','.join(tx_modes)
+        
         intervals = set()
         for tx in tx_objs:
             intervals.update(tx.exon_intervals)
         intervals = sorted(intervals)
         strand = tx_objs[0].strand
         # subset the attrs to gene fields
-        useful_keys = ['source_gene_common_name', 'source_gene', 'gene_biotype', 'failed_gene', 'transcript_modes',
-                       'alternative_source_transcripts', 'paralog_status', 'gene_alterate_contigs']
+        attrs = attrs_list[0]
+        useful_keys = ['source_gene_common_name', 'source_gene', 'gene_biotype', 'failed_gene',
+                       'alternative_source_transcripts', 'paralog_status', 'gene_alternate_contigs', 'split_gene']
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
+        attrs['transcript_modes'] = find_all_tx_modes(attrs_list)
         score, attrs_field = convert_attrs(attrs, gene_id)
         return [chrom, 'CAT', 'gene', intervals[0].start + 1, intervals[-1].stop, score, strand, '.', attrs_field]
 
@@ -840,6 +852,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
 
         # intron records
         for i, intron in enumerate(tx_obj.intron_intervals):
+            if len(intron) == 0:
+                continue
             attrs['rna_support'] = find_feature_support(attrs, 'intron_rna_support', i)
             attrs['reference_support'] = find_feature_support(attrs, 'intron_annotation_support', i)
             score, attrs_field = convert_attrs(attrs, 'intron:{}:{}'.format(tx_id, i))
@@ -865,9 +879,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         for chrom in sorted(consensus_gene_dict):
             for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
                 tx_objs, attrs_list = zip(*tx_list)
-                attrs = tx_list[0][1]  # grab the attrs from the first transcript
-                tools.fileOps.print_row(out_gff3, generate_gene_record(chrom, tx_objs, gene_id, attrs))
-                tx_lines = []
+                tx_lines = [generate_gene_record(chrom, tx_objs, gene_id, attrs_list)]
                 for tx_obj, attrs in tx_list:
                     tx_lines.extend(list(generate_transcript_record(chrom, tx_obj, attrs)))
                 tx_lines = sorted(tx_lines, key=lambda l: l[3])

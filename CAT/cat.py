@@ -1905,8 +1905,7 @@ class Plots(PipelineTask):
         if 'augPB' in pipeline_args.modes:
             args.pb_support = luigi.LocalTarget(os.path.join(base_dir, 'IsoSeq_isoform_validation.pdf'))
             args.pb_genomes = pipeline_args.isoseq_genomes
-        if pipeline_args.resolve_split_genes is True:
-            args.split_genes = luigi.LocalTarget(os.path.join(base_dir, 'split_genes.pdf'))
+        args.split_genes = luigi.LocalTarget(os.path.join(base_dir, 'split_genes.pdf'))
         # input data
         args.metrics_jsons = OrderedDict([[genome, Consensus.get_args(pipeline_args, genome).metrics_json]
                                           for genome in ordered_genomes])

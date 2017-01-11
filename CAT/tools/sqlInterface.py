@@ -94,6 +94,7 @@ class TmFilterEval(MetricsColumns, Base):
     TranscriptClass = Column(Text)
     ParalogStatus = Column(Text)
     GeneAlternateContigs = Column(Text)
+    SplitGene = Column(Text)
 
 
 class TmFit(Base):
