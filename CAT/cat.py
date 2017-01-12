@@ -121,9 +121,9 @@ class PipelineTask(luigi.Task):
     resolve_split_genes = luigi.BoolParameter(default=False, significant=False)
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
-    intron_annot_support = luigi.IntParameter(default=80, significant=False)
-    exon_annot_support = luigi.IntParameter(default=80, significant=False)
-    original_intron_support = luigi.IntParameter(default=80, significant=False)
+    intron_annot_support = luigi.IntParameter(default=0, significant=False)
+    exon_annot_support = luigi.IntParameter(default=0, significant=False)
+    original_intron_support = luigi.IntParameter(default=0, significant=False)
     denovo_num_introns = luigi.IntParameter(default=0, significant=False)
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
@@ -1667,8 +1667,7 @@ class AlignTranscriptDriverTask(ToilTask):
     Task for per-genome launching of a toil pipeline for aligning all transcripts found back to the reference in
     transcript space using BLAT.
 
-    Each task returns a PSL of all alignments that will be analyzed next by EvaluateTranscripts. For CGP transcripts,
-    there may be more than one alignment.
+    Each task returns a PSL of all alignments that will be analyzed next by EvaluateTranscripts.
     """
     genome = luigi.Parameter()
 
@@ -1785,7 +1784,7 @@ class Consensus(PipelineWrapperTask):
             outputs = luigi.task.flatten(self.output())
             for out in outputs:
                 if out.exists():
-                    os.remove(self.output().path)
+                    out.remove()
 
     @staticmethod
     def get_args(pipeline_args, genome):

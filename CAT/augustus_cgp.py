@@ -178,10 +178,8 @@ def join_genes(job, genome, input_file_ids, gff_chunks):
     # it also performs filtering for weird non-transcripts
     cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
-           ['sed', ' s/jg/augCGP-/g'],
-           ['gtfToGenePred', '-genePredExt', '/dev/stdin', '/dev/stdout'],
-           ['genePredToGtf', '-utr', '-honorCdsStat', 'file', '/dev/stdin', join_genes_file]]
-    tools.procOps.run_proc(cmd)
+           ['sed', ' s/jg/augCGP-/g']]
+    tools.procOps.run_proc(cmd, stdout=join_genes_file)
     joined_file_id = job.fileStore.writeGlobalFile(join_genes_file)
     raw_gtf_file_id = job.fileStore.writeGlobalFile(raw_gtf_file)
     j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,

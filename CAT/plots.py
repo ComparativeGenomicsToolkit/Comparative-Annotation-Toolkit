@@ -368,7 +368,7 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
 
 
 def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
-    with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf, sns.axes_style("darkgrid"):
         for genome in ordered_genomes:
             data = pd.DataFrame(consensus_data[genome]['Evaluation Improvement']['changes'])
             unchanged = consensus_data[genome]['Evaluation Improvement']['unchanged']
@@ -387,7 +387,9 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                         color=sns.color_palette()[2], marker='+', scatter_kws={"s": 5})
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}. '
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
-            multipage_close(pdf, tight_layout=False)
+            for ax in fig.axes:
+                ax.set(adjustable='box-forced', aspect='equal')
+            multipage_close(pdf, tight_layout=True)
 
 
 ###
