@@ -196,10 +196,11 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
         for biotype in biotypes:
             this_title = title.format(biotype)
             biotype_df = biotype_filter(df, biotype)
-            g = sns.factorplot(data=biotype_df, y='value', x='genome', col='variable', col_wrap=2, kind='violin',
-                               sharex=True, sharey=True, row_order=ordered_genomes, cut=0)
-            adjust_plot(g, this_title)
-            multipage_close(pdf, tight_layout=False)
+            if biotype_df is not None:
+                g = sns.factorplot(data=biotype_df, y='value', x='genome', col='variable', col_wrap=2, kind='violin',
+                                   sharex=True, sharey=True, row_order=ordered_genomes, cut=0)
+                adjust_plot(g, this_title)
+                multipage_close(pdf, tight_layout=False)
 
 
 def tm_para_plot(para_data, ordered_genomes, biotypes, transcript_biotype_map, para_tgt):
