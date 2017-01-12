@@ -723,6 +723,7 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
     hgm_df_subset = hgm_df_subset[['TranscriptId', 'IntronAnnotSupportPercent', 'IntronRnaSupportPercent']]
     tm_df = pd.merge(tm_df, hgm_df_subset, on='TranscriptId')
     df = pd.merge(tm_df, scored_df.reset_index(), on='TranscriptId', suffixes=['TransMap', ''])
+    df = df.drop_duplicates(subset='AlignmentId')  # why do I need to do this?
     df = df.set_index('AlignmentId')
     metrics['Evaluation Improvement'] = {'changes': [], 'unchanged': 0}
     for aln_id, c in final_consensus:
@@ -879,6 +880,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     with consensus_gff3.open('w') as out_gff3:
         out_gff3.write('##gff-version 3\n')
         for chrom in sorted(consensus_gene_dict):
+            out_gff3.write('###sequence-region {}'.format(chrom))
             for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
                 tx_objs, attrs_list = zip(*tx_list)
                 tx_lines = [generate_gene_record(chrom, tx_objs, gene_id, attrs_list)]

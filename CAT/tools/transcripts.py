@@ -120,8 +120,12 @@ class Transcript(object):
         Using the get_bed() functionality to achieve this.
         """
         if self.strand == '+':
-            bed = self.get_bed(new_stop=self.cds_coordinate_to_chromosome(self.cds_size - 3),
-                               new_start=self.thick_start)
+            # special case -- we have a 3bp transcript with a complete start marking. Then, start codon == stop codon
+            if self.cds_size == 3:
+                bed = self.get_bed(new_stop=self.cds_coordinate_to_chromosome(3), new_start=self.thick_start)
+            else:
+                bed = self.get_bed(new_stop=self.cds_coordinate_to_chromosome(self.cds_size - 3),
+                                   new_start=self.thick_start)
         else:
             bed = self.get_bed(new_start=self.cds_coordinate_to_chromosome(self.cds_size - 3),
                                new_stop=self.thick_stop)

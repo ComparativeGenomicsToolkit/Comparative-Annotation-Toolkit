@@ -386,7 +386,7 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                         color=sns.color_palette()[2], marker='+', scatter_kws={"s": 5})
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}. '
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
-            multipage_close(pdf, tight_layout=True)
+            multipage_close(pdf, tight_layout=False)
 
 
 ###
