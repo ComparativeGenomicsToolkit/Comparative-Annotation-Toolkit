@@ -145,6 +145,7 @@ def generate_consensus(args):
             aln_id, d = rescue_failed_gene(gene_df, gene_id, metrics, args.hints_db_has_rnaseq)
             gene_consensus_dict[aln_id] = d
             metrics['Gene Failed'][gene_biotype] += 1
+            metrics['Transcript Failed'][gene_biotype] += 1
         else:  # begin consensus finding for each transcript
             for tx_id in tx_list:
                 tx_biotype = transcript_biotype_map[tx_id]

@@ -64,17 +64,17 @@ def filter_transmap(filter_tm_args, out_target):
 
 def fit_distributions(aln_eval_df, ref_df, genome):
     """
-    Fits a normal distribution to the -log(1 - identity) where identity != 1. Uses the MLE estimate to determine
+    Fits a normal distribution to the -log(100 - identity) where identity != 100. Uses the MLE estimate to determine
     a cutoff of identity specific to this genetic distance.
     """
     def transform_data(idents):
-        """transforms identity data to -log(1 - ident) where ident != 1"""
-        return -np.log(1 - idents[idents != 1])
+        """transforms identity data to -log(100 - ident) where ident != 100"""
+        return -np.log(100 - idents[idents != 100])
 
     def find_cutoff(biotype_unique, num_sigma=1):
         """Locates the MLE identity cutoff"""
         unique_mu, unique_sigma = norm.fit(transform_data(biotype_unique.TransMapIdentity))
-        return 1 - np.exp(-(unique_mu - (num_sigma * unique_sigma)))
+        return 100 - np.exp(-(unique_mu - (num_sigma * unique_sigma)))
 
     biotype_df = pd.merge(aln_eval_df, ref_df, on='TranscriptId')
     r = []  # will hold the labels
