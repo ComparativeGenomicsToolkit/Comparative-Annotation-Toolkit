@@ -289,7 +289,7 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
         ylabel = 'Number of transcripts'
         box_label = 'Transcript mode'
         generic_stacked_barplot(df, pdf, title_string, df.index, ylabel, ordered_genomes, box_label,
-                                bbox_to_anchor=(1.15, 0.7))
+                                bbox_to_anchor=(1.25, 0.7))
 
 
 def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):

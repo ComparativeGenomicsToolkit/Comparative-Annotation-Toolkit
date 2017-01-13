@@ -412,9 +412,9 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
     """
     def is_supported(s, tx):
         """validate support levels for this putative novel transcript"""
-        return s.IntronRnaSupportPercent >= denovo_splice_support and \
-               s.ExonRnaSupportPercent >= denovo_exon_support and \
-               len(tx.intron_intervals) >= denovo_num_introns
+        return bool(s.IntronRnaSupportPercent >= denovo_splice_support and
+                    s.ExonRnaSupportPercent >= denovo_exon_support and
+                    len(tx.intron_intervals) >= denovo_num_introns)
 
     def is_possible_paralog(s):
         """if we have alternative gene IDs this is a possible paralog"""
@@ -422,7 +422,9 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
 
     def is_poor_alignment(s):
         """If we have no alternative GeneIds, but we have annotation support, this may be a poorly mapped gene"""
-        return s.ExonAnnotSupportPercent == 0 and s.CdsAnnotSupportPercent == 0 and s.IntronAnnotSupportPercent == 0
+        return bool(s.ExonAnnotSupportPercent == 0 and
+                    s.CdsAnnotSupportPercent == 0 and
+                    s.IntronAnnotSupportPercent == 0)
 
     # novel loci will have None in the AssignedGeneId field but may be non-None in the AlternativeGeneIds field
     for aln_id, df in denovo_df.groupby('AlignmentId'):
@@ -433,7 +435,8 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             tx_mode = tools.nameConversions.alignment_type(aln_id)
             # validate the support level
             if is_supported(s, tx) is False:
-                metrics['discarded'][tx_mode]['Discarded'] += 1
+                metrics['denovo'][tx_mode]['Discarded'] += 1
+                continue
             d = {'gene_biotype': 'unknown_likely_coding', 'transcript_biotype': 'unknown_likely_coding',
                  'alignment_id': aln_id}
             # if we have alternatives, this is not novel but could be a gene family expansion

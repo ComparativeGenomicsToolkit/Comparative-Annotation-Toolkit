@@ -182,6 +182,4 @@ def merge_parent_assignment_chunks(job, final_gps, mode):
     combined_alternatives = pd.DataFrame(combined_alternatives)
     combined_alternatives.columns = ['TranscriptId', 'AssignedGeneId', 'AlternativeGeneIds']
     combined_alternatives = combined_alternatives.set_index('TranscriptId')
-    sorted_out_gff = fileOps.get_tmp_toil_file()
-    misc.sort_gff(out_gff, sorted_out_gff)
-    return job.fileStore.writeGlobalFile(sorted_out_gff), combined_alternatives, fail_count
+    return job.fileStore.writeGlobalFile(out_gff), combined_alternatives, fail_count
