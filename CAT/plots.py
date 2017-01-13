@@ -300,10 +300,10 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
         has_pb = len(set(df['Augustus mode'])) == 2
         if has_pb is True:
             ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
-                                hue='Augustus mode', col_wrap=2, row_order=ordered_genomes, sharex=True)
+                                hue='Augustus mode', col_wrap=2, row_order=ordered_genomes, sharex=True, sharey=False)
         else:
             ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result', col_wrap=2,
-                                row_order=ordered_genomes, sharex=True)
+                                row_order=ordered_genomes, sharex=True, sharey=False)
         ax.set_xticklabels(rotation=60)
         ax.fig.suptitle('Incorporation of de-novo predictions')
         ax.fig.subplots_adjust(top=0.9)

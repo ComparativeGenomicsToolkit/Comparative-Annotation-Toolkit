@@ -763,7 +763,7 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
             tx_obj.score = attrs.get('score', 0)
             tx_count += 1
             source_gene = attrs.get('source_gene', tx_obj.name2)
-            if source_gene not in genes_seen:
+            if source_gene not in genes_seen[tx_obj.chromosome]:
                 genes_seen[tx_obj.chromosome].add(source_gene)
                 gene_count += 1
             tx_obj.name2 = id_template.format(genome=genome, tag_type='G', unique_id=gene_count)
@@ -777,7 +777,7 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
     gp_info_df = gp_info_df.set_index(['gene_id', 'transcript_id'])
     consensus_gp_info = luigi.LocalTarget(consensus_gp_info)
     with consensus_gp_info.open('w') as outf:
-        gp_info_df.to_csv(outf, sep='\t')
+        gp_info_df.to_csv(outf, sep='\t', na_rep='None')
     return consensus_gene_dict
 
 
@@ -835,8 +835,9 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop, score, tx_obj.strand, '.', attrs_field]
         for line in generate_intron_exon_records(chrom, tx_obj, tx_id, attrs):
             yield line
-        for line in generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
-            yield line
+        if tx_obj.cds_size > 3:
+            for line in generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
+                yield line
 
     def generate_intron_exon_records(chrom, tx_obj, tx_id, attrs):
         """generates intron and exon records"""

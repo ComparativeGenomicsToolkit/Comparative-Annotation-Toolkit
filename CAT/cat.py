@@ -1776,16 +1776,6 @@ class Consensus(PipelineWrapperTask):
     """
     Construct the consensus gene sets making use of the classification databases.
     """
-    def __init__(self, *args, **kwargs):
-        """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
-        super(PipelineWrapperTask, self).__init__(*args, **kwargs)
-        # To force execution, we just remove all outputs before `complete()` is called
-        if self.rebuild_consensus is True:
-            outputs = luigi.task.flatten(self.output())
-            for out in outputs:
-                if out.exists():
-                    out.remove()
-
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
@@ -1848,6 +1838,16 @@ class ConsensusDriverTask(PipelineTask):
     """
     genome = luigi.Parameter()
 
+    def __init__(self, *args, **kwargs):
+        """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
+        super(PipelineTask, self).__init__(*args, **kwargs)
+        # To force execution, we just remove all outputs before `complete()` is called
+        if self.rebuild_consensus is True:
+            outputs = luigi.task.flatten(self.output())
+            for out in outputs:
+                if out.exists():
+                    out.remove()
+
     def output(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         yield luigi.LocalTarget(consensus_args.consensus_gp)
@@ -1874,6 +1874,16 @@ class Plots(PipelineTask):
     """
     Produce final analysis plots
     """
+    def __init__(self, *args, **kwargs):
+        """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
+        super(PipelineTask, self).__init__(*args, **kwargs)
+        # To force execution, we just remove all outputs before `complete()` is called
+        if self.rebuild_consensus is True:
+            outputs = luigi.task.flatten(self.output())
+            for out in outputs:
+                if out.exists():
+                    out.remove()
+
     @staticmethod
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
