@@ -160,12 +160,11 @@ def generate_consensus(args):
                     gene_consensus_dict[aln_id] = d
         if len(args.denovo_tx_modes) > 0:
             denovo_gene_df = slice_df(denovo_df, gene_id)
-            if len(denovo_gene_df) == 0:
-                continue
-            denovo_gene_df = denovo_gene_df.set_index('AlignmentId')
-            gene_consensus_dict.update(find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id,
-                                                          common_name_map, metrics, failed_gene, gene_biotype,
-                                                          args.denovo_num_introns))
+            if len(denovo_gene_df) != 0:
+                denovo_gene_df = denovo_gene_df.set_index('AlignmentId')
+                gene_consensus_dict.update(find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id,
+                                                              common_name_map, metrics, failed_gene, gene_biotype,
+                                                              args.denovo_num_introns))
         consensus_dict.update(gene_consensus_dict)
 
     # perform final filtering steps
@@ -301,11 +300,18 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
     :param intron_annot_support: Value 0-100. Percent of introns supported by the reference.
     :param exon_annot_support: Value 0-100. Percent of exons supported by the reference.
     :param original_intron_support: Value 0-100. Percent of introns that must be supported by this specific annotation.
-    :param coding_cutoff: Lognormal fit derived cutoff for coding transcripts. Used to filter TM/TMR alignments.
+    :param coding_cutoff: Lognormal fit derived cutoff for coding transcripts. Used to reclassify TM/TMR alignments as
+                            not failing.
     :param minimum_coverage: Minimum alignment coverage to be considered.
     :param in_species_rna_support_only: Should we use the homGeneMapping vectors within-species or all-species?
     :return: filtered and merged dataframe
     """
+    def evaluate_tm_tmr_class(s):
+        """Reclassify a transcript as passing if it is above coding cutoff"""
+        if tools.nameConversions.aln_id_is_transmap(s.AlignmentId):
+            return 'passing' if s.AlnIdentity >= coding_cutoff else 'failing'
+        return s.TranscriptClass
+
     # remove the start/stop codon information from the ref_df because we don't currently use it and it makes life hard
     ref_df = ref_df.drop(['StartCodon', 'StopCodon'], axis=1)
     # add the reference information to gain biotype information
@@ -317,19 +323,21 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
     # add metrics information to coding df
     coding_df = pd.merge(coding_df, metrics_df, on=['GeneId', 'TranscriptId', 'AlignmentId'])
+    # fill the original intron values to zero so we don't filter them out
+    coding_df['OriginalIntronsPercent'] = coding_df.OriginalIntronsPercent.fillna(0)
+    # reclassify coding TM/TMR
+    coding_df['TranscriptClass'] = coding_df.apply(evaluate_tm_tmr_class, axis=1)
 
     # huge ugly filtering expression for coding transcripts
     if in_species_rna_support_only is True:
-        filt = ((coding_df.AlnIdentity >= coding_cutoff) &
-                (coding_df.AlnCoverage >= minimum_coverage) &
+        filt = ((coding_df.AlnCoverage >= minimum_coverage) &
                 (coding_df.OriginalIntronsPercent >= original_intron_support) &
                 (coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (coding_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
                 (coding_df.ExonAnnotSupportPercent >= exon_annot_support) &
                 (coding_df.ExonRnaSupportPercent >= exon_rnaseq_support))
     else:
-        filt = ((coding_df.AlnIdentity >= coding_cutoff) &
-                (coding_df.AlnCoverage >= minimum_coverage) &
+        filt = ((coding_df.AlnCoverage >= minimum_coverage) &
                 (coding_df.OriginalIntronsPercent >= original_intron_support) &
                 (coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (coding_df.AllSpeciesIntronRnaSupportPercent >= intron_rnaseq_support) &
@@ -733,7 +741,7 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
     for aln_id, c in final_consensus:
         if c['transcript_biotype'] != 'protein_coding':
             continue
-        if tools.nameConversions.aln_id_is_transmap(aln_id):
+        if 'transMap' in c['transcript_modes']:
             metrics['Evaluation Improvement']['unchanged'] += 1
             continue
         tx_s = df.ix[aln_id]
@@ -742,7 +750,9 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
                                                              tx_s.IntronRnaSupportPercentTransMap,
                                                              tx_s.OriginalIntronsPercent,
                                                              tx_s.IntronAnnotSupportPercent,
-                                                             tx_s.IntronRnaSupportPercent])
+                                                             tx_s.IntronRnaSupportPercent,
+                                                             tx_s.TransMapGoodness,
+                                                             tx_s.AlnGoodness])
 
 
 def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dict, genome):

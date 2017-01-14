@@ -374,20 +374,28 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
             unchanged = consensus_data[genome]['Evaluation Improvement']['unchanged']
             if len(data) == 0:
                 continue
-            data.columns = ['TransMapOriginalIntrons', 'TransMapIntronAnnotSupport', 'TransMapIntronRnaSupport',
-                            'OriginalIntrons', 'IntronAnnotSupport', 'IntronRnaSupport']
-            fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, sharex=True, sharey=True)
+            data.columns = ['transMap original introns',
+                            'transMap intron annotation support',
+                            'transMap intron RNA support',
+                            'Original introns',
+                            'Intron annotation support',
+                            'Intron RNA support',
+                            'transMap alignment goodness',
+                            'Alignment goodness']
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, sharex=True, sharey=True)
             ax1.set_xlim(0, 105)
             ax1.set_ylim(0, 105)
-            sns.regplot(x=data['TransMapOriginalIntrons'], y=data['OriginalIntrons'], ax=ax1,
+            sns.regplot(x=data['transMap original introns'], y=data['Original introns'], ax=ax1,
                         color=sns.color_palette()[0], marker='+', scatter_kws={"s": 5})
-            sns.regplot(x=data['TransMapIntronAnnotSupport'], y=data['IntronAnnotSupport'], ax=ax2,
+            sns.regplot(x=data['transMap intron annotation support'], y=data['Intron annotation support'], ax=ax2,
                         color=sns.color_palette()[1], marker='+', scatter_kws={"s": 5})
-            sns.regplot(x=data['TransMapIntronRnaSupport'], y=data['IntronRnaSupport'], ax=ax3,
+            sns.regplot(x=data['transMap intron RNA support'], y=data['Intron RNA support'], ax=ax3,
+                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 5})
+            sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
                         color=sns.color_palette()[2], marker='+', scatter_kws={"s": 5})
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}. '
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
-            for ax in fig.axes:
+            for ax in [ax1, ax2, ax3, ax4]:
                 ax.set(adjustable='box-forced', aspect='equal')
             multipage_close(pdf, tight_layout=True)
 
