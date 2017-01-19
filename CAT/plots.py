@@ -47,6 +47,8 @@ def generate_plots(args):
     except ValueError:
         pass
 
+    fail_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.gene_failure, args.transcript_failure)
+    tx_modes_plot(consensus_data, args.ordered_genomes, args.tx_modes)
     tm_filter_plots(tm_data, args.ordered_genomes, args.transmap_filtering, biotypes)
     tm_metrics_plot(tm_metrics, args.ordered_genomes, biotypes, transcript_biotype_map, args.tm_coverage,
                     args.tm_identity)
@@ -60,10 +62,8 @@ def generate_plots(args):
                            modes=['Splice Support', 'Exon Support'],
                            title='Single species extrinsic support' if args.in_species_rna_support_only else 'All species extrinsic support',
                            tgt=args.consensus_extrinsic_support)
-    fail_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.gene_failure, args.transcript_failure)
     completeness_plot(consensus_data, args.ordered_genomes, biotypes, args.completeness, gene_biotype_map,
                       transcript_biotype_map)
-    tx_modes_plot(consensus_data, args.ordered_genomes, args.tx_modes)
     if 'denovo' in args:
         denovo_plot(consensus_data, args.ordered_genomes, args.denovo)
     if 'split_genes' in args:
@@ -123,8 +123,12 @@ def tm_filter_plots(tm_data, ordered_genomes, tgt, biotypes):
         combined_df = combined_df.iloc[3:][::-1]
         combined_df = combined_df.apply(lambda x: pd.to_numeric(x, errors='ignore'))
         title_string = 'transMap paralogous alignment resolution'
-        generic_stacked_barplot(combined_df, pdf, title_string, combined_df.index, 'Number of transcripts',
-                                combined_df.columns, 'method', bbox_to_anchor=(1.2, 0.7))
+        if len(ordered_genomes) > 1:
+            generic_stacked_barplot(combined_df, pdf, title_string, combined_df.index, 'Number of transcripts',
+                                    combined_df.columns, 'method', bbox_to_anchor=(1.2, 0.7))
+        else:
+            generic_barplot(combined_df, pdf, ordered_genomes[0], 'Number of transcripts', title_string,
+                            x=combined_df.index, y=ordered_genomes[0])
         for biotype in biotypes:
             b_df = biotype_filter(df, biotype)
             if b_df is None:
@@ -144,8 +148,12 @@ def tm_filter_plots(tm_data, ordered_genomes, tgt, biotypes):
             if b_df.sum(numeric_only=True).sum() == 0:
                 continue
             title_string = 'transMap paralogous alignment resolution for biotype {}'.format(biotype)
-            generic_stacked_barplot(b_df, pdf, title_string, b_df.index, 'Number of transcripts',
-                                    b_df.columns, 'method', bbox_to_anchor=(1.2, 0.7))
+            if len(ordered_genomes) > 1:
+                generic_stacked_barplot(b_df, pdf, title_string, b_df.index, 'Number of transcripts',
+                                        b_df.columns, 'method', bbox_to_anchor=(1.2, 0.7))
+            else:
+                generic_barplot(b_df, pdf, ordered_genomes[0], 'Number of transcripts', title_string,
+                                x=b_df.index, y=ordered_genomes[0])
 
 
 def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_map, tm_coverage_tgt, tm_identity_tgt):
@@ -172,10 +180,10 @@ def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_t
 def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, title, tgt):
     """grouped violin plots of original intron / intron annotation / exon annotation support"""
     def adjust_plot(g, this_title):
-        g.set_xticklabels(rotation=60)
+        g.set_xticklabels(rotation=90)
         g.fig.suptitle(this_title)
         g.fig.subplots_adjust(top=0.9)
-        for ax in g.axes:
+        for ax in g.axes.flat:
             ax.set_ylabel('Percent supported')
             ax.set_ylim(-1, 101)
 
@@ -188,8 +196,12 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
     df = pd.concat(dfs, axis=1)
     df = pd.melt(df, value_vars=modes, id_vars=['genome', 'biotype'])
     with tgt.open('w') as outf, PdfPages(outf) as pdf:
-        g = sns.factorplot(data=df, y='value', x='genome', col='variable', col_wrap=2, kind='violin', sharex=True,
-                           sharey=True, row_order=ordered_genomes, cut=0)
+        if len(ordered_genomes) > 1:
+            g = sns.factorplot(data=df, y='value', x='genome', col='variable', col_wrap=2, kind='violin', sharex=True,
+                               sharey=True, row_order=ordered_genomes, cut=0)
+        else:
+            g = sns.factorplot(data=df, y='value', x='variable', kind='violin', sharex=True,
+                               sharey=True, row_order=ordered_genomes, cut=0)
         adjust_plot(g, title)
         multipage_close(pdf, tight_layout=False)
         title += ' for {}'
@@ -197,8 +209,12 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
             this_title = title.format(biotype)
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
-                g = sns.factorplot(data=biotype_df, y='value', x='genome', col='variable', col_wrap=2, kind='violin',
-                                   sharex=True, sharey=True, row_order=ordered_genomes, cut=0)
+                if len(ordered_genomes) > 1:
+                    g = sns.factorplot(data=biotype_df, y='value', x='genome', col='variable', col_wrap=2,
+                                       kind='violin', sharex=True, sharey=True, row_order=ordered_genomes, cut=0)
+                else:
+                    g = sns.factorplot(data=df, y='value', x='variable', kind='violin', sharex=True,
+                                       sharey=True, row_order=ordered_genomes, cut=0)
                 adjust_plot(g, this_title)
                 multipage_close(pdf, tight_layout=False)
 
@@ -231,7 +247,7 @@ def tm_para_plot(para_data, ordered_genomes, biotypes, transcript_biotype_map, p
 
 def fail_rate_plot(consensus_data, ordered_genomes, biotypes, gene_fail_plot_tgt, transcript_fail_plot_tgt):
     for mode, tgt in zip(*[['Gene', 'Transcript'], [gene_fail_plot_tgt, transcript_fail_plot_tgt]]):
-        base_title = '{} missing/failure rate in consensus gene set'.format(mode)
+        base_title = '{} outcomes in consensus gene set'.format(mode)
         ylabel = 'Number of {}s'.format(mode.lower())
         fail_df = json_biotype_counter_to_df(consensus_data, '{} Failed'.format(mode))
         missing_df = json_biotype_counter_to_df(consensus_data, '{} Missing'.format(mode))
@@ -247,49 +263,58 @@ def fail_rate_plot(consensus_data, ordered_genomes, biotypes, gene_fail_plot_tgt
             missing_df = pd.DataFrame([[biotype, 0, genome] for biotype, genome in itertools.product(biotypes,
                                                                                                      ordered_genomes)])
             missing_df.columns = ['biotype', '{} Missing'.format(mode), 'genome']
-        df = pd.merge(fail_df, missing_df, on=['genome', 'biotype'])
+        df = pd.merge(fail_df, missing_df, on=['genome', 'biotype'], how='outer')
         if len(df) == 0:
             continue
-        df.genome = pd.Categorical(df.genome, ordered_genomes, ordered=True)
+        df = pd.melt(df, id_vars=['biotype', 'genome'], value_vars=['{} Failed'.format(mode),
+                                                                    '{} Missing'.format(mode)])
+        df.columns = ['biotype', 'Genome', 'Outcome', 'value']
         with tgt.open('w') as outf, PdfPages(outf) as pdf:
-            tot_df = df.groupby(by=['genome']).aggregate(np.sum).transpose()
-            generic_unstacked_barplot(tot_df, pdf, base_title, tot_df.index, ylabel, tot_df.columns, 'category',
-                                      bbox_to_anchor=(1.15, 0.7))
-            cols = ['genome', '{} Failed'.format(mode), '{} Missing'.format(mode)]
+            tot_df = pd.melt(df.groupby(by=['Genome', 'Outcome']).aggregate(np.sum).transpose())
+            tot_df.columns = ['Genome', 'Outcome', 'value']
+            if len(ordered_genomes) > 1:
+                generic_barplot(tot_df, pdf, 'Genome', ylabel, base_title, x='Genome', y='value', hue='Outcome',
+                                row_order=ordered_genomes)
+            else:
+                generic_barplot(tot_df, pdf, 'Outcome', ylabel, base_title, x='Outcome', y='value')
             for biotype in biotypes:
                 biotype_df = biotype_filter(df, biotype)
                 if biotype_df is None:
                     continue
-                biotype_df = biotype_df[cols]
-                # re-add missing data
-                missing = pd.DataFrame([[genome, 0, 0] for genome in biotype_df.genome.cat.categories if genome
-                                        not in list(biotype_df.genome)])
-                if len(missing) > 0:
-                    missing.columns = [cols]
-                    biotype_df = biotype_df.append(missing).sort_values('genome')
                 title = base_title + ' for biotype {}'.format(biotype)
-                biotype_df = biotype_df.set_index('genome').transpose()
-                generic_unstacked_barplot(biotype_df, pdf, title, biotype_df.index, ylabel, biotype_df.columns,
-                                          'category', bbox_to_anchor=(1.15, 0.7))
+                if len(ordered_genomes) > 1:
+                    generic_barplot(biotype_df, pdf, 'Genome', ylabel, title, x='Genome', y='value', hue='Outcome',
+                                    row_order=ordered_genomes)
+                else:
+                    generic_barplot(biotype_df, pdf, 'Outcome', ylabel, title, x='Outcome', y='value')
 
 
 def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
+    ordered_groups = ['transMap', 'transMap+TM', 'transMap+TMR', 'transMap+TM+TMR', 'TM', 'TMR', 'TM+TMR', 'CGP', 'PB',
+                      'Other']
+    ordered_groups = OrderedDict([[frozenset(x.split('+')), x] for x in ordered_groups])
+
+    def split_fn(s):
+        return ordered_groups.get(frozenset(s['Transcript Modes'].replace('aug', '').split(',')), 'Other')
+
     modes_df = json_biotype_counter_to_df(consensus_data, 'Transcript Modes')
-    df = modes_df.pivot(index='genome', columns='Transcript Modes').transpose()
-    df.index = ['+'.join([y.replace('aug', '') for y in x.split(',')]) for x in df.index.get_level_values(1)]
-    row_sum = df.sum(axis=1)
-    total_sum = row_sum.sum()
-    other = df.loc[row_sum / total_sum < 0.01].sum()
-    df = df.loc[row_sum / total_sum >= 0.01]
-    df.ix['Other'] = other
-    df = df.sort_index(ascending=False)
+    df = modes_df.pivot(index='genome', columns='Transcript Modes').transpose().reset_index()
+    df['Modes'] = df.apply(split_fn, axis=1)
+    df = df[['Modes'] + ordered_genomes]
+    ordered_values = [x for x in ordered_groups.itervalues() if x in set(df['Modes'])]
     with tx_mode_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
-        title_string = 'Transcript modes in protein coding consensus gene set\n' \
-                       '(combinations representing less than 1% of total are grouped in "Other")'
+        title_string = 'Transcript modes in protein coding consensus gene set'
         ylabel = 'Number of transcripts'
-        box_label = 'Transcript mode'
-        generic_stacked_barplot(df, pdf, title_string, df.index, ylabel, ordered_genomes, box_label,
-                                bbox_to_anchor=(1.25, 0.7))
+        if len(ordered_genomes) > 1:
+            df['Ordered Modes'] = pd.Categorical(df['Modes'], ordered_values, ordered=True)
+            df = df.sort_values('Ordered Modes')
+            df = df[['Ordered Modes'] + ordered_genomes].set_index('Ordered Modes')
+            generic_stacked_barplot(df, pdf, title_string, df.index, ylabel, ordered_genomes, 'Transcript mode(s)',
+                                    bbox_to_anchor=(1.25, 0.7))
+
+        else:
+            generic_barplot(pd.melt(df, id_vars='Modes'), pdf, 'Transcript mode(s)', ylabel, title_string, x='Modes',
+                            y='value', order=ordered_values)
 
 
 def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
@@ -298,13 +323,20 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
         # fix column names because json_biotype_nested_counter_to_df makes assumptions
         df.columns = ['Result', 'Number of transcripts', 'Augustus mode', 'genome']
         has_pb = len(set(df['Augustus mode'])) == 2
-        if has_pb is True:
-            ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
-                                hue='Augustus mode', col_wrap=2, row_order=ordered_genomes, sharex=True, sharey=False)
+        if len(ordered_genomes) > 1:
+            if has_pb is True:
+                ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
+                                    hue='Augustus mode', col_wrap=2, row_order=ordered_genomes, sharex=True,
+                                    sharey=False)
+            else:
+                ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
+                                    col_wrap=2, row_order=ordered_genomes, sharex=True, sharey=False)
         else:
-            ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result', col_wrap=2,
-                                row_order=ordered_genomes, sharex=True, sharey=False)
-        ax.set_xticklabels(rotation=60)
+            if has_pb is True:
+                ax = sns.factorplot(data=df, x='Result', y='Number of transcripts', kind='bar', hue='Augustus mode')
+            else:
+                ax = sns.factorplot(data=df, x='Result', y='Number of transcripts', kind='bar')
+        ax.set_xticklabels(rotation=90)
         ax.fig.suptitle('Incorporation of de-novo predictions')
         ax.fig.subplots_adjust(top=0.9)
         multipage_close(pdf, tight_layout=False)
@@ -315,9 +347,13 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
         df = json_biotype_counter_to_df(tm_data, 'Split Genes')
         df.columns = ['category', 'count', 'genome']
         title = 'Resolution methods of genes split across sequences'
-        g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', col='category', xlabel='', col_wrap=2,
-                            sharey=False, ylabel='Number of transcripts or genes', row_order=ordered_genomes,
-                            title=title)
+        if len(ordered_genomes) > 1:
+            g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', col='category', xlabel='', col_wrap=2,
+                                sharey=False, ylabel='Number of transcripts or genes', row_order=ordered_genomes,
+                                title=title)
+        else:
+            g = generic_barplot(pdf=pdf, data=df, x='category', y='count', ylabel='Number of transcripts or genes',
+                                title=title, xlabel='Category')
 
 
 def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt):
@@ -327,7 +363,7 @@ def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt)
         df.columns = ['IsoSeq Transcript Valdiation', 'Number of transcripts', 'genome']
         ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', hue='IsoSeq Transcript Valdiation',
                             kind='bar', row_order=pb_genomes)
-        ax.set_xticklabels(rotation=60)
+        ax.set_xticklabels(rotation=90)
         ax.fig.suptitle('Isoforms validated by at least one IsoSeq read')
         multipage_close(pdf, tight_layout=False)
 
@@ -385,19 +421,35 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, sharex=True, sharey=True)
             ax1.set_xlim(0, 105)
             ax1.set_ylim(0, 105)
+            try:
+                sns.kdeplot(data['transMap original introns'], data['Original introns'], ax=ax1)
+            except ValueError:
+                pass
             sns.regplot(x=data['transMap original introns'], y=data['Original introns'], ax=ax1,
-                        color=sns.color_palette()[0], marker='+', scatter_kws={"s": 5})
+                        color=sns.color_palette()[0], marker='+', scatter_kws={"s": 2})
+            try:
+                sns.kdeplot(data['transMap intron annotation support'], data['Intron annotation support'], ax=ax2)
+            except ValueError:
+                pass
             sns.regplot(x=data['transMap intron annotation support'], y=data['Intron annotation support'], ax=ax2,
-                        color=sns.color_palette()[1], marker='+', scatter_kws={"s": 5})
+                        color=sns.color_palette()[1], marker='+', scatter_kws={"s": 2})
+            try:
+                sns.kdeplot(data['transMap intron RNA support'], data['Intron RNA support'], ax=ax3)
+            except ValueError:
+                pass
             sns.regplot(x=data['transMap intron RNA support'], y=data['Intron RNA support'], ax=ax3,
-                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 5})
+                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 2})
+            try:
+                sns.kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax=ax4)
+            except ValueError:
+                pass
             sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
-                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 5})
+                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 2})
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}. '
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             for ax in [ax1, ax2, ax3, ax4]:
                 ax.set(adjustable='box-forced', aspect='equal')
-            multipage_close(pdf, tight_layout=True)
+            multipage_close(pdf, tight_layout=False)
 
 
 ###
@@ -425,10 +477,12 @@ def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xli
 
 
 def generic_barplot(data, pdf, xlabel, ylabel, title, row_order=None, x=None, y=None, hue=None, hue_order=None,
-                    col=None, col_wrap=None, sharex=True, sharey=True, col_order=None, palette=None, close=True):
+                    order=None, col=None, col_wrap=None, sharex=True, sharey=True, col_order=None, palette=None,
+                    close=True):
     g = sns.factorplot(data=data, x=x, y=y, hue=hue, ci=None, kind='bar', hue_order=hue_order, row_order=row_order,
-                       col=col, col_wrap=col_wrap, sharex=sharex, sharey=sharey, col_order=col_order, palette=palette)
-    g.set_xticklabels(rotation=60)
+                       col=col, col_wrap=col_wrap, sharex=sharex, sharey=sharey, col_order=col_order, palette=palette,
+                       order=order)
+    g.set_xticklabels(rotation=90)
     g.fig.suptitle(title)
     g.fig.subplots_adjust(top=.8)
     g.set_axis_labels(xlabel, ylabel)
@@ -607,7 +661,7 @@ def set_ticks(names, ax, nbins=10.0):
     ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(nbins=nbins, steps=[1, 2, 5, 10], integer=True))
     ax.xaxis.set_major_locator(matplotlib.ticker.LinearLocator(len(names)))
     ax.yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator())
-    ax.xaxis.set_ticklabels(names, rotation=60)
+    ax.xaxis.set_ticklabels(names, rotation=90)
 
 
 def sort_long_df(df, ordered_genomes):
