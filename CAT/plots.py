@@ -4,9 +4,10 @@ is a plot for each biotype on its own, and one for the combined results.
 """
 import json
 import matplotlib
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.use('Agg')
 import itertools
 import warnings
-matplotlib.use('Agg')
 from collections import OrderedDict
 from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
