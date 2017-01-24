@@ -98,12 +98,17 @@ def fit_distributions(aln_eval_df, ref_df, genome):
                         ' for {} on {}.'.format(len(biotype_not_unique), len(biotype_unique), biotype, genome))
             cutoff = find_cutoff(biotype_unique)
             identity_cutoffs.append([biotype, cutoff])
-            labels = ['passing' if ident >= cutoff else 'failing' for ident in df.TransMapIdentity]
-            num_pass = labels.count('passing')
-            num_fail = labels.count('failing')
-            logger.info('Established a {:.2%} identity boundary for {} on {} resulting in '
-                        '{:,} passing and {:,} failing alignments.'.format(cutoff / 100, biotype, genome,
-                                                                           num_pass, num_fail))
+            if np.isnan(cutoff) or np.isinf(cutoff):
+                logger.warning('Unable to establish a identity boundary for {} on {}. '
+                               'All transcripts marked passing.'.format(biotype, genome))
+                labels = ['passing'] * len(df)
+            else:
+                labels = ['passing' if ident >= cutoff else 'failing' for ident in df.TransMapIdentity]
+                num_pass = labels.count('passing')
+                num_fail = labels.count('failing')
+                logger.info('Established a {:.2%} identity boundary for {} on {} resulting in '
+                            '{:,} passing and {:,} failing alignments.'.format(cutoff / 100, biotype, genome,
+                                                                               num_pass, num_fail))
             r.extend([[aln_id, label] for aln_id, label in zip(*[df.AlignmentId, labels])])
 
     # turn r into a dataframe

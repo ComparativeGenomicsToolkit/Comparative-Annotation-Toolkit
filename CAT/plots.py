@@ -4,6 +4,7 @@ is a plot for each biotype on its own, and one for the combined results.
 """
 import json
 import matplotlib
+import logging
 matplotlib.rcParams['pdf.fonttype'] = 42
 matplotlib.use('Agg')
 import itertools
@@ -18,6 +19,8 @@ import pandas as pd
 import tools.psl
 import tools.sqlInterface
 import tools.nameConversions
+
+logger = logging.getLogger(__name__)
 
 # suppress all warnings to make logging cleaner. The only warnings should be the chained assignment warning from pandas
 # as well as the bottom == top when plots have no data.
@@ -347,7 +350,7 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
     with split_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
         df = json_biotype_counter_to_df(tm_data, 'Split Genes')
         df.columns = ['category', 'count', 'genome']
-        title = 'Resolution methods of genes split across sequences'
+        title = 'Split genes'
         if len(ordered_genomes) > 1:
             g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', col='category', xlabel='', col_wrap=2,
                                 sharey=False, ylabel='Number of transcripts or genes', row_order=ordered_genomes,
@@ -405,7 +408,18 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
 
 
 def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
-    with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf, sns.axes_style("darkgrid"):
+    def do_kdeplot(x, y, ax):
+        try:
+            sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=20)
+        except ValueError:
+            try:
+                logger.info('Falling back to hardcoded bandwith for KDE fit to AUGUSTUS improvement.')
+                sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=20, bw=10)
+            except ValueError:
+                logger.warning('Unable to do a KDE fit to AUGUSTUS improvement.')
+                pass
+
+    with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf, sns.axes_style("whitegrid"):
         for genome in ordered_genomes:
             data = pd.DataFrame(consensus_data[genome]['Evaluation Improvement']['changes'])
             unchanged = consensus_data[genome]['Evaluation Improvement']['unchanged']
@@ -420,33 +434,21 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                             'transMap alignment goodness',
                             'Alignment goodness']
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, sharex=True, sharey=True)
-            ax1.set_xlim(0, 105)
-            ax1.set_ylim(0, 105)
-            try:
-                sns.kdeplot(data['transMap original introns'], data['Original introns'], ax=ax1)
-            except ValueError:
-                pass
+            ax1.set_xlim(0, 100)
+            ax1.set_ylim(0, 100)
+            do_kdeplot(data['transMap original introns'], data['Original introns'], ax1)
             sns.regplot(x=data['transMap original introns'], y=data['Original introns'], ax=ax1,
-                        color=sns.color_palette()[0], marker='+', scatter_kws={"s": 2})
-            try:
-                sns.kdeplot(data['transMap intron annotation support'], data['Intron annotation support'], ax=ax2)
-            except ValueError:
-                pass
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+            do_kdeplot(data['transMap intron annotation support'], data['Intron annotation support'], ax2)
             sns.regplot(x=data['transMap intron annotation support'], y=data['Intron annotation support'], ax=ax2,
-                        color=sns.color_palette()[1], marker='+', scatter_kws={"s": 2})
-            try:
-                sns.kdeplot(data['transMap intron RNA support'], data['Intron RNA support'], ax=ax3)
-            except ValueError:
-                pass
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+            do_kdeplot(data['transMap intron RNA support'], data['Intron RNA support'], ax3)
             sns.regplot(x=data['transMap intron RNA support'], y=data['Intron RNA support'], ax=ax3,
-                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 2})
-            try:
-                sns.kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax=ax4)
-            except ValueError:
-                pass
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+            do_kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax3)
             sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
-                        color=sns.color_palette()[2], marker='+', scatter_kws={"s": 2})
-            fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}. '
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+            fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}.\n'
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             for ax in [ax1, ax2, ax3, ax4]:
                 ax.set(adjustable='box-forced', aspect='equal')
