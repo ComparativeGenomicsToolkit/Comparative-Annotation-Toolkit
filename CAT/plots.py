@@ -168,7 +168,8 @@ def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_ma
         df = dict_to_df_with_biotype(tm_metrics[mode], transcript_biotype_map)
         for genome in ordered_genomes:
             df[genome] = df[genome]
-        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, xlim=(-1, 101))
+        xmin = min([min(df[genome]) for genome in ordered_genomes])
+        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, xlim=(xmin, 100))
 
 
 def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_tgt, identity_tgt):
@@ -177,8 +178,8 @@ def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_t
                       [coverage_tgt, identity_tgt]])
     for mode, tgt in cons_iter:
         df = json_to_df_with_biotype(consensus_data, mode)
-        df[mode] = df[mode]
-        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome', xlim=(-1, 101))
+        xmin = min(df[mode])
+        cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome', xlim=(xmin, 100))
 
 
 def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, title, tgt):
@@ -408,16 +409,12 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
 
 
 def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
-    def do_kdeplot(x, y, ax):
+    def do_kdeplot(x, y, ax, n_levels=None, bw='scott'):
         try:
-            sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=20)
+            sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=n_levels, bw=bw)
         except ValueError:
-            try:
-                logger.info('Falling back to hardcoded bandwith for KDE fit to AUGUSTUS improvement.')
-                sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=20, bw=10)
-            except ValueError:
-                logger.warning('Unable to do a KDE fit to AUGUSTUS improvement.')
-                pass
+            logger.warning('Unable to do a KDE fit to AUGUSTUS improvement.')
+            pass
 
     with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf, sns.axes_style("whitegrid"):
         for genome in ordered_genomes:
@@ -433,25 +430,31 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                             'Intron RNA support',
                             'transMap alignment goodness',
                             'Alignment goodness']
-            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2, sharex=True, sharey=True)
-            ax1.set_xlim(0, 100)
-            ax1.set_ylim(0, 100)
-            do_kdeplot(data['transMap original introns'], data['Original introns'], ax1)
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2)
+            for ax in [ax1, ax2, ax3]:  # goodness plots are allowed to auto-set scale
+                ax.set_xlim(0, 100)
+                ax.set_ylim(0, 100)
+            goodness_min = min(data['Alignment goodness'])
+            ax4.set_xlim(goodness_min, 100)
+            ax4.set_ylim(goodness_min, 100)
+            do_kdeplot(data['transMap original introns'], data['Original introns'], ax1, n_levels=25, bw=2)
             sns.regplot(x=data['transMap original introns'], y=data['Original introns'], ax=ax1,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
-            do_kdeplot(data['transMap intron annotation support'], data['Intron annotation support'], ax2)
+            do_kdeplot(data['transMap intron annotation support'], data['Intron annotation support'], ax2,
+                       n_levels=25, bw=2)
             sns.regplot(x=data['transMap intron annotation support'], y=data['Intron annotation support'], ax=ax2,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
-            do_kdeplot(data['transMap intron RNA support'], data['Intron RNA support'], ax3)
+            do_kdeplot(data['transMap intron RNA support'], data['Intron RNA support'], ax3, n_levels=25, bw=2)
             sns.regplot(x=data['transMap intron RNA support'], y=data['Intron RNA support'], ax=ax3,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
-            do_kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax3)
+            do_kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax4, n_levels=20, bw=1)
             sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}.\n'
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             for ax in [ax1, ax2, ax3, ax4]:
                 ax.set(adjustable='box-forced', aspect='equal')
+            fig.subplots_adjust(hspace=0.5)
             multipage_close(pdf, tight_layout=False)
 
 
@@ -504,7 +507,7 @@ def generic_barplot(data, pdf, xlabel, ylabel, title, row_order=None, x=None, y=
 
 
 def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, pdf, hue=None, x=None, y=None, close=True,
-                                 xlim=(0, 100)):
+                                 xlim=None):
     """not so generic function that specifically produces a paired boxplot/violinplot"""
     fig, (ax1, ax2) = plt.subplots(ncols=2, sharex=True)
     g1 = sns.boxplot(data=data, x=x, y=y, hue=hue, order=ordered_genomes, palette=choose_palette(ordered_genomes),
@@ -515,8 +518,9 @@ def generate_boxplot_violin_pair(data, ordered_genomes, title, xlabel, pdf, hue=
     ax1.figure.suptitle(title)
     ax1.set_xlabel(xlabel)
     ax2.set_xlabel(xlabel)
-    ax1.set_xlim(xlim)
-    ax2.set_xlim(xlim)
+    if xlim is not None:
+        ax1.set_xlim(xlim)
+        ax2.set_xlim(xlim)
     sns.despine(trim=True, right=True, top=True, ax=ax1)
     sns.despine(trim=True, left=True, right=True, top=True, ax=ax2)
     ax2.set_ylabel('')
