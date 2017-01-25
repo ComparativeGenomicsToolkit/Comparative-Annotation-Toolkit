@@ -1851,6 +1851,7 @@ class ConsensusDriverTask(PipelineTask):
     def output(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         yield luigi.LocalTarget(consensus_args.consensus_gp)
+        yield luigi.LocalTarget(consensus_args.consensus_gp_info)
         yield luigi.LocalTarget(consensus_args.metrics_json)
         yield luigi.LocalTarget(consensus_args.consensus_gff3)
 
@@ -1865,7 +1866,7 @@ class ConsensusDriverTask(PipelineTask):
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
-        consensus_gp, metrics_json, consensus_gff3 = self.output()
+        consensus_gp, consensus_gp_info, metrics_json, consensus_gff3 = self.output()
         metrics_dict = generate_consensus(consensus_args)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
@@ -1906,6 +1907,7 @@ class Plots(PipelineTask):
         args.consensus_extrinsic_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_extrinsic_support.pdf'))
         args.consensus_annot_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_annotation_support.pdf'))
         args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
+        args.indel = luigi.LocalTarget(os.path.join(base_dir, 'coding_indels.pdf'))
         # plots that depend on execution mode
         if pipeline_args.augustus is True:
             args.improvement = luigi.LocalTarget(os.path.join(base_dir, 'augustus_improvement.pdf'))

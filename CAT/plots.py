@@ -68,6 +68,7 @@ def generate_plots(args):
                            tgt=args.consensus_extrinsic_support)
     completeness_plot(consensus_data, args.ordered_genomes, biotypes, args.completeness, gene_biotype_map,
                       transcript_biotype_map)
+    indel_plot(consensus_data, args.ordered_genomes, args.indel)
     if 'denovo' in args:
         denovo_plot(consensus_data, args.ordered_genomes, args.denovo)
     if 'split_genes' in args:
@@ -364,9 +365,9 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
 def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt):
     with pb_support_tgt.open('w') as outf, PdfPages(outf) as pdf:
         pb_genomes = [x for x in ordered_genomes if x in pb_genomes]  # fix order
-        df = json_biotype_counter_to_df(consensus_data, 'IsoSeq Transcript Valdiation')
-        df.columns = ['IsoSeq Transcript Valdiation', 'Number of transcripts', 'genome']
-        ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', hue='IsoSeq Transcript Valdiation',
+        df = json_biotype_counter_to_df(consensus_data, 'IsoSeq Transcript Validation')
+        df.columns = ['IsoSeq Transcript Validation', 'Number of transcripts', 'genome']
+        ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', hue='IsoSeq Transcript Validation',
                             kind='bar', row_order=pb_genomes)
         ax.set_xticklabels(rotation=90)
         ax.fig.suptitle('Isoforms validated by at least one IsoSeq read')
@@ -454,8 +455,31 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             for ax in [ax1, ax2, ax3, ax4]:
                 ax.set(adjustable='box-forced', aspect='equal')
-            fig.subplots_adjust(hspace=0.5)
+            fig.subplots_adjust(hspace=0.3)
             multipage_close(pdf, tight_layout=False)
+
+
+def indel_plot(consensus_data, ordered_genomes, indel_plot_tgt):
+    with indel_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+        tm_df = pd.concat([pd.DataFrame.from_dict(consensus_data[genome]['transMap Indels'], orient='index').T
+                           for genome in ordered_genomes])
+        tm_df['genome'] = ordered_genomes
+        tm_df['transcript set'] = ['transMap'] * len(tm_df)
+        consensus_df = pd.concat([pd.DataFrame.from_dict(consensus_data[genome]['Consensus Indels'], orient='index').T
+                                  for genome in ordered_genomes])
+        consensus_df['genome'] = ordered_genomes
+        consensus_df['transcript set'] = ['Consensus'] * len(consensus_df)
+        df = pd.concat([consensus_df, tm_df])
+        df = pd.melt(df, id_vars=['genome', 'transcript set'],
+                     value_vars=['CodingDeletion', 'CodingInsertion', 'CodingMult3Indel'])
+        df.columns = ['Genome', 'Transcript set', 'Type', 'Percent of transcripts']
+        g = sns.factorplot(data=df, x='Genome', y='Percent of transcripts', col='Transcript set',
+                           hue='Type', kind='bar', row_order=ordered_genomes,
+                           col_order=['transMap', 'Consensus'])
+        g.set_xticklabels(rotation=90)
+        g.fig.subplots_adjust(top=.8)
+        g.fig.suptitle('Coding indels')
+        multipage_close(pdf, tight_layout=False)
 
 
 ###

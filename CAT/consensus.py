@@ -71,8 +71,9 @@ def generate_consensus(args):
     hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
     # load the alignment metrics data
     metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
+    eval_df = pd.concat([load_evaluations_from_db(args.db_path, tx_mode) for tx_mode in tx_modes])
     # combine and filter the results
-    coding_df, non_coding_df = combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df,
+    coding_df, non_coding_df = combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, eval_df,
                                                       args.intron_rnaseq_support, args.exon_rnaseq_support,
                                                       args.intron_annot_support, args.exon_annot_support,
                                                       args.original_intron_support, coding_cutoff,
@@ -106,7 +107,7 @@ def generate_consensus(args):
                'Original Introns': collections.defaultdict(list),
                'Splice Annotation Support': collections.defaultdict(list),
                'Exon Annotation Support': collections.defaultdict(list),
-               'IsoSeq Transcript Valdiation': collections.Counter()}
+               'IsoSeq Transcript Validation': collections.Counter()}
 
     # stores a mapping of alignment IDs to tags for the final consensus set
     consensus_dict = {}
@@ -185,7 +186,7 @@ def generate_consensus(args):
     # add some interesting metrics on how much using Augustus modes improved our results
     if 'augTM' or 'augTMR' in tx_modes:
         calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df, metrics)
-
+    calculate_indel_metrics(final_consensus, eval_df, metrics)
     # write out results. consensus tx dict has the unique names
     consensus_gene_dict = write_consensus_gps(args.consensus_gp, args.consensus_gp_info,
                                               final_consensus, tx_dict, args.genome)
@@ -272,6 +273,35 @@ def load_metrics_from_db(db_path, tx_mode, aln_mode):
     return metrics_df
 
 
+def load_evaluations_from_db(db_path, tx_mode):
+    """
+    Loads the indel information from the evaluation database. We give preference to CDS alignments, but fall back
+    to mRNA alignments.
+    """
+    session = tools.sqlInterface.start_session(db_path)
+    cds_table = tools.sqlInterface.tables['CDS'][tx_mode]['evaluation']
+    mrna_table = tools.sqlInterface.tables['mRNA'][tx_mode]['evaluation']
+    cds_df = tools.sqlInterface.load_evaluation(cds_table, session)
+    mrna_df = tools.sqlInterface.load_evaluation(mrna_table, session)
+    aln_ids = set(cds_df.AlignmentId) | set(mrna_df.AlignmentId)
+    cds_df = cds_df.set_index('AlignmentId')
+    mrna_df = mrna_df.set_index('AlignmentId')
+    r = []
+    for aln_id in aln_ids:
+        df = slice_df(cds_df, aln_id)
+        if len(df) == 0:
+            df = slice_df(mrna_df, aln_id)
+        c = set(df.classifier)
+        r.append([aln_id,
+                  'CodingDeletion' in c or 'CodingInsertion' in c,
+                  'CodingInsertion' in c,
+                  'CodingDeletion' in c,
+                  'CodingMult3Deletion' in c or 'CodingMult3Insertion' in c])
+    eval_df = pd.DataFrame(r)
+    eval_df.columns = ['AlignmentId', 'Frameshift', 'CodingDeletion', 'CodingInsertion', 'CodingMult3Indel']
+    return eval_df
+
+
 def load_alt_names(db_path, denovo_tx_modes):
     """Load the alternative tx tables for augCGP/augPB"""
     session = tools.sqlInterface.start_session(db_path)
@@ -286,15 +316,16 @@ def load_alt_names(db_path, denovo_tx_modes):
     return df
 
 
-def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq_support, exon_rnaseq_support,
-                           intron_annot_support, exon_annot_support, original_intron_support, coding_cutoff,
-                           minimum_coverage, in_species_rna_support_only):
+def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df, intron_rnaseq_support,
+                           exon_rnaseq_support, intron_annot_support, exon_annot_support, original_intron_support,
+                           coding_cutoff,  minimum_coverage, in_species_rna_support_only):
     """
     Updates the DataFrame based on support levels. Filters based on user-tunable flags for support levels.
     :param hgm_df: df produced by load_hgm_vectors() (all transcripts)
     :param metrics_df: df produced by load_metrics() (coding transcripts only)
     :param tm_eval_df: df produced by load_transmap_evals() (all transcripts)
     :param ref_df: df produced by tools.sqlInterface.load_annotation()
+    :param evaluation_df: produced by load_evaluations_from_db() (coding transcripts only)
     :param intron_rnaseq_support: Value 0-100. Percent of introns that must be supported by RNAseq
     :param exon_rnaseq_support: Value 0-100. Percent of exons supported by RNA-seq.
     :param intron_annot_support: Value 0-100. Percent of introns supported by the reference.
@@ -323,6 +354,8 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, intron_rnaseq
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
     # add metrics information to coding df
     coding_df = pd.merge(coding_df, metrics_df, on=['GeneId', 'TranscriptId', 'AlignmentId'])
+    # add evaluation information to coding df, where possible. This adds information on frame shifts.
+    coding_df = pd.merge(coding_df, evaluation_df, on='AlignmentId', how='left')
     # fill the original intron values to zero so we don't filter them out
     coding_df['OriginalIntronsPercent'] = coding_df.OriginalIntronsPercent.fillna(0)
     # reclassify coding TM/TMR
@@ -491,11 +524,11 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
                                for i in tx.intron_intervals])
         if intervals in pb_intervals:
             d['pacbio_isoform_supported'] = True
-            metrics['IsoSeq Transcript Valdiation'][True] += 1
+            metrics['IsoSeq Transcript Validation'][True] += 1
             pb_resolved_consensus.append([tx_id, d])
         elif require_pacbio_support is False:
             d['pacbio_isoform_supported'] = False
-            metrics['IsoSeq Transcript Valdiation'][False] += 1
+            metrics['IsoSeq Transcript Validation'][False] += 1
             pb_resolved_consensus.append([tx_id, d])
         # if require_pacbio_support is True, then we don't save this transcript
     return pb_resolved_consensus
@@ -530,6 +563,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
          'transcript_class': best_series.TranscriptClass,
          'transcript_biotype': best_series.TranscriptBiotype,
          'alignment_id': str(best_series.AlignmentId),
+         'frameshift': str(best_series.Frameshift),
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
          'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport))}#,
          #'cds_annotation_support': ','.join(map(str, best_series.CdsAnnotSupport))}
@@ -755,6 +789,18 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
                                                              tx_s.AlnGoodness])
 
 
+def calculate_indel_metrics(final_consensus, eval_df, metrics):
+    """How many transcripts in the final consensus have indels? How many did we have in transMap?"""
+    eval_df_transmap = eval_df[eval_df['AlignmentId'].apply(tools.nameConversions.aln_id_is_transmap)]
+    tm_vals = eval_df_transmap.set_index('AlignmentId').sum(axis=0)
+    tm_vals = 100.0 * tm_vals / len(set(eval_df_transmap.index))
+    metrics['transMap Indels'] = tm_vals.to_dict()
+    consensus_ids = set(zip(*final_consensus)[0])
+    consensus_vals = eval_df[eval_df['AlignmentId'].isin(consensus_ids)].set_index('AlignmentId').sum(axis=0)
+    consensus_vals = 100.0 * consensus_vals / len(final_consensus)
+    metrics['Consensus Indels'] = consensus_vals.to_dict()
+
+
 def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dict, genome):
     """
     Write the resulting gp + gp_info, generating genome-specific unique identifiers
@@ -843,6 +889,10 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs['Parent'] = gene_id
         score, attrs_field = convert_attrs(attrs, tx_id)
         yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop, score, tx_obj.strand, '.', attrs_field]
+        # hack to remove the frameshift field from lower objects
+        # TODO: record the actual exon with the frameshift.
+        if 'frameshift' in attrs:
+            del attrs['frameshift']
         for line in generate_intron_exon_records(chrom, tx_obj, tx_id, attrs):
             yield line
         if tx_obj.cds_size > 3:
