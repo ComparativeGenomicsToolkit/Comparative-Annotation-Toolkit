@@ -46,6 +46,7 @@ from hgm import hgm, parse_hgm_gtf
 from transmap_classify import transmap_classify
 from plots import generate_plots
 from hints_db import hints_db
+from assembly_hub import AssemblyHub
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,8 @@ class PipelineTask(luigi.Task):
     pb_genome_chunksize = luigi.IntParameter(default=20000000, significant=False)
     pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
+    # assemblyHub parameters
+    assembly_hub = luigi.BoolParameter(default=False)
     # consensus options
     resolve_split_genes = luigi.BoolParameter(default=False, significant=False)
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
@@ -184,7 +187,10 @@ class PipelineTask(luigi.Task):
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
-        
+
+        # flags for assembly hub building
+        args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
+
         args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal)), True)
         if self.target_genomes is None:
             args.set('target_genomes', tuple(set(args.hal_genomes) - {self.ref_genome}), True)
@@ -437,6 +443,18 @@ class ToilTask(PipelineTask):
         return namespace
 
 
+class RebuildableTask(PipelineTask):
+    def __init__(self, *args, **kwargs):
+        """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
+        super(PipelineTask, self).__init__(*args, **kwargs)
+        # To force execution, we just remove all outputs before `complete()` is called
+        if self.rebuild_consensus is True:
+            outputs = luigi.task.flatten(self.output())
+            for out in outputs:
+                if out.exists():
+                    out.remove()
+
+
 ###
 # pipeline tasks
 ###
@@ -490,6 +508,8 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
         yield self.clone(Plots)
+        if self.assembly_hub is True:
+            yield self.clone(AssemblyHub)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -1832,21 +1852,11 @@ class Consensus(PipelineWrapperTask):
             yield self.clone(ConsensusDriverTask, genome=target_genome)
 
 
-class ConsensusDriverTask(PipelineTask):
+class ConsensusDriverTask(RebuildableTask):
     """
     Driver task for performing consensus finding.
     """
     genome = luigi.Parameter()
-
-    def __init__(self, *args, **kwargs):
-        """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
-        super(PipelineTask, self).__init__(*args, **kwargs)
-        # To force execution, we just remove all outputs before `complete()` is called
-        if self.rebuild_consensus is True:
-            outputs = luigi.task.flatten(self.output())
-            for out in outputs:
-                if out.exists():
-                    out.remove()
 
     def output(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
@@ -1871,20 +1881,10 @@ class ConsensusDriverTask(PipelineTask):
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 
-class Plots(PipelineTask):
+class Plots(RebuildableTask):
     """
     Produce final analysis plots
     """
-    def __init__(self, *args, **kwargs):
-        """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
-        super(PipelineTask, self).__init__(*args, **kwargs)
-        # To force execution, we just remove all outputs before `complete()` is called
-        if self.rebuild_consensus is True:
-            outputs = luigi.task.flatten(self.output())
-            for out in outputs:
-                if out.exists():
-                    out.remove()
-
     @staticmethod
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')

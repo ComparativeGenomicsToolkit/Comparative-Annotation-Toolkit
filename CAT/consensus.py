@@ -489,7 +489,7 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             # this may be a poor mapping
             elif is_poor_alignment(s):
                 d['transcript_class'] = 'poor_alignment'
-                metrics['denovo'][tx_mode]['Poor mapping'] += 1
+                metrics['denovo'][tx_mode]['Poor alignment'] += 1
                 metrics['Transcript Modes'][tx_mode] += 1
             # this is looking pretty novel, could still be a mapping problem in a complex region though
             else:
