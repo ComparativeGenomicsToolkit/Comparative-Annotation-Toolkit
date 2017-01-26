@@ -12,7 +12,8 @@ setup(
         'pandas>=0.18',
         'frozendict',
         'configobj',
-        'sqlalchemy'
+        'sqlalchemy',
+        'ete3'
     ],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',
