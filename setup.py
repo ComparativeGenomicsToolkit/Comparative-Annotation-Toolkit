@@ -7,7 +7,7 @@ setup(
     install_requires=[
         'pyfasta>=0.5.2',
         'toil>=3.0',
-        'luigi>=2.0',
+        'luigi>=2.5',
         'seaborn>=0.7',
         'pandas>=0.18',
         'frozendict',
