@@ -45,37 +45,9 @@ from hgm import hgm, parse_hgm_gtf
 from transmap_classify import transmap_classify
 from plots import generate_plots
 from hints_db import hints_db
+from exceptions import *
 
 logger = logging.getLogger('cat')
-
-
-###
-# Pipeline exceptions
-###
-
-
-class UserException(Exception):
-    """generic exception to use when a user makes a mistake"""
-    pass
-
-
-class ToolMissingException(UserException):
-    """exception to use when a tool is missing, usually checked in a task validate() method"""
-    pass
-
-
-class InputMissingException(UserException):
-    """exception to use when input data are missing"""
-    pass
-
-
-class InvalidInputException(UserException):
-    """exception to use when something about the input is invalid"""
-    pass
-
-
-class MissingFileException(UserException):
-    """exception to use when a input file is missing"""
 
 
 ###
@@ -183,7 +155,7 @@ class PipelineTask(luigi.Task):
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
-        
+
         args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal)), True)
         if self.target_genomes is None:
             args.set('target_genomes', tuple(set(args.hal_genomes) - {self.ref_genome}), True)

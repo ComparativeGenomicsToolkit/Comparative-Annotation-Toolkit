@@ -19,7 +19,7 @@ import tools.procOps
 import tools.toilInterface
 import tools.transcripts
 import tools.hal
-from cat import UserException
+from exceptions import UserException
 
 logger = logging.getLogger(__name__)
 

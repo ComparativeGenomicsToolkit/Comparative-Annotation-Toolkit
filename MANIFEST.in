@@ -1,0 +1,2 @@
+recursive-include augustus_cfgs *
+recursive-include test_data *
