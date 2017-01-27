@@ -19,13 +19,9 @@ import tools.procOps
 import tools.toilInterface
 import tools.transcripts
 import tools.hal
+from exceptions import UserException
 
 logger = logging.getLogger(__name__)
-
-
-class UserException(Exception):
-    """generic exception to use when a user makes a mistake"""
-    pass
 
 
 def hints_db(hints_args, toil_options):

@@ -8,6 +8,8 @@ import pysam
 
 import procOps
 from pipeline import ProcException
+from cat.exceptions import ToolMissingException
+from distutils.version import StrictVersion
 
 
 class HashableNamespace(argparse.Namespace):
@@ -65,6 +67,16 @@ def is_exec(program):
         return procOps.call_proc_lines(cmd)[0].endswith(program)
     except ProcException:
         return False
+
+
+def samtools_version():
+    """checks the version of samtools installed"""
+    try:
+        r = procOps.call_proc_lines(['samtools', '--version'])
+        if StrictVersion(r[0].split()[1]) < '1.3.0':
+            raise ToolMissingException('samtools version is not >= 1.3.0')
+    except ProcException:
+        raise ToolMissingException('samtools is not installed')
 
 
 def is_bam(path):

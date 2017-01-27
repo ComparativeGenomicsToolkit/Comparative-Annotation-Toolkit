@@ -4,7 +4,6 @@ both the Task and Target paradigms.
 """
 import sqlite3
 import luigi
-import luigi.util
 
 
 class multiple_inherits(object):
@@ -45,7 +44,7 @@ class multiple_inherits(object):
                     setattr(task_that_inherits, param_name, param_obj)
 
         # Modify task_that_inherits by subclassing it and adding methods
-        @luigi.util.task_wraps(task_that_inherits)
+        @luigi.task._task_wraps(task_that_inherits)
         class Wrapped(task_that_inherits):
             def clone_parent(self, **args):
                 task = self.clone(cls=tasks_to_inherit[0])
@@ -70,7 +69,7 @@ class multiple_requires(object):
         tasks_to_require = self.tasks_to_require
 
         # Modify task_that_requires by subclassing it and adding methods
-        @luigi.util.task_wraps(task_that_requires)
+        @luigi.task._task_wraps(task_that_requires)
         class Wrapped(task_that_requires):
             def requires(self):
                 return (self.clone(x) for x in tasks_to_require)

@@ -556,7 +556,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
     # construct the tags for this transcript
     d = {'source_transcript': best_series.name,
          'source_gene': gene_id,
-         'score': int(1000 * round(best_series.AlnGoodness, 3)),
+         'score': int(10 * round(best_series.AlnGoodness, 3)),
          'failed_gene': failed_gene,
          'transcript_modes': transcript_modes,
          'gene_biotype': best_series.GeneBiotype,
@@ -845,7 +845,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         """converts the attrs dict to a attributes field. assigns name to the gene common name for display"""
         attrs['ID'] = id_field
         if 'score' in attrs:
-            score = attrs['score']
+            score = 10 * attrs['score']
             del attrs['score']
         else:
             score = '.'
@@ -945,7 +945,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     with consensus_gff3.open('w') as out_gff3:
         out_gff3.write('##gff-version 3\n')
         for chrom in sorted(consensus_gene_dict):
-            out_gff3.write('###sequence-region {}'.format(chrom))
+            out_gff3.write('###sequence-region {}\n'.format(chrom))
             for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
                 tx_objs, attrs_list = zip(*tx_list)
                 tx_lines = [generate_gene_record(chrom, tx_objs, gene_id, attrs_list)]

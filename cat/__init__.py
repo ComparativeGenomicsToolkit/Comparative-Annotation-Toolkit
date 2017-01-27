@@ -1,4 +1,3 @@
-#!/usr/bin/env python2.7
 """
 Comparative Annotation Toolkit.
 """
@@ -47,37 +46,9 @@ from transmap_classify import transmap_classify
 from plots import generate_plots
 from hints_db import hints_db
 from assembly_hub import AssemblyHub
+from exceptions import *
 
-logger = logging.getLogger(__name__)
-
-
-###
-# Pipeline exceptions
-###
-
-
-class UserException(Exception):
-    """generic exception to use when a user makes a mistake"""
-    pass
-
-
-class ToolMissingException(UserException):
-    """exception to use when a tool is missing, usually checked in a task validate() method"""
-    pass
-
-
-class InputMissingException(UserException):
-    """exception to use when input data are missing"""
-    pass
-
-
-class InvalidInputException(UserException):
-    """exception to use when something about the input is invalid"""
-    pass
-
-
-class MissingFileException(UserException):
-    """exception to use when a input file is missing"""
+logger = logging.getLogger('cat')
 
 
 ###
@@ -188,9 +159,12 @@ class PipelineTask(luigi.Task):
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
 
+<<<<<<< HEAD:CAT/cat.py
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
 
+=======
+>>>>>>> master:cat/__init__.py
         args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal)), True)
         if self.target_genomes is None:
             args.set('target_genomes', tuple(set(args.hal_genomes) - {self.ref_genome}), True)
@@ -830,6 +804,7 @@ class BuildDb(PipelineTask):
         return args
 
     def validate(self):
+        tools.misc.samtools_version()  # validate samtools version
         for tool in ['load2sqlitedb', 'samtools', 'filterBam', 'bam2hints', 'bam2wig', 'wig2hints.pl', 'bam2hints',
                      'bamToPsl', 'blat2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl']:
             if not tools.misc.is_exec(tool):
@@ -954,7 +929,7 @@ class TransMap(PipelineWrapperTask):
         return args
 
     def validate(self):
-        for tool in ['pslMap', 'pslRecalcMatch', 'transMapPslToGenePred']:
+        for tool in ['pslMap', 'pslRecalcMatch', 'pslMapPostChain']:
             if not tools.misc.is_exec(tool):
                     raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
@@ -984,7 +959,7 @@ class TransMapPsl(PipelineTask):
         logger.info('Running transMap for {}.'.format(self.genome))
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         cmd = [['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, '/dev/stdout'],
-               ['postTransMapChain', '/dev/stdin', '/dev/stdout'],
+               ['pslMapPostChain', '/dev/stdin', '/dev/stdout'],
                ['sort', '-k', '14,14', '-k', '16,16n'],
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
                ['pslCDnaFilter', '-localNearBest=0.0001', '-minCover=0.1', '/dev/stdin', '/dev/stdout'],

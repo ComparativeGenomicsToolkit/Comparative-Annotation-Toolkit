@@ -1,0 +1,5 @@
+theme: jekyll-theme-minimal
+
+markdown: kramdown
+kramdown:
+  input: GFM
