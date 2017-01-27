@@ -411,7 +411,7 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
     def do_kdeplot(x, y, ax, n_levels=None, bw='scott'):
         try:
             sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=n_levels, bw=bw)
-        except ValueError:
+        except:
             logger.warning('Unable to do a KDE fit to AUGUSTUS improvement.')
             pass
 
