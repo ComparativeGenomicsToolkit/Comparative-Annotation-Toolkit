@@ -159,12 +159,9 @@ class PipelineTask(luigi.Task):
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
 
-<<<<<<< HEAD:CAT/cat.py
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
 
-=======
->>>>>>> master:cat/__init__.py
         args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal)), True)
         if self.target_genomes is None:
             args.set('target_genomes', tuple(set(args.hal_genomes) - {self.ref_genome}), True)
