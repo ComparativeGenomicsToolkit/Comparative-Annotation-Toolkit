@@ -4,6 +4,10 @@ This project aims to provide a straightforward end-to-end pipeline that takes as
 
 This pipeline is capable of running both on local cluster hardware as well as on common cloud infrastructure using the [toil](http://toil.readthedocs.io/en/latest/) workflow engine. For full runs on many genomes, a decent amount of computational effort is required. Memory usage is moderate.
 
+[[https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit/blob/master/img/CAT_pipeline.png|alt=pipeline]]
+
+Above is a flowchart schematic of the functionality of the `CAT` pipeline.
+
 #Installation
 
 The pipeline can be installed by a simple `pip` install: 
@@ -87,7 +91,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--augustus-cgp`: Run AugustusCGP?
 
-`--cgp-param`: Parameters file after training CGP on the alignment. See the [AugustusCGP section](#augustus-cgp).
+`--cgp-param`: Parameters file after training CGP on the alignment. See the [AugustusCGP section](#augustuscgp).
 
 `--maf-chunksize`: Size to chunk HAL into. Larger values make the CGP jobs take longer, but reduce problems related to splitting in genic regions. Default is 2500000. 
 
@@ -255,7 +259,7 @@ This module will populate the folder `--work-dir/filtered_transMap`.
 
 ##Augustus
 
-As [discussed above](#AugustusTM(R)), this module runs `AugustusTM(R)`. If the pipeline is ran without a hints database, only the `AugustusTM` mode will be executed. This process is one of the most computationally intensive steps, and should not be ran without a cluster.
+As [discussed above](#augustustmr), this module runs `AugustusTM(R)`. If the pipeline is ran without a hints database, only the `AugustusTM` mode will be executed. This process is one of the most computationally intensive steps, and should not be ran without a cluster.
 
 This module will populate the folder `--work-dir/augustus`.
 
