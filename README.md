@@ -25,17 +25,17 @@ Either form of `pip` installation will install all of the python dependencies. H
 
 1. [Kent toolkit](https://github.com/ucscGenomeBrowser/kent). Follow the installation instructions there. Make sure you put the newly created `~/bin/$MACHTYPE` directory on your path.
 2. [bedtools](http://bedtools.readthedocs.io/en/latest/).
-3. [samtools](http://www.htslib.org/) (1.0 or greater).
-4. [Augustus](http://bioinf.uni-greifswald.de/augustus/binaries/). Make sure you are installing `AUGUSTUS >= 3.2.3`. You need to follow the instructions to compile `AUGUSTUS` in comparative augustus mode. This requires that you modify a few lines in the `common.mk` file, and also need to have `sqlite3`, `lp-solve`, `bamtools`, and `libboost` installed. If you are using ubuntu, this should work:
+3. [samtools](http://www.htslib.org/) (1.3 or greater).
+4. [Augustus](http://bioinf.uni-greifswald.de/augustus/binaries/). Make sure you are installing `augustus >= 3.2.3`. You need to follow the instructions to compile `augustus` in comparative augustus mode. This requires that you modify a few lines in the `common.mk` file, and also need to have `sqlite3`, `lp-solve`, `bamtools`, and `libboost` installed. If you are using ubuntu, this should work:
    `apt-get install libboost-all-dev libboost sqlite3 libsqlite3-0 libsqlite3-dev libgsl0-dev lp-solve liblpsolve55-dev bamtools libbamtools-dev`
    
-  After you have the primary `AUGUSTUS` binaries compiled, add the directory to your path. Note that if you move the `AUGUSTUS` binaries from their original location, you will need to set the `AUGUSTUS_CONFIG_PATH` global variable to point to the species directory. 
+  After you have the primary `augustus` binaries compiled, add the directory to your path. Note that if you move the `augustus` binaries from their original location, you will need to set the `augustus_CONFIG_PATH` global variable to point to the species directory. 
   
   You will also need to put the contents of the `scripts` directory on your path. Next, you need to compile the following auxiliary programs from the folder `auxprogs`:
-  1. `joingenes`. Compiling this program will place it in the `AUGUSTUS` binary directory.
-  2. `bam2hints`. Compiling this program will place it in the `AUGUSTUS` binary directory. Requires `bamtools` to be installed. If the `bamtools` headers are not at `/usr/include/bamtools`, you will need to modify the makefile.
+  1. `joingenes`. Compiling this program will place it in the `augustus` binary directory.
+  2. `bam2hints`. Compiling this program will place it in the `augustus` binary directory. Requires `bamtools` to be installed. If the `bamtools` headers are not at `/usr/include/bamtools`, you will need to modify the makefile.
   3. `filterBam`. Also requires the `bamtools` headers.
-  4. `bam2wig`. Compiling this program will NOT place it in the `AUGUSTUS` binary directory, you must do so yourself. This program requires you modify the makefile to explicitly point to your installation of `htslib`, `bcftools`, `samtools`, and `tabix`. `Tabix` is now packaged with `htslib`, and both are included in your `kent` directory at `$kent/src/htslib/`.
+  4. `bam2wig`. Compiling this program will NOT place it in the `augustus` binary directory, you must do so yourself. This program requires you modify the makefile to explicitly point to your installation of `htslib`, `bcftools`, `samtools`, and `tabix`. `Tabix` is now packaged with `htslib`, and both are included in your `kent` directory at `$kent/src/htslib/`.
   5. `homGeneMapping`. This program must also have its makefile at `$augustus/trunks/auxprogs/homGeneMapping/src/Makefile` to turn on the `BOOST = true` and `SQLITE = true` flags. Then run `make clean && make` to recompile.
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 
@@ -144,7 +144,7 @@ The remaining options are passed directly along to `toil`:
 
 The config file contains the paths to two important pieces of information -- the reference GFF3 and the extrinsic hints (bams).
 
-A major component of producing high quality comparative annotations is making use of RNA-seq and/or IsoSeq information. This information is used as hints to the `AUGUSTUS` gene finding tool along with `transMap`, and is a major component of cleaning up transcript projections. This is also useful if you run the `augustusCGP` or `augustusPB` portions of the pipeline.
+A major component of producing high quality comparative annotations is making use of RNA-seq and/or IsoSeq information. This information is used as hints to the `augustus` gene finding tool along with `transMap`, and is a major component of cleaning up transcript projections. This is also useful if you run the `augustusCGP` or `augustusPB` portions of the pipeline.
 
 A template for the config file is below. At a minimum, your config file must have the annotation section. A example config file is provided in the `test_data` folder.
 
@@ -187,20 +187,20 @@ The default mode of this pipeline will perform the following tasks:
 3. Evaluate these transcripts for potential problems, assigning a score.
 4. Produce a output annotation set as well a series of plots charting how this process went.
 
-These steps will run reasonably fast on one machine without any need for cluster computing. However, to construct a high quality annotation set, it is recommended that the pipeline be run with as many modes of `AUGUSTUS` as possible.
+These steps will run reasonably fast on one machine without any need for cluster computing. However, to construct a high quality annotation set, it is recommended that the pipeline be run with as many modes of `augustus` as possible.
 
 ##AugustusTM(R)
-The primary parameterization of `AUGUSTUS` for comparative annotation is primarily a method to clean up transMap projections. Due to a combination of assembly error, alignment noise and real biological changes transMap projections have frame shifting indels, missing or incomplete exons, and invalid splice sites. `AugustusTM` is given every protein coding transMap projection one at a time with some flanking sequence and asked to construct a transcript that closely matches the intron-exon structure that `transMap` provides. Since `AUGUSTUS` enforces a standard gene model, frame shifts and invalid splices will be adjusted to a valid form. In some cases this will mangle the transcript, producing either another isoform or something that does not resemble the source transcript. `AugustusTMR` runs the same genomic interval and transMap derived hints through `AUGUSTUS` a second time, but with less strict weights on the `transMa`p hints and with the addition of extrinsic hints from RNA-seq and/or IsoSeq. This is particularly useful in regions where an exon was dropped in the Cactus alignment.
+The primary parameterization of `augustus` for comparative annotation is primarily a method to clean up transMap projections. Due to a combination of assembly error, alignment noise and real biological changes transMap projections have frame shifting indels, missing or incomplete exons, and invalid splice sites. `AugustusTM` is given every protein coding transMap projection one at a time with some flanking sequence and asked to construct a transcript that closely matches the intron-exon structure that `transMap` provides. Since `augustus` enforces a standard gene model, frame shifts and invalid splices will be adjusted to a valid form. In some cases this will mangle the transcript, producing either another isoform or something that does not resemble the source transcript. `AugustusTMR` runs the same genomic interval and transMap derived hints through `augustus` a second time, but with less strict weights on the `transMa`p hints and with the addition of extrinsic hints from RNA-seq and/or IsoSeq. This is particularly useful in regions where an exon was dropped in the Cactus alignment.
 
 `AugustusTM` and `AugustusTMR` can be ran by providing the `--augustus` flag to the pipeline. `AugustusTMR` will only be ran for genomes with extrinsic information in the hints database. If you are running `CAT` on a non-mammal, you will want to modify the `--augustus-species` flag to [one of the species listed here](http://bioinf.uni-greifswald.de/augustus/).
 
 ##AugustusCGP
-`augustusCGP` is the comparative mode of `AUGUSTUS` recently introduced by [Stefanie Köneig](https://academic.oup.com/bioinformatics/article/32/22/3388/2525611/Simultaneous-gene-finding-in-multiple-genomes). This mode of `augustus` takes as input a HAL format multiple whole genome alignment and simultaneously produces *de-novo* transcript predictions in all genomes, taking into account conservation as well as any extrinsic information provided. `AugustusCGP` allows for the introduction of novel isoforms and loci in the final gene sets.
+`augustusCGP` is the comparative mode of `augustus` recently introduced by [Stefanie Köneig](https://academic.oup.com/bioinformatics/article/32/22/3388/2525611/Simultaneous-gene-finding-in-multiple-genomes). This mode of `augustus` takes as input a HAL format multiple whole genome alignment and simultaneously produces *de-novo* transcript predictions in all genomes, taking into account conservation as well as any extrinsic information provided. `AugustusCGP` allows for the introduction of novel isoforms and loci in the final gene sets.
 
 `AugustusCGP` can be ran by providing the `--augustus-cgp` flag to the pipeline. If you wish to run `AugustusCGP`, you will likely want to train the underlying model, or the results will be poor. The guide to comparative augustus can be found [here](http://bioinf.uni-greifswald.de/augustus/binaries/tutorial-cgp/). A default parameter set is included. New parameter sets can be incorporated using the `--cgp-param` flag.
 
 ##AugustusPB
-`AugustsPB` is a parameterization of `AUGUSTUS` to try and predict alternative isoforms using long range data. If any IsoSeq data are provided in the config file, and the `--augustus-pb` flag is set, the genomes with IsoSeq data will be run through and the results incorporated in the final gene set. `AugustusPB` runs on single whole genomes.
+`AugustsPB` is a parameterization of `augustus` to try and predict alternative isoforms using long range data. If any IsoSeq data are provided in the config file, and the `--augustus-pb` flag is set, the genomes with IsoSeq data will be run through and the results incorporated in the final gene set. `AugustusPB` runs on single whole genomes.
 
 
 #Modules
@@ -341,10 +341,10 @@ The consensus finding process takes in transcripts from every mode and attempts 
 To evaluate `transMap`, `AugustusTM` and `AugustusTMR` transcripts a consensus score is assigned to each. This score is the sum of the alignment goodness, intron/exon annotation support, original intron support, and intron/exon RNA-seq/IsoSeq support if extrinsic data were provided.
 
 The consensus finding algorithm evaluates each source gene separately. The analysis of transcripts being above or below the identified identity cutoff is used to define a transcript as failing or passing. If all transcripts for a gene are considered failing, the one longest projection is used to represent the locus and the gene is marked as failing. If one or more transcript is above the identity cutoff, then the version of that transcript with the highest consensus score is chosen.
-	
-If one of the de-novo `AUGUSTUS` modes is run, then the those transcripts are evaluated for providing novel information. If a prediction did not overlap any transMap projections, then it is tagged as putative novel and incorporated into the gene set. If a prediction overlaps a `transMap` projection that was filtered out during paralog resolution, then it is tagged as a possible paralog as well as with the names of overlapping transcripts and incorporated into the gene set. If a prediction overlaps a transMap projection and contains a splice junction not seen in the reference annotation, then it is tagged as a novel isoform and incorporated into the gene set as a member of the gene it overlapped with.
+    
+If one of the de-novo `augustus` modes is run, then the those transcripts are evaluated for providing novel information. If a prediction did not overlap any transMap projections, then it is tagged as putative novel and incorporated into the gene set. If a prediction overlaps a `transMap` projection that was filtered out during paralog resolution, then it is tagged as a possible paralog as well as with the names of overlapping transcripts and incorporated into the gene set. If a prediction overlaps a transMap projection and contains a splice junction not seen in the reference annotation, then it is tagged as a novel isoform and incorporated into the gene set as a member of the gene it overlapped with.
 
-After consensus finding is complete, a final filtering process is performed. This filtering process deduplicates the transcript set. Duplicates most often occur when the `AUGUSTUS` execution modes create an identical transcript model from different input isoforms. In this case, the duplicates are removed and the remaining transcript tagged with the names of alternative source transcripts. Finally, strand resolution throws out transcripts that are on opposite strands. The correct strand is chosen by looking at which contains the most high quality transcripts.
+After consensus finding is complete, a final filtering process is performed. This filtering process deduplicates the transcript set. Duplicates most often occur when the `augustus` execution modes create an identical transcript model from different input isoforms. In this case, the duplicates are removed and the remaining transcript tagged with the names of alternative source transcripts. Finally, strand resolution throws out transcripts that are on opposite strands. The correct strand is chosen by looking at which contains the most high quality transcripts.
 
 After consensus finding, a final output gene set is produced in both `GFF3` and `genePred` format. The `genePred` annotations also have a additional `.gp_info` file that has the additional fields described below.
 
@@ -367,7 +367,7 @@ A large range of plots are produced in `--output-dir/plots`. These include:
 12. `paralogy.pdf`: Stacked bar charts of the number of alignments a given source transcript had in each target.
 13. `split_genes.pdf`: The number of genes split within and between contigs. If the `--resolve-split-genes` flag is set, reports the number of discarded transcripts.
 14. `transcript_modes.pdf`: The number of modes that supported a given comparative annotation. Applies only to protein coding transcripts derived from `transMap`.
-15. `augustus_improvement.pdf`: A scatterplot + density plot reporting the improvement of primary consensus metrics when an `AUGUSTUS` transcript was chosen over a transMap transcript. The density plot may fail in some cases.
+15. `augustus_improvement.pdf`: A scatterplot + density plot reporting the improvement of primary consensus metrics when an `augustus` transcript was chosen over a transMap transcript. The density plot may fail in some cases.
 16. `coding_indels.pdf`: The rate of insertions, deletions and indels that are a multiple of 3 are reported from the final consensus set based on the pairwise alignments. Preference is given to the CDS space alignment, if it worked.
 17. `IsoSeq_isoform_validation.pdf`: The number of transcripts in the consensus set whose intron structure is exactly validated by at least one IsoSeq read.
 
