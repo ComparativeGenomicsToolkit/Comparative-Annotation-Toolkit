@@ -4,7 +4,7 @@ This project aims to provide a straightforward end-to-end pipeline that takes as
 
 This pipeline is capable of running both on local cluster hardware as well as on common cloud infrastructure using the [toil](http://toil.readthedocs.io/en/latest/) workflow engine. For full runs on many genomes, a decent amount of computational effort is required. Memory usage is moderate.
 
-[[https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit/blob/master/img/CAT_pipeline.png|alt=pipeline]]
+![pipeline](https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit/blob/master/img/CAT_pipeline.png)
 
 Above is a flowchart schematic of the functionality of the `CAT` pipeline.
 
