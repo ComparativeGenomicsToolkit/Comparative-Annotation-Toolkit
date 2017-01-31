@@ -426,6 +426,19 @@ class RebuildableTask(PipelineTask):
                     out.remove()
 
 
+class TrackTask(RebuildableTask):
+    """Provides shared values for all of the track tasks"""
+    genome = luigi.Parameter()
+    track_path = luigi.Parameter()
+    trackdb_path = luigi.Parameter()
+
+    def requires(self):
+        return self.clone(CreateDirectoryStructure), self.clone(Consensus)
+
+    def output(self):
+        return luigi.LocalTarget(self.track_path), luigi.LocalTarget(self.trackdb_path)
+
+
 ###
 # pipeline tasks
 ###
@@ -1971,9 +1984,8 @@ class CreateDirectoryStructure(PipelineTask):
         tools.fileOps.ensure_file_dir(args.out_dir)
 
         # write the hub.txt file
-        hal_name = os.path.splitext(os.path.basename(pipeline_args.hal))[0]
         with luigi.LocalTarget(args.hub_txt).open('w') as outf:
-            outf.write(hub_str.format(hal=hal_name))
+            outf.write(hub_str.format(hal=os.path.splitext(os.path.basename(pipeline_args.hal))[0]))
 
         # write the groups.txt file
         with luigi.LocalTarget(args.groups_txt).open('w') as outf:
@@ -1995,199 +2007,128 @@ class CreateDirectoryStructure(PipelineTask):
             twobit_local_path, twobit_hub_path = args.twobits[genome]
             os.link(twobit_local_path, twobit_hub_path)
 
-        # construct the initial trackDb with the HAL tracks
-        # TODO: this will include self tracks. Provide a flag?
-        org_str = construct_org_str(args.genomes)
-        for genome, track_db in args.trackdbs.iteritems():
-            with luigi.LocalTarget(track_db).open('w') as outf:
-                outf.write(snake_composite.format(org_str=org_str))
-                for genome in args.genomes:
-                    # by default, only the reference genome is visible
-                    visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
-                    outf.write(snake_template.format(genome=genome, hal_path='../{}'.format(hal_name),
-                                                     visibility=visibility))
-
 
 class CreateTracks(PipelineWrapperTask):
     """
     Wrapper task for track creation.
     """
-    @staticmethod
-    def get_args(pipeline_args, genome):
-        args = tools.misc.HashableNamespace()
-        directory_args = CreateDirectoryStructure.get_args(pipeline_args)
-        cgp_args = AugustusCgp.get_args(pipeline_args)
-        ref_args = ReferenceFiles.get_args(pipeline_args)
-        args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
-        args.trackDb = directory_args.trackdbs[genome]
-        out_dir = os.path.join(directory_args.out_dir, genome)
-        args.annotation_gp = ref_args.annotation_gp
-        if pipeline_args.augustus_cgp is True:
-            args.augustus_cgp_gp = cgp_args.augustus_cgp_gp[genome]
-            args.cgp_track = luigi.LocalTarget(os.path.join(out_dir, 'augustus_cgp.bb'))
-            args.denovo_tx_modes = ['augCGP']
-        # for the reference genome, we only have the reference genePred and CGP if it was ran
-        if genome == pipeline_args.ref_genome:
-            args.annotation_track = luigi.LocalTarget(os.path.join(out_dir, 'annotation.bb'))
-        else:
-            consensus_args = Consensus.get_args(pipeline_args, genome)
-            args.tx_modes = consensus_args.tx_modes
-            args.consensus_gp = consensus_args.consensus_gp
-            args.consensus_gp_info = consensus_args.consensus_gp_info
-            args.consensus_track = luigi.LocalTarget(os.path.join(out_dir, 'consensus.bb'))
-            args.evaluation_track = luigi.LocalTarget(os.path.join(out_dir, 'evaluation.bb'))
-            tm_args = TransMap.get_args(pipeline_args, genome)
-            args.tm_psl = tm_args.tm_psl
-            args.tm_gp = tm_args.tm_gp
-            args.tm_track = luigi.LocalTarget(os.path.join(out_dir, 'transmap.bb'))
-            args.filtered_tm_gp = FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
-            args.filtered_tm_track = luigi.LocalTarget(os.path.join(out_dir, 'filtered_transmap.bb'))
-            if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
-                aug_args = Augustus.get_args(pipeline_args, genome)
-                args.augustus_tm_gp = aug_args.augustus_tm_gp
-                if genome in pipeline_args.rnaseq_genomes:
-                    args.augustus_tmr_gp = aug_args.augustus_tmr_gp
-                else:
-                    args.augustus_tmr_gp = None
-                args.augustus_track = os.path.join(out_dir, 'augustus.bb')
-        # TODO: isoseq_genomes cannot contain reference, but probably should
-        if genome in pipeline_args.isoseq_genomes:
-            args.isoseq_bams = {bam: os.path.join(out_dir, os.path.basename(bam))
-                                for bam in pipeline_args.cfg['ISO_SEQ_BAM'][genome]}
-            if augustus_pb is True:
-                args.denovo_tx_modes.append('augPB')
-                args.augustus_pb_gp = AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
-                args.augustus_pb_track = luigi.LocalTarget(os.path.join(out_dir, 'aug_pb.bb'))
-        if genome in pipeline_args.rnaseq_genomes:
-            args.bams = {'BAM': pipeline_args.cfg['BAM'].get(genome, []),
-                         'INTRONBAM': pipeline_args.cfg['INTRONBAM'].get(genome, [])}
-            args.splice_track = luigi.LocalTarget(os.path.join(out_dir, 'splices.bb'))
-            if len(args.bams['BAM']) > 0:
-                args.max_expression_track = luigi.LocalTarget(os.path.join(out_dir, 'max_expression.bw'))
-                args.median_expression_track = luigi.LocalTarget(os.path.join(out_dir, 'median_expression.bw'))
-        args.hints = BuildDb.get_args(pipeline_args, genome).hints_path
-        args.chrom_sizes = GenomeFiles.get_args(pipeline_args, genome).sizes
-        args.db = pipeline_args.dbs[genome]
-        args.ref_db = pipeline_args.dbs[pipeline_args.ref_genome]
-        return args
-
     def validate(self):
         for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Tool {} not in global path.'.format(tool))
 
     def requires(self):
-        pipeline_args = self.get_pipeline_args()
         self.validate()
+        pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.target_genomes:
             yield self.clone(CreateTracksDriverTask, genome=genome)
+            yield self.clone(CreateTrackDbs, genome=genome)
         yield self.clone(CreateTracksDriverTask, genome=pipeline_args.ref_genome)
+        yield self.clone(CreateTrackDbs, genome=pipeline_args.ref_genome)
 
 
-class CreateTracksDriverTask(RebuildableTask):
+class CreateTracksDriverTask(PipelineWrapperTask):
     """
-    Task for track creation. Tracks include:
-
-    1) Consensus. Create custom bigGenePred tracks out of the consensus.
-    2) transMap.
-    3) Filtered transMap.
-    4) AugustusCGP. (if it exists)
-    5) AugustusPB. (if it exists)
-    6) AugustusTMR. (if it exists).
-    7) Errors. Use the evaluation database to extract the indel tracks.
-    8) Average RNA-seq expression.
-    9) Maximum RNA-seq expression.
-    10) Splice junctions.
-    11) IsoSeq BAMs (if they exist).
+    Dynamically generates each track task, the combines the results into the final trackDb.
     """
     genome = luigi.Parameter()
 
-    def construct_consensus_track(self, consensus_gp, consensus_gp_info, chrom_sizes, out_bb):
-        """Converts the consensus track."""
-        def find_rgb(info):
-            """red for failed, blue for coding, green for non-coding"""
-            if info.failed_gene == 'True':
-                return '212,76,85'
-            elif info.transcript_biotype == 'protein_coding':
-                return '76,85,212'
-            return '85,212,76'
+    def requires(self):
+        pipeline_args = self.get_pipeline_args()
+        directory_args = CreateDirectoryStructure.get_args(pipeline_args)
+        out_dir = os.path.join(directory_args.out_dir, self.genome)
+        if pipeline_args.augustus_cgp is True:
+            yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_cgp.bb'),
+                             trackdb_path=os.path.join(out_dir, 'augustus_cgp.txt'), mode='augCGP')
+        if pipeline_args.augustus_pb is True and self.genome in pipeline_args.isoseq_genomes:
+            yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_pb.bb'),
+                             trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
-        consensus_gp = tools.transcripts.gene_pred_iterator(consensus_gp)
-        has_pb = 'pacbio_isoform_supported' in consensus_gp_info.columns
-        # start constructing the strings. This requires mucking around with the genePred format.
-        with tools.fileOps.TemporaryFilePath() as tmp_gp, tools.fileOps.TemporaryFilePath() as as_file:
-            with open(tmp_gp, 'w') as outf:
-                for tx in consensus_gp:
-                    info = consensus_gp_info.ix[tx.name]
-                    block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
-                    row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start, tx.thick_stop,
-                           find_rgb(info), tx.block_count, block_sizes, block_starts, info.transcript_name,
-                           tx.cds_start_stat, tx.cds_end_stat, exon_frames, info.transcript_biotype, tx.name2,
-                           info.source_gene_common_name, info.gene_biotype, info.source_gene, info.source_transcript,
-                           info.alignment_id, info.alternative_source_transcripts, info.exon_annotation_support,
-                           info.exon_rna_support, info.failed_gene, info.frameshift, info.intron_annotation_support,
-                           info.intron_rna_support, info.transcript_class, info.transcript_modes]
-                    if has_pb:
-                        row.append(info.pacbio_isoform_supported)
-                    tools.fileOps.print_row(row, outf)
-            with open(as_file, 'w') as outf:
-                as_str = construct_consensus_gp_as(has_pb)
-                outf.write(as_str)
-            tools.procOps.run_proc(['bedSort', tmp_gp, tmp_gp])
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,sourceGene,sourceTranscript,geneName,geneName2',
-                   '-type=bed12+20', '-tab', '-as={}'.format(as_file), tmp_gp, chrom_sizes, out_bb.path]
-            tools.procOps.run_proc(cmd)
+        if self.genome in pipeline_args.annotation_genomes:
+            annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
+                             trackdb_path=os.path.join(out_dir, 'annotation.txt'),
+                             genepred_path=annotation_gp, label=os.path.basename(annotation_gp))
 
-    def construct_modified_bgp_track(self, gp, info, chrom_sizes, out_bb):
-        """Converts the reference annotation or filtered transMap to a modified bigGenePred"""
-        def find_rgb(info):
-            """blue for coding, green for non-coding"""
-            if info.transcript_biotype == 'protein_coding':
-                return '76,85,212'
-            return '85,212,76'
+        if self.genome in pipeline_args.target_genomes:
+            yield self.clone(ConsensusTrack, track_path=os.path.join(out_dir, 'consensus.bb'),
+                             trackdb_path=os.path.join(out_dir, 'consensus.txt'))
 
-        gp = tools.transcripts.gene_pred_iterator(gp)
-        with tools.fileOps.TemporaryFilePath() as tmp, tools.fileOps.TemporaryFilePath() as as_file:
-            with open(as_file, 'w') as outf:
-                outf.write(modified_bgp_as)
-            with open(tmp, 'w') as outf:
-                for tx in gp:
-                    s = info.ix[tx.name]
-                    block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
-                    row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
-                           tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
-                           s.TranscriptName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
-                           s.GeneName, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
-                    tools.fileOps.print_row(row, outf)
-            tools.procOps.run_proc(['bedSort', tmp, tmp])
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,geneName',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, out_bb.path]
-            tools.procOps.run_proc(cmd)
+            tx_modes = ['transMap']
+            if pipeline_args.augustus is True:
+                tx_modes.append('augTM')
+                if self.genome in pipeline_args.rnaseq_genomes:
+                    tx_modes.append('augTMR')
+            yield self.clone(EvaluationTrack, track_path=os.path.join(out_dir, 'evaluation.bb'),
+                             trackdb_path=os.path.join(out_dir, 'evaluation.txt'),
+                             tx_modes=tuple(tx_modes))
 
-    def construct_transmap_psl_track(self, transmap_psl, fasta, tm_gp, annotation_gp, chrom_sizes, out_bb):
-        """Creates a bigPsl out of the transmap PSL"""
-        with tools.fileOps.TemporaryFilePath() as tmp, tools.fileOps.TemporaryFilePath() as as_file, \
-             tools.fileOps.TemporaryFilePath() as cds, tools.fileOps.TemporaryFilePath() as mrna:
-            seq_dict = tools.bio.get_sequence_dict(fasta)
-            ref_tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
-            for tx in tools.transcripts.gene_pred_iterator(tm_gp):
-                ref_tx = ref_tx_dict[tools.nameConversions.strip_alignment_numbers(tx.name)]
-                tools.bio.write_fasta(mrna, tx.name, str(seq_dict[ref_tx.name]))
-                start = ref_tx.cds_coordinate_to_mrna(0) + ref_tx.offset
-                stop = start + ref_tx.cds_size - ((ref_tx.cds_size - ref_tx.offset) % 3)
-                cds.write('{}\t{}..{}\n'.format(tx.name, start + 1, stop))
+            tm_args = TransMap.get_args(pipeline_args, self.genome)
+            yield self.clone(TransMapTrack, track_path=os.path.join(out_dir, 'transmap.bb'),
+                             trackdb_path=os.path.join(out_dir, 'transmap.txt'))
+            yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
+                             trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
+                             genepred_path=tm_args.tm_gp, label='Filtered transMap')
 
-            cmd = [['pslToBigPsl', '-cds={}'.format(cds), '-fa={}'.format(mrna), transmap_psl, 'stdout'],
-                   ['sort', '-k1,1', '-k2,2n']]
-            tools.procOps.run_proc(cmd, stdout=tmp)
-            with open(as_file, 'w') as outf:
-                outf.write(bigpsl)
-            cmd = ['bedToBigBed', '-type=bed12+13', '-tab', '-extraIndex=name',
-                   '-as={}'.format(as_file), tmp, chrom_sizes, out_bb.path]
-            tools.procOps.run_proc(cmd)
+            if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
+                yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
+                                 trackdb_path=os.path.join(out_dir, 'augustus.txt'))
 
-    def construct_denovo_track(self, augustus_gp, alt_names, annotation_info, chrom_sizes, out_bb):
-        """Creates a bigGenePred-like track out of the denovo predictions"""
+        if self.genome in pipeline_args.isoseq_genomes:
+            isoseq_bams = []
+            # add a number to make names unique
+            for i, bam in enumerate(pipeline_args.cfg['ISO_SEQ_BAM'][self.genome]):
+                new_bam = os.path.join(out_dir, '{}_{}'.format(i, os.path.basename(bam)))
+                isoseq_bams.append((bam, new_bam))
+            yield self.clone(IsoSeqBamTrack, trackdb_path=os.path.join(out_dir, 'isoseq_bams.txt'),
+                             isoseq_bams=tuple(isoseq_bams))
+
+        if self.genome in pipeline_args.rnaseq_genomes:
+            yield self.clone(SpliceTrack, track_path=os.path.join(out_dir, 'splices.bb'),
+                             trackdb_path=os.path.join(out_dir, 'splices.txt'))
+            if self.genome not in pipeline_args.intron_only_genomes:
+                yield self.clone(ExpressionTracks, max_track_path=os.path.join(out_dir, 'max_expression.bw'),
+                                 median_track_path=os.path.join(out_dir, 'median_expression.bw'),
+                                 trackdb_path=os.path.join(out_dir, 'expression.txt'))
+
+
+class CreateTrackDbs(RebuildableTask):
+    """Create the final trackDb entries"""
+    genome = luigi.Parameter()
+
+    def requires(self):
+        return self.clone(CreateTracksDriverTask)
+
+    def output(self):
+        pipeline_args = self.get_pipeline_args()
+        directory_args = CreateDirectoryStructure.get_args(pipeline_args)
+        return luigi.LocalTarget(directory_args.trackdbs[self.genome])
+
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        directory_args = CreateDirectoryStructure.get_args(pipeline_args)
+        out_dir = os.path.join(directory_args.out_dir, self.genome)
+        # TODO: this will include self tracks. Provide a flag?
+        org_str = construct_org_str(directory_args.genomes)
+        with self.output().open('w') as outf:
+            for f in os.listdir(out_dir):
+                if f.endswith('.txt'):
+                    outf.write('include {}\n'.format(f))
+            outf.write('\n\n')
+
+            outf.write(snake_composite.format(org_str=org_str))
+            for genome in directory_args.genomes:
+                # by default, only the reference genome is visible
+                visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
+                hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))
+                outf.write(snake_template.format(genome=genome, hal_path=hal_path, visibility=visibility))
+
+
+class DenovoTrack(TrackTask):
+    """Constructs a denovo track"""
+    mode = luigi.Parameter()
+
+    def run(self):
         def find_rgb(s):
             if s.AssignedGeneId is None and s.AlternativeGeneIds is None:
                 return '175,87,207'  # both null -> purple (denovo)
@@ -2201,84 +2142,318 @@ class CreateTracksDriverTask(RebuildableTask):
             r = {annotation_info.ix[gene].iloc[0].GeneName for gene in s.AlternativeGeneIds.split(',')}
             return ','.join(r)
 
-        annotation_info = annotation_info.reset_index().set_index('GeneId')
-        augustus_gp = tools.transcripts.gene_pred_iterator(augustus_gp)
-        with tools.fileOps.TemporaryFilePath() as tmp, tools.fileOps.TemporaryFilePath() as as_file:
-            with open(as_file, 'w') as outf:
-                outf.write(denovo_as)
-            with open(tmp, 'w') as outf:
-                for tx in augustus_gp:
-                    s = alt_names.ix[tx.name]
-                    if s.AssignedGeneId is None:
-                        assigned_gene_id = gene_name = gene_type = alternative_gene_names = 'N/A'
-                    else:
-                        a = annotation_info.ix[s.AssignedGeneId].iloc[0]
-                        gene_name = a.GeneName
-                        gene_type = a.GeneBiotype
-                        assigned_gene_id = a.index[0]
-                        alternative_gene_names = find_alternative_gene_names(s, a)
-                    block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
-                    row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
-                           tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
-                           gene_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
-                           gene_type, assigned_gene_id, s.AlternativeGeneIds, alternative_gene_names]
-                    tools.fileOps.print_row(outf, row)
-            tools.procOps.run_proc(['bedSort', tmp, tmp])
+        pipeline_args = self.get_pipeline_args()
+        track, trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+        alt_names = load_alt_names(pipeline_args.dbs[self.genome], [self.mode]).set_index('AlignmentId')
+        annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[pipeline_args.ref_genome])
+        annotation_info = annotation_info.set_index('GeneId')
+
+        if self.mode == 'augCGP':
+            augustus_gp = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[self.genome]
+        else:
+            augustus_gp = AugustusPb.get_args(pipeline_args, self.genome).augustus_pb_gp
+
+        tmp = luigi.LocalTarget(is_tmp=True)
+        as_file = luigi.LocalTarget(is_tmp=True)
+
+        with as_file.open('w') as outf:
+            outf.write(denovo_as)
+
+        with tmp.open('w') as outf:
+            for tx in tools.transcripts.gene_pred_iterator(augustus_gp):
+                s = alt_names.ix[tx.name]
+                alternative_gene_ids = 'N/A' if s.AlternativeGeneIds is None else s.AlternativeGeneIds
+                if s.AssignedGeneId is None:
+                    assigned_gene_id = gene_name = gene_type = alternative_gene_names = 'N/A'
+                else:
+                    a = annotation_info.ix[s.AssignedGeneId].iloc[0]
+                    gene_name = a.GeneName
+                    gene_type = a.GeneBiotype
+                    assigned_gene_id = s.AssignedGeneId
+                    alternative_gene_names = find_alternative_gene_names(s, annotation_info)
+                block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
+                       tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
+                       gene_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                       gene_type, assigned_gene_id, alternative_gene_ids, alternative_gene_names]
+                tools.fileOps.print_row(outf, row)
+        tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
+
+        with track.open('w') as outf:
             cmd = ['bedToBigBed', '-extraIndex=assignedGeneId,name,name2',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, out_bb.path]
-            tools.procOps.run_proc(cmd)
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
-    def construct_tmr_track(self, tm_gp, annotation_info, chrom_sizes, out_bb, tmr_gp=None):
-        """Constructs a bigGenePred-like track out of the transMap-derived predictions. Combines them"""
-        for gp, color in zip(*[[tm_gp, tmr_gp], ['38,112,75', '112,38,75']]):
-            if gp is None:
-                continue
-            gp = tools.transcripts.gene_pred_iterator(gp)
-            with tools.fileOps.TemporaryFilePath() as tmp, tools.fileOps.TemporaryFilePath() as as_file:
-                with open(as_file, 'w') as outf:
-                    outf.write(modified_bgp_as)
-                with open(tmp, 'w') as outf:
-                    for tx in gp:
-                        s = annotation_info.ix[tx.name]
-                        block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
-                        row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
-                               tx.thick_stop, color, tx.block_count, block_sizes, block_starts,
-                               s.TranscriptName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
-                               s.GeneName, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
-                        tools.fileOps.print_row(outf, row)
-                tools.procOps.run_proc(['bedSort', tmp, tmp])
-                cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,geneName',
-                       '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, out_bb.path]
-                tools.procOps.run_proc(cmd)
+        label = 'AugustusCGP' if self.mode == 'augCGP' else 'AugustusPB'
+        description = 'Comparative Augustus' if self.mode == 'augCGP' else 'PacBio Augustus'
+        with trackdb.open('w') as outf:
+            outf.write(denovo_template.format(name='augustus_{}_{}'.format(self.mode, self.genome),
+                                              short_label=label, long_label=label, description=description,
+                                              path=os.path.basename(track.path)))
 
-    def construct_error_track(self, consensus_gp_info, db_path, tx_modes, chrom_sizes, out_bb):
-        """Loads the error tracks from the database"""
+
+class BgpTrack(TrackTask):
+    """Constructs a standard modified bigGenePred track"""
+    genepred_path = luigi.Parameter()
+    label = luigi.Parameter()
+
+    def run(self):
+        def find_rgb(info):
+            """blue for coding, green for non-coding"""
+            if info.TranscriptBiotype == 'protein_coding':
+                return '76,85,212'
+            return '85,212,76'
+
+        def convert_case(snake_str):
+            components = snake_str.split('_')
+            return ''.join(x.title() for x in components)
+
+        pipeline_args = self.get_pipeline_args()
+        track, trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+        annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[pipeline_args.ref_genome])
+        # hacky way to make columns consistent
+        if 'transcript_id' in annotation_info.columns:
+            annotation_info.columns = [convert_case(c) for c in annotation_info.columns]
+        annotation_info = annotation_info.set_index('TranscriptId')
+
+        tmp = luigi.LocalTarget(is_tmp=True)
+        as_file = luigi.LocalTarget(is_tmp=True)
+
+        with as_file.open('w') as outf:
+            outf.write(modified_bgp_as)
+
+        with tmp.open('w') as outf:
+            for tx in tools.transcripts.gene_pred_iterator(self.genepred_path):
+                s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
+                       tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
+                       s.TranscriptName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                       s.GeneName, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
+                tools.fileOps.print_row(outf, row)
+        tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
+
+        with track.open('w') as outf:
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,geneName',
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+        with trackdb.open('w') as outf:
+            outf.write(bgp_template.format(name='{}_{}'.format(self.label.replace(' ', '_'), self.genome),
+                                           label=self.label,
+                                           path=os.path.basename(track.path)))
+
+
+class ConsensusTrack(TrackTask):
+    """Constructs a modified bigGenePred for consensus gene sets"""
+    def run(self):
+        def find_rgb(info):
+            """red for failed, blue for coding, green for non-coding"""
+            if info.failed_gene == 'True':
+                return '212,76,85'
+            elif info.transcript_biotype == 'protein_coding':
+                return '76,85,212'
+            return '85,212,76'
+
+        pipeline_args = self.get_pipeline_args()
+        track, trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+        consensus_args = Consensus.get_args(pipeline_args, self.genome)
+        consensus_gp_info = pd.read_csv(consensus_args.consensus_gp_info, sep='\t', header=0).set_index('transcript_id')
+        has_pb = 'pacbio_isoform_supported' in consensus_gp_info.columns
+
+        tmp_gp = luigi.LocalTarget(is_tmp=True)
+        as_file = luigi.LocalTarget(is_tmp=True)
+
+        with tmp_gp.open('w') as outf:
+            for tx in tools.transcripts.gene_pred_iterator(consensus_args.consensus_gp):
+                info = consensus_gp_info.ix[tx.name]
+                block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start, tx.thick_stop,
+                       find_rgb(info), tx.block_count, block_sizes, block_starts, info.source_transcript_name,
+                       tx.cds_start_stat, tx.cds_end_stat, exon_frames, info.transcript_biotype, tx.name2,
+                       info.source_gene_common_name, info.gene_biotype, info.source_gene, info.source_transcript,
+                       info.alignment_id, info.alternative_source_transcripts, info.exon_annotation_support,
+                       info.exon_rna_support, info.failed_gene, info.frameshift, info.intron_annotation_support,
+                       info.intron_rna_support, info.transcript_class, info.transcript_modes]
+                if has_pb:
+                    row.append(info.pacbio_isoform_supported)
+                tools.fileOps.print_row(outf, row)
+
+        with as_file.open('w') as outf:
+            as_str = construct_consensus_gp_as(has_pb)
+            outf.write(as_str)
+        tools.procOps.run_proc(['bedSort', tmp_gp.path, tmp_gp.path])
+
+        with track.open('w') as outf:
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,sourceGene,sourceTranscript,geneName,geneName2',
+                   '-type=bed12+20', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+        with trackdb.open('w') as outf:
+            outf.write(consensus_template.format(genome=self.genome, path=os.path.basename(track.path)))
+
+
+class EvaluationTrack(TrackTask):
+    """Constructs the consensus evaluation track"""
+    tx_modes = luigi.TupleParameter()
+
+    def run(self):
         def load_evals(tx_mode):
+            """Loads the error tracks from the database"""
             cds_table = tools.sqlInterface.tables['CDS'][tx_mode]['evaluation']
             mrna_table = tools.sqlInterface.tables['mRNA'][tx_mode]['evaluation']
             cds_df = pd.read_sql_table(cds_table.__tablename__, engine).set_index('AlignmentId')
             mrna_df = pd.read_sql_table(mrna_table.__tablename__, engine).set_index('AlignmentId')
             return {'CDS': cds_df, 'mRNA': mrna_df}
 
-        engine = tools.sqlInterface.create_engine('sqlite:///' + db_path)
-        evals = {tx_mode: load_evals(tx_mode) for tx_mode in tx_modes}
-        aln_ids = set(consensus_gp_info.AlignmentId)
+        pipeline_args = self.get_pipeline_args()
+        track, trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+        engine = tools.sqlInterface.create_engine('sqlite:///' + pipeline_args.dbs[self.genome])
+        evals = {tx_mode: load_evals(tx_mode) for tx_mode in self.tx_modes}
+        consensus_args = Consensus.get_args(pipeline_args, self.genome)
+        consensus_gp_info = pd.read_csv(consensus_args.consensus_gp_info, sep='\t', header=0).set_index('transcript_id')
+        aln_ids = set(consensus_gp_info.alignment_id)
         rows = []
         for aln_id in aln_ids:
             tx_mode = tools.nameConversions.alignment_type(aln_id)
+            if tx_mode not in ['transMap', 'augTM', 'augTMR']:
+                continue
             df = tools.misc.slice_df(evals[tx_mode]['CDS'], aln_id)
             if len(df) == 0:
                 df = tools.misc.slice_df(evals[tx_mode]['mRNA'], aln_id)
             for _, s in df.iterrows():
                 rows.append([s.chromosome, s.start, s.stop, s.classifier, 0, s.strand])
-        with tools.fileOps.TemporaryFilePath() as tmp:
-            tools.fileOps.print_rows(tmp, rows)
-            tools.procOps.run_proc(['bedSort', tmp, tmp])
-            cmd = ['bedToBigBed', '-tab', tmp, chrom_sizes, out_bb.path]
-            tools.procOps.run_proc(cmd)
 
-    def construct_splice_track(self, hints_gff, chrom_sizes, out_bb):
-        """Constructs splice intervals out of the hints gff"""
+        tmp = luigi.LocalTarget(is_tmp=True)
+        with tmp.open('w') as tmp_handle:
+            tools.fileOps.print_rows(tmp_handle, rows)
+        tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
+        with track.open('w') as outf:
+            cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+        with trackdb.open('w') as outf:
+            outf.write(error_template.format(genome=self.genome, path=os.path.basename(track.path)))
+
+
+class TransMapTrack(TrackTask):
+    """Constructs the transMap bigPsl"""
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        track, trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+        fasta = ReferenceFiles.get_args(pipeline_args).transcript_fasta
+        tm_args = TransMap.get_args(pipeline_args, self.genome)
+
+        # we have to construct a reference CDS file as well as rename the reference fasta to the new names
+        mrna = luigi.LocalTarget(is_tmp=True)
+        cds = luigi.LocalTarget(is_tmp=True)
+        tmp = luigi.LocalTarget(is_tmp=True)
+        as_file = luigi.LocalTarget(is_tmp=True)
+        seq_dict = tools.bio.get_sequence_dict(fasta)
+        ref_tx_dict = tools.transcripts.get_gene_pred_dict(ReferenceFiles.get_args(pipeline_args).annotation_gp)
+        with cds.open('w') as cds_handle, mrna.open('w') as mrna_handle:
+            for tx in tools.transcripts.gene_pred_iterator(tm_args.tm_gp):
+                ref_tx = ref_tx_dict[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                tools.bio.write_fasta(mrna_handle, tx.name, str(seq_dict[ref_tx.name]))
+                start = ref_tx.cds_coordinate_to_mrna(0) + ref_tx.offset
+                stop = start + ref_tx.cds_size - ((ref_tx.cds_size - ref_tx.offset) % 3)
+                cds_handle.write('{}\t{}..{}\n'.format(tx.name, start + 1, stop))
+
+        with tmp.open('w') as outf:
+            cmd = [['pslToBigPsl', '-cds={}'.format(cds.path), '-fa={}'.format(mrna.path), tm_args.tm_psl, 'stdout'],
+                   ['sort', '-k1,1', '-k2,2n']]
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+        with as_file.open('w') as outf:
+            outf.write(bigpsl)
+
+        with track.open('w') as outf:
+            cmd = ['bedToBigBed', '-type=bed12+13', '-tab', '-extraIndex=name',
+                   '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+        with trackdb.open('w') as outf:
+            outf.write(bigpsl_template.format(name='transmap_{}'.format(self.genome), short_label='transMap',
+                                              long_label='transMap', path=os.path.basename(track.path),
+                                              visibility='pack'))
+
+
+class AugustusTrack(TrackTask):
+    """Constructs a combined TM(R) track"""
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        track, trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+        annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[pipeline_args.ref_genome])
+        annotation_info = annotation_info.set_index('TranscriptId')
+        aug_args = Augustus.get_args(pipeline_args, self.genome)
+        tm_gp = aug_args.augustus_tm_gp
+        if self.genome in pipeline_args.rnaseq_genomes:
+            tmr_gp = aug_args.augustus_tmr_gp
+        else:
+            tmr_gp = None
+
+        for gp, color in zip(*[[tm_gp, tmr_gp], ['38,112,75', '112,38,75']]):
+            if gp is None:
+                continue
+            gp = tools.transcripts.gene_pred_iterator(gp)
+            tmp = luigi.LocalTarget(is_tmp=True)
+            as_file = luigi.LocalTarget(is_tmp=True)
+            with as_file.open('w') as outf:
+                outf.write(modified_bgp_as)
+            with tmp.open('w') as outf:
+                for tx in gp:
+                    s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                    block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                    row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
+                           tx.thick_stop, color, tx.block_count, block_sizes, block_starts,
+                           s.TranscriptName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                           s.GeneName, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
+                    tools.fileOps.print_row(outf, row)
+            tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,geneName',
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
+            with track.open('w') as outf:
+                tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+        with trackdb.open('w') as outf:
+            outf.write(bgp_template.format(name='augustus_{}'.format(self.genome), label='AugustusTM(R)',
+                                           path=os.path.basename(track.path)))
+
+
+class IsoSeqBamTrack(RebuildableTask):
+    """Symlinks over IsoSeq bams"""
+    genome = luigi.Parameter()
+    trackdb_path = luigi.Parameter()
+    isoseq_bams = luigi.TupleParameter()
+
+    def output(self):
+        r = [luigi.LocalTarget(new_bam) for bam, new_bam in self.isoseq_bams]
+        r.extend([luigi.LocalTarget(x.path + '.bai') for x in r])
+        return r, luigi.LocalTarget(self.trackdb_path)
+
+    def requires(self):
+        return self.clone(CreateDirectoryStructure), self.clone(Consensus)
+
+    def run(self):
+        bams, trackdb = self.output()
+        with trackdb.open('w') as outf:
+            outf.write(bam_composite_template.format(genome=self.genome))
+            for bam, new_bam in self.isoseq_bams:
+                os.link(bam, new_bam)
+                os.link(bam + '.bai', new_bam + '.bai')
+                name = os.path.splitext(os.path.basename(bam))[0].split('_', 1)[0]
+                outf.write(bam_template.format(bam=os.path.basename(new_bam), name=name, genome=self.genome))
+
+
+class SpliceTrack(TrackTask):
+    """Constructs the splice junction track"""
+    def run(self):
         def parse_entry(entry):
             """Converts a GFF entry to BED12"""
             start = int(entry[3]) - 1
@@ -2287,6 +2462,11 @@ class CreateTracksDriverTask(RebuildableTask):
             mult = tools.misc.parse_gff_attr_line(entry[-1]).get('mult', 1)
             return [entry[0], start, stop, 'SpliceJunction', mult, '.', start, stop, '204,124,45',
                     '2', '2,2', block_starts]
+
+        pipeline_args = self.get_pipeline_args()
+        track, trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+        hints_gff = BuildDb.get_args(pipeline_args, self.genome).hints_path
 
         entries = []
         for line in open(hints_gff):
@@ -2308,109 +2488,55 @@ class CreateTracksDriverTask(RebuildableTask):
             e[4] = s
 
         # load to file
-        with tools.fileOps.TemporaryFilePath() as tmp:
-            tools.fileOps.print_rows(tmp, entries)
-            tools.procOps.run_proc(['bedSort', tmp, tmp])
-            cmd = ['bedToBigBed', '-tab', tmp, chrom_sizes, out_bb.path]
-            tools.procOps.run_proc(cmd)
+        tmp = luigi.LocalTarget(is_tmp=True)
+        with tmp.open('w') as tmp_handle:
+            tools.fileOps.print_rows(tmp_handle, entries)
 
-    def construct_expression_track(self, bams, chrom_sizes, out_median_bw, out_max_bw):
-        """Constructs a wiggle expression track out of the non-intron bams"""
-        cmd = [['wiggletools', 'median'] + bams,
-               ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, out_median_bw]]
-        tools.procOps.run_proc(cmd)
-        cmd = [['wiggletools', 'max'] + bams,
-               ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, out_max_bw]]
-        tools.procOps.run_proc(cmd)
+        tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
+
+        with track.open('w') as outf:
+            cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+        with trackdb.open('w') as outf:
+            outf.write(splice_template.format(genome=self.genome, path=os.path.basename(track.path)))
+
+
+class ExpressionTracks(RebuildableTask):
+    """Constructs the maximum and median expression tracks"""
+    genome = luigi.Parameter()
+    trackdb_path = luigi.Parameter()
+    max_track_path = luigi.Parameter()
+    median_track_path = luigi.Parameter()
 
     def output(self):
-        pipeline_args = self.get_pipeline_args()
-        args = CreateTracks.get_args(pipeline_args, self.genome)
-        for item in args.__dict__.itervalues():
-            if isinstance(item, luigi.LocalTarget):
-                yield item
+        return [luigi.LocalTarget(self.max_track_path), luigi.LocalTarget(self.median_track_path)], \
+               luigi.LocalTarget(self.trackdb_path)
+
+    def requires(self):
+        return self.clone(CreateDirectoryStructure), self.clone(Consensus)
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
-        args = CreateTracks.get_args(pipeline_args, self.genome)
-        alt_names = load_alt_names(args.db, args.denovo_tx_modes).set_index('AlignmentId')
-        annotation_info = tools.sqlInterface.load_annotation(args.ref_db).set_index('TranscriptId')
-        with open(args.trackDb, 'a') as outf:
-            # Augustus CGP track
-            if pipeline_args.augustus_cgp is True:
-                self.construct_denovo_track(args.augustus_cgp_gp, alt_names, annotation_info, args.chrom_sizes,
-                                            args.cgp_track)
-                outf.write(denovo_template.format(name='augustus_cgp_{}'.format(self.genome), short_label='AugustusCGP',
-                                                  long_label='AugustusCGP', description='Comparative Augustus',
-                                                  path=os.path.basename(args.cgp_track.path)))
-            # IsoSeq BAM track
-            if 'isoseq_bams' in args:
-                outf.write(bam_composite_template.format(genome=self.genome))
-                for bam, new_bam in args.isoseq_bams.iteritems():
-                    os.link(bam, new_bam)
-                    outf.write(bam_template.format(bam=new_bam, genome=self.genome))
+        bams = list(pipeline_args.cfg['BAM'][self.genome])
+        (max_track, median_track), trackdb = self.output()
+        chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
 
-            if 'bams' in args:
-                if len(args.bams['BAM']) > 0:
-                    outf.write(wiggle_template.format(genome=self.genome, mode='median',
-                                                      path=os.path.basename(args.median_expression_track.path)))
-                    outf.write(wiggle_template.format(genome=self.genome, mode='maximum',
-                                                      path=os.path.basename(args.max_expression_track.path)))
-                    self.construct_expression_track(args.bams['BAM'], args.chrom_sizes, args.median_expression_track,
-                                                    args.maximum_expression_track)
+        with median_track.open('w') as outf:
+            cmd = [['wiggletools', 'median'] + bams,
+                   ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, '/dev/stdout']]
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
-                outf.write(splice_template.format(genome=self.genome, path=os.path.basename(args.splice_track.path)))
-                self.construct_splice_track(args.hints, args.chrom_sizes, args.splice_track)
+        with max_track.open('w') as outf:
+            cmd = [['wiggletools', 'max'] + bams,
+                   ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, '/dev/stdout']]
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
-            # reference genome tracks
-            if self.genome == pipeline_args.ref_genome:
-                annotation_name = os.path.splitext(os.path.basename(args.annotation_gp))[0]
-                outf.write(bgp_template.format(name='annotation_{}'.format(self.genome), label=annotation_name,
-                                               path=os.path.basename(args.annotation_track.path)))
-                self.construct_modified_bgp_track(args.annotation_gp, annotation_info, args.chrom_sizes, 
-                                                  args.annotation_track)
-            # target genome tracks
-            else:
-                # consensus gene set
-                consensus_gp_info = pd.read_csv(args.consensus_gp_info, sep='\t', header=0).set_index('transcript_id')
-                outf.write(consensus_template.format(genome=self.genome,
-                                                     path=os.path.basename(args.consensus_track.path)))
-                self.construct_consensus_track(args.consensus_gp, consensus_gp_info, args.chrom_sizes, 
-                                               args.consensus_track)
-
-                # transcript alignment evaluation track
-                outf.write(error_template.format(genome=self.genome, path=os.path.basename(args.evaluation_track.path)))
-                self.construct_error_track(consensus_gp_info, args.db, args.tx_modes, args.chrom_sizes,
-                                           args.evaluation_track)
-
-                # raw transMap bigPsl track
-                outf.write(bigpsl_template.format(name='transmap_{}'.format(self.genome), shortLabel='transMap',
-                                                  longLabel='transMap', path=os.path.basename(args.tm_track.path),
-                                                  visibility='pack'))
-                self.construct_transmap_psl_track(args.tm_psl, args.fasta, args.tm_gp, args.annotation_gp,
-                                                  args.chrom_sizes, args.tm_track)
-
-                # filtered transMap BGP track
-                outf.write(bgp_template.format(name='filtered_tm_{}'.format(self.genome),
-                                               label='Filtered transMap',
-                                               path=os.path.basename(args.filtered_tm_track.path)))
-                self.construct_modified_bgp_track(args.filtered_tm_gp, annotation_info, args.chrom_sizes,
-                                                  args.filtered_tm_track)
-
-                # Augustus TMR track
-                if 'augustus_tm_gp' in args:
-                    outf.write(bgp_template.format(name='augustus_{}'.format(self.genome), label='AugustusTM(R)',
-                                                   path=args.augustus_track.path))
-                    self.construct_tmr_track(args.tm_gp, annotation_info, args.chrom_sizes, args.augustus_track,
-                                             args.augustus_tmr_gp)
-
-                # AugustusPB track
-                if 'augustus_pb_gp' in args:
-                    outf.write(denovo_template.format(name='augustus_pb_{}'.format(self.genome),
-                                                      short_label='AugustusPB', long_label='AugustusPB',
-                                                      description='Augustus PacBio', path=args.augustus_pb_track.path))
-                    self.construct_denovo_track(args.augustus_pb_gp, alt_names, annotation_info, args.chrom_sizes,
-                                                args.augustus_pb_track)
+        with trackdb.open('w') as outf:
+            outf.write(wiggle_template.format(genome=self.genome, mode='median',
+                                              path=os.path.basename(median_track.path)))
+            outf.write(wiggle_template.format(genome=self.genome, mode='maximum',
+                                              path=os.path.basename(max_track.path)))
 
 
 ###
@@ -2474,8 +2600,8 @@ def construct_consensus_gp_as(has_pb):
     string alternativeSourceTranscripts;    "Alternative source transcripts"
     string exonAnnotationSupport;   "Exon support in reference annotation"
     string exonRnaSupport;  "RNA exon support"
-    bool failedGene;   "Did this gene fail the identity cutoff?"
-    bool frameshift;  "Frameshifted relative to source?"
+    string failedGene;   "Did this gene fail the identity cutoff?"
+    string frameshift;  "Frameshifted relative to source?"
     string intronAnnotationSupport;   "Intron support in reference annotation"
     string intronRnaSupport;   "RNA intron support"
     string transcriptClass;    "Transcript class"
@@ -2700,7 +2826,7 @@ searchIndex name
 
 
 denovo_template = '''track {name}
-shortlabel {short_label}
+shortLabel {short_label}
 longLabel {long_label}
 description {description}
 bigDataUrl {path}
@@ -2730,8 +2856,9 @@ pairEndsByName on
 bam_template = '''    track {bam}_{genome}
     parent bams_{genome}
     bigDataUrl {bam}
-    shortLabel {bam}
-    longLabel {bam}
+    shortLabel {name}
+    longLabel {name}
+    type bam
 
 '''
 
@@ -2761,7 +2888,7 @@ color 45,125,204
 
 
 error_template = '''track error_{genome}
-type bigBed 12
+type bigBed 6
 group cat_tracks
 shortLabel Consensus Indels
 longLabel Consensus Indels
