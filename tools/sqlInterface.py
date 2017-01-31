@@ -22,6 +22,7 @@ class Annotation(Base):
     __tablename__ = 'annotation'
     GeneId = Column(Text, primary_key=True)
     TranscriptId = Column(Text, primary_key=True)
+    TranscriptName = Column(Text)
     GeneName = Column(Text)
     GeneBiotype = Column(Text)
     TranscriptBiotype = Column(Text)

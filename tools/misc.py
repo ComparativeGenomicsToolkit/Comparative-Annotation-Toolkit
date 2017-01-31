@@ -5,6 +5,7 @@ import re
 import itertools
 import argparse
 import pysam
+import pandas as pd
 
 import procOps
 from pipeline import ProcException
@@ -106,5 +107,26 @@ def parse_gtf_attr_line(attr_line):
     """parse a GTF attributes line"""
     attr_line = [x.split(' ') for x in re.split('; +', attr_line.replace('"', ''))]
     attr_line[-1][-1] = attr_line[-1][-1].rstrip().replace(';', '')
-    attrs = dict(attr_line)
-    return attrs
+    return dict(attr_line)
+
+
+def parse_gff_attr_line(attr_line):
+    """parse a GFF attributes line"""
+    attr_line = [x.split('=') for x in re.split('; *', attr_line.replace('"', ''))]
+    attr_line[-1][-1] = attr_line[-1][-1].rstrip().replace(';', '')
+    return dict(attr_line)
+
+
+def slice_df(df, ix):
+    """
+    Slices a DataFrame by an index, handling the case where the index is missing. Handles the case where a single row
+    is returned, thus making it a series.
+    """
+    try:
+        r = df.xs(ix)
+        if isinstance(r, pd.core.series.Series):
+            return pd.DataFrame([r])
+        else:
+            return r
+    except KeyError:
+        return pd.DataFrame()

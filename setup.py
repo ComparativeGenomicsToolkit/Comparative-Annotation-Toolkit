@@ -11,9 +11,11 @@ setup(
         'seaborn>=0.7',
         'pandas>=0.18',
         'frozendict',
-        'configobj',
-        'sqlalchemy',
-        'ete3'
+        'configobj>=5.0',
+        'sqlalchemy>=1.0',
+        'ete3>=3.0',
+        'pysam>=0.10,'
+        'numpy>=1.10'
     ],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',

@@ -116,7 +116,7 @@ def generate_consensus(args):
     if len(args.denovo_tx_modes) > 0:
         metrics['denovo'] = {}
         for tx_mode in args.denovo_tx_modes:
-            metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor mapping': 0, 'Putative novel': 0,
+            metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
                                           'Discarded': 0, 'Novel isoforms': 0}  # isoforms populated later
         denovo_hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in args.denovo_tx_modes])
         # remove the TranscriptId and GeneId columns so they can be populated by others
@@ -131,7 +131,7 @@ def generate_consensus(args):
     # main consensus finding logic. Start iterating over each gene then each transcript
     for gene_id, tx_list in gene_transcript_map.iteritems():
         gene_consensus_dict = {}
-        gene_df = slice_df(scored_df, gene_id)
+        gene_df = tools.misc.slice_df(scored_df, gene_id)
         gene_biotype = gene_biotype_map[gene_id]
         # if we have no transcripts, record this gene and all tx's as missing and continue
         if len(gene_df) == 0:
@@ -150,7 +150,7 @@ def generate_consensus(args):
         else:  # begin consensus finding for each transcript
             for tx_id in tx_list:
                 tx_biotype = transcript_biotype_map[tx_id]
-                tx_df = slice_df(gene_df, tx_id)
+                tx_df = tools.misc.slice_df(gene_df, tx_id)
                 if len(tx_df) == 0:  # keep track of isoforms that did not map over
                     metrics['Transcript Missing'][tx_biotype] += 1
                 elif is_failed_df(tx_df):  # failed transcripts do not get incorporated
@@ -160,7 +160,7 @@ def generate_consensus(args):
                     aln_id, d = incorporate_tx(best_rows, gene_id, metrics, args.hints_db_has_rnaseq, failed_gene=False)
                     gene_consensus_dict[aln_id] = d
         if len(args.denovo_tx_modes) > 0:
-            denovo_gene_df = slice_df(denovo_df, gene_id)
+            denovo_gene_df = tools.misc.slice_df(denovo_df, gene_id)
             if len(denovo_gene_df) != 0:
                 denovo_gene_df = denovo_gene_df.set_index('AlignmentId')
                 gene_consensus_dict.update(find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id,
@@ -288,9 +288,9 @@ def load_evaluations_from_db(db_path, tx_mode):
     mrna_df = mrna_df.set_index('AlignmentId')
     r = []
     for aln_id in aln_ids:
-        df = slice_df(cds_df, aln_id)
+        df = tools.misc.slice_df(cds_df, aln_id)
         if len(df) == 0:
-            df = slice_df(mrna_df, aln_id)
+            df = tools.misc.slice_df(mrna_df, aln_id)
         c = set(df.classifier)
         r.append([aln_id,
                   'CodingDeletion' in c or 'CodingInsertion' in c,
@@ -555,6 +555,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
     transcript_modes = evaluate_ties(best_rows)
     # construct the tags for this transcript
     d = {'source_transcript': best_series.name,
+         'source_transcript_name': best_series.TranscriptName,
          'source_gene': gene_id,
          'score': int(10 * round(best_series.AlnGoodness, 3)),
          'failed_gene': failed_gene,
@@ -611,21 +612,6 @@ def find_best_score(tx_df, column='TranscriptScore'):
 def evaluate_ties(best_rows):
     """Find out how many transcript modes agreed on this"""
     return ','.join(sorted(set([tools.nameConversions.alignment_type(x) for x in best_rows.AlignmentId])))
-
-
-def slice_df(df, ix):
-    """
-    Slices a DataFrame by an index, handling the case where the index is missing. CHandles the case where a single row
-    is returned, thus making it a series.
-    """
-    try:
-        r = df.xs(ix)
-        if isinstance(r, pd.core.series.Series):
-            return pd.DataFrame([r])
-        else:
-            return r
-    except KeyError:
-        return pd.DataFrame()
 
 
 def find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id, common_name_map, metrics, failed_gene,
@@ -816,7 +802,7 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
         for tx, attrs in final_consensus:
             tx_obj = copy.deepcopy(tx_dict[tx])
             tx_obj.name = id_template.format(genome=genome, tag_type='T', unique_id=tx_count)
-            tx_obj.score = attrs.get('score', 0)
+            tx_obj.score = int(attrs.get('score', 0))
             tx_count += 1
             source_gene = attrs.get('source_gene', tx_obj.name2)
             if source_gene not in genes_seen[tx_obj.chromosome]:
@@ -831,9 +817,8 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
             gp_infos.append(gp_info)
     gp_info_df = pd.DataFrame(gp_infos)
     gp_info_df = gp_info_df.set_index(['gene_id', 'transcript_id'])
-    consensus_gp_info = luigi.LocalTarget(consensus_gp_info)
-    with consensus_gp_info.open('w') as outf:
-        gp_info_df.to_csv(outf, sep='\t', na_rep='None')
+    with luigi.LocalTarget(consensus_gp_info).open('w') as outf:
+        gp_info_df.to_csv(outf, sep='\t', na_rep='N/A')
     return consensus_gene_dict
 
 

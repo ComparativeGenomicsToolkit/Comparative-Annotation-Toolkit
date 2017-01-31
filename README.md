@@ -4,6 +4,10 @@ This project aims to provide a straightforward end-to-end pipeline that takes as
 
 This pipeline is capable of running both on local cluster hardware as well as on common cloud infrastructure using the [toil](http://toil.readthedocs.io/en/latest/) workflow engine. For full runs on many genomes, a decent amount of computational effort is required. Memory usage is moderate.
 
+![pipeline](https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit/blob/master/img/CAT_pipeline.png)
+
+Above is a flowchart schematic of the functionality of the `CAT` pipeline.
+
 #Installation
 
 The pipeline can be installed by a simple `pip` install: 
@@ -40,7 +44,7 @@ Either form of `pip` installation will install all of the python dependencies. H
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck`
+`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter`
 
 #Running the pipeline
 
@@ -87,7 +91,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--augustus-cgp`: Run AugustusCGP?
 
-`--cgp-param`: Parameters file after training CGP on the alignment. See the [AugustusCGP section](#augustus-cgp).
+`--cgp-param`: Parameters file after training CGP on the alignment. See the [AugustusCGP section](#augustuscgp).
 
 `--maf-chunksize`: Size to chunk HAL into. Larger values make the CGP jobs take longer, but reduce problems related to splitting in genic regions. Default is 2500000. 
 
@@ -255,7 +259,7 @@ This module will populate the folder `--work-dir/filtered_transMap`.
 
 ##Augustus
 
-As [discussed above](#AugustusTM(R)), this module runs `AugustusTM(R)`. If the pipeline is ran without a hints database, only the `AugustusTM` mode will be executed. This process is one of the most computationally intensive steps, and should not be ran without a cluster.
+As [discussed above](#augustustmr), this module runs `AugustusTM(R)`. If the pipeline is ran without a hints database, only the `AugustusTM` mode will be executed. This process is one of the most computationally intensive steps, and should not be ran without a cluster.
 
 This module will populate the folder `--work-dir/augustus`.
 

@@ -345,6 +345,7 @@ def extract_attrs(gff3):
                     continue
                 try:
                     tx_id = tx.attributes['transcript_id'][0]
+                    name = tx.attributes['Name'][0]
                     try:
                         tx_biotype = tx.attributes['biotype'][0]
                     except KeyError:  # attempt Gencode naming scheme
@@ -353,7 +354,8 @@ def extract_attrs(gff3):
                     r = {'TranscriptBiotype': tx_biotype, 'GeneId': gene_id,
                          'GeneName': gene_name, 'GeneBiotype': gene_biotype,
                          'StartCodon': 'start_codon' in feature_types,
-                         'StopCodon': 'stop_codon' in feature_types}
+                         'StopCodon': 'stop_codon' in feature_types,
+                         'TranscriptName': name}
                     results[tx_id] = r
                 except KeyError, e:
                     raise GFF3Exception('Unable to parse field {} from the input gff3 on line {}'.format(e,
@@ -365,5 +367,5 @@ def extract_attrs(gff3):
     df.StopCodon = pd.to_numeric(df.StopCodon)
     df.index.rename('TranscriptId', inplace=True)
     # make into a nice order for the sqlite database
-    df = df[['TranscriptBiotype', 'GeneId', 'GeneName', 'GeneBiotype', 'StartCodon', 'StopCodon']]
+    df = df[['TranscriptName', 'TranscriptBiotype', 'GeneId', 'GeneName', 'GeneBiotype', 'StartCodon', 'StopCodon']]
     return df
