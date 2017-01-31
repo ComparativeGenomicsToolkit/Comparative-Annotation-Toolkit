@@ -2013,7 +2013,7 @@ class CreateTracks(PipelineWrapperTask):
     Wrapper task for track creation.
     """
     def validate(self):
-        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig']:
+        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig', 'bamCoverage']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Tool {} not in global path.'.format(tool))
 
@@ -2048,7 +2048,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
-                             genepred_path=annotation_gp, label=os.path.basename(annotation_gp))
+                             genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0])
 
         if self.genome in pipeline_args.target_genomes:
             yield self.clone(ConsensusTrack, track_path=os.path.join(out_dir, 'consensus.bb'),
@@ -2068,7 +2068,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'transmap.txt'))
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
-                             genepred_path=tm_args.tm_gp, label='Filtered transMap')
+                             genepred_path=tm_args.tm_gp, label='Filtered transMap', visibility='hide')
 
             if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
@@ -2118,8 +2118,11 @@ class CreateTrackDbs(RebuildableTask):
 
             outf.write(snake_composite.format(org_str=org_str))
             for genome in directory_args.genomes:
-                # by default, only the reference genome is visible
-                visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
+                # by default, only the reference genome is visible unless we are on the reference, then all are
+                if self.genome == pipeline_args.ref_genome:
+                    visibility = 'full'
+                else:
+                    visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
                 hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))
                 outf.write(snake_template.format(genome=genome, hal_path=hal_path, visibility=visibility))
 
@@ -2197,6 +2200,7 @@ class BgpTrack(TrackTask):
     """Constructs a standard modified bigGenePred track"""
     genepred_path = luigi.Parameter()
     label = luigi.Parameter()
+    visibility = luigi.Parameter(default='pack')
 
     def run(self):
         def find_rgb(info):
@@ -2242,7 +2246,7 @@ class BgpTrack(TrackTask):
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='{}_{}'.format(self.label.replace(' ', '_'), self.genome),
-                                           label=self.label,
+                                           label=self.label, visibility=self.visibility,
                                            path=os.path.basename(track.path)))
 
 
@@ -2275,8 +2279,8 @@ class ConsensusTrack(TrackTask):
                        find_rgb(info), tx.block_count, block_sizes, block_starts, info.source_transcript_name,
                        tx.cds_start_stat, tx.cds_end_stat, exon_frames, info.transcript_biotype, tx.name2,
                        info.source_gene_common_name, info.gene_biotype, info.source_gene, info.source_transcript,
-                       info.alignment_id, info.alternative_source_transcripts, info.exon_annotation_support,
-                       info.exon_rna_support, info.failed_gene, info.frameshift, info.intron_annotation_support,
+                       info.alignment_id, info.alternative_source_transcripts, info.failed_gene, info.frameshift,
+                       info.exon_rna_support, info.exon_annotation_support, info.intron_annotation_support,
                        info.intron_rna_support, info.transcript_class, info.transcript_modes]
                 if has_pb:
                     row.append(info.pacbio_isoform_supported)
@@ -2325,8 +2329,8 @@ class EvaluationTrack(TrackTask):
             df = tools.misc.slice_df(evals[tx_mode]['CDS'], aln_id)
             if len(df) == 0:
                 df = tools.misc.slice_df(evals[tx_mode]['mRNA'], aln_id)
-            for _, s in df.iterrows():
-                rows.append([s.chromosome, s.start, s.stop, s.classifier, 0, s.strand])
+            for tx_id, s in df.iterrows():
+                rows.append([s.chromosome, s.start, s.stop, '/'.join([tx_id, s.classifier]), 0, s.strand])
 
         tmp = luigi.LocalTarget(is_tmp=True)
         with tmp.open('w') as tmp_handle:
@@ -2423,7 +2427,7 @@ class AugustusTrack(TrackTask):
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='augustus_{}'.format(self.genome), label='AugustusTM(R)',
-                                           path=os.path.basename(track.path)))
+                                           path=os.path.basename(track.path), visibility='hide'))
 
 
 class IsoSeqBamTrack(RebuildableTask):
@@ -2459,7 +2463,7 @@ class SpliceTrack(TrackTask):
             start = int(entry[3]) - 1
             stop = int(entry[4])
             block_starts = '0,{}'.format(stop - start - 2)
-            mult = tools.misc.parse_gff_attr_line(entry[-1]).get('mult', 1)
+            mult = tools.misc.parse_gff_attr_line(entry[-1])['mult']
             return [entry[0], start, stop, 'SpliceJunction', mult, '.', start, stop, '204,124,45',
                     '2', '2,2', block_starts]
 
@@ -2470,7 +2474,7 @@ class SpliceTrack(TrackTask):
 
         entries = []
         for line in open(hints_gff):
-            if '\tintron\t' in line and 'src=E' in line:
+            if '\tintron\t' in line and 'src=E' in line and 'mult' in line:
                 entries.append(parse_entry(line.split('\t')))
         mults = map(int, [x[4] for x in entries])
         tot = sum(mults)
@@ -2534,9 +2538,9 @@ class ExpressionTracks(RebuildableTask):
 
         with trackdb.open('w') as outf:
             outf.write(wiggle_template.format(genome=self.genome, mode='median',
-                                              path=os.path.basename(median_track.path)))
+                                              path=os.path.basename(median_track.path), color='151,189,68'))
             outf.write(wiggle_template.format(genome=self.genome, mode='maximum',
-                                              path=os.path.basename(max_track.path)))
+                                              path=os.path.basename(max_track.path), color='106,68,189'))
 
 
 ###
@@ -2552,7 +2556,7 @@ def create_bed_info_gp(gp):
     return block_starts, block_sizes, exon_frames
 
 
-def find_default_pos(chrom_sizes, window_size=30000):
+def find_default_pos(chrom_sizes, window_size=200000):
     """
     Returns a window_size window over the beginning of the largest chromosome
     :param chrom_sizes: chrom sizes file
@@ -2587,21 +2591,21 @@ def construct_consensus_gp_as(has_pb):
     int[blockCount] blockSizes; "Comma separated list of block sizes"
     int[blockCount] chromStarts; "Start positions relative to chromStart"
     string name2;       "Transcript name"
-    string cdsStartStat; "Status of CDS start annotation (none, unknown, incomplete, or complete)"
-    string cdsEndStat;   "Status of CDS end annotation (none, unknown, incomplete, or complete)"
+    string cdsStartStat; "Status of CDS start annotation"
+    string cdsEndStat;   "Status of CDS end annotation"
     int[blockCount] exonFrames; "Exon frame {0,1,2}, or -1 if no frame for exon"
     string type;        "Transcript type"
     string geneName;    "Gene ID"
     string geneName2;   "Gene name"
     string geneType;    "Gene type"
     string sourceGene;    "Source gene ID"
-    string sourceTranscript;    "The source transcript ID"
-    string alignmentId;  "Original alignment ID"
+    string sourceTranscript;    "Source transcript ID"
+    string alignmentId;  "Alignment ID"
     string alternativeSourceTranscripts;    "Alternative source transcripts"
-    string exonAnnotationSupport;   "Exon support in reference annotation"
-    string exonRnaSupport;  "RNA exon support"
     string failedGene;   "Did this gene fail the identity cutoff?"
     string frameshift;  "Frameshifted relative to source?"
+    string exonAnnotationSupport;   "Exon support in reference annotation"
+    string exonRnaSupport;  "RNA exon support"
     string intronAnnotationSupport;   "Intron support in reference annotation"
     string intronRnaSupport;   "RNA intron support"
     string transcriptClass;    "Transcript class"
@@ -2768,7 +2772,7 @@ snake_template = '''        track snake_{genome}
         otherSpecies {genome}
         visibility {visibility}
         parent hubCentralAlignments off
-        priority 2
+        priority 3
         bigDataUrl {hal_path}
         type halSnake
         group snake
@@ -2784,6 +2788,7 @@ description CAT Annotation
 type bigGenePred
 group cat_tracks
 itemRgb on
+priority 1
 visibility pack
 searchIndex name,name2,sourceGene,sourceTranscript,geneName,geneName2
 bigDataUrl {path}
@@ -2798,7 +2803,8 @@ description {label}
 type bigGenePred
 group cat_tracks
 itemRgb on
-visibility pack
+priority 3
+visibility {visibility}
 searchIndex name,name2,geneId,geneName
 bigDataUrl {path}
 
@@ -2812,6 +2818,7 @@ bigDataUrl {path}
 type bigPsl
 group cat_tracks
 itemRgb on
+priority 2
 visibility {visibility}
 baseColorUseSequence lfExtra
 indelDoubleInsert on
@@ -2832,6 +2839,7 @@ description {description}
 bigDataUrl {path}
 type bigGenePred
 group cat_tracks
+priority 3
 itemRgb on
 searchIndex assignedGeneId,name,name2
 
@@ -2859,6 +2867,7 @@ bam_template = '''    track {bam}_{genome}
     shortLabel {name}
     longLabel {name}
     type bam
+    priority 10
 
 '''
 
@@ -2869,8 +2878,9 @@ longLabel {mode} expression
 type bigWig
 group cat_tracks
 bigDataUrl {path}
-color 153,38,0
+color {color}
 visibility hide
+priority 5
 
 '''
 
@@ -2881,8 +2891,9 @@ group cat_tracks
 shortLabel RNA-seq Splices
 longLabel RNA-seq Splice Junctions
 bigDataUrl {path}
-visibility dense
+visibility hide
 color 45,125,204
+priority 6
 
 '''
 
@@ -2894,5 +2905,6 @@ shortLabel Consensus Indels
 longLabel Consensus Indels
 bigDataUrl {path}
 visibility hide
+priority 2
 
 '''
