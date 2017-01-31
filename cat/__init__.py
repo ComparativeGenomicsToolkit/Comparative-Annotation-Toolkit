@@ -2537,9 +2537,9 @@ class ExpressionTracks(RebuildableTask):
             tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
-            outf.write(wiggle_template.format(genome=self.genome, mode='median',
+            outf.write(wiggle_template.format(genome=self.genome, mode='Median',
                                               path=os.path.basename(median_track.path), color='151,189,68'))
-            outf.write(wiggle_template.format(genome=self.genome, mode='maximum',
+            outf.write(wiggle_template.format(genome=self.genome, mode='Maximum',
                                               path=os.path.basename(max_track.path), color='106,68,189'))
 
 
@@ -2740,6 +2740,11 @@ label Alignment Snakes
 priority 2
 defaultIsClosed 0
 
+name expression
+label Expression
+priority 3
+defaultIsClosed 0
+
 '''
 
 
@@ -2839,7 +2844,7 @@ description {description}
 bigDataUrl {path}
 type bigGenePred
 group cat_tracks
-priority 3
+priority 4
 itemRgb on
 searchIndex assignedGeneId,name,name2
 
@@ -2847,9 +2852,9 @@ searchIndex assignedGeneId,name,name2
 
 
 bam_composite_template = '''track bams_{genome}
-group cat_tracks
+group expression
 compositeTrack on
-shortLabel IsoSeq
+shortLabel IsoSeq BAMs
 longLabel IsoSeq BAMs
 dragAndDrop subTracks
 visibility hide
@@ -2876,24 +2881,24 @@ wiggle_template = '''track {mode}_{genome}
 shortLabel {mode} expression
 longLabel {mode} expression
 type bigWig
-group cat_tracks
+group expression
 bigDataUrl {path}
 color {color}
 visibility hide
-priority 5
+priority 11
 
 '''
 
 
 splice_template = '''track splices_{genome}
 type bigBed 12
-group cat_tracks
-shortLabel RNA-seq Splices
+group expression
+shortLabel RNA-seq splices
 longLabel RNA-seq Splice Junctions
 bigDataUrl {path}
 visibility hide
 color 45,125,204
-priority 6
+priority 12
 
 '''
 
@@ -2901,10 +2906,10 @@ priority 6
 error_template = '''track error_{genome}
 type bigBed 6
 group cat_tracks
-shortLabel Consensus Indels
-longLabel Consensus Indels
+shortLabel Consensus indels
+longLabel Consensus indels
 bigDataUrl {path}
 visibility hide
-priority 2
+priority 5
 
 '''
