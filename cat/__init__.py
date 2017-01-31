@@ -1917,7 +1917,7 @@ class AssemblyHub(PipelineWrapperTask):
     """
     Construct an assembly hub out of all the results
     """
-    def run(self):
+    def requires(self):
         tools.fileOps.ensure_dir(self.out_dir)
         yield self.clone(CreateDirectoryStructure)
         yield self.clone(CreateTracks)
@@ -2018,35 +2018,37 @@ class CreateTracks(PipelineWrapperTask):
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         cgp_args = AugustusCgp.get_args(pipeline_args)
         ref_args = ReferenceFiles.get_args(pipeline_args)
-        args.fasta = GenomeFiles.get_args(pipeline_args).fasta
+        args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.trackDb = directory_args.trackdbs[genome]
         out_dir = os.path.join(directory_args.out_dir, genome)
         args.annotation_gp = ref_args.annotation_gp
         if pipeline_args.augustus_cgp is True:
-            args.augustus_cgp_gp = cgp_args.output_gp_files[pipeline_args.ref_genome]
-            args.cgp_track = os.path.join(out_dir, 'augustus_cgp.bb')
+            args.augustus_cgp_gp = cgp_args.augustus_cgp_gp[pipeline_args.ref_genome]
+            args.cgp_track = luigi.LocalTarget(os.path.join(out_dir, 'augustus_cgp.bb'))
             args.denovo_tx_modes = ['augCGP']
         # for the reference genome, we only have the reference genePred and CGP if it was ran
         if genome == pipeline_args.ref_genome:
-            args.annotation_track = os.path.join(out_dir, 'annotation.bb')
+            args.annotation_track = luigi.LocalTarget(os.path.join(out_dir, 'annotation.bb'))
         else:
             consensus_args = Consensus.get_args(pipeline_args, genome)
             args.tx_modes = consensus_args.tx_modes
             args.consensus_gp = consensus_args.consensus_gp
             args.consensus_gp_info = consensus_args.consensus_gp_info
-            args.consensus_track = os.path.join(out_dir, 'consensus.bb')
-            args.evaluation_track = os.path.join(out_dir, 'evaluation.bb')
+            args.consensus_track = luigi.LocalTarget(os.path.join(out_dir, 'consensus.bb'))
+            args.evaluation_track = luigi.LocalTarget(os.path.join(out_dir, 'evaluation.bb'))
             tm_args = TransMap.get_args(pipeline_args, genome)
             args.tm_psl = tm_args.tm_psl
             args.tm_gp = tm_args.tm_gp
-            args.tm_track = os.path.join(out_dir, 'transmap.bb')
+            args.tm_track = luigi.LocalTarget(os.path.join(out_dir, 'transmap.bb'))
             args.filtered_tm_gp = FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
-            args.filtered_tm_track = os.path.join(out_dir, 'filtered_transmap.bb')
+            args.filtered_tm_track = luigi.LocalTarget(os.path.join(out_dir, 'filtered_transmap.bb'))
             if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
                 aug_args = Augustus.get_args(pipeline_args, genome)
                 args.augustus_tm_gp = aug_args.augustus_tm_gp
                 if genome in pipeline_args.rnaseq_genomes:
                     args.augustus_tmr_gp = aug_args.augustus_tmr_gp
+                else:
+                    args.augustus_tmr_gp = None
                 args.augustus_track = os.path.join(out_dir, 'augustus.bb')
         # TODO: isoseq_genomes cannot contain reference, but probably should
         if genome in pipeline_args.isoseq_genomes:
@@ -2055,12 +2057,13 @@ class CreateTracks(PipelineWrapperTask):
             if augustus_pb is True:
                 args.denovo_tx_modes.append('augPB')
                 args.augustus_pb_gp = AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
+                args.augustus_pb_track = luigi.LocalTarget(os.path.join(out_dir, 'aug_pb.bb'))
         if genome in pipeline_args.rnaseq_genomes:
             args.bams = {'BAM': pipeline_args.cfg['BAM'][genome], 'INTRONBAM': pipeline_args.cfg['INTRONBAM'][genome]}
-            args.splice_track = os.path.join(args.out_dir, 'splices.bb')
+            args.splice_track = luigi.LocalTarget(os.path.join(args.out_dir, 'splices.bb'))
             if len(args.bams['BAM']) > 0:
-                args.max_expression_track = os.path.join(args.out_dir, 'max_expression.bw')
-                args.median_expression_track = os.path.join(args.out_dir, 'median_expression.bw')
+                args.max_expression_track = luigi.LocalTarget(os.path.join(args.out_dir, 'max_expression.bw'))
+                args.median_expression_track = luigi.LocalTarget(os.path.join(args.out_dir, 'median_expression.bw'))
         args.hints = BuildDb.get_args(pipeline_args, genome).hints_path
         args.chrom_sizes = GenomeFiles.get_args(pipeline_args, genome).sizes
         args.db = pipeline_args.dbs[genome]
@@ -2319,6 +2322,13 @@ class CreateTracksDriverTask(RebuildableTask):
                ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, out_max_bw]]
         tools.procOps.run_proc(cmd)
 
+    def output(self):
+        pipeline_args = self.get_pipeline_args()
+        args = CreateTracks.get_args(pipeline_args, self.genome)
+        for item in args.__dict__.itervalues():
+            if isinstance(item, luigi.LocalTarget):
+                yield item
+
     def run(self):
         pipeline_args = self.get_pipeline_args()
         args = CreateTracks.get_args(pipeline_args, self.genome)
@@ -2372,6 +2382,13 @@ class CreateTracksDriverTask(RebuildableTask):
                                                label='Filtered transMap',
                                                path=os.path.basename(args.filtered_tm_track)))
                 self.construct_transmap_psl_track(args.filtered_tm_gp, args.chrom_sizes, args.tm_track)
+                if 'augustus_tm_gp' in args:
+                    self.construct_tmr_track(args.tm_gp, annotation_info, args.chrom_sizes, args.augustus_track,
+                                             args.augustus_tmr_gp)
+                if 'augustus_pb_gp' in args:
+                    self.construct_denovo_track(args.augustus_pb_gp, alt_names, annotation_info, args.chrom_sizes,
+                                                args.augustus_pb_track)
+
 
 
 ###

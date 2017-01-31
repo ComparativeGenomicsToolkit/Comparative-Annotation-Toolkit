@@ -74,7 +74,7 @@ def samtools_version():
     """checks the version of samtools installed"""
     try:
         r = procOps.call_proc_lines(['samtools', '--version'])
-        if StrictVersion(r[0].split()[1]) < '1.3.0':
+        if StrictVersion(r[0].split()[1].split('-')[0]) < '1.3':
             raise ToolMissingException('samtools version is not >= 1.3.0')
     except ProcException:
         raise ToolMissingException('samtools is not installed')
