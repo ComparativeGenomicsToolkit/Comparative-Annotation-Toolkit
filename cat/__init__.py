@@ -2254,9 +2254,11 @@ class ConsensusTrack(TrackTask):
     """Constructs a modified bigGenePred for consensus gene sets"""
     def run(self):
         def find_rgb(info):
-            """red for failed, blue for coding, green for non-coding"""
+            """red for failed, blue for coding, green for non-coding, purple for denovo"""
             if info.failed_gene == 'True':
                 return '212,76,85'
+            elif info.transcript_biotype == 'unknown_likely_coding':
+                return '135,76,212'
             elif info.transcript_biotype == 'protein_coding':
                 return '76,85,212'
             return '85,212,76'
@@ -2265,7 +2267,8 @@ class ConsensusTrack(TrackTask):
         track, trackdb = self.output()
         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
         consensus_args = Consensus.get_args(pipeline_args, self.genome)
-        consensus_gp_info = pd.read_csv(consensus_args.consensus_gp_info, sep='\t', header=0).set_index('transcript_id')
+        consensus_gp_info = pd.read_csv(consensus_args.consensus_gp_info, sep='\t',
+                                        header=0, na_filter=False).set_index('transcript_id')
         has_pb = 'pacbio_isoform_supported' in consensus_gp_info.columns
 
         tmp_gp = luigi.LocalTarget(is_tmp=True)
@@ -2275,13 +2278,15 @@ class ConsensusTrack(TrackTask):
             for tx in tools.transcripts.gene_pred_iterator(consensus_args.consensus_gp):
                 info = consensus_gp_info.ix[tx.name]
                 block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
-                row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start, tx.thick_stop,
-                       find_rgb(info), tx.block_count, block_sizes, block_starts, info.source_transcript_name,
-                       tx.cds_start_stat, tx.cds_end_stat, exon_frames, info.transcript_biotype, tx.name2,
-                       info.source_gene_common_name, info.gene_biotype, info.source_gene, info.source_transcript,
-                       info.alignment_id, info.alternative_source_transcripts, info.failed_gene, info.frameshift,
-                       info.exon_rna_support, info.exon_annotation_support, info.intron_annotation_support,
-                       info.intron_rna_support, info.transcript_class, info.transcript_modes]
+                tx_name = info.source_transcript_name if info.source_transcript_name != 'N/A' else tx.name
+                row = [tx.chromosome, tx.start, tx.stop, tx_name, tx.score, tx.strand,
+                       tx.thick_start, tx.thick_stop, find_rgb(info), tx.block_count, block_sizes, block_starts,
+                       info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                       tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
+                       info.source_transcript, info.alignment_id, info.alternative_source_transcripts, info.failed_gene,
+                       info.frameshift, info.exon_rna_support, info.exon_annotation_support,
+                       info.intron_annotation_support, info.intron_rna_support, info.transcript_class,
+                       info.transcript_modes]
                 if has_pb:
                     row.append(info.pacbio_isoform_supported)
                 tools.fileOps.print_row(outf, row)
@@ -2292,7 +2297,7 @@ class ConsensusTrack(TrackTask):
         tools.procOps.run_proc(['bedSort', tmp_gp.path, tmp_gp.path])
 
         with track.open('w') as outf:
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,sourceGene,sourceTranscript,geneName,geneName2',
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
                    '-type=bed12+20', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
             tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
@@ -2319,18 +2324,23 @@ class EvaluationTrack(TrackTask):
         engine = tools.sqlInterface.create_engine('sqlite:///' + pipeline_args.dbs[self.genome])
         evals = {tx_mode: load_evals(tx_mode) for tx_mode in self.tx_modes}
         consensus_args = Consensus.get_args(pipeline_args, self.genome)
-        consensus_gp_info = pd.read_csv(consensus_args.consensus_gp_info, sep='\t', header=0).set_index('transcript_id')
+        consensus_gp_info = pd.read_csv(consensus_args.consensus_gp_info, sep='\t',
+                                        header=0, na_filter=False).set_index('transcript_id')
         aln_ids = set(consensus_gp_info.alignment_id)
         rows = []
         for aln_id in aln_ids:
             tx_mode = tools.nameConversions.alignment_type(aln_id)
             if tx_mode not in ['transMap', 'augTM', 'augTMR']:
                 continue
-            df = tools.misc.slice_df(evals[tx_mode]['CDS'], aln_id)
+            mode = 'CDS'
+            df = tools.misc.slice_df(evals[tx_mode][mode], aln_id)
             if len(df) == 0:
-                df = tools.misc.slice_df(evals[tx_mode]['mRNA'], aln_id)
+                mode = 'mRNA'
+                df = tools.misc.slice_df(evals[tx_mode][mode], aln_id)
             for tx_id, s in df.iterrows():
-                rows.append([s.chromosome, s.start, s.stop, '/'.join([tx_id, s.classifier]), 0, s.strand])
+                bed = s.tolist()
+                bed[3] = '/'.join([tx_id, bed[3], mode])
+                rows.append(bed)
 
         tmp = luigi.LocalTarget(is_tmp=True)
         with tmp.open('w') as tmp_handle:
@@ -2590,13 +2600,13 @@ def construct_consensus_gp_as(has_pb):
     int blockCount;     "Number of blocks"
     int[blockCount] blockSizes; "Comma separated list of block sizes"
     int[blockCount] chromStarts; "Start positions relative to chromStart"
-    string name2;       "Transcript name"
+    string name2;       "Gene name"
     string cdsStartStat; "Status of CDS start annotation"
     string cdsEndStat;   "Status of CDS end annotation"
     int[blockCount] exonFrames; "Exon frame {0,1,2}, or -1 if no frame for exon"
+    string txId; "Transcript ID"
     string type;        "Transcript type"
     string geneName;    "Gene ID"
-    string geneName2;   "Gene name"
     string geneType;    "Gene type"
     string sourceGene;    "Source gene ID"
     string sourceTranscript;    "Source transcript ID"

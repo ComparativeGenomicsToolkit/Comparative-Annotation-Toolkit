@@ -31,15 +31,20 @@ class Annotation(Base):
 
 
 class EvaluationColumns(object):
-    """Mixin class for all TranscriptEvaluation module tables"""
-    GeneId = Column(Text, primary_key=True)
-    TranscriptId = Column(Text, primary_key=True)
+    """Mixin class for all TranscriptEvaluation module tables. Represents a bed12 with a leading ID column"""
     AlignmentId = Column(Text, primary_key=True)
-    classifier = Column(Text, primary_key=True)
     chromosome = Column(Text)
     start = Column(Integer)
     stop = Column(Integer)
+    name = Column(Text)
+    score = Column(Integer)
     strand = Column(Text)
+    thickStart = Column(Integer)
+    thickStop = Column(Integer)
+    rgb = Column(Text)
+    blockCount = Column(Integer)
+    blockSizes = Column(Text)
+    blockStarts = Column(Text)
 
 
 class MrnaTmEval(EvaluationColumns, Base):
@@ -74,16 +79,16 @@ class CdsAugTmrEval(EvaluationColumns, Base):
 
 class MetricsColumns(object):
     """Mixin class for all TranscriptMetrics module tables"""
-    GeneId = Column(Text, primary_key=True)
-    TranscriptId = Column(Text, primary_key=True)
     AlignmentId = Column(Text, primary_key=True)
-    classifier = Column(Text, primary_key=True)
+    classifier = Column(Text)
     value = Column(Float)
 
 
 class TmEval(MetricsColumns, Base):
     """Table for evaluations from TransMapEvaluation module"""
     __tablename__ = 'TransMapEvaluation'
+    TranscriptId = Column(Text, primary_key=True)
+    GeneId = Column(Text, primary_key=True)
 
 
 class TmFilterEval(MetricsColumns, Base):
@@ -407,9 +412,8 @@ def load_evaluation(table, session):
     """
     assert any(table == cls for cls in (MrnaAugTmrEval, MrnaAugTmEval, MrnaTmEval,
                                         CdsAugTmrEval, CdsAugTmEval, CdsTmEval))
-    query = session.query(table.GeneId, table.TranscriptId, table.AlignmentId, table.classifier,
-                          func.count(table.classifier).label('value')). \
-        group_by(table.AlignmentId, table.TranscriptId, table.classifier)
+    query = session.query(table.AlignmentId, table.name, func.count(table.name).label('value')). \
+        group_by(table.AlignmentId, table.name)
     return pd.read_sql(query.statement, session.bind)
 
 

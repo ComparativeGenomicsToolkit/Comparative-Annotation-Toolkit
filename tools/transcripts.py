@@ -153,6 +153,16 @@ class Transcript(object):
         rgb = self.rgb if rgb is None else rgb
         name = self.name if name is None else name
 
+        # special case -- start == stop
+        if new_start == new_stop:
+            if self.cds_size == 0:
+                thick_start = thick_stop = 0
+            else:
+                thick_start = new_start
+                thick_stop = new_stop
+            return map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start,
+                             thick_stop, rgb, 1, 0, 0])
+
         if self.chromosome_coordinate_to_mrna(new_start) is None:
             new_start = find_closest([x.start for x in self.exon_intervals], new_start)
         if self.chromosome_coordinate_to_mrna(new_stop) is None:

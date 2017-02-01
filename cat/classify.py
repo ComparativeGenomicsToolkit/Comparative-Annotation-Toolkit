@@ -92,10 +92,6 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
     """
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
-        if biotype == 'protein_coding':
-            start_ok, stop_ok = start_stop_stat(tx)
-            r.append([ref_tx.name2, ref_tx.name, tx.name, 'StartCodon', start_ok])
-            r.append([ref_tx.name2, ref_tx.name, tx.name, 'StopCodon', stop_ok])
         original_intron_vector = calculate_original_intron_vector(ref_tx, tx, psl, aln_mode)
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', 100 * psl.coverage])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', 100 * psl.identity])
@@ -105,7 +101,7 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
     columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
     df = pd.DataFrame(r, columns=columns)
     df = df.sort_values(columns)
-    df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
+    df = df.set_index('AlignmentId')
     assert len(r) == len(df)
     return df
 
@@ -117,17 +113,16 @@ def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter
     """
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
-        indels = find_indels(tx, psl, aln_mode)
-        for category, i in indels:
-            r.append([ref_tx.name2, ref_tx.name, tx.name, category, i.chromosome, i.start, i.stop, i.strand])
-        if biotype == 'protein_coding' and tx.cds_size > 50:  # we don't want to evaluate tiny ORFs
-            i = in_frame_stop(tx, seq_dict)
-            if i is not None:
-                r.append([ref_tx.name2, ref_tx.name, tx.name, 'InFrameStop', i.chromosome, i.start, i.stop, i.strand])
-    columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'chromosome', 'start', 'stop', 'strand']
+        r.extend(find_indels(tx, psl, aln_mode))
+        if biotype == 'protein_coding':
+            line = in_frame_stop(tx, seq_dict)
+            if line is not None:
+                r.append(line)
+    columns = ['AlignmentId', 'chromosome', 'start', 'stop', 'name', 'score', 'strand', 'thickStart',
+               'thickStop', 'rgb', 'blockCount', 'blockSizes', 'blockStarts']
     df = pd.DataFrame(r, columns=columns)
     df = df.sort_values(columns)
-    df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
+    df = df.set_index('AlignmentId')
     assert len(r) == len(df)
     return df
 
@@ -135,17 +130,6 @@ def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter
 ###
 # Metrics Classifiers
 ###
-
-
-def start_stop_stat(tx):
-    """
-    Calculate the StartCodon, StopCodon metrics by looking at CdsStartStat/CdsEndStat and taking strand into account
-    """
-    start_ok = True if tx.cds_start_stat == 'cmpl' else False
-    stop_ok = True if tx.cds_end_stat == 'cmpl' else False
-    if tx.strand == '-':
-        start_ok, stop_ok = stop_ok, start_ok
-    return start_ok, stop_ok
 
 
 def calculate_original_intron_vector(ref_tx, tx, psl, aln_mode):
@@ -213,7 +197,8 @@ def in_frame_stop(tx, fasta):
             stop = tx.cds_coordinate_to_chromosome(pos + 3)
             if tx.strand == '-':
                 start, stop = stop, start
-            return tools.intervals.ChromosomeInterval(tx.chromosome, start, stop, tx.strand)
+            new_bed = tx.get_bed(new_start=start, new_stop=stop, rgb='135,78,191', name='InFrameStop')
+            return [tx.name] + new_bed
     return None
 
 
@@ -237,10 +222,6 @@ def find_indels(tx, psl, aln_mode):
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: paired list of [category, ChromosomeInterval] objects if a coding insertion exists else []
     """
-    def interval_is_coding(tx, i):
-        """returns True if the given ChromosomeInterval object is coding in this tx"""
-        return i.start >= tx.thick_start and i.stop <= tx.thick_stop
-
     def convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn, strand):
         """convert alignment coordinates to target chromosome coordinates, inverting if negative strand"""
         left_chrom_pos = coordinate_fn(left_pos)
@@ -253,23 +234,33 @@ def find_indels(tx, psl, aln_mode):
         return left_chrom_pos, right_chrom_pos
 
     def parse_indel(left_pos, right_pos, coordinate_fn, tx, offset, gap_type):
-        """Converts either an insertion or a deletion into a output interval"""
+        """Converts either an insertion or a deletion into a output transcript"""
         left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn,
                                                                             tx.strand)
         if left_chrom_pos is None or right_chrom_pos is None:
             assert aln_mode == 'CDS'
             return None
-        i = tools.intervals.ChromosomeInterval(tx.chromosome, left_chrom_pos, right_chrom_pos, tx.strand)
-        indel_type = find_indel_type(tx, i, offset)
-        return [''.join([indel_type, gap_type]), i]
 
-    def find_indel_type(tx, i, offset):
-        """Determines what type this indel is - coding/noncoding, mult3 or no"""
-        if interval_is_coding(tx, i):
-            this_type = 'CodingMult3' if offset % 3 == 0 else 'Coding'
+        if left_chrom_pos >= tx.thick_start and right_chrom_pos <= tx.thick_stop:
+            indel_type = 'CodingMult3' if offset % 3 == 0 else 'Coding'
         else:
-            this_type = 'NonCoding'
-        return this_type
+            indel_type = 'NonCoding'
+
+        rgb = calculate_rgb(indel_type)
+        try:
+            new_bed = tx.get_bed(new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=rgb,
+                                 name=''.join([indel_type, gap_type]))
+        except:
+            assert False, (tx, left_chrom_pos, right_chrom_pos, indel_type, gap_type)
+        return [tx.name] + new_bed
+
+    def calculate_rgb(indel_type):
+        """Based on the indel type, a color is chosen. Non-coding are green, mult3 are blue, indels are red"""
+        if indel_type == 'NonCoding':
+            return '101,173,90'
+        elif indel_type == 'CodingMult3':
+            return '90,142,173'
+        return '227,18,77'
 
     # depending on mode, we convert the coordinates from either CDS or mRNA
     # we also have a different position cutoff to make sure we are not evaluating terminal gaps

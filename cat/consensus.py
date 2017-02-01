@@ -265,7 +265,7 @@ def load_metrics_from_db(db_path, tx_mode, aln_mode):
     session = tools.sqlInterface.start_session(db_path)
     metrics_table = tools.sqlInterface.tables[aln_mode][tx_mode]['metrics']
     metrics_df = tools.sqlInterface.load_metrics(metrics_table, session)
-    metrics_df = pd.pivot_table(metrics_df, index=['GeneId', 'TranscriptId', 'AlignmentId'], columns='classifier',
+    metrics_df = pd.pivot_table(metrics_df, index='AlignmentId', columns='classifier',
                                 values='value', fill_value=None, aggfunc=aggfunc).reset_index()
     metrics_df['OriginalIntrons'] = metrics_df['OriginalIntrons'].apply(parse_text_vector)
     metrics_df['OriginalIntronsPercent'] = metrics_df['OriginalIntrons'].apply(calculate_vector_support)
@@ -291,7 +291,7 @@ def load_evaluations_from_db(db_path, tx_mode):
         df = tools.misc.slice_df(cds_df, aln_id)
         if len(df) == 0:
             df = tools.misc.slice_df(mrna_df, aln_id)
-        c = set(df.classifier)
+        c = set(df.name)
         r.append([aln_id,
                   'CodingDeletion' in c or 'CodingInsertion' in c,
                   'CodingInsertion' in c,
@@ -353,7 +353,7 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df
     coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype == 'protein_coding']
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
     # add metrics information to coding df
-    coding_df = pd.merge(coding_df, metrics_df, on=['GeneId', 'TranscriptId', 'AlignmentId'])
+    coding_df = pd.merge(coding_df, metrics_df, on='AlignmentId')
     # add evaluation information to coding df, where possible. This adds information on frame shifts.
     coding_df = pd.merge(coding_df, evaluation_df, on='AlignmentId', how='left')
     # fill the original intron values to zero so we don't filter them out
