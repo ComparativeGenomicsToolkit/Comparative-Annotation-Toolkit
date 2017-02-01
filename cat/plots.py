@@ -353,11 +353,14 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
         title = 'Split genes'
         if len(ordered_genomes) > 1:
             g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', col='category', xlabel='', col_wrap=2,
-                                sharey=False, ylabel='Number of transcripts or genes', row_order=ordered_genomes,
-                                title=title)
+                                sharey=False, ylabel='Number of alignments or genes', row_order=ordered_genomes,
+                                title=title, close=False)
         else:
-            g = generic_barplot(pdf=pdf, data=df, x='category', y='count', ylabel='Number of transcripts or genes',
-                                title=title, xlabel='Category')
+            g = generic_barplot(pdf=pdf, data=df, x='category', y='count', ylabel='Number of alignments or genes',
+                                title=title, xlabel='Category', close=False)
+        g.axes[0][0].set_ylabel('Number of genes')
+        g.axes[1][0].set_ylabel('Number of alignments')
+        multipage_close(pdf, tight_layout=False)
 
 
 def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt):

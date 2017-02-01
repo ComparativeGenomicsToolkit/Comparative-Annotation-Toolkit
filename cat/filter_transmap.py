@@ -220,8 +220,7 @@ def resolve_split_genes(paralog_filtered_df, tx_dict, remove_split_genes, genome
         for cluster_id, cluster_tx_ids in clusters.iteritems():
             scores[cluster_id] = rec[rec.AlignmentId.isin(cluster_tx_ids)].Score.mean()
         sorted_scores = sorted(scores.iteritems(), key=lambda (cid, s): -s)
-        best_cluster = sorted_scores[0][0]
-        return best_cluster, clusters[best_cluster]
+        return sorted_scores[0][0]
 
     def is_split_chrom_gene(tx_objs):
         """
@@ -248,34 +247,39 @@ def resolve_split_genes(paralog_filtered_df, tx_dict, remove_split_genes, genome
     for gene, rec in paralog_filtered_df.groupby('GeneId'):
         gene_tx_obj_dict = {tx_id: tx_dict[tx_id] for tx_id in rec.AlignmentId}
         clusters = cluster_gene(gene_tx_obj_dict.values())
+        # no split contigs here
         if len(clusters) == 1:
             split_status.extend([[tx_id, None, False] for tx_id in rec.TranscriptId])
             continue
-        best_cluster, cluster_ids = find_best_cluster(clusters, rec)
-        alignment_ids_to_remove.update({tx_id for tx_id in rec.TranscriptId if tx_id not in cluster_ids})
+        # find the best cluster based on score
+        best_cluster = find_best_cluster(clusters, rec)
+        # extract IDs that do not belong to the best cluster
+        other_ids = {aln_id for aln_id in rec.AlignmentId if aln_id not in clusters[best_cluster]}
+        alignment_ids_to_remove.update(other_ids)
         if is_split_chrom_gene(gene_tx_obj_dict.values()):
             split_gene_metrics['Number of contig split genes'] += 1
             location_split = is_split_same_chrom_gene(gene_tx_obj_dict, clusters)
             if location_split is True:
                 split_gene_metrics['Number of intra-contig split genes'] += 1
+        else:
+            split_gene_metrics['Number of intra-contig split genes'] += 1
+            location_split = True
+        for cluster, cluster_ids in clusters.iteritems():
             chrom = gene_tx_obj_dict[cluster_ids[0]].chromosome
             other_chroms = {tx_obj.chromosome for tx_obj in gene_tx_obj_dict.itervalues() if tx_obj.chromosome != chrom}
-            other_contigs = ','.join(other_chroms)
-            # it is possible to be both contig and location split
-            split_status.extend([[tx_id, other_contigs, location_split]])
-        else:  # we know that we must be split on the same contig
-            split_gene_metrics['Number of intra-contig split genes'] += 1
-            split_status.extend([[tx_id, None, True]])
+            other_chroms = ','.join(other_chroms)
+            split_status.extend([[tools.nameConversions.strip_alignment_numbers(aln_id), other_chroms, location_split]
+                                 for aln_id in cluster_ids])
 
     split_df = pd.DataFrame(split_status)
     split_df.columns = ['TranscriptId', 'GeneAlternateContigs', 'SplitGene']
     merged_df = pd.merge(paralog_filtered_df, split_df, on='TranscriptId')
     if remove_split_genes:
-        split_gene_metrics['Number of transcripts removed'] = len(alignment_ids_to_remove)
+        split_gene_metrics['Number of alignments removed'] = len(alignment_ids_to_remove)
         logger.info('{:,} genes for {} have transcripts split across contigs. '
-                    '{:,} transcripts removed.'.format(split_gene_metrics['Number of contig split genes'],
-                                                       genome,
-                                                       split_gene_metrics['Number of transcripts removed']))
+                    '{:,} alignments removed.'.format(split_gene_metrics['Number of contig split genes'],
+                                                      genome,
+                                                      split_gene_metrics['Number of alignments removed']))
         filtered_df = merged_df[~merged_df['AlignmentId'].isin(alignment_ids_to_remove)]
         return split_gene_metrics, filtered_df
     else:
