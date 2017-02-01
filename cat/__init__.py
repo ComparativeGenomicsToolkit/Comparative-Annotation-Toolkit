@@ -2232,15 +2232,15 @@ class BgpTrack(TrackTask):
             for tx in tools.transcripts.gene_pred_iterator(self.genepred_path):
                 s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
                 block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
-                row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
+                row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                        tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
-                       s.TranscriptName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
-                       s.GeneName, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
+                       s.GeneName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                       tx.name, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
                 tools.fileOps.print_row(outf, row)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
         with track.open('w') as outf:
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,geneName',
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
                    '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
             tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
@@ -2414,13 +2414,13 @@ class AugustusTrack(TrackTask):
                 for tx in gp:
                     s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
                     block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
-                    row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
+                    row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                            tx.thick_stop, color, tx.block_count, block_sizes, block_starts,
-                           s.TranscriptName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
-                           s.GeneName, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
+                           s.GeneName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                           tx.name, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
                     tools.fileOps.print_row(outf, row)
             tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,geneName',
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
                    '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
             with track.open('w') as outf:
                 tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
@@ -2632,12 +2632,12 @@ modified_bgp_as = '''table bigGenePred
     int blockCount;     "Number of blocks"
     int[blockCount] blockSizes; "Comma separated list of block sizes"
     int[blockCount] chromStarts; "Start positions relative to chromStart"
-    string name2;       "Transcript name"
+    string name2;       "Gene name"
     string cdsStartStat; "Status of CDS start annotation (none, unknown, incomplete, or complete)"
     string cdsEndStat;   "Status of CDS end annotation (none, unknown, incomplete, or complete)"
     int[blockCount] exonFrames; "Exon frame {0,1,2}, or -1 if no frame for exon"
+    string transcriptId;  "Transcript ID"
     string geneId;    "Gene ID"
-    string geneName;   "Gene name"
     string type;        "Transcript type"
     string geneType;    "Gene type"
     )
@@ -2771,7 +2771,7 @@ type bigBed 3
 
 '''
 
-snake_template = '''        track snake_{genome}
+snake_template = '''        track snake{genome}
         longLabel {genome}
         shortLabel {genome}
         otherSpecies {genome}
@@ -2826,12 +2826,14 @@ itemRgb on
 priority 2
 visibility {visibility}
 baseColorUseSequence lfExtra
+baseColorDefault genomicCodons
+baseColorUseCds given
 indelDoubleInsert on
 indelQueryInsert on
 showDiffBasesAllScales .
 showDiffBasesMaxZoom 10000.0
-showCdsAllScales .
-showCdsMaxZoom 10000.0
+#showCdsAllScales .
+#showCdsMaxZoom 10000.0
 searchIndex name
 
 '''
@@ -2862,6 +2864,8 @@ type bam
 indelDoubleInsert on
 indelQueryInsert on
 showNames off
+bamColorMode gray
+bamGrayMode aliQual
 pairEndsByName on
 
 '''
@@ -2886,6 +2890,7 @@ bigDataUrl {path}
 color {color}
 visibility hide
 priority 11
+spectrum on
 
 '''
 
@@ -2899,6 +2904,7 @@ bigDataUrl {path}
 visibility hide
 color 45,125,204
 priority 12
+spectrum on
 
 '''
 
