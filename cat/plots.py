@@ -327,7 +327,7 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
         # fix column names because json_biotype_nested_counter_to_df makes assumptions
         df.columns = ['Result', 'Number of transcripts', 'Augustus mode', 'genome']
         has_pb = len(set(df['Augustus mode'])) == 2
-        if len(ordered_genomes) > 1:
+        if len(set(df.genome)) > 1:  # if we ran in PB only, we may not have multiple genomes
             if has_pb is True:
                 ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
                                     hue='Augustus mode', col_wrap=2, row_order=ordered_genomes, sharex=True,
@@ -353,14 +353,11 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
         title = 'Split genes'
         if len(ordered_genomes) > 1:
             g = generic_barplot(pdf=pdf, data=df, x='genome', y='count', col='category', xlabel='', col_wrap=2,
-                                sharey=False, ylabel='Number of alignments or genes', row_order=ordered_genomes,
-                                title=title, close=False)
+                                sharey=False, ylabel='Number of transcripts or genes', row_order=ordered_genomes,
+                                title=title)
         else:
-            g = generic_barplot(pdf=pdf, data=df, x='category', y='count', ylabel='Number of alignments or genes',
-                                title=title, xlabel='Category', close=False)
-        g.axes[0][0].set_ylabel('Number of genes')
-        g.axes[1][0].set_ylabel('Number of alignments')
-        multipage_close(pdf, tight_layout=False)
+            g = generic_barplot(pdf=pdf, data=df, x='category', y='count', ylabel='Number of transcripts or genes',
+                                title=title, xlabel='Category')
 
 
 def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt):
@@ -609,12 +606,13 @@ def json_biotype_nested_counter_to_df(consensus_data, key):
     """converts the JSON entries with nested counts. Expects the first level keys to be biotypes"""
     dfs = []
     for genome, d in consensus_data.iteritems():
-        for biotype, vals in d[key].iteritems():
-            df = pd.DataFrame(vals.items())
-            if len(df) > 0:
-                df.columns = [key, 'count']
-                df = df.assign(biotype=[biotype] * len(df), genome=[genome] * len(df))
-                dfs.append(df)
+        if key in d:
+            for biotype, vals in d[key].iteritems():
+                df = pd.DataFrame(vals.items())
+                if len(df) > 0:
+                    df.columns = [key, 'count']
+                    df = df.assign(biotype=[biotype] * len(df), genome=[genome] * len(df))
+                    dfs.append(df)
     return pd.concat(dfs)
 
 

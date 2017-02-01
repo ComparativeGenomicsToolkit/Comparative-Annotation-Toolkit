@@ -2108,7 +2108,6 @@ class CreateTrackDbs(RebuildableTask):
         pipeline_args = self.get_pipeline_args()
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
-        # TODO: this will include self tracks. Provide a flag?
         org_str = construct_org_str(directory_args.genomes)
         with self.output().open('w') as outf:
             for f in os.listdir(out_dir):

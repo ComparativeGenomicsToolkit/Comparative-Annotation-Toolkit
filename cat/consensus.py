@@ -572,7 +572,6 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
     if best_series.Paralogy > 1:
-        assert best_series.ParalogStatus is not None
         d['paralogy'] = best_series.Paralogy
         d['paralog_status'] = best_series.ParalogStatus
     if best_series.GeneAlternateContigs is not None:

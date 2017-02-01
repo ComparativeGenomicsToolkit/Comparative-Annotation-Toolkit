@@ -14,8 +14,9 @@ setup(
         'configobj>=5.0',
         'sqlalchemy>=1.0',
         'ete3>=3.0',
-        'pysam>=0.10,'
-        'numpy>=1.10'
+        'pysam>=0.10',
+        'numpy>=1.10',
+        'scipy>=0.18.1'
     ],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',

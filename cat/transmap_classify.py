@@ -6,7 +6,7 @@ Classify transMap transcripts producing the TransMapEvaluation table for each ge
 3. AlignmentPartialMap: Did this transcript not map completely?
 4. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
 5. AlnContainsUnknownBases: Are there any Ns within the transcript alignment?
-6. Synteny: Counts the number of genes in linear order that match up to +/- 3 genes.
+6. Synteny: Counts the number of genes in linear order that match up to +/- 5 genes.
 7. TransMapOriginalIntrons: The number of transMap introns within a wiggle distance of a intron in the parent transcript
    in transcript coordinates.
 """
@@ -205,15 +205,15 @@ def synteny(ref_gp_dict, gp_dict):
     # synteny score algorithm
     scores = {}
     for tx in gp_dict.itervalues():
-        # find the genes from -3 to +3 in the target genome
+        # find the genes from -5 to +5 in the target genome
         target_intervals = tm_chrom_intervals[tx.chromosome]
         target_position = bisect.bisect_left(target_intervals, tx.interval)
-        target_genes = {x.data for x in target_intervals[target_position - 3: target_position + 3]}
+        target_genes = {x.data for x in target_intervals[target_position - 5: target_position + 5]}
         # find the same gene list in the reference genome
         ref_interval = ref_interval_map[tx.name2]
         ref_intervals = ref_chrom_intervals[ref_interval.chromosome]
         ref_position = bisect.bisect_left(ref_intervals, ref_interval)
-        reference_genes = {x.data for x in ref_intervals[ref_position - 3: ref_position + 3]}
+        reference_genes = {x.data for x in ref_intervals[ref_position - 5: ref_position + 5]}
         scores[tx.name] = len(reference_genes & target_genes)
     return scores
 

@@ -41,14 +41,24 @@ def filter_transmap(filter_tm_args, out_target):
     metrics = {}
 
     # resolve paralogs
-    paralog_metrics, paralog_filtered_df = resolve_paralogs(updated_aln_eval_df, filter_tm_args.genome)
+    paralog_metrics, paralog_resolved_df = resolve_paralogs(updated_aln_eval_df, filter_tm_args.genome)
     metrics['Paralogy'] = paralog_metrics
 
-    # resolve split genes. If user requests the bad ones to be removed, do so.
-    split_gene_metrics, paralog_filtered_df = resolve_split_genes(paralog_filtered_df, tx_dict,
-                                                                  filter_tm_args.resolve_split_genes,
-                                                                  filter_tm_args.genome)
+    # resolve split genes. If user requests the bad ones to be removed, do so. Make an attempt to rescue.
+    split_gene_metrics, resolved_df = resolve_split_genes(paralog_resolved_df, tx_dict,
+                                                          filter_tm_args.resolve_split_genes,
+                                                          filter_tm_args.genome)
     metrics['Split Genes'] = split_gene_metrics
+
+    # filter the paralogous mappings left
+    paralog_filtered_df = resolved_df[resolved_df.UpdatedParalogStatus != 'ToRemove']
+    paralog_filtered_df = paralog_filtered_df.drop('ParalogStatus', axis=1)
+    paralog_filtered_df = paralog_filtered_df.rename(columns={'UpdatedParalogStatus': 'ParalogStatus'})
+    assert len(paralog_filtered_df) == len(set(paralog_filtered_df.TranscriptId))
+
+    # keep some metrics
+    for biotype, biotype_df in resolved_df.groupby('TranscriptBiotype'):
+        metrics['Paralogy'][biotype]['Alignments discarded'] = len(biotype_df[biotype_df.UpdatedParalogStatus == 'ToRemove'])
 
     # write out the filtered transMap results
     with out_target.open('w') as outf:
@@ -143,24 +153,26 @@ def resolve_paralogs(updated_aln_eval_df, genome):
 
     for tx, df in updated_aln_eval_df.groupby('TranscriptId'):
         if len(df) == 1:  # no paralogs
-            paralog_status.append([df.AlignmentId.iloc[0], None])
+            paralog_status.append([df.AlignmentId.iloc[0], 'Unique'])
             continue
         biotype = df.TranscriptBiotype.iloc[0]
         passing = df[df.TranscriptClass == 'passing']
         if len(passing) == 1:  # we can pick one passing member
             paralog_metrics[biotype]['Model prediction'] += 1
-            paralog_metrics[biotype]['Alignments discarded'] += len(df) - 1
             paralog_status.append([df.AlignmentId.iloc[0], 'Confident'])
         else:
             highest_score_df = df[df.Score == df.iloc[0].Score]
             if len(highest_score_df) == 1:
                 paralog_metrics[biotype]['Synteny heuristic'] += 1
-                paralog_metrics[biotype]['Alignments discarded'] += len(df) - 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'Confident'])
             else:
                 paralog_metrics[biotype]['Arbitrarily resolved'] += 1
-                paralog_metrics[biotype]['Alignments discarded'] += len(df) - 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'NotConfident'])
+
+    # keep track of the ones we flagged for split genes
+    kept_ids = set(zip(*paralog_status)[0])
+    all_ids = set(updated_aln_eval_df.AlignmentId)
+    paralog_status.extend([[aln_id, 'ToRemove'] for aln_id in all_ids - kept_ids])
 
     for biotype in set(updated_aln_eval_df.TranscriptBiotype):
         tot = paralog_metrics[biotype]['Synteny heuristic'] + paralog_metrics[biotype]['Model prediction'] + \
@@ -170,12 +182,12 @@ def resolve_paralogs(updated_aln_eval_df, genome):
                                                       biotype, genome, tot))
     status_df = pd.DataFrame(paralog_status)
     status_df.columns = ['AlignmentId', 'ParalogStatus']
-    merged = pd.merge(status_df, updated_aln_eval_df, on='AlignmentId')  # this filters out alignments below threshold
+    merged = pd.merge(status_df, updated_aln_eval_df, on='AlignmentId')
     merged['TranscriptClass'] = merged.apply(apply_label, axis=1)
     return paralog_metrics, merged
 
 
-def resolve_split_genes(paralog_filtered_df, tx_dict, remove_split_genes, genome):
+def resolve_split_genes(paralog_resolved_df, tx_dict, remove_split_genes, genome):
     """
     Resolves cases where transMap mapped a gene to different chromosomes. This is a useful feature to turn on
     if you have a high quality assembly, but may be problematic for highly fragmented assemblies.
@@ -183,13 +195,13 @@ def resolve_split_genes(paralog_filtered_df, tx_dict, remove_split_genes, genome
     For each gene, find all transcript clusters. Pick the cluster with the highest average synteny score. Keep track
     of whether we split over contigs and/or over different regions of the same contig.
 
-    :param paralog_filtered_df: DataFrame produced by resolve_paralogs()
+    :param paralog_resolved_df: DataFrame produced by resolve_paralogs()
     :param tx_dict: Dictionary mapping alignment IDs to GenePredTranscript objects.
     :param remove_split_genes: Boolean. Do we remove the transcripts on the less likely contig after resolution?
     :param genome: Genome in question. For logging.
     :return: tuple of (metrics_dict, updated dataframe)
     """
-    def cluster_gene(tx_objs):
+    def cluster_gene(tx_objs, paralog_statuses):
         """
         Cluster together all transcripts of a given gene
         """
@@ -205,12 +217,19 @@ def resolve_split_genes(paralog_filtered_df, tx_dict, remove_split_genes, genome
 
         # assign each original tx_obj to a cluster
         clusters = collections.defaultdict(list)
-        for tx_obj in tx_objs:
+        for tx_obj, paralog_status in zip(*[tx_objs, paralog_statuses]):
             for i, interval in enumerate(merged_intervals):
                 if interval.overlap(tx_obj.interval):
-                    clusters[i].append(tx_obj.name)
+                    clusters[i].append([tx_obj.name, paralog_status])
                     break
-        return clusters
+
+        # remove any clusters that contain only paralogous transcripts
+        filtered_clusters = collections.defaultdict(list)
+        for i, cluster in clusters.iteritems():
+            for aln_id, paralog_status in cluster:
+                if paralog_status != 'ToRemove':
+                    filtered_clusters[i].append(aln_id)
+        return clusters, filtered_clusters
 
     def find_best_cluster(clusters, rec):
         """
@@ -244,42 +263,59 @@ def resolve_split_genes(paralog_filtered_df, tx_dict, remove_split_genes, genome
                           'Number of intra-contig split genes': 0}
     alignment_ids_to_remove = set()
     split_status = []
-    for gene, rec in paralog_filtered_df.groupby('GeneId'):
-        gene_tx_obj_dict = {tx_id: tx_dict[tx_id] for tx_id in rec.AlignmentId}
-        clusters = cluster_gene(gene_tx_obj_dict.values())
-        # no split contigs here
-        if len(clusters) == 1:
-            split_status.extend([[tx_id, None, False] for tx_id in rec.TranscriptId])
+    for gene, rec in paralog_resolved_df.groupby('GeneId'):
+        gene_tx_obj_dict = collections.OrderedDict([[tx_id, tx_dict[tx_id]] for tx_id in rec.AlignmentId])
+        paralog_statuses = collections.OrderedDict([[tx_id, s] for tx_id, s in zip(*[rec.AlignmentId, rec.ParalogStatus])])
+        clusters, filtered_clusters = cluster_gene(gene_tx_obj_dict.values(), paralog_statuses.values())
+
+        if len(filtered_clusters) == 1:  # no split contigs here
+            split_status.extend([[aln_id, None, False, s] for aln_id, s in zip(*[rec.AlignmentId, rec.ParalogStatus])])
             continue
+
         # find the best cluster based on score
-        best_cluster = find_best_cluster(clusters, rec)
-        # extract IDs that do not belong to the best cluster
-        other_ids = {aln_id for aln_id in rec.AlignmentId if aln_id not in clusters[best_cluster]}
-        alignment_ids_to_remove.update(other_ids)
+        best_cluster = find_best_cluster(filtered_clusters, rec)
+
+        # extract IDs that do not belong to the best cluster, only if they are not already filtered
+        for cluster, cluster_ids in clusters.iteritems():
+            if cluster == best_cluster:
+                continue
+            for aln_id, paralog_status in cluster_ids:
+                if paralog_status != 'ToRemove':
+                    alignment_ids_to_remove.add(aln_id)
+
+        # record some metrics
         if is_split_chrom_gene(gene_tx_obj_dict.values()):
             split_gene_metrics['Number of contig split genes'] += 1
-            location_split = is_split_same_chrom_gene(gene_tx_obj_dict, clusters)
-            if location_split is True:
+            if is_split_same_chrom_gene(gene_tx_obj_dict, filtered_clusters) is True:
                 split_gene_metrics['Number of intra-contig split genes'] += 1
         else:
             split_gene_metrics['Number of intra-contig split genes'] += 1
-            location_split = True
+
+        # begin iterating over clusters, assigning alternative chromosomes
         for cluster, cluster_ids in clusters.iteritems():
-            chrom = gene_tx_obj_dict[cluster_ids[0]].chromosome
+            chrom = gene_tx_obj_dict[cluster_ids[0][0]].chromosome
             other_chroms = {tx_obj.chromosome for tx_obj in gene_tx_obj_dict.itervalues() if tx_obj.chromosome != chrom}
             other_chroms = ','.join(other_chroms)
-            split_status.extend([[tools.nameConversions.strip_alignment_numbers(aln_id), other_chroms, location_split]
-                                 for aln_id in cluster_ids])
+            # begin paralog rescue, dealing with the rare case where we have chaining problems
+            counts = collections.Counter([tools.nameConversions.strip_alignment_numbers(aln_id)
+                                          for aln_id, s in cluster_ids])
+            for aln_id, paralog_status in cluster_ids:
+                tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+                if paralog_status == 'ToRemove' and cluster == best_cluster and counts[tx_id] == 1:
+                    paralog_status = 'Rescued'
+                split_status.append([aln_id, other_chroms, True, paralog_status])
 
     split_df = pd.DataFrame(split_status)
-    split_df.columns = ['TranscriptId', 'GeneAlternateContigs', 'SplitGene']
-    merged_df = pd.merge(paralog_filtered_df, split_df, on='TranscriptId')
+    split_df.columns = ['AlignmentId', 'GeneAlternateContigs', 'SplitGene', 'UpdatedParalogStatus']
+    split_gene_metrics['Number of transcripts rescued'] = len(split_df[split_df.UpdatedParalogStatus == 'Rescued'])
+    merged_df = pd.merge(paralog_resolved_df, split_df, on='AlignmentId')
+
     if remove_split_genes:
-        split_gene_metrics['Number of alignments removed'] = len(alignment_ids_to_remove)
+        split_gene_metrics['Number of transcripts removed'] = len(alignment_ids_to_remove)
         logger.info('{:,} genes for {} have transcripts split across contigs. '
-                    '{:,} alignments removed.'.format(split_gene_metrics['Number of contig split genes'],
-                                                      genome,
-                                                      split_gene_metrics['Number of alignments removed']))
+                    '{:,} transcripts removed.'.format(split_gene_metrics['Number of contig split genes'],
+                                                       genome,
+                                                       split_gene_metrics['Number of transcripts removed']))
         filtered_df = merged_df[~merged_df['AlignmentId'].isin(alignment_ids_to_remove)]
         return split_gene_metrics, filtered_df
     else:
@@ -310,6 +346,6 @@ def calculate_synteny_score(s):
     """
     r = 0.2 * s.TransMapCoverage + \
         0.3 * s.TransMapIdentity + \
-        0.5 * (1.0 * s.Synteny / 6)
+        0.5 * (1.0 * s.Synteny / 10)
     assert 0 <= r <= 100
     return r
