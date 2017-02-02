@@ -2023,9 +2023,9 @@ class CreateTracks(PipelineWrapperTask):
         pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.target_genomes:
             yield self.clone(CreateTracksDriverTask, genome=genome)
-            yield self.clone(CreateTrackDbs, genome=genome)
         yield self.clone(CreateTracksDriverTask, genome=pipeline_args.ref_genome)
-        yield self.clone(CreateTrackDbs, genome=pipeline_args.ref_genome)
+        for genome in pipeline_args.hal_genomes:
+            yield self.clone(CreateTrackDbs, genome=genome)
 
 
 class CreateTracksDriverTask(PipelineWrapperTask):
@@ -2036,6 +2036,8 @@ class CreateTracksDriverTask(PipelineWrapperTask):
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
+        if self.genome not in pipeline_args.target_genomes:
+            return
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
         if pipeline_args.augustus_cgp is True:
@@ -2802,7 +2804,7 @@ group cat_tracks
 itemRgb on
 priority 1
 visibility pack
-searchIndex name,name2,sourceGene,sourceTranscript,geneName,geneName2
+searchIndex name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId
 bigDataUrl {path}
 
 '''
@@ -2817,7 +2819,7 @@ group cat_tracks
 itemRgb on
 priority 3
 visibility {visibility}
-searchIndex name,name2,geneId,geneName
+searchIndex name,name2,geneId,transcriptId
 bigDataUrl {path}
 
 '''
