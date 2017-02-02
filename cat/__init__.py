@@ -434,7 +434,13 @@ class TrackTask(RebuildableTask):
     trackdb_path = luigi.Parameter()
 
     def requires(self):
-        return self.clone(CreateDirectoryStructure), self.clone(Consensus)
+        yield self.clone(Consensus)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(EvaluateTranscripts)
+        yield self.clone(Hgm)
+        yield self.clone(ReferenceFiles)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(FilterTransMap)
 
     def output(self):
         return luigi.LocalTarget(self.track_path), luigi.LocalTarget(self.trackdb_path)
@@ -1142,7 +1148,7 @@ class FilterTransMapDriverTask(PipelineTask):
                 luigi.LocalTarget(self.filter_tm_args.metrics_json))
 
     def requires(self):
-        return self.clone(EvaluateTransMap)
+        return self.clone(EvaluateTransMap), self.clone(ReferenceFiles)
 
     def run(self):
         logger.info('Filtering transMap results for {}.'.format(self.genome))
@@ -1304,7 +1310,7 @@ class AugustusCgp(ToilTask):
                 raise ToolMissingException('tool {} not in global path.'.format(tool))
 
     def requires(self):
-        yield self.clone(FilterTransMap), self.clone(Gff3ToAttrs), self.clone(BuildDb)
+        yield self.clone(FilterTransMap), self.clone(ReferenceFiles), self.clone(BuildDb)
 
     def prepare_cgp_cfg(self, pipeline_args):
         """use the config template to create a config file"""
@@ -1543,6 +1549,7 @@ class HgmDriverTask(PipelineTask):
         else:
             raise UserException('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
         yield self.clone(BuildDb)
+        yield self.clone(ReferenceFiles)
 
     def run(self):
         logger.info('Launching homGeneMapping for {}.'.format(self.mode))
@@ -1689,6 +1696,7 @@ class AlignTranscriptDriverTask(ToilTask):
             yield self.clone(Augustus)
         yield self.clone(FilterTransMap)
         yield self.clone(ReferenceFiles)
+        yield self.clone(GenomeFiles)
 
     def run(self):
         logger.info('Launching Align Transcript toil pipeline for {} using {}.'.format(self.genome, self.batchSystem))
@@ -1855,6 +1863,10 @@ class ConsensusDriverTask(RebuildableTask):
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Hgm)
+        yield self.clone(AlignTranscripts)
+        yield self.clone(ReferenceFiles)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(FilterTransMap)
         if pipeline_args.augustus_pb:
             yield self.clone(IsoSeqIntronVectors)
 
@@ -1920,6 +1932,12 @@ class Plots(RebuildableTask):
 
     def requires(self):
         yield self.clone(Consensus)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(EvaluateTranscripts)
+        yield self.clone(Hgm)
+        yield self.clone(ReferenceFiles)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(FilterTransMap)
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
@@ -1966,6 +1984,12 @@ class CreateDirectoryStructure(PipelineTask):
 
     def requires(self):
         yield self.clone(Consensus)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(EvaluateTranscripts)
+        yield self.clone(Hgm)
+        yield self.clone(ReferenceFiles)
+        yield self.clone(EvaluateTransMap)
+        yield self.clone(FilterTransMap)
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
