@@ -348,7 +348,10 @@ def extract_attrs(gff3):
                     try:
                         name = tx.attributes['transcript_name'][0]
                     except KeyError:
-                        name = tx.attributes['Name'][0]
+                        try:
+                            name = tx.attributes['Name'][0]
+                        except KeyError:
+                            name = 'N/A'  # no transcript level names in this; probably Ensembl
                     try:
                         tx_biotype = tx.attributes['biotype'][0]
                     except KeyError:  # attempt Gencode naming scheme
