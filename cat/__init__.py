@@ -399,7 +399,8 @@ class ToilTask(PipelineTask):
 
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
-        job_store = 'file:' + job_store
+        if toil_args.batchSystem == 'parasol':
+            job_store = 'file:' + job_store
         toil_args.jobStore = job_store
         return toil_args
 

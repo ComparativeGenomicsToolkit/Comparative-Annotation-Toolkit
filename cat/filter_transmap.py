@@ -59,6 +59,11 @@ def filter_transmap(filter_tm_args, out_target):
     # keep some metrics
     for biotype, biotype_df in resolved_df.groupby('TranscriptBiotype'):
         metrics['Paralogy'][biotype]['Alignments discarded'] = len(biotype_df[biotype_df.UpdatedParalogStatus == 'ToRemove'])
+        tot = paralog_metrics[biotype]['Synteny heuristic'] + paralog_metrics[biotype]['Model prediction'] + \
+              paralog_metrics[biotype]['Arbitrarily resolved']
+        logger.info('Discarded {:,} alignments for {} on {} after paralog resolution. '
+                    '{:,} transcripts remain.'.format(paralog_metrics[biotype]['Alignments discarded'],
+                                                      biotype, filter_tm_args.genome, tot))
 
     # write out the filtered transMap results
     with out_target.open('w') as outf:
@@ -159,12 +164,12 @@ def resolve_paralogs(updated_aln_eval_df, genome):
         passing = df[df.TranscriptClass == 'passing']
         if len(passing) == 1:  # we can pick one passing member
             paralog_metrics[biotype]['Model prediction'] += 1
-            paralog_status.append([df.AlignmentId.iloc[0], 'Confident'])
+            paralog_status.append([df.AlignmentId.iloc[0], 'ModelPrediction'])
         else:
             highest_score_df = df[df.Score == df.iloc[0].Score]
             if len(highest_score_df) == 1:
                 paralog_metrics[biotype]['Synteny heuristic'] += 1
-                paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'Confident'])
+                paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'SyntenyHeuristic'])
             else:
                 paralog_metrics[biotype]['Arbitrarily resolved'] += 1
                 paralog_status.append([highest_score_df.AlignmentId.iloc[0], 'NotConfident'])
@@ -174,12 +179,6 @@ def resolve_paralogs(updated_aln_eval_df, genome):
     all_ids = set(updated_aln_eval_df.AlignmentId)
     paralog_status.extend([[aln_id, 'ToRemove'] for aln_id in all_ids - kept_ids])
 
-    for biotype in set(updated_aln_eval_df.TranscriptBiotype):
-        tot = paralog_metrics[biotype]['Synteny heuristic'] + paralog_metrics[biotype]['Model prediction'] + \
-              paralog_metrics[biotype]['Arbitrarily resolved']
-        logger.info('Discarded {:,} alignments for {} on {} after paralog resolution. '
-                    '{:,} transcripts remain.'.format(paralog_metrics[biotype]['Alignments discarded'],
-                                                      biotype, genome, tot))
     status_df = pd.DataFrame(paralog_status)
     status_df.columns = ['AlignmentId', 'ParalogStatus']
     merged = pd.merge(status_df, updated_aln_eval_df, on='AlignmentId')

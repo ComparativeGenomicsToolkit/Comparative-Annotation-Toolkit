@@ -398,7 +398,7 @@ A large range of plots are produced in `--output-dir/plots`. These include:
 17. `transcript_class`: For projection transcripts, can either be passing (above identity threshold for biotype) or failing (below identity threshold for biotype). For *de-novo* transcripts, will be one of poor_alignment, possible_paralog, putative_novel_isoform, or putative_novel. See the [consensus finding](#consensus) section for descriptions.
 18. `transcript_modes`: Comma separated list of transcript modes. The same information as the transcript_modes.pdf plot.
 19. `pacbio_isoform_supported`: Was this isoform supported by at least one IsoSeq read?
-20. `paralog_status`: One of Confident (was resolved by synteny or model fitting), NotConfident (randomly chosen), or None (no multiple mappings).
+20. `paralog_status`: One of ModelPrediction (was resolved by model fitting), SyntenyHeuristic (resolved by synteny heuristic), NotConfident (randomly chosen), None (no multiple mappings), or Rescued. Rescued transcripts are transcripts which were flagged for removal but overlapped with the best cluster for their source gene.
 21. `paralogy`: The number of alignments the original transMap projection had.
 22. `gene_alternate_contigs`: If this gene was split across multiple contigs, this will have a comma separated list of alternative locations.
 
