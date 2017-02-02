@@ -2087,10 +2087,11 @@ class CreateTracksDriverTask(PipelineWrapperTask):
         if self.genome in pipeline_args.rnaseq_genomes:
             yield self.clone(SpliceTrack, track_path=os.path.join(out_dir, 'splices.bb'),
                              trackdb_path=os.path.join(out_dir, 'splices.txt'))
-            if self.genome not in pipeline_args.intron_only_genomes:
-                yield self.clone(ExpressionTracks, max_track_path=os.path.join(out_dir, 'max_expression.bw'),
-                                 median_track_path=os.path.join(out_dir, 'median_expression.bw'),
-                                 trackdb_path=os.path.join(out_dir, 'expression.txt'))
+            # expression is disabled until I fix wiggletools (bamCoverage is needed)
+            #if self.genome not in pipeline_args.intron_only_genomes:
+            #    yield self.clone(ExpressionTracks, max_track_path=os.path.join(out_dir, 'max_expression.bw'),
+            #                     median_track_path=os.path.join(out_dir, 'median_expression.bw'),
+            #                     trackdb_path=os.path.join(out_dir, 'expression.txt'))
 
 
 class CreateTrackDbs(RebuildableTask):
@@ -2142,7 +2143,8 @@ class DenovoTrack(TrackTask):
         def find_alternative_gene_names(s, annotation_info):
             if s.AlternativeGeneIds is None:
                 return 'N/A'
-            r = {annotation_info.ix[gene].iloc[0].GeneName for gene in s.AlternativeGeneIds.split(',')}
+            r = {tools.misc.slice_df(annotation_info, gene).iloc[0].GeneName for
+                 gene in s.AlternativeGeneIds.split(',')}
             return ','.join(r)
 
         pipeline_args = self.get_pipeline_args()
@@ -2170,12 +2172,12 @@ class DenovoTrack(TrackTask):
                 if s.AssignedGeneId is None:
                     assigned_gene_id = gene_name = gene_type = alternative_gene_names = 'N/A'
                 else:
-                    a = annotation_info.ix[s.AssignedGeneId].iloc[0]
+                    a = tools.misc.slice_df(annotation_info, s.AssignedGeneId).iloc[0]
                     gene_name = a.GeneName
                     gene_type = a.GeneBiotype
                     assigned_gene_id = s.AssignedGeneId
                     alternative_gene_names = find_alternative_gene_names(s, annotation_info)
-                block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
                        tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
                        gene_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
@@ -2186,7 +2188,7 @@ class DenovoTrack(TrackTask):
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-extraIndex=assignedGeneId,name,name2',
                    '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         label = 'AugustusCGP' if self.mode == 'augCGP' else 'AugustusPB'
         description = 'Comparative Augustus' if self.mode == 'augCGP' else 'PacBio Augustus'
@@ -2231,7 +2233,7 @@ class BgpTrack(TrackTask):
         with tmp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(self.genepred_path):
                 s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
-                block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                        tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
                        s.GeneName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
@@ -2242,7 +2244,7 @@ class BgpTrack(TrackTask):
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
                    '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='{}_{}'.format(self.label.replace(' ', '_'), self.genome),
@@ -2277,7 +2279,7 @@ class ConsensusTrack(TrackTask):
         with tmp_gp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(consensus_args.consensus_gp):
                 info = consensus_gp_info.ix[tx.name]
-                block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 tx_name = info.source_transcript_name if info.source_transcript_name != 'N/A' else tx.name
                 row = [tx.chromosome, tx.start, tx.stop, tx_name, tx.score, tx.strand,
                        tx.thick_start, tx.thick_stop, find_rgb(info), tx.block_count, block_sizes, block_starts,
@@ -2299,7 +2301,7 @@ class ConsensusTrack(TrackTask):
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
                    '-type=bed12+20', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(consensus_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2348,7 +2350,7 @@ class EvaluationTrack(TrackTask):
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(error_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2374,14 +2376,17 @@ class TransMapTrack(TrackTask):
             for tx in tools.transcripts.gene_pred_iterator(tm_args.tm_gp):
                 ref_tx = ref_tx_dict[tools.nameConversions.strip_alignment_numbers(tx.name)]
                 tools.bio.write_fasta(mrna_handle, tx.name, str(seq_dict[ref_tx.name]))
-                start = ref_tx.cds_coordinate_to_mrna(0) + ref_tx.offset
-                stop = start + ref_tx.cds_size - ((ref_tx.cds_size - ref_tx.offset) % 3)
+                if ref_tx.cds_size == 0:  # non-coding txs have no cds interval
+                    start = stop = 0
+                else:
+                    start = ref_tx.cds_coordinate_to_mrna(0) + ref_tx.offset
+                    stop = start + ref_tx.cds_size - ((ref_tx.cds_size - ref_tx.offset) % 3)
                 cds_handle.write('{}\t{}..{}\n'.format(tx.name, start + 1, stop))
 
         with tmp.open('w') as outf:
             cmd = [['pslToBigPsl', '-cds={}'.format(cds.path), '-fa={}'.format(mrna.path), tm_args.tm_psl, 'stdout'],
                    ['sort', '-k1,1', '-k2,2n']]
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         with as_file.open('w') as outf:
             outf.write(bigpsl)
@@ -2389,7 +2394,7 @@ class TransMapTrack(TrackTask):
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-type=bed12+13', '-tab', '-extraIndex=name',
                    '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(bigpsl_template.format(name='transmap_{}'.format(self.genome), short_label='transMap',
@@ -2423,7 +2428,7 @@ class AugustusTrack(TrackTask):
             with tmp.open('w') as outf:
                 for tx in gp:
                     s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
-                    block_starts, block_sizes, exon_frames = create_bed_info_gp(tx)
+                    block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                     row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                            tx.thick_stop, color, tx.block_count, block_sizes, block_starts,
                            s.GeneName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
@@ -2433,7 +2438,7 @@ class AugustusTrack(TrackTask):
             cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
                    '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
             with track.open('w') as outf:
-                tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+                tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='augustus_{}'.format(self.genome), label='AugustusTM(R)',
@@ -2510,7 +2515,7 @@ class SpliceTrack(TrackTask):
 
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)#, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(splice_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2539,12 +2544,12 @@ class ExpressionTracks(RebuildableTask):
         with median_track.open('w') as outf:
             cmd = [['wiggletools', 'median'] + bams,
                    ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, '/dev/stdout']]
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)
 
         with max_track.open('w') as outf:
             cmd = [['wiggletools', 'max'] + bams,
                    ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, '/dev/stdout']]
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)
 
         with trackdb.open('w') as outf:
             outf.write(wiggle_template.format(genome=self.genome, mode='Median',
@@ -2556,14 +2561,6 @@ class ExpressionTracks(RebuildableTask):
 ###
 # assembly hub functions, including generating autoSql files
 ###
-
-
-def create_bed_info_gp(gp):
-    """Creates the block_starts, block_sizes and exon_frames fields from a GenePredTranscript object"""
-    block_starts = ','.join(map(str, gp.block_starts))
-    block_sizes = ','.join(map(str, gp.block_sizes))
-    exon_frames = ','.join(map(str, gp.exon_frames))
-    return block_starts, block_sizes, exon_frames
 
 
 def find_default_pos(chrom_sizes, window_size=200000):
@@ -2611,13 +2608,13 @@ def construct_consensus_gp_as(has_pb):
     string sourceGene;    "Source gene ID"
     string sourceTranscript;    "Source transcript ID"
     string alignmentId;  "Alignment ID"
-    string alternativeSourceTranscripts;    "Alternative source transcripts"
+    lstring alternativeSourceTranscripts;    "Alternative source transcripts"
     string failedGene;   "Did this gene fail the identity cutoff?"
     string frameshift;  "Frameshifted relative to source?"
-    string exonAnnotationSupport;   "Exon support in reference annotation"
-    string exonRnaSupport;  "RNA exon support"
-    string intronAnnotationSupport;   "Intron support in reference annotation"
-    string intronRnaSupport;   "RNA intron support"
+    lstring exonAnnotationSupport;   "Exon support in reference annotation"
+    lstring exonRnaSupport;  "RNA exon support"
+    lstring intronAnnotationSupport;   "Intron support in reference annotation"
+    lstring intronRnaSupport;   "RNA intron support"
     string transcriptClass;    "Transcript class"
     string transcriptModes;    "Transcript mode(s)"
 '''
@@ -2676,8 +2673,8 @@ denovo_as = '''table denovo
     int[blockCount] exonFrames; "Exon frame {0,1,2}, or -1 if no frame for exon"
     string geneType;    "Assigned gene type"
     string assignedGeneId; "Assigned source gene ID"
-    string alternativeGeneIds; "Alternative source gene IDs"
-    string alternativeGeneNames; "Alternative source gene names"
+    lstring alternativeGeneIds; "Alternative source gene IDs"
+    lstring alternativeGeneNames; "Alternative source gene names"
     )
 '''
 

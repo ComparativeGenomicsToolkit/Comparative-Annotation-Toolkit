@@ -462,9 +462,7 @@ class GenePredTranscript(Transcript):
 
         # if no resizing, just return what we have
         if new_start is None and new_stop is None:
-            exon_starts = ','.join(map(str, [exon.start for exon in self.exon_intervals]))
-            exon_ends = ','.join(map(str, [exon.stop for exon in self.exon_intervals]))
-            exon_frames = ','.join(map(str, self.exon_frames))
+            exon_starts, exon_ends, exon_frames = create_bed_info_gp(self)
             return map(str, [name, self.chromosome, self.strand, self.start, self.stop, self.thick_start,
                              self.thick_stop, len(self.exon_intervals), exon_starts, exon_ends, score, name2,
                              self.cds_start_stat, self.cds_end_stat, exon_frames])
@@ -527,9 +525,7 @@ class GenePredTranscript(Transcript):
         cds_start_stat = 'unk' if thick_start != self.thick_start else self.cds_start_stat
         cds_end_stat = 'unk' if thick_stop != self.thick_stop else self.cds_end_stat
         exon_count = len(exon_intervals)
-        exon_starts = ','.join(map(str, [exon.start for exon in exon_intervals]))
-        exon_ends = ','.join(map(str, [exon.stop for exon in exon_intervals]))
-        exon_frames = ','.join(map(str, exon_frames))
+        exon_starts, exon_ends, exon_frames = create_bed_info_gp(self)
         return map(str, [name, self.chromosome, self.strand, new_start, new_stop, thick_start, thick_stop, exon_count,
                          exon_starts, exon_ends, score, name2, cds_start_stat, cds_end_stat, exon_frames])
 
@@ -594,3 +590,11 @@ def convert_frame(exon_frame):
     """converts genePred-style exonFrame to GFF-style phase"""
     mapping = {0: 0, 1: 2, 2: 1, -1: '.'}
     return mapping[exon_frame]
+
+
+def create_bed_info_gp(gp):
+    """Creates the block_starts, block_sizes and exon_frames fields from a GenePredTranscript object"""
+    block_starts = ','.join(map(str, gp.block_starts))
+    block_sizes = ','.join(map(str, gp.block_sizes))
+    exon_frames = ','.join(map(str, gp.exon_frames))
+    return block_starts, block_sizes, exon_frames
