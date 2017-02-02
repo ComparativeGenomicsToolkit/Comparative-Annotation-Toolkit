@@ -341,11 +341,14 @@ def extract_attrs(gff3):
                     # this record lacks a common name field. Probably from Ensembl
                     gene_name = gene.attributes['gene_id'][0]
             for tx in gene.children:
-                if 'transcript_id' not in tx.attributes:
+                if tx.type != 'transcript':
                     continue
                 try:
                     tx_id = tx.attributes['transcript_id'][0]
-                    name = tx.attributes['Name'][0]
+                    try:
+                        name = tx.attributes['transcript_name'][0]
+                    except KeyError:
+                        name = tx.attributes['Name'][0]
                     try:
                         tx_biotype = tx.attributes['biotype'][0]
                     except KeyError:  # attempt Gencode naming scheme

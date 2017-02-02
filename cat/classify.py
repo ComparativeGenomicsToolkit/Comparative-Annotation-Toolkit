@@ -220,7 +220,7 @@ def find_indels(tx, psl, aln_mode):
     :param tx: GenePredTranscript object representing the target transcript
     :param psl: PslRow object describing CDS alignment between ref_tx and tx.
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
-    :return: paired list of [category, ChromosomeInterval] objects if a coding insertion exists else []
+    :return: list of bed12-format lists
     """
     def convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn, strand):
         """convert alignment coordinates to target chromosome coordinates, inverting if negative strand"""
@@ -247,11 +247,8 @@ def find_indels(tx, psl, aln_mode):
             indel_type = 'NonCoding'
 
         rgb = calculate_rgb(indel_type)
-        try:
-            new_bed = tx.get_bed(new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=rgb,
-                                 name=''.join([indel_type, gap_type]))
-        except:
-            assert False, (tx, left_chrom_pos, right_chrom_pos, indel_type, gap_type)
+        new_bed = tx.get_bed(new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=rgb,
+                             name=''.join([indel_type, gap_type]))
         return [tx.name] + new_bed
 
     def calculate_rgb(indel_type):
