@@ -169,8 +169,6 @@ class PipelineTask(luigi.Task):
             args.set('target_genomes', tuple([x for x in self.target_genomes]), True)
 
         args.set('cfg', self.parse_cfg(), True)
-        args.set('modes', self.get_modes(args), True)
-        args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
         args.set('dbs', PipelineTask.get_databases(args), True)
         args.set('annotation', args.cfg['ANNOTATION'][args.ref_genome], True)
         args.set('hints_db', os.path.join(args.work_dir, 'hints_database', 'hints.db'), True)
@@ -179,6 +177,8 @@ class PipelineTask(luigi.Task):
         # don't include the reference genome as a isoseq_genome; we do not run AugustusPB on it
         args.set('isoseq_genomes', frozenset(set(args.cfg['ISO_SEQ_BAM'].keys()) - {self.ref_genome}), True)
         args.set('annotation_genomes', frozenset(set(args.cfg['ANNOTATION'].keys())), True)
+        args.set('modes', self.get_modes(args), True)
+        args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
         self.validate_cfg(args)
 
         # calculate the number of cores a hgm run should use
@@ -290,7 +290,7 @@ class PipelineTask(luigi.Task):
             modes.append('augCGP')
         if args.augustus is True:
             modes.append('augTM')
-            if len(args.cfg['BAM']) + len(args.cfg['INTRONBAM']) > 0:
+            if len(set(args.rnaseq_genomes) & set(args.target_genomes)) > 0:
                 modes.append('augTMR')
         if args.augustus_pb is True:
             modes.append('augPB')

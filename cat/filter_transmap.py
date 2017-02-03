@@ -41,7 +41,7 @@ def filter_transmap(filter_tm_args, out_target):
     metrics = {}
 
     # resolve paralogs
-    paralog_metrics, paralog_resolved_df = resolve_paralogs(updated_aln_eval_df, filter_tm_args.genome)
+    paralog_metrics, paralog_resolved_df = resolve_paralogs(updated_aln_eval_df)
     metrics['Paralogy'] = paralog_metrics
 
     # resolve split genes. If user requests the bad ones to be removed, do so. Make an attempt to rescue.
@@ -134,7 +134,7 @@ def fit_distributions(aln_eval_df, ref_df, genome):
     return pd.merge(biotype_df, r_df, on='AlignmentId'), ident_df
 
 
-def resolve_paralogs(updated_aln_eval_df, genome):
+def resolve_paralogs(updated_aln_eval_df):
     """
     Resolves paralogs based on likelihood to come from the two lognormal distributions.
 
