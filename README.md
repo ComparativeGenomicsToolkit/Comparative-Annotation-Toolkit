@@ -79,7 +79,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--work-dir`: Working directory. Defaults to `./cat_work`. Stores all the intermediate files as well as the `toil` jobStore. Can be removed after completion (but not if you want to re-do any steps).
 
-`--target-genomes`: List of genomes to use. If not set, all non-reference genomes in the HAL are used.
+`--target-genomes`: List of genomes to use. If not set, all non-reference genomes in the HAL are used. Due to how `luigi` handles command line tuple parameters, this flag must be formatted as if it was a tuple being passed directly to python, single quoted. So, for example, if your target genomes were Human and Mouse, then you would pass `--target-genomes='("Human", "Mouse")'`. As always with python tuples, if you have only one member, you must have a trailing comma.
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with the balance of this value and the `--maxCores` parameter.
 
@@ -87,7 +87,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--augustus`: Run AugustusTM(R)? 
 
-`--augustus-species`: What Augustus species do we want to use? If your species is not a mammal, please choose [one of the species listed here](http://bioinf.uni-greifswald.de/augustus/)
+`--augustus-species`: What Augustus species do we want to use? If your species is not a mammal, please choose [one of the species listed here](http://bioinf.uni-greifswald.de/augustus/).
 
 ##AugustusCGP options
 
