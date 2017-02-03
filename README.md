@@ -154,6 +154,8 @@ A major component of producing high quality comparative annotations is making us
 
 A template for the config file is below. At a minimum, your config file must have the annotation section. A example config file is provided in the `test_data` folder.
 
+**BAM files must be indexed!**
+
 ~~~~
 [ANNOTATION]
 Genome = /path/to/reference/gff3
@@ -173,6 +175,8 @@ Note that the BAM/INTRONBAM fields can be populated either with a comma separate
 ##RNA-seq libraries
 
 It is **extremely** important that you use high quality RNA-seq. Libraries should be poly-A selected and paired end with a minimum read length of 75bp. If any of these are not true, it is advisable to place these libraries in the INTRONBAM field. Any genome can have a mix of BAM and INTRONBAM hints.
+
+**BAM files must be indexed!**
 
 ##ISoSeq libraries
 
