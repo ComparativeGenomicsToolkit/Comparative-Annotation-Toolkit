@@ -112,6 +112,7 @@ class PipelineTask(luigi.Task):
     defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
     disableCaching = luigi.BoolParameter(default=False, significant=False)
     workDir = luigi.Parameter(default=None, significant=False)
+    defaultDisk = luigi.Parameter(default='8G', significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
