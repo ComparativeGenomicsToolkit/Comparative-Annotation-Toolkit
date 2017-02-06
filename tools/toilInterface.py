@@ -2,6 +2,10 @@
 Helper functions for toil-luigi interfacing
 """
 import bio
+import math
+import argparse
+from toil.fileStore import FileID
+from bd2k.util.humanize import human2bytes
 
 ###
 # Helper functions for luigi-toil pipelines
@@ -38,3 +42,36 @@ def write_fasta_to_filestore(toil, fasta_local_path):
     gdx_file_id = toil.importFile('file:///' + fasta_local_path + '.gdx')
     flat_file_id = toil.importFile('file:///' + fasta_local_path + '.flat')
     return fasta_file_id, gdx_file_id, flat_file_id
+
+
+def find_total_disk_usage(input_file_ids, buffer='2G', round='2G'):
+    """
+    Takes a input_file_id namespace or dict or list and finds all members that are FileID objects,
+    and finds their sizes.
+    Based on buffer and round, returns a integer value of disk usage in bytes to pass to a toil job.
+    :param input_file_ids: A namespace object with an arbitrary nesting of possible file ID values
+    :param buffer: Additional space buffer requested. Human readable parsed by human2bytes
+    :param round: amount to round up. Human readable parsed by human2bytes
+    :return: integer
+    """
+    def roundup(x, base):
+        return int(math.ceil(x / float(base))) * base
+
+    def descend_object(obj):
+        if isinstance(obj, dict):
+            for item in obj.values():
+                for v in descend_object(item):
+                    yield v
+        elif isinstance(obj, list):
+            for item in obj:
+                for v in descend_object(item):
+                    yield v
+        elif isinstance(obj, argparse.Namespace):
+            for item in obj.__dict__.values():
+                for v in descend_object(item):
+                    yield v
+        elif isinstance(obj, FileID):
+            yield obj
+
+    tot = sum([x.size for x in descend_object(input_file_ids)])
+    return roundup(tot, human2bytes(round)) + human2bytes(buffer)

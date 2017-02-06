@@ -40,7 +40,8 @@ def augustus_pb(args, toil_options):
             input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
             input_file_ids.pb_cfg = toil.importFile('file://' + args.pb_cfg)
             input_file_ids.hints_gff = toil.importFile('file://' + args.hints_gff)
-            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G')
+            disk_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.genome_fasta])
+            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk=disk_usage)
             raw_gtf_file_id, (gtf_file_id, df, fail_count) = toil.start(job)
         else:
             raw_gtf_file_id, (gtf_file_id, df, fail_count) = toil.restart()
@@ -75,15 +76,17 @@ def setup(job, args, input_file_ids):
             del interval_list[-1]
             interval_list[-1][-1] = last_stop
 
+    disk_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.genome_fasta, input_file_ids.hints_gff])
     predictions = []
     for chrom, interval_list in intervals.iteritems():
         for start, stop in interval_list:
-            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, stop)
+            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, stop, memory='8G',
+                                  disk=disk_usage)
             predictions.append(j.rv())
 
     # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
     # where the dataframe contains the alternative parental txs and fail_count is the # of transcripts discarded
-    results = job.addFollowOnJobFn(join_genes, input_file_ids, predictions, memory='8G').rv()
+    results = job.addFollowOnJobFn(join_genes, input_file_ids, predictions, memory='8G', disk='8G').rv()
     return results
 
 
@@ -146,5 +149,5 @@ def join_genes(job, input_file_ids, predictions):
     raw_gtf_file_id = job.fileStore.writeGlobalFile(raw_gtf_file)
     j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,
                              input_file_ids.filtered_tm_gp, input_file_ids.unfiltered_tm_gp,
-                             joined_file_id, 'AugustusPB', memory='8G')
+                             joined_file_id, 'AugustusPB', memory='8G', disk='8G')
     return raw_gtf_file_id, j.rv()

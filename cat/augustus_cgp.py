@@ -17,10 +17,12 @@
 import argparse
 import os
 
+from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
 import tools.misc
+import tools.toilInterface
 import tools.dataOps
 import tools.fileOps
 import tools.intervals
@@ -37,32 +39,32 @@ def augustus_cgp(args, toil_options):
     :param toil_options: toil options Namespace object
     :return:
     """
-    with Toil(toil_options) as toil:
-        if not toil.options.restart:
+    with Toil(toil_options) as t:
+        if not t.options.restart:
             input_file_ids = argparse.Namespace()
-            input_file_ids.hal = toil.importFile('file://' + args.hal)
-            input_file_ids.chrom_sizes = toil.importFile('file://' + args.query_sizes)
-            input_file_ids.hints_db = toil.importFile('file://' + args.hints_db)
-            input_file_ids.cgp_param = toil.importFile('file://' + args.cgp_param)
-            input_file_ids.ref_db_path = toil.importFile('file://' + args.ref_db_path)
-            input_file_ids.fasta = {genome: toil.importFile('file://' + fasta)
+            input_file_ids.hal = FileID.forPath(t.importFile('file://' + args.hal), args.hal)
+            input_file_ids.chrom_sizes = FileID.forPath(t.importFile('file://' + args.query_sizes), args.query_sizes)
+            input_file_ids.hints_db = FileID.forPath(t.importFile('file://' + args.hints_db), args.hints_db)
+            input_file_ids.cgp_param = FileID.forPath(t.importFile('file://' + args.cgp_param), args.cgp_param)
+            input_file_ids.ref_db_path = FileID.forPath(t.importFile('file://' + args.ref_db_path), args.ref_db_path)
+            input_file_ids.fasta = {genome: FileID.forPath(t.importFile('file://' + fasta), fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
-            input_file_ids.filtered_tm_gps = {genome: toil.importFile('file://' + tm_gp)
+            input_file_ids.filtered_tm_gps = {genome: FileID.forPath(t.importFile('file://' + tm_gp), tm_gp)
                                               for genome, tm_gp in args.filtered_tm_gps.iteritems()}
-            input_file_ids.unfiltered_tm_gps = {genome: toil.importFile('file://' + tm_gp)
+            input_file_ids.unfiltered_tm_gps = {genome: FileID.forPath(t.importFile('file://' + tm_gp), tm_gp)
                                                 for genome, tm_gp in args.unfiltered_tm_gps.iteritems()}
-            input_file_ids.cgp_cfg = toil.importFile('file://' + args.cgp_cfg)
-            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G')
-            results = toil.start(job)
+            input_file_ids.cgp_cfg = FileID.forPath(t.importFile('file://' + args.cgp_cfg), args.cgp_cfg)
+            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk='2G')
+            results = t.start(job)
         else:
-            results = toil.restart()
+            results = t.restart()
         dataframes = []
         fail_counts = []
         for genome, (raw_gtf_file_id, (gtf_file_id, df, fail_count)) in results.iteritems():
             tools.fileOps.ensure_file_dir(args.augustus_cgp_raw_gtf[genome])
-            toil.exportFile(raw_gtf_file_id, 'file://' + args.augustus_cgp_raw_gtf[genome])
+            t.exportFile(raw_gtf_file_id, 'file://' + args.augustus_cgp_raw_gtf[genome])
             tools.fileOps.ensure_file_dir(args.augustus_cgp_gtf[genome])
-            toil.exportFile(gtf_file_id, 'file://' + args.augustus_cgp_gtf[genome])
+            t.exportFile(gtf_file_id, 'file://' + args.augustus_cgp_gtf[genome])
             dataframes.append([genome, df])
             fail_counts.append([genome, fail_count])
         return dataframes, fail_counts
@@ -85,22 +87,26 @@ def setup(job, args, input_file_ids):
 
     # TODO: do not split within genic regions of the reference genome
     chrom_sizes = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
+    hal2maf_usage = tools.toilInterface.find_total_disk_usage(input_file_ids.hal)
+    # 4G buffer for MAF chunk, should be more than enough (famous last words)
+    cgp_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.fasta, input_file_ids.hints_db], buffer='4G')
 
     for chrom, chrom_size in tools.fileOps.iter_lines(chrom_sizes):
         chrom_size = int(chrom_size)
         for start in xrange(0, chrom_size, args.chunksize - args.overlap):
             chunksize = args.chunksize if start + args.chunksize <= chrom_size else chrom_size - start
-            j = job.addChildJobFn(hal2maf, input_file_ids, args.ref_genome, chrom, start, chunksize, memory='8G')
+            j = job.addChildJobFn(hal2maf, input_file_ids, args.ref_genome, chrom, start, chunksize, memory='8G',
+                                  disk=hal2maf_usage)
             maf_chunk = j.rv()
             # run AugustusCGP on alignment chunk
-            cgp_job = j.addFollowOnJobFn(cgp, tree, maf_chunk, args, input_file_ids, memory='8G')
+            cgp_job = j.addFollowOnJobFn(cgp, tree, maf_chunk, args, input_file_ids, memory='8G', disk=cgp_usage)
             gff_chunk = cgp_job.rv()
             gff_chunks.append(gff_chunk)
 
     # merge all gff files for alignment chunks to one gff for each species
     # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
     # where the dataframe contains the alternative parental txs and fail_count is the # of transcripts discarded
-    results = job.addFollowOnJobFn(merge_results, args, input_file_ids, gff_chunks, memory='8G').rv()
+    results = job.addFollowOnJobFn(merge_results, args, input_file_ids, gff_chunks, memory='8G', disk='8G').rv()
     return results
 
 
@@ -149,7 +155,7 @@ def merge_results(job, args, input_file_ids, gff_chunks):
     for genome in args.genomes:
         # merge all gff_chunks of one genome
         genome_gff_chunks = [d[genome] for d in gff_chunks]
-        j = job.addChildJobFn(join_genes, genome, input_file_ids, genome_gff_chunks, memory='8G')
+        j = job.addChildJobFn(join_genes, genome, input_file_ids, genome_gff_chunks, memory='8G', disk='8G')
         results[genome] = j.rv()
     return results
 
@@ -184,7 +190,7 @@ def join_genes(job, genome, input_file_ids, gff_chunks):
     raw_gtf_file_id = job.fileStore.writeGlobalFile(raw_gtf_file)
     j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,
                              input_file_ids.filtered_tm_gps[genome], input_file_ids.unfiltered_tm_gps[genome],
-                             joined_file_id, 'AugustusCGP', memory='8G')
+                             joined_file_id, 'AugustusCGP', memory='8G', disk='8G')
     return raw_gtf_file_id, j.rv()
 
 

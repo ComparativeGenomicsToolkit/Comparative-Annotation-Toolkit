@@ -6,7 +6,7 @@ setup(
     py_modules=['cat', 'tools'],
     install_requires=[
         'pyfasta>=0.5.2',
-        'toil>=3.0',
+        'toil>=3.5',
         'luigi>=2.5',
         'seaborn>=0.7',
         'pandas>=0.18',

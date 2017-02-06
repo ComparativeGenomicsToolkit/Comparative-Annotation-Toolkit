@@ -10,6 +10,7 @@ hints to Augustus.
 import argparse
 import itertools
 
+from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -34,35 +35,42 @@ def augustus(args, coding_gp, toil_options):
     :param coding_gp: genePred with only coding transcripts
     :param toil_options: toil options Namespace object
     """
-    with Toil(toil_options) as toil:
-        if not toil.options.restart:
+    with Toil(toil_options) as t:
+        if not t.options.restart:
             input_file_ids = argparse.Namespace()
-            input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
-            input_file_ids.tm_cfg = toil.importFile('file://' + args.tm_cfg)
-            input_file_ids.coding_gp = toil.importFile('file://' + coding_gp)
-            input_file_ids.ref_psl = toil.importFile('file://' + args.ref_psl)
-            input_file_ids.tm_psl = toil.importFile('file://' + args.tm_psl)
-            input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
+            input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(t, args.genome_fasta)
+            input_file_ids.tm_cfg = FileID.forPath(t.importFile('file://' + args.tm_cfg), args.tm_cfg)
+            input_file_ids.coding_gp = FileID.forPath(t.importFile('file://' + coding_gp), coding_gp)
+            input_file_ids.ref_psl = FileID.forPath(t.importFile('file://' + args.ref_psl), args.ref_psl)
+            input_file_ids.tm_psl = FileID.forPath(t.importFile('file://' + args.tm_psl), args.tm_psl)
+            input_file_ids.annotation_gp = FileID.forPath(t.importFile('file://' + args.annotation_gp),
+                                                          args.annotation_gp)
+            file_ids = [input_file_ids.genome_fasta, input_file_ids.coding_gp, input_file_ids.ref_psl,
+                        input_file_ids.tm_psl, input_file_ids.annotation_gp]
             if args.augustus_tmr:
-                input_file_ids.augustus_hints_db = toil.importFile('file://' + args.augustus_hints_db)
-                input_file_ids.tmr_cfg = toil.importFile('file://' + args.tmr_cfg)
-            job = Job.wrapJobFn(setup, args, input_file_ids)
-            tm_file_id, tmr_file_id = toil.start(job)
+                input_file_ids.augustus_hints_db = FileID.forPath(t.importFile('file://' + args.augustus_hints_db),
+                                                                  args.augustus_hints_db)
+                input_file_ids.tmr_cfg = FileID.forPath(t.importFile('file://' + args.tmr_cfg), args.tmr_cfg)
+                file_ids.append(args.augustus_hints_db)
+            disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
+            job = Job.wrapJobFn(setup, args, input_file_ids, disk_usage, disk=disk_usage)
+            tm_file_id, tmr_file_id = t.start(job)
         else:
-            tm_file_id, tmr_file_id = toil.restart()
+            tm_file_id, tmr_file_id = t.restart()
         tools.fileOps.ensure_file_dir(args.augustus_tm_gtf)
-        toil.exportFile(tm_file_id, 'file://' + args.augustus_tm_gtf)
+        t.exportFile(tm_file_id, 'file://' + args.augustus_tm_gtf)
         if tmr_file_id is not None:
             tools.fileOps.ensure_file_dir(args.augustus_tmr_gtf)
-            toil.exportFile(tmr_file_id, 'file://' + args.augustus_tmr_gtf)
+            t.exportFile(tmr_file_id, 'file://' + args.augustus_tmr_gtf)
 
 
-def setup(job, args, input_file_ids):
+def setup(job, args, input_file_ids, disk_usage):
     """
     Entry function for running AugustusTM(R). Loads the genome fasta into the fileStore then spins up chunks of
     jobs.
     :param args: args from Luigi pipeline
     :param input_file_ids: file ID dictionary of imported files
+    :param disk_usage: Disk Usage to pass along to AUGUSTUS jobs. Important when a hints DB is involved.
     :return: completed GTF format results for all jobs
     """
     def start_jobs(mode, chunk_size, cfg_file_id):
@@ -75,7 +83,8 @@ def setup(job, args, input_file_ids):
                                        ref_tx_dict[tools.nameConversions.remove_alignment_number(tx_id)],
                                        tm_psl_dict[tx_id],
                                        ref_psl_dict[tools.nameConversions.remove_alignment_number(tx_id)]]
-            j = job.addChildJobFn(run_augustus_chunk, args, grouped_recs, input_file_ids, mode, cfg_file_id)
+            j = job.addChildJobFn(run_augustus_chunk, args, grouped_recs, input_file_ids, mode, cfg_file_id,
+                                  disk=disk_usage)
             results.append(j.rv())
         return results
     # load all fileStore files necessary

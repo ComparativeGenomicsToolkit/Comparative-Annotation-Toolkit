@@ -5,32 +5,35 @@ import argparse
 import collections
 import logging
 
+from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
 import tools.fileOps
+import tools.toilInterface
 import tools.hal
 import tools.procOps
 
 
 def chaining(args, toil_options):
     """entry point to this program"""
-    with Toil(toil_options) as toil:
-        if not toil.options.restart:
-            target_two_bit_file_ids = {genome: toil.importFile('file://' + f) for genome, f
-                                       in args.target_two_bits.iteritems()}
+    with Toil(toil_options) as t:
+        if not t.options.restart:
             input_file_ids = argparse.Namespace()
-            input_file_ids.hal = toil.importFile('file://' + args.hal)
-            input_file_ids.query_sizes = toil.importFile('file://' + args.query_sizes)
-            input_file_ids.query_two_bit = toil.importFile('file://' + args.query_two_bit)
+            input_file_ids.hal = FileID.forPath(t.importFile('file://' + args.hal), args.hal)
+            input_file_ids.query_sizes = FileID.forPath(t.importFile('file://' + args.query_sizes), args.query_sizes)
+            input_file_ids.query_two_bit = FileID.forPath(t.importFile('file://' + args.query_two_bit),
+                                                          args.query_two_bit)
+            target_two_bit_file_ids = {genome: FileID.forPath(t.importFile('file://' + f), f)
+                                       for genome, f in args.target_two_bits.iteritems()}
             input_file_ids.target_two_bits = target_two_bit_file_ids
             job = Job.wrapJobFn(setup, args, input_file_ids)
-            chain_file_ids = toil.start(job)
+            chain_file_ids = t.start(job)
         else:
-            chain_file_ids = toil.restart()
+            chain_file_ids = t.restart()
         for chain_file, chain_file_id in chain_file_ids.iteritems():
             tools.fileOps.ensure_file_dir(chain_file)
-            toil.exportFile(chain_file_id, 'file://' + chain_file)
+            t.exportFile(chain_file_id, 'file://' + chain_file)
 
 
 def setup(job, args, input_file_ids):
@@ -45,13 +48,15 @@ def setup(job, args, input_file_ids):
     for i, l in enumerate(open(chrom_sizes)):
         chrom, size = l.split()
         for target_genome, target_two_bit_file_id in input_file_ids.target_two_bits.iteritems():
+            disk_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.hal, target_two_bit_file_id,
+                                                                    input_file_ids.query_two_bit])
             j = job.addChildJobFn(chain_by_chromosome, args, chrom, size, input_file_ids, target_genome,
-                                  target_two_bit_file_id, memory='8G')
+                                  target_two_bit_file_id, memory='8G', disk=disk_usage)
             tmp_chain_file_ids[target_genome].append(j.rv())
     return_file_ids = {}
     for genome, chain_file in args.chain_files.iteritems():
         chain_files = tmp_chain_file_ids[genome]
-        j = job.addFollowOnJobFn(merge, chain_files, genome)
+        j = job.addFollowOnJobFn(merge, chain_files, genome, memory='8G', disk='8G')
         return_file_ids[chain_file] = j.rv()
     return return_file_ids
 

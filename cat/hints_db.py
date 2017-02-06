@@ -8,6 +8,7 @@ import logging
 
 import pyfasta
 import pysam
+from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -28,21 +29,22 @@ def hints_db(hints_args, toil_options):
     """
     Entry point for hints database Toil pipeline.
     """
-    def validate_import_bam(toil, bam_path, fasta_sequences, genome):
+    def validate_import_bam(t, bam_path, fasta_sequences, genome):
         validate_bam_fasta_pairs(bam_path, fasta_sequences, genome)
-        return toil.importFile('file://' + bam_path), toil.importFile('file://' + bam_path + '.bai')
+        return [FileID.forPath(t.importFile('file://' + bam_path), bam_path),
+                FileID.forPath(t.importFile('file://' + bam_path + '.bai'), bam_path + '.bai')]
 
     fasta = pyfasta.Fasta(hints_args.fasta)
     fasta_sequences = {(x.split()[0], len(fasta[x])) for x in fasta.keys()}
-    with Toil(toil_options) as toil:
-        if not toil.options.restart:
+    with Toil(toil_options) as t:
+        if not t.options.restart:
             # load the RNA-seq data, if we have any
             bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
             for dtype in ['BAM', 'INTRONBAM']:
                 if hints_args.genome not in hints_args.cfg[dtype]:
                     continue
                 for bam_path in hints_args.cfg[dtype][hints_args.genome]:
-                    bam_file_ids[dtype][os.path.basename(bam_path)] = validate_import_bam(toil, bam_path,
+                    bam_file_ids[dtype][os.path.basename(bam_path)] = validate_import_bam(t, bam_path,
                                                                                           fasta_sequences,
                                                                                           hints_args.genome)
                     logger.info('{} {} ({}) is valid.'.format(dtype, os.path.basename(bam_path), hints_args.genome))
@@ -52,22 +54,26 @@ def hints_db(hints_args, toil_options):
             if hints_args.genome in hints_args.cfg['ISO_SEQ_BAM']:
                 for bam_path in hints_args.cfg['ISO_SEQ_BAM'][hints_args.genome]:
                     validate_bam_fasta_pairs(bam_path, fasta_sequences, hints_args.genome)
-                    iso_seq_file_ids.append(validate_import_bam(toil, bam_path, fasta_sequences, hints_args.genome))
+                    iso_seq_file_ids.append(validate_import_bam(t, bam_path, fasta_sequences, hints_args.genome))
 
-            input_file_ids = {'bams': bam_file_ids, 'iso_seq_bams': iso_seq_file_ids,
-                              'annotation': toil.importFile('file://' + hints_args.annotation)
-                              if hints_args.annotation is not None else None}
+            if hints_args.annotation is None:
+                annotation_file_id = None
+            else:
+                annotation_file_id = FileID.forPath(t.importFile('file://' + hints_args.annotation),
+                                                    hints_args.annotation)
+            input_file_ids = {'bams': bam_file_ids, 'iso_seq_bams': iso_seq_file_ids, 'annotation': annotation_file_id}
             logger.info('{} has {} valid intron-only BAMs, {} valid BAMs and {} valid IsoSeq BAMs. '
                         'Beginning Toil hints pipeline.'.format(hints_args.genome, len(bam_file_ids['INTRONBAM']),
                                                                 len(bam_file_ids['BAM']),
                                                                 len(iso_seq_file_ids)))
-            job = Job.wrapJobFn(setup_hints, input_file_ids, iso_seq_file_ids)
-            combined_hints = toil.start(job)
+            disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids)
+            job = Job.wrapJobFn(setup_hints, input_file_ids, iso_seq_file_ids, disk=disk_usage)
+            combined_hints = t.start(job)
         else:
             logger.info('Restarting Toil hints pipeline for {}.'.format(hints_args.genome))
-            combined_hints = toil.restart()
+            combined_hints = t.restart()
         tools.fileOps.ensure_file_dir(hints_args.hints_path)
-        toil.exportFile(combined_hints, 'file://' + hints_args.hints_path)
+        t.exportFile(combined_hints, 'file://' + hints_args.hints_path)
 
 
 def setup_hints(job, input_file_ids, iso_seq_file_ids):
@@ -90,28 +96,31 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
             continue
         # Since BAMs are valid, we can assume that they all share the same header
         bam_file_id, bai_file_id = bam_dict.values()[0]
-        sam_handle = pysam.Samfile(job.fileStore.readGlobalFile(bam_file_id))
+        bam_path = job.fileStore.readGlobalFile(bam_file_id)
+        sam_handle = pysam.Samfile(bam_path)
+        disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id])
         # generate reference grouping that will be used downstream until final cat step
         grouped_references = [tuple(x) for x in group_references(sam_handle)]
         for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
             for reference_subset in grouped_references:
-                j = job.addChildJobFn(filter_bam, bam_file_id, bai_file_id, reference_subset)
+                j = job.addChildJobFn(filter_bam, bam_file_id, bai_file_id, reference_subset, disk=disk_usage)
                 filtered_bam_file_ids[dtype][reference_subset].append(j.rv())
 
     # IsoSeq hints
     iso_seq_hints_file_ids = []
     if len(iso_seq_file_ids) > 0:
         for bam_file_id, bai_file_id in iso_seq_file_ids:
-            j = job.addChildJobFn(generate_iso_seq_hints, bam_file_id, bai_file_id)
+            disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id])
+            j = job.addChildJobFn(generate_iso_seq_hints, bam_file_id, bai_file_id, disk=disk_usage)
             iso_seq_hints_file_ids.append(j.rv())
 
     # annotation hints
     if input_file_ids['annotation'] is not None:
-        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'])
+        disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids['annotation'])
+        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'], disk=disk_usage)
         annotation_hints_file_id = j.rv()
     else:
         annotation_hints_file_id = None
-    # returns path to filtered GFF output
     return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints_file_id,
                                 iso_seq_hints_file_ids).rv()
 
@@ -147,7 +156,9 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
     merged_bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
     for dtype in filtered_bam_file_ids:
         for ref_group, file_ids in filtered_bam_file_ids[dtype].iteritems():
-            merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids).rv()
+            disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
+            merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk=disk_usage).rv()
+
     return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids).rv()
 
 
@@ -191,8 +202,11 @@ def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hint
             intron_hints_file_ids.append(job.addChildJobFn(build_intron_hints, file_ids).rv())
             if dtype == 'BAM':
                 exon_hints_file_ids.append(job.addChildJobFn(build_exon_hints, file_ids).rv())
+    disk_usage = tools.toilInterface.find_total_disk_usage(itertools.chain.from_iterable([intron_hints_file_ids,
+                                                                                          exon_hints_file_ids,
+                                                                                          [annotation_hints_file_id]]))
     return job.addFollowOnJobFn(cat_hints, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_file_id,
-                                iso_seq_hints_file_ids).rv()
+                                iso_seq_hints_file_ids, disk=disk_usage).rv()
 
 
 def build_intron_hints(job, merged_bam_file_id):

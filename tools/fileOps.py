@@ -9,11 +9,13 @@ import os
 import errno
 import socket
 import shutil
+import math
 import gzip
 import string
 import random
 import tempfile
 import hashlib
+from bd2k.util.humanize import human2bytes
 
 
 class TemporaryFilePath(object):

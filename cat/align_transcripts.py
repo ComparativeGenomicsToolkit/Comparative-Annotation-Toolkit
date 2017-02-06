@@ -9,6 +9,7 @@ import collections
 import itertools
 import logging
 
+from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -30,23 +31,28 @@ def align_transcripts(args, toil_options):
     :param args: dictionary of arguments from CAT
     :param toil_options: toil options Namespace object
     """
-    with Toil(toil_options) as toil:
-        if not toil.options.restart:
+    with Toil(toil_options) as t:
+        if not t.options.restart:
             input_file_ids = argparse.Namespace()
-            input_file_ids.ref_genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.ref_genome_fasta)
-            input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(toil, args.genome_fasta)
-            input_file_ids.annotation_gp = toil.importFile('file://' + args.annotation_gp)
-            input_file_ids.ref_db = toil.importFile('file://' + args.ref_db_path)
+            input_file_ids.ref_genome_fasta = tools.toilInterface.write_fasta_to_filestore(t, args.ref_genome_fasta)
+            input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(t, args.genome_fasta)
+            input_file_ids.annotation_gp = FileID.forPath(t.importFile('file://' + args.annotation_gp),
+                                                          args.annotation_gp)
+            input_file_ids.ref_db = FileID.forPath(t.importFile('file://' + args.ref_db_path), args.ref_db_path)
             input_file_ids.modes = {}
+            file_ids = [input_file_ids.ref_genome_fasta, input_file_ids.genome_fasta, input_file_ids.annotation_gp,
+                        input_file_ids.ref_db]
             for mode in args.transcript_modes:
-                input_file_ids.modes[mode] = toil.importFile('file://' + args.transcript_modes[mode]['gp'])
-            job = Job.wrapJobFn(setup, args, input_file_ids, memory='16G')
-            results_file_ids = toil.start(job)
+                input_file_ids.modes[mode] = t.importFile('file://' + args.transcript_modes[mode]['gp'])
+                file_ids.append(input_file_ids.modes[mode])
+            disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
+            job = Job.wrapJobFn(setup, args, input_file_ids, memory='16G', disk=disk_usage)
+            results_file_ids = t.start(job)
         else:
-            results_file_ids = toil.restart()
+            results_file_ids = t.restart()
         for file_path, file_id in results_file_ids.iteritems():
             tools.fileOps.ensure_file_dir(file_path)
-            toil.exportFile(file_id, 'file://' + file_path)
+            t.exportFile(file_id, 'file://' + file_path)
 
 
 def setup(job, args, input_file_ids):
@@ -85,14 +91,14 @@ def setup(job, args, input_file_ids):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)
             for chunk in group_transcripts(seq_iter):
-                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode)
+                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode, memory='2G', disk='2G')
                 results[out_path].append(j.rv())
 
     if len(results) == 0:
         err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
         raise RuntimeError(err_msg)
     # convert the results Promises into resolved values
-    return job.addFollowOnJobFn(merge, results, args).rv()
+    return job.addFollowOnJobFn(merge, results, args, memory='2G', disk='4G').rv()
 
 
 def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, mode):
