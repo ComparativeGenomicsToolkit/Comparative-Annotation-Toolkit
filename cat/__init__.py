@@ -109,7 +109,7 @@ class PipelineTask(luigi.Task):
     batchSystem = luigi.Parameter(default='singleMachine', significant=False)
     maxCores = luigi.IntParameter(default=8, significant=False)
     parasolCommand = luigi.Parameter(default=None, significant=False)
-    defaultMemory = luigi.IntParameter(default=8 * 1024 ** 3, significant=False)
+    defaultMemory = luigi.Parameter(default='8G', significant=False)
     disableCaching = luigi.BoolParameter(default=False, significant=False)
     workDir = luigi.Parameter(default=None, significant=False)
     defaultDisk = luigi.Parameter(default='8G', significant=False)
