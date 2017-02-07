@@ -38,9 +38,9 @@ def write_fasta_to_filestore(toil, fasta_local_path):
     :param fasta_local_path: Path to local fasta to load.
     :return: List of fileStore IDs for fasta, fasta_gdx, fasta_flat
     """
-    fasta_file_id = toil.importFile('file:///' + fasta_local_path)
-    gdx_file_id = toil.importFile('file:///' + fasta_local_path + '.gdx')
-    flat_file_id = toil.importFile('file:///' + fasta_local_path + '.flat')
+    fasta_file_id = FileID.forPath(toil.importFile('file:///' + fasta_local_path), fasta_local_path)
+    gdx_file_id = FileID.forPath(toil.importFile('file:///' + fasta_local_path + '.gdx'), fasta_local_path + '.gdx')
+    flat_file_id = FileID.forPath(toil.importFile('file:///' + fasta_local_path + '.flat'), fasta_local_path + '.flat')
     return fasta_file_id, gdx_file_id, flat_file_id
 
 

@@ -87,8 +87,6 @@ class PipelineTask(luigi.Task):
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     # AugustusPB parameters
     augustus_pb = luigi.BoolParameter(default=False)
-    pb_genome_chunksize = luigi.IntParameter(default=20000000, significant=False)
-    pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
@@ -140,8 +138,6 @@ class PipelineTask(luigi.Task):
         args.set('augustus_cgp', self.augustus_cgp, True)
         args.set('maf_chunksize', self.maf_chunksize, True)
         args.set('maf_overlap', self.maf_overlap, True)
-        args.set('pb_genome_chunksize', self.pb_genome_chunksize, True)
-        args.set('pb_genome_overlap', self.pb_genome_overlap, True)
         args.set('pb_cfg', os.path.abspath(self.pb_cfg), True)
         args.set('resolve_split_genes', self.resolve_split_genes, True)
         args.set('augustus_cgp_cfg_template', os.path.abspath(self.augustus_cgp_cfg_template), True)
@@ -1339,10 +1335,10 @@ class AugustusPb(PipelineWrapperTask):
         base_dir = os.path.join(pipeline_args.work_dir, 'augustus_pb')
         args = tools.misc.HashableNamespace()
         args.genome = genome
-        args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
+        genome_files = GenomeFiles.get_args(pipeline_args, genome)
+        args.genome_fasta = genome_files.fasta
+        args.chrom_sizes = genome_files.sizes
         args.pb_cfg = pipeline_args.pb_cfg
-        args.chunksize = pipeline_args.pb_genome_chunksize
-        args.overlap = pipeline_args.pb_genome_overlap
         args.species = pipeline_args.augustus_species
         args.hints_gff = BuildDb.get_args(pipeline_args, genome).hints_path
         args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')

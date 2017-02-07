@@ -45,6 +45,7 @@ def augustus_cgp(args, toil_options):
             input_file_ids.chrom_sizes = FileID.forPath(t.importFile('file://' + args.query_sizes), args.query_sizes)
             input_file_ids.hints_db = FileID.forPath(t.importFile('file://' + args.hints_db), args.hints_db)
             input_file_ids.cgp_param = FileID.forPath(t.importFile('file://' + args.cgp_param), args.cgp_param)
+            input_file_ids.cgp_cfg = FileID.forPath(t.importFile('file://' + args.cgp_cfg), args.cgp_cfg)
             input_file_ids.fasta = {genome: FileID.forPath(t.importFile('file://' + fasta), fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk='2G')
@@ -92,8 +93,7 @@ def setup(job, args, input_file_ids):
             gff_chunks.append(gff_chunk)
 
     # merge all gff files for alignment chunks to one gff for each species
-    # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
-    # where the dataframe contains the alternative parental txs and fail_count is the # of transcripts discarded
+    # results contains a 3 member tuple of [raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id]
     results = job.addFollowOnJobFn(merge_results, args, gff_chunks, memory='8G', disk='8G').rv()
     return results
 
