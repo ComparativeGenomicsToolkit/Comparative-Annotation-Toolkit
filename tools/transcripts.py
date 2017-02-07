@@ -2,6 +2,7 @@
 Represent either BED12 or genePred transcripts as objects. Allows for conversion of coordinates between
 chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
+import collections
 from itertools import izip
 
 from mathOps import find_closest, find_intervals
@@ -602,3 +603,11 @@ def create_bed_info_gp(gp):
     block_sizes = ','.join(map(str, gp.block_sizes))
     exon_frames = ','.join(map(str, gp.exon_frames))
     return block_starts, block_sizes, exon_frames
+
+
+def group_transcripts_by_name2(tx_iter):
+    """Takes a iterable of GenePredTranscript objects and groups them by name2"""
+    r = collections.defaultdict(list)
+    for tx in tx_iter:
+        r[tx.name2].append(tx)
+    return r

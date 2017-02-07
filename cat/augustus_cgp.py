@@ -29,7 +29,6 @@ import tools.intervals
 import tools.procOps
 import tools.sqlInterface
 import tools.transcripts
-import tools.parentGeneAssignment
 
 
 def augustus_cgp(args, toil_options):
@@ -46,28 +45,17 @@ def augustus_cgp(args, toil_options):
             input_file_ids.chrom_sizes = FileID.forPath(t.importFile('file://' + args.query_sizes), args.query_sizes)
             input_file_ids.hints_db = FileID.forPath(t.importFile('file://' + args.hints_db), args.hints_db)
             input_file_ids.cgp_param = FileID.forPath(t.importFile('file://' + args.cgp_param), args.cgp_param)
-            input_file_ids.ref_db_path = FileID.forPath(t.importFile('file://' + args.ref_db_path), args.ref_db_path)
             input_file_ids.fasta = {genome: FileID.forPath(t.importFile('file://' + fasta), fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
-            input_file_ids.filtered_tm_gps = {genome: FileID.forPath(t.importFile('file://' + tm_gp), tm_gp)
-                                              for genome, tm_gp in args.filtered_tm_gps.iteritems()}
-            input_file_ids.unfiltered_tm_gps = {genome: FileID.forPath(t.importFile('file://' + tm_gp), tm_gp)
-                                                for genome, tm_gp in args.unfiltered_tm_gps.iteritems()}
-            input_file_ids.cgp_cfg = FileID.forPath(t.importFile('file://' + args.cgp_cfg), args.cgp_cfg)
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk='2G')
             results = t.start(job)
         else:
             results = t.restart()
-        dataframes = []
-        fail_counts = []
-        for genome, (raw_gtf_file_id, (gtf_file_id, df, fail_count)) in results.iteritems():
+        for genome, (raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id) in results.iteritems():
             tools.fileOps.ensure_file_dir(args.augustus_cgp_raw_gtf[genome])
             t.exportFile(raw_gtf_file_id, 'file://' + args.augustus_cgp_raw_gtf[genome])
-            tools.fileOps.ensure_file_dir(args.augustus_cgp_gtf[genome])
-            t.exportFile(gtf_file_id, 'file://' + args.augustus_cgp_gtf[genome])
-            dataframes.append([genome, df])
-            fail_counts.append([genome, fail_count])
-        return dataframes, fail_counts
+            t.exportFile(joined_gtf_file_id, 'file://' + args.augustus_cgp_gtf[genome])
+            t.exportFile(joined_gp_file_id, 'file://' + args.augustus_cgp_gp[genome])
 
 
 def setup(job, args, input_file_ids):
@@ -106,7 +94,7 @@ def setup(job, args, input_file_ids):
     # merge all gff files for alignment chunks to one gff for each species
     # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
     # where the dataframe contains the alternative parental txs and fail_count is the # of transcripts discarded
-    results = job.addFollowOnJobFn(merge_results, args, input_file_ids, gff_chunks, memory='8G', disk='8G').rv()
+    results = job.addFollowOnJobFn(merge_results, args, gff_chunks, memory='8G', disk='8G').rv()
     return results
 
 
@@ -147,7 +135,7 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
     return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}
 
 
-def merge_results(job, args, input_file_ids, gff_chunks):
+def merge_results(job, args, gff_chunks):
     """
     Merges the results using joinGenes. The results have parental genes assigned.
     """
@@ -155,12 +143,12 @@ def merge_results(job, args, input_file_ids, gff_chunks):
     for genome in args.genomes:
         # merge all gff_chunks of one genome
         genome_gff_chunks = [d[genome] for d in gff_chunks]
-        j = job.addChildJobFn(join_genes, genome, input_file_ids, genome_gff_chunks, memory='8G', disk='8G')
+        j = job.addChildJobFn(join_genes, genome_gff_chunks, memory='8G', disk='8G')
         results[genome] = j.rv()
     return results
 
 
-def join_genes(job, genome, input_file_ids, gff_chunks):
+def join_genes(job, gff_chunks):
     """
     uses the auxiliary tool 'joingenes' from the
     Augustus package to intelligently merge gene sets
@@ -180,18 +168,23 @@ def join_genes(job, genome, input_file_ids, gff_chunks):
                 raw_handle.write(line)
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
-    # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
+    join_genes_gp = tools.fileOps.get_tmp_toil_file()
     # it also performs filtering for weird non-transcripts
     cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
            ['sed', ' s/jg/augCGP-/g']]
     tools.procOps.run_proc(cmd, stdout=join_genes_file)
-    joined_file_id = job.fileStore.writeGlobalFile(join_genes_file)
+
+    # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
+    cmd = ['gtfToGenePred', '-genePredExt', join_genes_file, join_genes_gp]
+    tools.procOps.run_proc(cmd)
+    cmd = ['genePredToGtf', 'file', join_genes_gp, '-utr', '-honorCdsStat', '-source=augustusCGP', join_genes_file]
+    tools.procOps.run_proc(cmd)
+
+    joined_gtf_file_id = job.fileStore.writeGlobalFile(join_genes_file)
     raw_gtf_file_id = job.fileStore.writeGlobalFile(raw_gtf_file)
-    j = job.addFollowOnJobFn(tools.parentGeneAssignment.assign_parents, input_file_ids.ref_db_path,
-                             input_file_ids.filtered_tm_gps[genome], input_file_ids.unfiltered_tm_gps[genome],
-                             joined_file_id, 'AugustusCGP', memory='8G', disk='8G')
-    return raw_gtf_file_id, j.rv()
+    joined_gp_file_id = job.fileStore.writeGlobalFile(join_genes_gp)
+    return raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id
 
 
 ###

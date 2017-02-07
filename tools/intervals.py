@@ -1,6 +1,7 @@
 """
 Represent continuous genomic coordinates. Allows for coordinate arithmetic.
 """
+import mathOps
 from bio import reverse_complement
 
 __author__ = 'Ian Fiddes'
@@ -266,3 +267,31 @@ def interval_not_within_wiggle_room_intervals(intervals, interval, wiggle_room=0
     except TypeError:
         return False
     return not any(x <= 2 * wiggle_room for x in separation)  # we allow wiggle on both sides
+
+
+def calculate_bed12_jaccard(intervals_a, intervals_b):
+    """
+    calculates the Jaccard distance metric for two iterables of intervals. Will fail if they are not on the same
+    chromosome.
+    length(intersection) / (length(union) - length(intersection))
+    """
+    intersection = 0
+    tot_a = sum(len(x) for x in intervals_a)
+    tot_b = sum(len(x) for x in intervals_b)
+    for a_interval in intervals_a:
+        for b_interval in intervals_b:
+            ins = a_interval.intersection(b_interval)
+            if ins is not None:
+                intersection += len(ins)
+    return mathOps.format_ratio(intersection, (tot_a + tot_b) - intersection)
+
+
+def calculate_jaccard(interval_a, interval_b):
+    """
+    calculates the Jaccard distance metric for two  intervals
+    length(intersection) / (length(union) - length(intersection))
+    """
+    intersection = interval_a.intersection(interval_b)
+    if intersection is None:
+        return 0
+    return mathOps.format_ratio(len(intersection), (len(interval_a) + len(interval_b)) - len(intersection))

@@ -189,6 +189,7 @@ class AlternativeGeneIdColumns(object):
     TranscriptId = Column(Text, primary_key=True)
     AssignedGeneId = Column(Text)
     AlternativeGeneIds = Column(Text)
+    ResolutionMethod = Column(Text)
 
 
 class AugCgpAlternativeGenes(AlternativeGeneIdColumns, Base):
@@ -396,11 +397,6 @@ def load_pb_intron_intervals(db_path):
     for s_id, d in df.groupby('SequenceId'):
         pb_intervals.add(frozenset([convert_chrom_interval(s) for _, s in d.iterrows()]))
     return pb_intervals
-
-
-###
-# Load tables for consensus finding
-###
 
 
 def load_evaluation(table, session):

@@ -117,7 +117,7 @@ def generate_consensus(args):
         metrics['denovo'] = {}
         for tx_mode in args.denovo_tx_modes:
             metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
-                                          'Discarded': 0, 'Novel isoforms': 0}  # isoforms populated later
+                                          'Possible fusion': 0, 'Discarded': 0, 'Novel isoforms': 0}
         denovo_hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in args.denovo_tx_modes])
         # remove the TranscriptId and GeneId columns so they can be populated by others
         denovo_hgm_df = denovo_hgm_df.drop(['GeneId', 'TranscriptId'], axis=1)
@@ -448,7 +448,8 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
     Putative novel loci can fall into three categories:
     1) PossibleParlog -- the transcript has no assigned genes, but has alternative genes
     2) PoorMapping -- the transcript has no assigned or alternative genes but has exons/introns supported by annotation
-    1) PutativeNovel -- the transcript has no matches to the reference
+    3) PutativeNovel -- the transcript has no matches to the reference
+    4) PossibleFusion -- the transcript was flagged in parent finding as a fusion, and has all valid splices
 
     """
     def is_supported(s, tx):
@@ -469,9 +470,12 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
 
     # novel loci will have None in the AssignedGeneId field but may be non-None in the AlternativeGeneIds field
     for aln_id, df in denovo_df.groupby('AlignmentId'):
-        if df.iloc[0].AssignedGeneId is None:
-            assert len(df) == 1
-            s = df.iloc[0]
+        s = df.iloc[0]
+        if s.AssignedGeneId is None:
+            if s.ResolutionMethod == 'badAnnotOrTm':
+                continue
+            elif s.ResolutionMethod == 'ambiguousOrFusion' and s.AllSpeciesIntronRnaSupportPercent != 100:
+                continue
             tx = tx_dict[s.AlignmentId]
             tx_mode = tools.nameConversions.alignment_type(aln_id)
             # validate the support level
@@ -481,6 +485,9 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
             d = {'gene_biotype': 'unknown_likely_coding', 'transcript_biotype': 'unknown_likely_coding',
                  'alignment_id': aln_id}
             # if we have alternatives, this is not novel but could be a gene family expansion
+            if s.ResolutionMethod == 'ambiguousOrFusion':
+                d['transcript_class'] = 'possible_fusion'
+                metrics['denovo'][tx_mode]['Possible fusion'] += 1
             if is_possible_paralog(s):
                 d['transcript_class'] = 'possible_paralog'
                 metrics['denovo'][tx_mode]['Possible paralog'] += 1
