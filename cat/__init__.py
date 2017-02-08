@@ -40,7 +40,7 @@ from augustus_cgp import augustus_cgp
 from augustus_pb import augustus_pb
 from chaining import chaining
 from classify import classify
-from consensus import generate_consensus, load_alt_names
+from consensus import generate_consensus, load_alt_names, load_hgm_vectors
 from filter_transmap import filter_transmap
 from hgm import hgm, parse_hgm_gtf
 from transmap_classify import transmap_classify
@@ -1449,10 +1449,11 @@ class FindDenovoParents(PipelineTask):
                 df.to_sql(denovo_args.tablename, engine, if_exists='replace')
             table_target.touch()
             counts = collections.Counter(df.ResolutionMethod)
-            log_msg = 'Loaded table: {}.{}. Results: {}'
+            log_msg = 'Loaded table: {}.{}. Results: {}, {}'
+            assigned_str = '{}: {:,}'.format('assigned', counts[None])
             result_str = ', '.join(['{}: {:,}'.format(name, val)
                                     for name, val in counts.iteritems() if name is not None])
-            logger.info(log_msg.format(self.mode, genome, result_str))
+            logger.info(log_msg.format(self.mode, genome, assigned_str, result_str))
 
 
 class Hgm(PipelineWrapperTask):
@@ -2185,7 +2186,11 @@ class DenovoTrack(TrackTask):
         pipeline_args = self.get_pipeline_args()
         track, trackdb = self.output()
         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
-        alt_names = load_alt_names(pipeline_args.dbs[self.genome], [self.mode]).set_index('AlignmentId')
+        # load database information
+        db_path = pipeline_args.dbs[self.genome]
+        alt_names = load_alt_names(db_path, [self.mode])
+        denovo_hgm_df = load_hgm_vectors(db_path, self.mode).drop(['GeneId', 'TranscriptId'], axis=1)
+        denovo_df = pd.merge(denovo_hgm_df, alt_names, on='AlignmentId').set_index('AlignmentId')
         annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[pipeline_args.ref_genome])
         annotation_info = annotation_info.set_index('GeneId')
 
@@ -2202,8 +2207,12 @@ class DenovoTrack(TrackTask):
 
         with tmp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(augustus_gp):
-                s = alt_names.ix[tx.name]
+                s = denovo_df.ix[tx.name]
                 alternative_gene_ids = 'N/A' if s.AlternativeGeneIds is None else s.AlternativeGeneIds
+                intron_rna = ','.join(map(str, s.IntronRnaSupport))
+                exon_rna = ','.join(map(str, s.ExonRnaSupport))
+                intron_annot = ','.join(map(str, s.IntronAnnotSupport))
+                exon_annot = ','.join(map(str, s.ExonAnnotSupport))
                 if s.AssignedGeneId is None:
                     assigned_gene_id = gene_name = gene_type = alternative_gene_names = 'N/A'
                 else:
@@ -2216,7 +2225,8 @@ class DenovoTrack(TrackTask):
                 row = [tx.chromosome, tx.start, tx.stop, tx.name, tx.score, tx.strand, tx.thick_start,
                        tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
                        gene_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
-                       gene_type, assigned_gene_id, alternative_gene_ids, alternative_gene_names]
+                       gene_type, assigned_gene_id, alternative_gene_ids, alternative_gene_names,
+                       exon_annot, exon_rna, intron_annot, intron_rna]
                 tools.fileOps.print_row(outf, row)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
@@ -2513,7 +2523,7 @@ class SpliceTrack(TrackTask):
             start = int(entry[3]) - 1
             stop = int(entry[4])
             block_starts = '0,{}'.format(stop - start - 2)
-            mult = tools.misc.parse_gff_attr_line(entry[-1])['mult']
+            mult = int(tools.misc.parse_gff_attr_line(entry[-1])['mult'])
             return [entry[0], start, stop, 'SpliceJunction', mult, '.', start, stop, '204,124,45',
                     '2', '2,2', block_starts]
 
@@ -2525,21 +2535,16 @@ class SpliceTrack(TrackTask):
         entries = []
         for line in open(hints_gff):
             if '\tintron\t' in line and 'src=E' in line and 'mult' in line:
-                entries.append(parse_entry(line.split('\t')))
-        mults = map(int, [x[4] for x in entries])
+                parsed = parse_entry(line.split('\t'))
+                if parsed[4] > 2:
+                    entries.append(parsed)
+
+        mults = [x[4] for x in entries]
         tot = sum(mults)
-        # calculate junctions per million
-        jpm = [1.0 * x * 10 ** 6 / tot for x in mults]
-        # log scale
-        log_jpm = map(np.log, jpm)
-        # convert to 1-1000 scale
-        # http://stackoverflow.com/questions/929103/convert-a-number-range-to-another-range-maintaining-ratio
-        old_min = min(log_jpm)
-        old_max = max(log_jpm)
-        old_range = old_max - old_min
-        scaled_log_jpm = map(lambda x: int(round((((x - old_min) * 999) / old_range) + 1)), log_jpm)
-        for e, s in zip(*[entries, scaled_log_jpm]):
-            e[4] = s
+        # calculate junctions per thousand
+        jpt = [1.0 * x * 10 ** 4 / tot for x in mults]
+        for e, s in zip(*[entries, jpt]):
+            e[4] = min(int(round(s)), 1000)
 
         # load to file
         tmp = luigi.LocalTarget(is_tmp=True)
@@ -2550,7 +2555,7 @@ class SpliceTrack(TrackTask):
 
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)
 
         with trackdb.open('w') as outf:
             outf.write(splice_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2710,6 +2715,10 @@ denovo_as = '''table denovo
     string assignedGeneId; "Assigned source gene ID"
     lstring alternativeGeneIds; "Alternative source gene IDs"
     lstring alternativeGeneNames; "Alternative source gene names"
+    lstring exonAnnotationSupport;   "Exon support in reference annotation"
+    lstring exonRnaSupport;  "RNA exon support"
+    lstring intronAnnotationSupport;   "Intron support in reference annotation"
+    lstring intronRnaSupport;   "RNA intron support"
     )
 '''
 
@@ -2947,6 +2956,7 @@ visibility hide
 color 45,125,204
 priority 12
 spectrum on
+minGrayLevel 4
 
 '''
 
