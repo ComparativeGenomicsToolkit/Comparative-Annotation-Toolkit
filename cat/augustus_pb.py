@@ -53,20 +53,40 @@ def setup(job, args, input_file_ids):
     Entry function for running AugustusPB.
     The genome is chunked up and the resulting gene sets merged using joingenes.
     """
-    sizes_file = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
+    genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
+                                                                 prefix='genome', upper=False)
+
+    # calculate overlapping intervals. If the final interval is small (<= 50% of total interval size), merge it
+    intervals = collections.defaultdict(list)
+    for chrom in genome_fasta:
+        chrom_size = len(genome_fasta[chrom])
+        for start in xrange(0, chrom_size, args.chunksize - args.overlap):
+            stop = min(start + args.chunksize, chrom_size)
+            intervals[chrom].append([start, stop])
+
+    for chrom, interval_list in intervals.iteritems():
+        if len(interval_list) < 2:
+            continue
+        last_start, last_stop = interval_list[-1]
+        if last_stop - last_start <= 0.5 * args.chunksize:
+            del interval_list[-1]
+            interval_list[-1][-1] = last_stop
+
     disk_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.genome_fasta, input_file_ids.hints_gff])
-
     predictions = []
-    for chrom, size in tools.fileOps.iter_lines(sizes_file):
-        j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, memory='32G', disk=disk_usage)
-        predictions.append(j.rv())
+    for chrom, interval_list in intervals.iteritems():
+        for start, stop in interval_list:
+            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, stop, memory='8G',
+                                  disk=disk_usage)
+            predictions.append(j.rv())
 
-    # results contains a 3 member tuple of [raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id]
-    results = job.addFollowOnJobFn(combine_results, predictions, memory='2G', disk='8G').rv()
+    # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
+    # where the dataframe contains the alternative parental txs and fail_count is the # of transcripts discarded
+    results = job.addFollowOnJobFn(join_genes, predictions, memory='8G', disk='8G').rv()
     return results
 
 
-def augustus_pb_chunk(job, args, input_file_ids, chrom):
+def augustus_pb_chunk(job, args, input_file_ids, chrom, start, stop):
     """
     core function that runs AugustusPB on one genome chunk
     """
@@ -74,15 +94,14 @@ def augustus_pb_chunk(job, args, input_file_ids, chrom):
                                                                  prefix='genome', upper=False)
     hints = job.fileStore.readGlobalFile(input_file_ids.hints_gff)
 
-    # slice out only the relevant hints, upgrade PB priority
+    # slice out only the relevant hints
     hints_subset = tools.fileOps.get_tmp_toil_file()
-    cmd = [['awk', '($1 == "{}") {{print $0}}'.format(chrom)],
-           ['sed', 's/pri=4;src=PB/pri=5;src=PB/g']]
+    cmd = ['awk', '($1 == "{}" && $4 >= {} && $5 <= {}) {{print $0}}'.format(chrom, start, stop)]
     tools.procOps.run_proc(cmd, stdin=hints, stdout=hints_subset)
 
     pb_cfg = job.fileStore.readGlobalFile(input_file_ids.pb_cfg)
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
-    tools.bio.write_fasta(tmp_fasta, chrom, str(genome_fasta[chrom]))
+    tools.bio.write_fasta(tmp_fasta, chrom, genome_fasta[chrom][start:stop])
     results = tools.fileOps.get_tmp_toil_file()
 
     cmd = ['augustus', '--UTR=1', '--softmasking=1', '--allow_hinted_splicesites=atac',
@@ -90,61 +109,45 @@ def augustus_pb_chunk(job, args, input_file_ids, chrom):
            '--hintsfile={}'.format(hints_subset),
            '--extrinsicCfgFile={}'.format(pb_cfg),
            '--species={}'.format(args.species),
+           '--/augustus/verbosity=0',
+           '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
            tmp_fasta]
     tools.procOps.run_proc(cmd, stdout=results)
     return job.fileStore.writeGlobalFile(results)
 
 
-def combine_results(job, predictions):
+def join_genes(job, gff_chunks):
     """
-    Combines the results. We can't use joingenes because it can't handle the alternative transcripts.
+    uses the auxiliary tool 'joingenes' from the
+    Augustus package to intelligently merge gene sets
+    - removes duplicated Txs or truncated Txs that are contained in other Txs (trivial)
+    - fixes truncated Txs at alignment boundaries,
+      e.g. by merging them with other Txs (non trivial, introduces new Txs)
     """
-    # first write the full raw results
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
-    with open(raw_gtf_file, 'w') as raw_handle:
-        for chunk in predictions:
+    raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
+    with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
+        for chunk in gff_chunks:
             local_path = job.fileStore.readGlobalFile(chunk)
+            fofn_handle.write(local_path + '\n')
             for line in open(local_path):
                 raw_handle.write(line)
 
-    # filter for relevant entries
-    tmp_gtf_file = tools.fileOps.get_tmp_toil_file()
-    cmd = ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t', raw_gtf_file]
-    tools.procOps.run_proc(cmd, stdout=tmp_gtf_file)
-
-    # use gtfToGenePred to convert this, and make it easier to convert names
-    tmp_gp = tools.fileOps.get_tmp_toil_file()
-    cmd = ['gtfToGenePred', '-genePredExt', tmp_gtf_file, tmp_gp]
-    tools.procOps.run_proc(cmd)
-
-    # create a dict mapping chrom -> gene_id -> tx objs
-    chrom_gene_map = collections.defaultdict(lambda: collections.defaultdict(list))
-    for tx in tools.transcripts.gene_pred_iterator(tmp_gp):
-        chrom_gene_map[tx.chromosome][tx.name2].append(tx)
-
-    # now fix the names
-    gene_count = 0
-    gps = []
-    for chrom, gene_dict in chrom_gene_map.iteritems():
-        for tx_list in gene_dict.itervalues():
-            tx_count = 0
-            gene_count += 1
-            gene_id = 'augPB-g{}'.format(gene_count)
-            for tx_obj in tx_list:
-                tx_count += 1
-                tx_id = 'augPB-g{}.t{}'.format(gene_count, tx_count)
-                gps.append(tx_obj.get_gene_pred(name=tx_id, name2=gene_id))
-
-    # write the results back as genePred
-    joined_gp_file = tools.fileOps.get_tmp_toil_file()
-    tools.fileOps.print_rows(joined_gp_file, gps)
-
-    # convert back to GTF for final output
     join_genes_file = tools.fileOps.get_tmp_toil_file()
-    cmd = ['genePredToGtf', 'file', joined_gp_file, '-utr', '-honorCdsStat', '-source=augustusPB', join_genes_file]
+    join_genes_gp = tools.fileOps.get_tmp_toil_file()
+    # it also performs filtering for weird non-transcripts
+    cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
+           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+           ['sed', ' s/jg/augPB-/g']]
+    tools.procOps.run_proc(cmd, stdout=join_genes_file)
+
+    # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
+    cmd = ['gtfToGenePred', '-genePredExt', join_genes_file, join_genes_gp]
+    tools.procOps.run_proc(cmd)
+    cmd = ['genePredToGtf', 'file', join_genes_gp, '-utr', '-honorCdsStat', '-source=augustusPB', join_genes_file]
     tools.procOps.run_proc(cmd)
 
     joined_gtf_file_id = job.fileStore.writeGlobalFile(join_genes_file)
     raw_gtf_file_id = job.fileStore.writeGlobalFile(raw_gtf_file)
-    joined_gp_file_id = job.fileStore.writeGlobalFile(joined_gp_file)
+    joined_gp_file_id = job.fileStore.writeGlobalFile(join_genes_gp)
     return raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id

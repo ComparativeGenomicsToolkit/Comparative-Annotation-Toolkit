@@ -155,8 +155,6 @@ def join_genes(job, gff_chunks):
     - removes duplicated Txs or truncated Txs that are contained in other Txs (trivial)
     - fixes truncated Txs at alignment boundaries,
       e.g. by merging them with other Txs (non trivial, introduces new Txs)
-    
-    Calls out to the parental gene assignment pipeline
     """
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()

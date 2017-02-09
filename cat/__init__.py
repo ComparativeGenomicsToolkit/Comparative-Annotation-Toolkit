@@ -87,6 +87,8 @@ class PipelineTask(luigi.Task):
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     # AugustusPB parameters
     augustus_pb = luigi.BoolParameter(default=False)
+    pb_genome_chunksize = luigi.IntParameter(default=20000000, significant=False)
+    pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
@@ -138,6 +140,8 @@ class PipelineTask(luigi.Task):
         args.set('augustus_cgp', self.augustus_cgp, True)
         args.set('maf_chunksize', self.maf_chunksize, True)
         args.set('maf_overlap', self.maf_overlap, True)
+        args.set('pb_genome_chunksize', self.pb_genome_chunksize, True)
+        args.set('pb_genome_overlap', self.pb_genome_overlap, True)
         args.set('pb_cfg', os.path.abspath(self.pb_cfg), True)
         args.set('resolve_split_genes', self.resolve_split_genes, True)
         args.set('augustus_cgp_cfg_template', os.path.abspath(self.augustus_cgp_cfg_template), True)
@@ -1339,6 +1343,8 @@ class AugustusPb(PipelineWrapperTask):
         args.genome_fasta = genome_files.fasta
         args.chrom_sizes = genome_files.sizes
         args.pb_cfg = pipeline_args.pb_cfg
+        args.chunksize = pipeline_args.pb_genome_chunksize
+        args.overlap = pipeline_args.pb_genome_overlap
         args.species = pipeline_args.augustus_species
         args.hints_gff = BuildDb.get_args(pipeline_args, genome).hints_path
         args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')
@@ -1449,11 +1455,14 @@ class FindDenovoParents(PipelineTask):
                 df.to_sql(denovo_args.tablename, engine, if_exists='replace')
             table_target.touch()
             counts = collections.Counter(df.ResolutionMethod)
-            log_msg = 'Loaded table: {}.{}. Results: {}, {}'
+            log_msg = 'Loaded table: {}.{}. Results: {}'
             assigned_str = '{}: {:,}'.format('assigned', counts[None])
+            log_msg = log_msg.format(genome, denovo_args.tablename, assigned_str)
             result_str = ', '.join(['{}: {:,}'.format(name, val)
                                     for name, val in counts.iteritems() if name is not None])
-            logger.info(log_msg.format(self.mode, genome, assigned_str, result_str))
+            if len(result_str) > 0:
+                log_msg += ', ' + result_str + '.'
+            logger.info(log_msg)
 
 
 class Hgm(PipelineWrapperTask):

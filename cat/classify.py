@@ -246,18 +246,9 @@ def find_indels(tx, psl, aln_mode):
         else:
             indel_type = 'NonCoding'
 
-        rgb = calculate_rgb(indel_type)
-        new_bed = tx.get_bed(new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=rgb,
+        new_bed = tx.get_bed(new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=offset,
                              name=''.join([indel_type, gap_type]))
         return [tx.name] + new_bed
-
-    def calculate_rgb(indel_type):
-        """Based on the indel type, a color is chosen. Non-coding are green, mult3 are blue, indels are red"""
-        if indel_type == 'NonCoding':
-            return '101,173,90'
-        elif indel_type == 'CodingMult3':
-            return '90,142,173'
-        return '227,18,77'
 
     # depending on mode, we convert the coordinates from either CDS or mRNA
     # we also have a different position cutoff to make sure we are not evaluating terminal gaps
