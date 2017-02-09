@@ -127,7 +127,7 @@ class PslRow(object):
 
         :return: A float between 0 and 1 where 1 is very bad
         """
-        b = format_ratio(self.mismatches + self.q_num_insert + 3 * math.log(1 + max(self.q_size - self.t_size, 0)),
+        b = format_ratio(self.mismatches + self.q_num_insert + 3 * math.log(1 + abs(self.q_size - self.t_size)),
                          self.matches + self.mismatches + self.repmatches,
                          num_digits=5, resolve_nan=1)
         return min(b, 1)

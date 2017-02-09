@@ -401,26 +401,28 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df
 def score_filtered_dfs(coding_df, non_coding_df, in_species_rna_support_only):
     """
     Scores the alignments. The score is the additive combination of the following features:
-    1) Alignment goodness.
-    2) Intron annotation support.
-    3) Exon annotation support.
-    4) Original intron support.
+    1) Alignment identity.
+    2) Alignment coverage.
+    3) Intron annotation support.
+    4) Exon annotation support.
+    5) Original intron support.
     If we have RNA-seq data, the following fields are also incorporated:
-    5) Intron RNA-seq support.
-    6) Exon RNA-seq support.
+    6) Intron RNA-seq support.
+    7) Exon RNA-seq support.
 
     In some future world these features could be combined differently, maybe with some fancy machine learning.
 
     Returns the dataframe sorted by scores after indexing.
     """
     def score(s):
-        goodness = s.AlnGoodness if s.TranscriptBiotype == 'protein_coding' else s.TransMapGoodness
+        aln_id = s.AlnIdentity if s.TranscriptBiotype == 'protein_coding' else s.TransMapIdentity
+        aln_cov = s.AlnCoverage if s.TranscriptBiotype == 'protein_coding' else s.TransMapCoverage
         orig_intron = s.OriginalIntronsPercent if s.TranscriptBiotype == 'protein_coding' else s.TransMapOriginalIntronsPercent
         if in_species_rna_support_only:
             rna_support = s.ExonRnaSupportPercent + s.IntronRnaSupportPercent
         else:
             rna_support = s.AllSpeciesExonRnaSupportPercent + s.AllSpeciesIntronRnaSupportPercent
-        return goodness + s.IntronAnnotSupportPercent + s.ExonAnnotSupportPercent + orig_intron + rna_support
+        return aln_id + aln_cov + s.IntronAnnotSupportPercent + s.ExonAnnotSupportPercent + orig_intron + rna_support
 
     for df in [coding_df, non_coding_df]:
         if len(df) > 0:

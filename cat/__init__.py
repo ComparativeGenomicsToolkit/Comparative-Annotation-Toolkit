@@ -2166,7 +2166,10 @@ class CreateTrackDbs(RebuildableTask):
             for genome in directory_args.genomes:
                 # by default, only the reference genome is visible unless we are on the reference, then all are
                 if self.genome == pipeline_args.ref_genome:
-                    visibility = 'full'
+                    if genome == pipeline_args.ref_genome:
+                        visibility = 'hide'
+                    else:
+                        visibility = 'full'
                 else:
                     visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
                 hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))

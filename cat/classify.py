@@ -93,7 +93,7 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         original_intron_vector = calculate_original_intron_vector(ref_tx, tx, psl, aln_mode)
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', 100 * psl.coverage])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', 100 * psl.target_coverage])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', 100 * psl.identity])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnGoodness', 100 * (1 - psl.badness)])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
