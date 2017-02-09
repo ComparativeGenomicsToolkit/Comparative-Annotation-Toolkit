@@ -2079,7 +2079,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
-        if self.genome not in pipeline_args.target_genomes:
+        if self.genome not in pipeline_args.target_genomes and self.genome != pipeline_args.ref_genome:
             return
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
