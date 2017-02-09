@@ -125,49 +125,15 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
                                 iso_seq_hints_file_ids).rv()
 
 
-def filter_bam(job, bam_file_id, bai_file_id, reference_subset, num_pairs=10 ** 6):
+def filter_bam(job, bam_file_id, bai_file_id, reference_subset):
     """
-    Slices out a chromosome from a BAM, re-sorts by name. Splits up the BAM into num_pairs groups of paired reads
-    each of which is filtered separately. The resulting BAM is the concatenated then re-sorted for hints generation.
+    Slices out a chromosome from a BAM, re-sorts by name, filters the reads, then re-sorts by position.
+    filterBam does weird things when piped to stdout, so I don't do that.
     """
-    tmp_name_sorted = tools.fileOps.get_tmp_toil_file(suffix='name_sorted.bam')
+    tmp_filtered = tools.fileOps.get_tmp_toil_file(suffix='filtered.bam')
     bam_path = job.fileStore.readGlobalFile(bam_file_id)
     job.fileStore.readGlobalFile(bai_file_id, bam_path + '.bai')
     sort_tmp = tools.fileOps.get_tmp_toil_file()
-    cmd = [['samtools', 'view', '-b', bam_path] + reference_subset,
-           ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, '-n', '-l', '0', '-']]
-    tools.procOps.run_proc(cmd, stdout=tmp_name_sorted)
-
-    # holds the re-sorted and filtered BAM file IDs
-    filtered_bams = []
-    fh = pysam.Samfile(tmp_name_sorted)
-    is_paired = bam_is_paired(bam_path)
-    if is_paired:
-        # begin splitting up by read pairs
-        read_dict = collections.defaultdict(list)
-        for rec in fh:
-            read_dict[rec.qname].append(rec)
-            if len(read_dict) == num_pairs:
-                tmp_subset = tools.fileOps.get_tmp_toil_file(suffix='name_sorted_subset.bam')
-                outf_h = pysam.Samfile(tmp_subset, 'w', template=fh)
-                for qname, l in read_dict.iteritems():
-                    if len(l) == 2:
-                        if l[0].is_read1:
-                            l[0].qname += '/1'
-                            l[1].qname += '/2'
-                        else:
-                            l[0].qname += '/2'
-                            l[1].qname += '/1'
-                        outf_h.write(l)
-                outf_h.close()
-                file_id = job.fileStore.writeGlobalFile(tmp_subset)
-                j = job.addChildJobFn(filter_bam_subset, file_id, is_paired)
-                filtered_bams.append(j.rv())
-                read_dict = collections.defaultdict(list)
-    else:
-
-
-
     cmd = [['samtools', 'view', '-b', bam_path],
            ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, '-n', '-l', '0', '-'],
            ['filterBam', '--uniq', '--in', '/dev/stdin', '--out', tmp_filtered]]
