@@ -51,7 +51,7 @@ def setup(job, args, input_file_ids):
             disk_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.hal, target_two_bit_file_id,
                                                                     input_file_ids.query_two_bit])
             j = job.addChildJobFn(chain_by_chromosome, args, chrom, size, input_file_ids, target_genome,
-                                  target_two_bit_file_id, memory='8G', disk=disk_usage)
+                                  target_two_bit_file_id, memory='32G', disk=disk_usage)
             tmp_chain_file_ids[target_genome].append(j.rv())
     return_file_ids = {}
     for genome, chain_file in args.chain_files.iteritems():
