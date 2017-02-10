@@ -97,9 +97,9 @@ def setup(job, args, input_file_ids, disk_usage):
     tm_psl_dict = tools.psl.get_alignment_dict(tm_psl)
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     tx_dict = tools.transcripts.get_gene_pred_dict(coding_gp)
-    tm_results = start_jobs('TM', 100, input_file_ids.tm_cfg)
+    tm_results = start_jobs('TM', 25, input_file_ids.tm_cfg)
     if args.augustus_tmr:
-        tmr_results = start_jobs('TMR', 50, input_file_ids.tmr_cfg)
+        tmr_results = start_jobs('TMR', 15, input_file_ids.tmr_cfg)
     else:
         tmr_results = None
     return job.addFollowOnJobFn(merge, tm_results, tmr_results).rv()

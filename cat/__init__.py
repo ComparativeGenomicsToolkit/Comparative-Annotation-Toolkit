@@ -17,7 +17,6 @@ import luigi.contrib.sqla
 from luigi.util import requires
 from toil.job import Job
 import pandas as pd
-import numpy as np
 
 import tools.bio
 import tools.fileOps
