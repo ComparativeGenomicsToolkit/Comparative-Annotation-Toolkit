@@ -105,7 +105,7 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
         for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
             for reference_subset in grouped_references:
                 j = job.addChildJobFn(namesort_bam, bam_file_id, bai_file_id, reference_subset, disk_usage,
-                                      disk=disk_usage, cores=8, memory='32G')
+                                      disk=disk_usage, cores=8, memory='16G')
                 filtered_bam_file_ids[dtype][reference_subset].append(j.rv())
 
     # IsoSeq hints

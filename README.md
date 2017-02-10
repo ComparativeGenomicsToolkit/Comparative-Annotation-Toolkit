@@ -47,7 +47,7 @@ Either form of `pip` installation will install all of the python dependencies. H
 8. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed bamCoverage`
+`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed bamCoverage sambamba`
 
 #Running the pipeline
 
@@ -185,7 +185,7 @@ If you are using IsoSeq data, it is recommended that you doing your mapping with
 
 # GFF3 Reference
 
-`CAT` relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for consensus finding to work properly.
+CAT relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for consensus finding to work properly.
 
 If you are downloading a GFF3 from Ensembl, you will need to run it through the script `scripts/convert_ensembl_gff3.py` to make the feature tags consistent across biotypes. The mouse/human GFF3 from GENCODE should work out of the box.
 
