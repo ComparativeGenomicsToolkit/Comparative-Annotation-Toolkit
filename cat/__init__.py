@@ -1422,11 +1422,13 @@ class FindDenovoParents(PipelineTask):
 
     def requires(self):
         if self.mode == 'augPB':
-            return self.clone(AugustusPb)
+            yield self.clone(AugustusPb)
         elif self.mode == 'augCGP':
-            return self.clone(AugustusCgp)
+            yield self.clone(AugustusCgp)
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
+        yield self.clone(FilterTransMap)
+        yield self.clone(TransMap)
 
     def get_table_targets(self, genome, tablename, pipeline_args):
         db = pipeline_args.dbs[genome]
@@ -2406,7 +2408,7 @@ class EvaluationTrack(TrackTask):
             tools.fileOps.print_rows(tmp_handle, rows)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
         with track.open('w') as outf:
-            cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
+            cmd = ['bedToBigBed', '-type=bed12', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
             tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
