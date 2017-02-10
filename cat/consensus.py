@@ -799,30 +799,30 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
     """
     Write the resulting gp + gp_info, generating genome-specific unique identifiers
     """
+    # keeps track of gene # -> ID mappings
+    genes_seen = collections.defaultdict(dict)
     gene_count = 0
-    tx_count = 1
-    consensus_gene_dict = DefaultOrderedDict(lambda: DefaultOrderedDict(list))  # used to make gff3 next
     # if the --resolve-split-genes flag is not set, we may have the same parent on multiple chromosomes
+    consensus_gene_dict = DefaultOrderedDict(lambda: DefaultOrderedDict(list))  # used to make gff3 next
     gp_infos = []
-    genes_seen = collections.defaultdict(set)
-    consensus_gp = luigi.LocalTarget(consensus_gp)
-    with consensus_gp.open('w') as out_gp:
-        for tx, attrs in final_consensus:
-            tx_obj = copy.deepcopy(tx_dict[tx])
-            tx_obj.name = id_template.format(genome=genome, tag_type='T', unique_id=tx_count)
-            tx_obj.score = int(attrs.get('score', 0))
-            tx_count += 1
+    consensus_gp_target = luigi.LocalTarget(consensus_gp)
+    with consensus_gp_target.open('w') as out_gp:
+        for tx_count, (tx, attrs) in enumerate(final_consensus, 1):
+            attrs = attrs.copy()
+            tx_obj = tx_dict[tx]
+            name = id_template.format(genome=genome, tag_type='T', unique_id=tx_count)
+            score = int(round(attrs.get('score', 0)))
             source_gene = attrs.get('source_gene', tx_obj.name2)
             if source_gene not in genes_seen[tx_obj.chromosome]:
-                genes_seen[tx_obj.chromosome].add(source_gene)
                 gene_count += 1
-            tx_obj.name2 = id_template.format(genome=genome, tag_type='G', unique_id=gene_count)
-            out_gp.write('\t'.join(tx_obj.get_gene_pred()) + '\n')
-            consensus_gene_dict[tx_obj.chromosome][tx_obj.name2].append([tx_obj, attrs.copy()])
-            gp_info = attrs.copy()
-            gp_info['transcript_id'] = tx_obj.name
-            gp_info['gene_id'] = tx_obj.name2
-            gp_infos.append(gp_info)
+                genes_seen[tx_obj.chromosome][source_gene] = gene_count
+            gene_id = genes_seen[tx_obj.chromosome][source_gene]
+            name2 = id_template.format(genome=genome, tag_type='G', unique_id=gene_id)
+            out_gp.write('\t'.join(tx_obj.get_gene_pred(name=name, name2=name2, score=score)) + '\n')
+            attrs['transcript_id'] = name
+            attrs['gene_id'] = name2
+            gp_infos.append(attrs)
+            consensus_gene_dict[tx_obj.chromosome][name2].append([tx_obj, attrs])
     gp_info_df = pd.DataFrame(gp_infos)
     gp_info_df = gp_info_df.set_index(['gene_id', 'transcript_id'])
     # its possible alternative_source_transcripts did not end up in the final result, so add it
