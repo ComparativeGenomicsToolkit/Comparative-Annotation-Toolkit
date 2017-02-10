@@ -105,7 +105,7 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
         for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
             for reference_subset in grouped_references:
                 j = job.addChildJobFn(namesort_bam, bam_file_id, bai_file_id, reference_subset, disk_usage,
-                                      disk=disk_usage, cores=4, memory='16G')
+                                      disk=disk_usage, cores=8, memory='32G')
                 filtered_bam_file_ids[dtype][reference_subset].append(j.rv())
 
     # IsoSeq hints
@@ -146,9 +146,8 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
     is_paired = bam_is_paired(bam_path)
     job.fileStore.readGlobalFile(bai_file_id, bam_path + '.bai')
     name_sorted = tools.fileOps.get_tmp_toil_file(suffix='name_sorted.bam')
-    sort_tmp = tools.fileOps.get_tmp_toil_file()
     cmd = [['samtools', 'view', '-b', bam_path] + list(reference_subset),
-           ['samtools', 'sort', '-@', '4', '-m', '3750M', '-O', 'bam', '-T', sort_tmp, '-n', '-l', '0', '-']]
+           ['sambamba', 'sort', '-t', '8', '-m', '15G', '-o', '/dev/stdout', '-n', '/dev/stdin']]
     tools.procOps.run_proc(cmd, stdout=name_sorted)
     ns_handle = pysam.Samfile(name_sorted)
     filtered_file_ids = []
