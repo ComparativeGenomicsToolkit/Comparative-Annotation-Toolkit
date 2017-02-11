@@ -86,7 +86,7 @@ class PipelineTask(luigi.Task):
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
     # AugustusPB parameters
     augustus_pb = luigi.BoolParameter(default=False)
-    pb_genome_chunksize = luigi.IntParameter(default=20000000, significant=False)
+    pb_genome_chunksize = luigi.IntParameter(default=50000000, significant=False)
     pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
     # assemblyHub parameters
