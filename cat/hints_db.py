@@ -178,9 +178,10 @@ def filter_bam(job, file_id, is_paired):
     if is_paired is True:
         filter_cmd.extend(['--paired', '--pairwiseAlignments'])
     tools.procOps.run_proc(filter_cmd)
-    assert os.path.getsize(tmp_filtered) > 0
     sort_tmp = tools.fileOps.get_tmp_toil_file()
     out_filter = tools.fileOps.get_tmp_toil_file()
+    if os.path.getsize(tmp_filtered) == 0:
+        logger.warning('After filtering one BAM subset became empty. This could be bad.')
     sort_cmd = ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, tmp_filtered]
     tools.procOps.run_proc(sort_cmd, stdout=out_filter)
     return job.fileStore.writeGlobalFile(out_filter)
