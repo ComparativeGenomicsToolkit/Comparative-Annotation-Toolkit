@@ -241,7 +241,7 @@ def find_indels(tx, psl, aln_mode):
             assert aln_mode == 'CDS'
             return None
 
-        if left_chrom_pos >= tx.thick_start and right_chrom_pos <= tx.thick_stop:
+        if left_chrom_pos > tx.thick_start and right_chrom_pos < tx.thick_stop:
             indel_type = 'CodingMult3' if offset % 3 == 0 else 'Coding'
         else:
             indel_type = 'NonCoding'

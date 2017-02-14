@@ -11,7 +11,7 @@ import tools.transcripts
 import tools.intervals
 
 
-def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.9):
+def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min_distance=0.9):
     """
     Main function for assigning parental genes. Parental gene assignment methodology:
     A) Each denovo transcript is evaluated for overlapping any transMap transcripts.
@@ -28,7 +28,7 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.9
     unfiltered_transmap_dict = tools.transcripts.get_gene_pred_dict(unfiltered_tm_gp)
     filtered_ids = unfiltered_transmap_dict.viewkeys() - filtered_transmap_dict.viewkeys()
 
-    tm_chrom_dict = create_chrom_dict(unfiltered_transmap_dict)
+    tm_chrom_dict = create_chrom_dict(unfiltered_transmap_dict, chrom_sizes)
     denovo_dict = tools.transcripts.get_gene_pred_dict(denovo_gp)
     denovo_chrom_dict = create_chrom_dict(denovo_dict)
 
@@ -60,13 +60,17 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.9
     return combined_alternatives
 
 
-def create_chrom_dict(tx_dict):
+def create_chrom_dict(tx_dict, chrom_sizes=None):
     """
-    Split up a dictionary of Transcript objects by chromosome
+    Split up a dictionary of Transcript objects by chromosome. Add in extra chromosomes based on a sizes file
     """
     chrom_dict = collections.defaultdict(dict)
     for tx_id, tx in tx_dict.iteritems():
         chrom_dict[tx.chromosome][tx_id] = tx
+    if chrom_sizes is not None:
+        for chrom, size in tools.fileOps.iter_lines(chrom_sizes):
+            if chrom not in chrom_dict:
+                chrom_dict[chrom] = {}
     return chrom_dict
 
 
