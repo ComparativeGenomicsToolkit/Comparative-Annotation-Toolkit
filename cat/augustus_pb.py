@@ -137,7 +137,7 @@ def join_genes(job, gff_chunks):
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
     # it also performs filtering for weird non-transcripts
     cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
-           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+           ['grep', '-P', '\tAUGUSTUSx],
            ['sed', ' s/jg/augPB-/g']]
     tools.procOps.run_proc(cmd, stdout=join_genes_file)
 

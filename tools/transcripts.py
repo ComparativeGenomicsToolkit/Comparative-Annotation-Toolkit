@@ -611,3 +611,17 @@ def group_transcripts_by_name2(tx_iter):
     for tx in tx_iter:
         r[tx.name2].append(tx)
     return r
+
+
+def intervals_to_bed(intervals, name=None, score=0, rgb=0, thick_start=0, thick_stop=0):
+    """Converts an iterable of intervals into a Transcript object. If any intervals overlap this will fail"""
+    assert len(set(i.strand for i in intervals)) == 1
+    assert len(set(i.chromosome for i in intervals)) == 1
+    intervals = sorted(intervals)
+    start = intervals[0].start
+    stop = intervals[-1].stop
+    block_sizes = ','.join(map(str, [len(i) for i in intervals]))
+    block_starts = ','.join(map(str, [i.start - start for i in intervals]))
+    i = intervals[0]
+    return Transcript([i.chromosome, start, stop, name, score, i.strand, thick_start, thick_stop, rgb,
+                       len(intervals), block_sizes, block_starts])
