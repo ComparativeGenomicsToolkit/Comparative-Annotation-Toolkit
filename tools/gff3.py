@@ -14,9 +14,11 @@ import copy
 import re
 import collections
 import fileOps
+import logging
 from tools import PycbioException
 
 GFF3_HEADER = "##gff-version 3"
+logger = logging.getLogger(__name__)
 
 
 class GFF3Exception(PycbioException):
@@ -353,9 +355,12 @@ def extract_attrs(gff3):
                         except KeyError:
                             name = 'N/A'  # no transcript level names in this; probably Ensembl
                     try:
-                        tx_biotype = tx.attributes['biotype'][0]
-                    except KeyError:  # attempt Gencode naming scheme
-                        tx_biotype = tx.attributes['transcript_type'][0]
+                        try:
+                            tx_biotype = tx.attributes['biotype'][0]
+                        except KeyError:  # attempt Gencode naming scheme
+                            tx_biotype = tx.attributes['transcript_type'][0]
+                    except KeyError:
+                        tx_biotype = gene_biotype  # no transcript biotypes, just use the gene biotype
                     feature_types = {c.type for c in tx.children}
                     r = {'TranscriptBiotype': tx_biotype, 'GeneId': gene_id,
                          'GeneName': gene_name, 'GeneBiotype': gene_biotype,
@@ -368,9 +373,16 @@ def extract_attrs(gff3):
                                                                                                          tx.lineNumber))
         except KeyError, e:
             raise GFF3Exception('Unable to parse field {} from the input gff3 on line {}'.format(e, gene.lineNumber))
+
+    if len(results) == 0:
+        raise GFF3Exception('After parsing the GFF3 we have no entries. Something is wrong with this GFF3 format.')
+
     df = pd.DataFrame.from_dict(results, orient='index')
     df.StartCodon = pd.to_numeric(df.StartCodon)  # force the types here for better sql dtypes
     df.StopCodon = pd.to_numeric(df.StopCodon)
+    if sum(df.StartCodon) + sum(df.StopCodon) == 0:
+        logger.warning('No start/stop codon features found in GFF3. This may slightly hurt AugustusTMR results.')
+
     df.index.rename('TranscriptId', inplace=True)
     # make into a nice order for the sqlite database
     df = df[['TranscriptName', 'TranscriptBiotype', 'GeneId', 'GeneName', 'GeneBiotype', 'StartCodon', 'StopCodon']]

@@ -1149,7 +1149,7 @@ class FilterTransMapDriverTask(PipelineTask):
                 luigi.LocalTarget(self.filter_tm_args.metrics_json))
 
     def requires(self):
-        return self.clone(EvaluateTransMap), self.clone(ReferenceFiles)
+        return self.clone(EvaluateTransMap), self.clone(ReferenceFiles), self.clone(TransMap)
 
     def run(self):
         logger.info('Filtering transMap results for {}.'.format(self.genome))
