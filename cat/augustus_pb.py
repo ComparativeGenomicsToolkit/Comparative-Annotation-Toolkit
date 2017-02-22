@@ -38,7 +38,7 @@ def augustus_pb(args, toil_options):
             input_file_ids.chrom_sizes = FileID.forPath(t.importFile('file://' + args.chrom_sizes), args.chrom_sizes)
             input_file_ids.pb_cfg = FileID.forPath(t.importFile('file://' + args.pb_cfg), args.pb_cfg)
             input_file_ids.hints_gff = FileID.forPath(t.importFile('file://' + args.hints_gff), args.hints_gff)
-            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk='2G')
+            job = Job.wrapJobFn(setup, args, input_file_ids, memory='16G', disk='32G')
             raw_gtf_file_id, gtf_file_id, joined_gp_file_id = t.start(job)
         else:
             raw_gtf_file_id, gtf_file_id, joined_gp_file_id = t.restart()
@@ -56,6 +56,23 @@ def setup(job, args, input_file_ids):
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
 
+    # load only PB hints
+    hints_file = job.fileStore.readGlobalFile(input_file_ids.hints_gff)
+    cmd = ['grep', 'src=PB', hints_file]
+    hints = tools.procOps.call_proc_lines(cmd)
+
+    # transform the hints into a sorted mapping of positions for searching
+    # split up the records
+    hints = [x.split('\t') for x in hints]
+
+    # convert the start/stops to ints
+    # break up by chromosome
+    hints_by_chrom = collections.defaultdict(list)
+    for h in hints:
+        h[3] = int(h[3])
+        h[4] = int(h[4])
+        hints_by_chrom[h[0]].append(h)
+
     # calculate overlapping intervals. If the final interval is small (<= 50% of total interval size), merge it
     intervals = collections.defaultdict(list)
     for chrom in genome_fasta:
@@ -72,12 +89,17 @@ def setup(job, args, input_file_ids):
             del interval_list[-1]
             interval_list[-1][-1] = last_stop
 
-    disk_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.genome_fasta, input_file_ids.hints_gff])
     predictions = []
     for chrom, interval_list in intervals.iteritems():
         for start, stop in interval_list:
-            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, chrom, start, stop, memory='8G',
-                                  disk=disk_usage)
+            hints = [h for h in hints_by_chrom[chrom] if h[3] >= start and h[4] <= stop]
+            tmp_hints = tools.fileOps.get_tmp_toil_file()
+            with open(tmp_hints, 'w') as outf:
+                for h in hints:
+                    tools.fileOps.print_row(outf, h)
+            hints_file_id = job.fileStore.writeGlobalFile(tmp_hints)
+            j = job.addChildJobFn(augustus_pb_chunk, args, input_file_ids, hints_file_id, chrom, start, stop,
+                                  memory='8G', disk='8G')
             predictions.append(j.rv())
 
     # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
@@ -86,19 +108,13 @@ def setup(job, args, input_file_ids):
     return results
 
 
-def augustus_pb_chunk(job, args, input_file_ids, chrom, start, stop):
+def augustus_pb_chunk(job, args, input_file_ids, hints_file_id, chrom, start, stop):
     """
     core function that runs AugustusPB on one genome chunk
     """
     genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
                                                                  prefix='genome', upper=False)
-    hints = job.fileStore.readGlobalFile(input_file_ids.hints_gff)
-
-    # slice out only the relevant hints
-    hints_subset = tools.fileOps.get_tmp_toil_file()
-    cmd = ['awk', '($1 == "{}" && $4 >= {} && $5 <= {}) {{print $0}}'.format(chrom, start, stop)]
-    tools.procOps.run_proc(cmd, stdin=hints, stdout=hints_subset)
-
+    hints = job.fileStore.readGlobalFile(hints_file_id)
     pb_cfg = job.fileStore.readGlobalFile(input_file_ids.pb_cfg)
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     tools.bio.write_fasta(tmp_fasta, chrom, genome_fasta[chrom][start:stop])
@@ -106,7 +122,7 @@ def augustus_pb_chunk(job, args, input_file_ids, chrom, start, stop):
 
     cmd = ['augustus', '--UTR=1', '--softmasking=1', '--allow_hinted_splicesites=atac',
            '--alternatives-from-evidence=1',
-           '--hintsfile={}'.format(hints_subset),
+           '--hintsfile={}'.format(hints),
            '--extrinsicCfgFile={}'.format(pb_cfg),
            '--species={}'.format(args.species),
            '--/augustus/verbosity=0',
