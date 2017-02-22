@@ -271,7 +271,7 @@ def interval_not_within_wiggle_room_intervals(intervals, interval, wiggle_room=0
 
 def calculate_bed12_jaccard(intervals_a, intervals_b):
     """
-    calculates the Jaccard distance metric for two iterables of intervals. Will fail if they are not on the same
+    calculates the Jaccard similarity metric for two iterables of intervals. Will fail if they are not on the same
     chromosome.
     length(intersection) / (length(union) - length(intersection))
     """
@@ -288,7 +288,7 @@ def calculate_bed12_jaccard(intervals_a, intervals_b):
 
 def calculate_jaccard(interval_a, interval_b):
     """
-    calculates the Jaccard distance metric for two  intervals
+    calculates the Jaccard similarity metric for two intervals
     length(intersection) / (length(union) - length(intersection))
     """
     intersection = interval_a.intersection(interval_b)
