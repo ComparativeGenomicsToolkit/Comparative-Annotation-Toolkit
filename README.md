@@ -1,3 +1,5 @@
+![pipeline](https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit/blob/master/img/cat-logo.png)
+
 #Comparative-Annotation-Toolkit
 
 This project aims to provide a straightforward end-to-end pipeline that takes as input a HAL-format multiple whole genome alignment as well as a GFF3 file representing annotations on one high quality assembly in the HAL alignment, and produces a output GFF3 annotation on all target genomes chosen.
@@ -44,9 +46,10 @@ Either form of `pip` installation will install all of the python dependencies. H
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 6. [wiggletools](https://github.com/Ensembl/WiggleTools). Used to combine RNA-seq expression in assembly hubs.
 7. [deeptools](https://github.com/fidelram/deepTools). Used to combine RNA-seq expression in assembly hubs by providing the tool `bamCoverage`.
+8. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed bamCoverage`
+`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed bamCoverage sambamba`
 
 #Running the pipeline
 
@@ -111,29 +114,29 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--resolve-split-genes`: Activate the split gene resolution process. See the [FilterTransMap section](#filtertransmap) for more.
 
-`intron-rnaseq-support`: Amount of RNA-seq intron support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
+`--intron-rnaseq-support`: Amount of RNA-seq intron support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
-`exon-rnaseq-support`: Amount of RNA-seq exon support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
+`--exon-rnaseq-support`: Amount of RNA-seq exon support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
-`intron-annot-support`: Amount of reference intron annotation support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
+`--intron-annot-support`: Amount of reference intron annotation support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
-`exon-annot-support`: Amount of reference exon annotation support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
+`--exon-annot-support`: Amount of reference exon annotation support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
-`original-intron-support`: Amount of original intron support. See [transcript evaluation](#evaluatetranscripts) description of original introns. a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
+`--original-intron-support`: Amount of original intron support. See [transcript evaluation](#evaluatetranscripts) description of original introns. a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
-`denovo-num-introns`: For de-novo predictions, discard any transcripts with fewer than these number of introns. Important when RNA-seq data are noisy. Default is 0.
+`--denovo-num-introns`: For de-novo predictions, discard any transcripts with fewer than these number of introns. Important when RNA-seq data are noisy. Default is 0.
 
-`denovo-splice-support`: For de-novo predictions, discard any transcripts with less than this percent of RNA-seq intron support. Must be a value between 0 and 100. Default is 0.
+`--denovo-splice-support`: For de-novo predictions, discard any transcripts with less than this percent of RNA-seq intron support. Must be a value between 0 and 100. Default is 0.
 
-`denovo-exon-support`: For de-novo predictions, discard any transcripts with less than this percent of RNA-seq exon support. Must be a value between 0 and 100. Default is 0.
+`--denovo-exon-support`: For de-novo predictions, discard any transcripts with less than this percent of RNA-seq exon support. Must be a value between 0 and 100. Default is 0.
 
-`require-pacbio-support`: If set, all isoforms in the final set must be supported by at least one IsoSeq read. This flag is likely to discard a ton of transcripts, so be careful.
+`--require-pacbio-support`: If set, all isoforms in the final set must be supported by at least one IsoSeq read. This flag is likely to discard a ton of transcripts, so be careful.
 
-`minimum-coverage`: The minimum coverage to the reference a `transMap`/`AugustusTMR` transcript must have to be considered. Default is 40.
+`--minimum-coverage`: The minimum coverage to the reference a `transMap`/`AugustusTMR` transcript must have to be considered. Default is 40.
 
-`in-species-rna-support-only`: If set, all of the above intron/exon support flags will look only at RNA-seq/IsoSeq data from the species in question, and not make use of `homGeneMapping` to check support in all species.
+`--in-species-rna-support-only`: If set, all of the above intron/exon support flags will look only at RNA-seq/IsoSeq data from the species in question, and not make use of `homGeneMapping` to check support in all species.
 
-`rebuild-consensus`: A convenience flag to allow you to adjust the flags above. When set, will force the pipeline to re-run consensus finding.
+`--rebuild-consensus`: A convenience flag to allow you to adjust the flags above. When set, will force the pipeline to re-run consensus finding and will also re-build the downstream plots and assembly hub.
 
 See below for `toil` options shared with the hints database pipeline.
 
@@ -184,9 +187,9 @@ If you are using IsoSeq data, it is recommended that you doing your mapping with
 
 # GFF3 Reference
 
-`CAT` relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for consensus finding to work properly.
+CAT relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for transMap filtering and consensus finding to work properly.
 
-If you are downloading a GFF3 from Ensembl, you will need to run it through the script `scripts/convert_ensembl_gff3.py` to make the feature tags consistent across biotypes. The mouse/human GFF3 from GENCODE should work out of the box.
+If you are downloading a GFF3 from Ensembl, you will need to run it through the script `scripts/convert_ensembl_gff3.py` to make the feature tags consistent across biotypes. The mouse/human GFF3 from GENCODE should work out of the box. A script is also included to convert NCBI-format GFF3.
 
 #Execution modes
 
@@ -251,7 +254,7 @@ This module will populate the folder `--work-dir/transMap`.
 ##FilterTransMap
 
 Resolves paralogs in transMap output based on MLE estimate of the distribution of alignment identities in the transMap
-process. A normal distribution is fit to the -log(1 - identity) where identity != 1, which is simply a transformation of the underlying lognormal distribution. This is performed only on transcripts who map over in a 1-1 fashion. A cutoff is established as one standard deviation from the mean of this fit. 
+process. A normal distribution is fit to the -log(1 - identity) where identity != 1, which is a transformation of the underlying lognormal distribution. This is performed only on transcripts who map over in a 1-1 fashion. A cutoff is established as one standard deviation from the mean of this fit. 
 
 This process is performed separately for each **transcript biotype** present in the annotation set. *This is one of many reasons why it is very important that your reference be properly biotyped!* Transcript projections whose identity are below the cutoff will be marked as `Failing`, which is a key component of the [consensus finding process](##consensus).
 
@@ -322,8 +325,7 @@ These classifiers are per-transcript evaluations based on both the transcript al
 1. PercentUnknownBases: % of mRNA bases that are Ns.
 2. AlnCoverage: Alignment coverage in transcript space.
 3. AlnIdentity: Alignment identity in transcript space.
-4. AlnGoodness: Alignment goodness is a Jim Kent heuristic combination of alignment identity and log-scaled alignment coverage.
-5. OriginalIntrons. Original introns is a bit vector that evaluates whether the intron junctions in transcript coordinate space are within 5 bases either direction from the original transcript. This is a powerful approach to identifying retroposed pseudogenes or problematic alignments.
+4. OriginalIntrons. Original introns is a bit vector that evaluates whether the intron junctions in transcript coordinate space are within 5 bases either direction from the original transcript. This is a powerful approach to identifying retroposed pseudogenes or problematic alignments.
 
 \<alnMode\>\_\<txMode\>\_Evaluation:
 
@@ -399,7 +401,7 @@ A large range of plots are produced in `--output-dir/plots`. These include:
 14. `source_gene_common_name`: The common name of the source gene.
 15. `source_transcript`: The ID of the source transcript.
 16. `transcript_biotype`: The biotype of the source transcript, or unknown_likely_coding for *de-novo* predictions.
-17. `transcript_class`: For projection transcripts, can either be passing (above identity threshold for biotype) or failing (below identity threshold for biotype). For *de-novo* transcripts, will be one of poor_alignment, possible_paralog, putative_novel_isoform, or putative_novel. See the [consensus finding](#consensus) section for descriptions.
+17. `transcript_class`: For projection transcripts, can either be passing (above identity threshold for biotype) or failing (below identity threshold for biotype). For *de-novo* transcripts, will be one of poor\_alignment, possible\_paralog, putative\_novel\_isoform, or putative\_novel. See the [consensus finding](#consensus) section for descriptions.
 18. `transcript_modes`: Comma separated list of transcript modes. The same information as the transcript_modes.pdf plot.
 19. `pacbio_isoform_supported`: Was this isoform supported by at least one IsoSeq read?
 20. `paralog_status`: One of ModelPrediction (was resolved by model fitting), SyntenyHeuristic (resolved by synteny heuristic), NotConfident (randomly chosen), None (no multiple mappings), or Rescued. Rescued transcripts are transcripts which were flagged for removal but overlapped with the best cluster for their source gene.
