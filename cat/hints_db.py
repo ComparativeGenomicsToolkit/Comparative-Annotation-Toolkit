@@ -98,12 +98,14 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
         bam_file_id, bai_file_id = bam_dict.values()[0]
         bam_path = job.fileStore.readGlobalFile(bam_file_id)
         sam_handle = pysam.Samfile(bam_path)
-        disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id])
+        # triple disk usage to deal with name sorted bam
+        disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id]) * 3
         # generate reference grouping that will be used downstream until final cat step
         grouped_references = [tuple(x) for x in group_references(sam_handle)]
         for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
             for reference_subset in grouped_references:
-                j = job.addChildJobFn(filter_bam, bam_file_id, bai_file_id, reference_subset, disk=disk_usage)
+                j = job.addChildJobFn(namesort_bam, bam_file_id, bai_file_id, reference_subset, disk_usage,
+                                      disk=disk_usage, cores=8, memory='16G')
                 filtered_bam_file_ids[dtype][reference_subset].append(j.rv())
 
     # IsoSeq hints
@@ -125,27 +127,79 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
                                 iso_seq_hints_file_ids).rv()
 
 
-def filter_bam(job, bam_file_id, bai_file_id, reference_subset):
+def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, num_reads=50 ** 6):
     """
-    Slices out a chromosome from a BAM, re-sorts by name, filters the reads, then re-sorts by position.
-    filterBam does weird things when piped to stdout, so I don't do that.
+    Slices out the reference subset from a BAM, name sorts that subset, then chunks the resulting reads up for
+    processing by filterBam.
     """
-    tmp_filtered = tools.fileOps.get_tmp_toil_file(suffix='filtered.bam')
+
+    def write_bam(r, ns_handle):
+        """Write to the path, returns file ID"""
+        outf = tools.fileOps.get_tmp_toil_file()
+        outf_h = pysam.Samfile(outf, 'wb', template=ns_handle)
+        for rec in r:
+            outf_h.write(rec)
+        outf_h.close()
+        return job.fileStore.writeGlobalFile(outf)
+
     bam_path = job.fileStore.readGlobalFile(bam_file_id)
+    is_paired = bam_is_paired(bam_path)
     job.fileStore.readGlobalFile(bai_file_id, bam_path + '.bai')
+    name_sorted = tools.fileOps.get_tmp_toil_file(suffix='name_sorted.bam')
+    cmd = [['samtools', 'view', '-b', bam_path] + list(reference_subset),
+           ['sambamba', 'sort', '-t', '8', '-m', '15G', '-o', '/dev/stdout', '-n', '/dev/stdin']]
+    tools.procOps.run_proc(cmd, stdout=name_sorted)
+    ns_handle = pysam.Samfile(name_sorted)
+    filtered_file_ids = []
+    r = []
+    for i, (qname, reads) in enumerate(itertools.groupby(ns_handle, lambda x: x.qname)):
+        r.extend(list(reads))
+        if i != 0 and i % num_reads == 0:
+            file_id = write_bam(r, ns_handle)
+            j = job.addChildJobFn(filter_bam, file_id, is_paired, disk='4G', memory='2G')
+            filtered_file_ids.append(j.rv())
+            r = []
+    # do the last bin, if its non-empty
+    if len(r) > 0:
+        file_id = write_bam(r, ns_handle)
+        j = job.addChildJobFn(filter_bam, file_id, is_paired, disk='4G', memory='2G')
+        filtered_file_ids.append(j.rv())
+    return job.addFollowOnJobFn(merge_filtered_bams, filtered_file_ids, disk=disk_usage, memory='16G').rv()
+
+
+def filter_bam(job, file_id, is_paired):
+    """
+    Filters a name-sorted bam, returns a bam re-sorted by position
+    """
+    bam_path = job.fileStore.readGlobalFile(file_id)
+    assert os.path.getsize(bam_path) > 0
+    tmp_filtered = tools.fileOps.get_tmp_toil_file()
+    filter_cmd = ['filterBam', '--uniq', '--in', bam_path, '--out', tmp_filtered]
+    if is_paired is True:
+        filter_cmd.extend(['--paired', '--pairwiseAlignments'])
+    tools.procOps.run_proc(filter_cmd)
     sort_tmp = tools.fileOps.get_tmp_toil_file()
-    cmd = [['samtools', 'view', '-b', bam_path],
-           ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, '-n', '-l', '0', '-'],
-           ['filterBam', '--uniq', '--in', '/dev/stdin', '--out', tmp_filtered]]
-    if bam_is_paired(bam_path):
-        cmd[-1].extend(['--paired', '--pairwiseAlignments'])
-    cmd[0].extend(reference_subset)
-    tools.procOps.run_proc(cmd)
-    out_filter = tools.fileOps.get_tmp_toil_file(suffix='sorted.filtered.bam')
+    out_filter = tools.fileOps.get_tmp_toil_file()
+    if os.path.getsize(tmp_filtered) == 0:
+        logger.warning('After filtering one BAM subset became empty. This could be bad.')
     sort_cmd = ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, tmp_filtered]
     tools.procOps.run_proc(sort_cmd, stdout=out_filter)
-    filtered_bam_file_id = job.fileStore.writeGlobalFile(out_filter)
-    return filtered_bam_file_id
+    return job.fileStore.writeGlobalFile(out_filter)
+
+
+def merge_filtered_bams(job, filtered_file_ids):
+    """
+    Merges filtered BAMs
+    """
+    local_paths = [job.fileStore.readGlobalFile(x) for x in filtered_file_ids]
+    fofn = tools.fileOps.get_tmp_toil_file()
+    with open(fofn, 'w') as outf:
+        for l in local_paths:
+            outf.write(l + '\n')
+    out_bam = tools.fileOps.get_tmp_toil_file()
+    cmd = ['samtools', 'merge', '-b', fofn, out_bam]
+    tools.procOps.run_proc(cmd)
+    return job.fileStore.writeGlobalFile(out_bam)
 
 
 def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids):
