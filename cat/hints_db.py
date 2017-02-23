@@ -132,7 +132,6 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
     Slices out the reference subset from a BAM, name sorts that subset, then chunks the resulting reads up for
     processing by filterBam.
     """
-
     def write_bam(r, ns_handle):
         """Write to the path, returns file ID"""
         outf = tools.fileOps.get_tmp_toil_file()
@@ -175,15 +174,16 @@ def filter_bam(job, file_id, is_paired):
     assert os.path.getsize(bam_path) > 0
     tmp_filtered = tools.fileOps.get_tmp_toil_file()
     filter_cmd = ['filterBam', '--uniq', '--in', bam_path, '--out', tmp_filtered]
+
     if is_paired is True:
         filter_cmd.extend(['--paired', '--pairwiseAlignments'])
     tools.procOps.run_proc(filter_cmd)
-    sort_tmp = tools.fileOps.get_tmp_toil_file()
-    out_filter = tools.fileOps.get_tmp_toil_file()
     if os.path.getsize(tmp_filtered) == 0:
-        logger.warning('After filtering one BAM subset became empty. This could be bad.')
-    sort_cmd = ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, tmp_filtered]
-    tools.procOps.run_proc(sort_cmd, stdout=out_filter)
+        raise RuntimeError('After filtering one BAM subset became empty. This could be bad.')
+
+    out_filter = tools.fileOps.get_tmp_toil_file()
+    sort_cmd = ['sambamba', 'sort', tmp_filtered, '-o', out_filter]
+    tools.procOps.run_proc(sort_cmd)
     return job.fileStore.writeGlobalFile(out_filter)
 
 
@@ -226,10 +226,12 @@ def cat_sort_bams(job, bam_file_ids):
     # cat only 4095 bams at a time to avoid bash command length problems
     catfile = tools.fileOps.get_tmp_toil_file()
     sam_iter = tools.dataOps.grouper(bamfiles, 4095)
+
     # do the first one
     cmd = ['samtools', 'cat', '-o', catfile]
     cmd.extend(sam_iter.next())
     tools.procOps.run_proc(cmd)
+
     # do any subsequent ones left, creating a new file each time
     for more in sam_iter:
         old_catfile = catfile
@@ -237,11 +239,11 @@ def cat_sort_bams(job, bam_file_ids):
         cmd = ['samtools', 'cat', '-o', catfile, old_catfile]
         cmd.extend(more)
         tools.procOps.run_proc(cmd)
+
     # combine and merge
     merged = tools.fileOps.get_tmp_toil_file()
-    sort_tmp = tools.fileOps.get_tmp_toil_file()
-    cmd = ['samtools', 'sort', '-O', 'bam', '-T', sort_tmp, catfile]
-    tools.procOps.run_proc(cmd, stdout=merged)
+    cmd = ['sambamba', 'sort', catfile, '-o', merged]
+    tools.procOps.run_proc(cmd)
     return job.fileStore.writeGlobalFile(merged)
 
 
