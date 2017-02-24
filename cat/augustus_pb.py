@@ -93,6 +93,8 @@ def setup(job, args, input_file_ids):
     for chrom, interval_list in intervals.iteritems():
         for start, stop in interval_list:
             hints = [h for h in hints_by_chrom[chrom] if h[3] >= start and h[4] <= stop]
+            if len(hints) == 0:
+                continue  # no reason to compute an empty chunk
             tmp_hints = tools.fileOps.get_tmp_toil_file()
             with open(tmp_hints, 'w') as outf:
                 for h in hints:
