@@ -824,7 +824,7 @@ class BuildDb(PipelineTask):
     def validate(self):
         tools.misc.samtools_version()  # validate samtools version
         for tool in ['load2sqlitedb', 'samtools', 'filterBam', 'bam2hints', 'bam2wig', 'wig2hints.pl', 'bam2hints',
-                     'bamToPsl', 'blat2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl']:
+                     'bamToPsl', 'blat2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl', 'sambamba']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Auxiliary program {} not found on path.'.format(tool))
 

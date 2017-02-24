@@ -58,12 +58,7 @@ def setup(job, args, input_file_ids):
 
     # load only PB hints
     hints_file = job.fileStore.readGlobalFile(input_file_ids.hints_gff)
-    cmd = ['grep', 'src=PB', hints_file]
-    hints = tools.procOps.call_proc_lines(cmd)
-
-    # transform the hints into a sorted mapping of positions for searching
-    # split up the records
-    hints = [x.split('\t') for x in hints]
+    hints = [x.split('\t') for x in hints_file if 'src=PB' in x]
 
     # convert the start/stops to ints
     # break up by chromosome
@@ -104,8 +99,7 @@ def setup(job, args, input_file_ids):
                                   memory='8G', disk='8G')
             predictions.append(j.rv())
 
-    # results contains a 3 member tuple of [gff_file_id, dataframe, fail_count]
-    # where the dataframe contains the alternative parental txs and fail_count is the # of transcripts discarded
+    # results contains a 3 member tuple of [raw_gtf_file_id, gtf_file_id, joined_gp_file_id]
     results = job.addFollowOnJobFn(join_genes, predictions, memory='8G', disk='8G').rv()
     return results
 
@@ -153,7 +147,6 @@ def join_genes(job, gff_chunks):
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
-    # it also performs filtering for weird non-transcripts
     cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
            ['sed', ' s/jg/augPB-/g']]
