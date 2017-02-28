@@ -26,7 +26,6 @@ GFF3 tags generated in this process:
 """
 import collections
 import luigi
-import copy
 import logging
 import pandas as pd
 
@@ -337,11 +336,9 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df
     :param in_species_rna_support_only: Should we use the homGeneMapping vectors within-species or all-species?
     :return: filtered and merged dataframe
     """
-    def evaluate_tm_tmr_class(s):
+    def reevaluate_class(s):
         """Reclassify a transcript as passing if it is above coding cutoff"""
-        if tools.nameConversions.aln_id_is_transmap(s.AlignmentId):
-            return 'passing' if s.AlnIdentity >= coding_cutoff else 'failing'
-        return s.TranscriptClass
+        return 'passing' if s.AlnIdentity >= coding_cutoff else 'failing'
 
     # remove the start/stop codon information from the ref_df because we don't currently use it and it makes life hard
     ref_df = ref_df.drop(['StartCodon', 'StopCodon'], axis=1)
@@ -358,8 +355,8 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df
     coding_df = pd.merge(coding_df, evaluation_df, on='AlignmentId', how='left')
     # fill the original intron values to zero so we don't filter them out
     coding_df['OriginalIntronsPercent'] = coding_df.OriginalIntronsPercent.fillna(0)
-    # reclassify coding TM/TMR
-    coding_df['TranscriptClass'] = coding_df.apply(evaluate_tm_tmr_class, axis=1)
+    # reclassify coding transcripts based on pairwise BLAT alignments
+    coding_df['TranscriptClass'] = coding_df.apply(reevaluate_class, axis=1)
 
     # huge ugly filtering expression for coding transcripts
     if in_species_rna_support_only is True:
