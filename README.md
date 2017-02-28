@@ -61,7 +61,7 @@ Which provides the central scheduler as well as the web UI, which can be accesse
 
 To run the test data, change directories to the CAT installation folder and do the following:
 
-`luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler --augustus  --augustus-cgp --augustus-pb > log.txt`
+`luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler --augustus  --augustus-cgp --augustus-pb --assembly-hub > log.txt`
 
 The test should take around 30 minutes to execute. You can track progress in the log file.
 

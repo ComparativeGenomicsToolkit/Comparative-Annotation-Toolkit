@@ -2480,26 +2480,25 @@ class AugustusTrack(TrackTask):
         else:
             tmr_gp = None
 
-        for gp, color in zip(*[[tm_gp, tmr_gp], ['38,112,75', '112,38,75']]):
-            if gp is None:
-                continue
-            gp = tools.transcripts.gene_pred_iterator(gp)
-            tmp = luigi.LocalTarget(is_tmp=True)
-            as_file = luigi.LocalTarget(is_tmp=True)
-            with as_file.open('w') as outf:
+        with tools.fileOps.TemporaryFilePath() as tmp, tools.fileOps.TemporaryFilePath() as as_file:
+            with open(as_file, 'w') as outf:
                 outf.write(modified_bgp_as)
-            with tmp.open('w') as outf:
-                for tx in gp:
-                    s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
-                    block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
-                    row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
-                           tx.thick_stop, color, tx.block_count, block_sizes, block_starts,
-                           s.GeneName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
-                           tx.name, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
-                    tools.fileOps.print_row(outf, row)
-            tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
+            with open(tmp, 'w') as outf:
+                for gp, color in zip(*[[tm_gp, tmr_gp], ['38,112,75', '112,38,75']]):
+                    if gp is None:
+                        continue
+                    gp = tools.transcripts.gene_pred_iterator(gp)
+                    for tx in gp:
+                        s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                        block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
+                        row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
+                               tx.thick_stop, color, tx.block_count, block_sizes, block_starts,
+                               s.GeneName, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                               tx.name, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
+                        tools.fileOps.print_row(outf, row)
+            tools.procOps.run_proc(['bedSort', tmp, tmp])
             cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, '/dev/stdout']
             with track.open('w') as outf:
                 tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
