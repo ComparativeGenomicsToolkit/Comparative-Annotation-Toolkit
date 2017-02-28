@@ -69,11 +69,12 @@ def generate_consensus(args):
     tx_modes = [x for x in args.tx_modes if x in ['transMap', 'augTM', 'augTMR']]
     hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
     # load the alignment metrics data
-    metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
+    mrna_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
+    cds_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'CDS') for tx_mode in tx_modes])
     eval_df = pd.concat([load_evaluations_from_db(args.db_path, tx_mode) for tx_mode in tx_modes])
     # combine and filter the results
-    coding_df, non_coding_df = combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, eval_df,
-                                                      args.intron_rnaseq_support, args.exon_rnaseq_support,
+    coding_df, non_coding_df = combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df,
+                                                      eval_df, args.intron_rnaseq_support, args.exon_rnaseq_support,
                                                       args.intron_annot_support, args.exon_annot_support,
                                                       args.original_intron_support, coding_cutoff,
                                                       args.minimum_coverage,
@@ -315,13 +316,14 @@ def load_alt_names(db_path, denovo_tx_modes):
     return df
 
 
-def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df, intron_rnaseq_support,
-                           exon_rnaseq_support, intron_annot_support, exon_annot_support, original_intron_support,
-                           coding_cutoff,  minimum_coverage, in_species_rna_support_only):
+def combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df, evaluation_df,
+                           intron_rnaseq_support, exon_rnaseq_support, intron_annot_support, exon_annot_support,
+                           original_intron_support, coding_cutoff,  minimum_coverage, in_species_rna_support_only):
     """
     Updates the DataFrame based on support levels. Filters based on user-tunable flags for support levels.
     :param hgm_df: df produced by load_hgm_vectors() (all transcripts)
-    :param metrics_df: df produced by load_metrics() (coding transcripts only)
+    :param mrna_metrics_df: df produced by load_metrics() (coding transcripts only) for mRNA alignments
+    :param cds_metrics_df: df produced by load_metrics() (coding transcripts only) for CDS alignments
     :param tm_eval_df: df produced by load_transmap_evals() (all transcripts)
     :param ref_df: df produced by tools.sqlInterface.load_annotation()
     :param evaluation_df: produced by load_evaluations_from_db() (coding transcripts only)
@@ -338,7 +340,7 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df
     """
     def reevaluate_class(s):
         """Reclassify a transcript as passing if it is above coding cutoff"""
-        return 'passing' if s.AlnIdentity >= coding_cutoff else 'failing'
+        return 'passing' if s.AlnIdentity_mRNA >= coding_cutoff else 'failing'
 
     # remove the start/stop codon information from the ref_df because we don't currently use it and it makes life hard
     ref_df = ref_df.drop(['StartCodon', 'StopCodon'], axis=1)
@@ -350,25 +352,27 @@ def combine_and_filter_dfs(hgm_df, metrics_df, tm_eval_df, ref_df, evaluation_df
     coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype == 'protein_coding']
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
     # add metrics information to coding df
+    metrics_df = pd.merge(mrna_metrics_df, cds_metrics_df, on='AlignmentId', suffixes=['_mRNA', '_CDS'])
     coding_df = pd.merge(coding_df, metrics_df, on='AlignmentId')
     # add evaluation information to coding df, where possible. This adds information on frame shifts.
     coding_df = pd.merge(coding_df, evaluation_df, on='AlignmentId', how='left')
     # fill the original intron values to zero so we don't filter them out
-    coding_df['OriginalIntronsPercent'] = coding_df.OriginalIntronsPercent.fillna(0)
+    coding_df['OriginalIntronsPercent_mRNA'] = coding_df.OriginalIntronsPercent_mRNA.fillna(0)
+    coding_df['OriginalIntronsPercent_CDS'] = coding_df.OriginalIntronsPercent_CDS.fillna(0)
     # reclassify coding transcripts based on pairwise BLAT alignments
     coding_df['TranscriptClass'] = coding_df.apply(reevaluate_class, axis=1)
 
     # huge ugly filtering expression for coding transcripts
     if in_species_rna_support_only is True:
-        filt = ((coding_df.AlnCoverage >= minimum_coverage) &
-                (coding_df.OriginalIntronsPercent >= original_intron_support) &
+        filt = ((coding_df.AlnCoverage_CDS >= minimum_coverage) &
+                (coding_df.OriginalIntronsPercent_mRNA >= original_intron_support) &
                 (coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (coding_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
                 (coding_df.ExonAnnotSupportPercent >= exon_annot_support) &
                 (coding_df.ExonRnaSupportPercent >= exon_rnaseq_support))
     else:
-        filt = ((coding_df.AlnCoverage >= minimum_coverage) &
-                (coding_df.OriginalIntronsPercent >= original_intron_support) &
+        filt = ((coding_df.AlnCoverage_CDS >= minimum_coverage) &
+                (coding_df.OriginalIntronsPercent_mRNA >= original_intron_support) &
                 (coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (coding_df.AllSpeciesIntronRnaSupportPercent >= intron_rnaseq_support) &
                 (coding_df.ExonAnnotSupportPercent >= exon_annot_support) &
@@ -412,9 +416,9 @@ def score_filtered_dfs(coding_df, non_coding_df, in_species_rna_support_only):
     Returns the dataframe sorted by scores after indexing.
     """
     def score(s):
-        aln_id = s.AlnIdentity if s.TranscriptBiotype == 'protein_coding' else s.TransMapIdentity
-        aln_cov = s.AlnCoverage if s.TranscriptBiotype == 'protein_coding' else s.TransMapCoverage
-        orig_intron = s.OriginalIntronsPercent if s.TranscriptBiotype == 'protein_coding' else s.TransMapOriginalIntronsPercent
+        aln_id = s.AlnIdentity_CDS if s.TranscriptBiotype == 'protein_coding' else s.TransMapIdentity
+        aln_cov = s.AlnCoverage_CDS if s.TranscriptBiotype == 'protein_coding' else s.TransMapCoverage
+        orig_intron = s.OriginalIntronsPercent_mRNA if s.TranscriptBiotype == 'protein_coding' else s.TransMapOriginalIntronsPercent
         if in_species_rna_support_only:
             rna_support = s.ExonRnaSupportPercent + s.IntronRnaSupportPercent
         else:
@@ -431,7 +435,7 @@ def merge_scored_dfs(scored_coding_df, scored_non_coding_df):
     """Merges the scored dataframes by changing some names around"""
     # for every non-coding TransMap metric, copy it to the other name
     for m in ['Coverage', 'Identity', 'Goodness']:
-        scored_non_coding_df['Aln' + m] = scored_non_coding_df['TransMap' + m]
+        scored_non_coding_df['Aln' + m + '_mRNA'] = scored_non_coding_df['TransMap' + m]
     merged_df = pd.concat([scored_non_coding_df, scored_coding_df])
     merged_df = merged_df.set_index(['GeneId', 'TranscriptId'])
     merged_df = merged_df.sort_values('TranscriptScore', ascending=False)
@@ -550,8 +554,8 @@ def is_failed_df(df):
 
 def rescue_failed_gene(gene_df, gene_id, metrics, hints_db_has_rnaseq):
     """Rescues a failed gene by picking the one transcript with the highest coverage"""
-    gene_df = gene_df.sort_values('AlnCoverage', ascending=False)
-    best_rows = find_best_score(gene_df, column='AlnCoverage')
+    gene_df = gene_df.sort_values('AlnCoverage_mRNA', ascending=False)
+    best_rows = find_best_score(gene_df, column='AlnCoverage_mRNA')
     return incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene=True)
 
 
@@ -563,7 +567,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
     d = {'source_transcript': best_series.name,
          'source_transcript_name': best_series.TranscriptName,
          'source_gene': gene_id,
-         'score': int(10 * round(best_series.AlnGoodness, 3)),
+         'score': int(10 * round(best_series.AlnGoodness_mRNA, 3)),
          'failed_gene': failed_gene,
          'transcript_modes': transcript_modes,
          'gene_biotype': best_series.GeneBiotype,
@@ -590,13 +594,13 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene
     # add information to the overall metrics
     if best_series.TranscriptBiotype == 'protein_coding':
         metrics['Transcript Modes'][transcript_modes] += 1
-    metrics['Coverage'][best_series.TranscriptBiotype].append(best_series.AlnCoverage)
-    metrics['Identity'][best_series.TranscriptBiotype].append(best_series.AlnIdentity)
+    metrics['Coverage'][best_series.TranscriptBiotype].append(best_series.AlnCoverage_mRNA)
+    metrics['Identity'][best_series.TranscriptBiotype].append(best_series.AlnIdentity_mRNA)
     metrics['Splice Support'][best_series.TranscriptBiotype].append(best_series.IntronRnaSupportPercent)
     metrics['Exon Support'][best_series.TranscriptBiotype].append(best_series.ExonRnaSupportPercent)
     metrics['Splice Annotation Support'][best_series.TranscriptBiotype].append(best_series.IntronAnnotSupportPercent)
     metrics['Exon Annotation Support'][best_series.TranscriptBiotype].append(best_series.ExonAnnotSupportPercent)
-    metrics['Original Introns'][best_series.TranscriptBiotype].append(best_series.OriginalIntronsPercent)
+    metrics['Original Introns'][best_series.TranscriptBiotype].append(best_series.OriginalIntronsPercent_mRNA)
     return best_series.AlignmentId, d
 
 
@@ -773,11 +777,11 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
         metrics['Evaluation Improvement']['changes'].append([tx_s.TransMapOriginalIntronsPercent,
                                                              tx_s.IntronAnnotSupportPercentTransMap,
                                                              tx_s.IntronRnaSupportPercentTransMap,
-                                                             tx_s.OriginalIntronsPercent,
+                                                             tx_s.OriginalIntronsPercent_mRNA,
                                                              tx_s.IntronAnnotSupportPercent,
                                                              tx_s.IntronRnaSupportPercent,
                                                              tx_s.TransMapGoodness,
-                                                             tx_s.AlnGoodness])
+                                                             tx_s.AlnGoodness_mRNA])
 
 
 def calculate_indel_metrics(final_consensus, eval_df, metrics):

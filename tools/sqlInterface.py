@@ -277,11 +277,11 @@ def get_gene_transcript_map(db_path, table=Annotation.__tablename__, index_col='
     :param index_col: column to index on. should generally be tx_id.
     :return: dictionary {GeneId: [tx_id1, tx_id2, etc]}
     """
-    df = read_attrs(db_path, table, index_col)
-    r = collections.defaultdict(set)
-    for tx_id, row in df.iterrows():
-        r[row.GeneId].add(tx_id)
-    return dict(r)  # don't return a defaultdict to prevent bugs
+    df = read_attrs(db_path, table, index_col).reset_index()
+    r = {}
+    for gene_id, s in df.groupby('GeneId'):
+        r[gene_id] = s.TranscriptId.tolist()
+    return r
 
 
 def get_transcript_biotype_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
