@@ -104,7 +104,13 @@ class PslRow(object):
     @property
     def identity(self):
         return format_ratio(self.matches + self.repmatches,
-                            self.matches + self.repmatches + self.mismatches + self.q_num_insert,
+                            self.matches + self.repmatches + self.mismatches + self.q_base_insert,
+                            num_digits=5, resolve_nan=0)
+
+    @property
+    def target_identity(self):
+        return format_ratio(self.matches + self.repmatches,
+                            self.matches + self.repmatches + self.mismatches + self.q_base_insert + self.t_base_insert,
                             num_digits=5, resolve_nan=0)
 
     @property
