@@ -298,7 +298,7 @@ def load_evaluations_from_db(db_path, tx_mode):
                   'CodingDeletion' in c,
                   'CodingMult3Deletion' in c or 'CodingMult3Insertion' in c])
     eval_df = pd.DataFrame(r)
-    eval_df.columns = ['AlignmentId', 'Frameshift', 'CodingDeletion', 'CodingInsertion', 'CodingMult3Indel']
+    eval_df.columns = ['AlignmentId', 'Frameshift', 'CodingInsertion', 'CodingDeletion', 'CodingMult3Indel']
     return eval_df
 
 
