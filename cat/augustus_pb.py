@@ -58,7 +58,10 @@ def setup(job, args, input_file_ids):
 
     # load only PB hints
     hints_file = job.fileStore.readGlobalFile(input_file_ids.hints_gff)
-    hints = [x.split('\t') for x in hints_file if 'src=PB' in x]
+    hints = [x.split('\t') for x in open(hints_file) if 'src=PB' in x]
+
+    if len(hints) == 0:
+        raise RuntimeError('No PB hints found.')
 
     # convert the start/stops to ints
     # break up by chromosome
