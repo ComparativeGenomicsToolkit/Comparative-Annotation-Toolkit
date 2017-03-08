@@ -79,15 +79,6 @@ def hints_db(hints_args, toil_options):
 def setup_hints(job, input_file_ids, iso_seq_file_ids):
     """
     Generates hints for a given genome with a list of BAMs. Will add annotation if it exists.
-
-    Pipeline structure:
-      filter_bam    cat_sort_bams    (build_intron_hints, build_exon_hints)
-        ^  V           ^ V                 ^  V
-    setup_hints -> merge_bams -------> build_hints -------> cat_hints
-          V generate_annotation_hints ------------------------^
-          V generate_iso_seq_hints ---------------------------^
-    Each main step (filter_bam, cat_sort_bams, build_intron_hints, build_exon_hints) are done on a subset of references
-    that are then combined at the cat_hints step.
     """
     # RNA-seq hints
     filtered_bam_file_ids = {'BAM': collections.defaultdict(list), 'INTRONBAM': collections.defaultdict(list)}
@@ -149,9 +140,13 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
            ['sambamba', 'sort', '-t', '8', '-m', '15G', '-o', '/dev/stdout', '-n', '/dev/stdin']]
     tools.procOps.run_proc(cmd, stdout=name_sorted)
     ns_handle = pysam.Samfile(name_sorted)
+    reads = list(ns_handle)
+    # if this group ended up empty, remove it
+    if len(reads) == 0:
+        return None
     filtered_file_ids = []
     r = []
-    for i, (qname, reads) in enumerate(itertools.groupby(ns_handle, lambda x: x.qname)):
+    for i, (qname, reads) in enumerate(itertools.groupby(reads, lambda x: x.qname)):
         r.extend(list(reads))
         if i != 0 and i % num_reads == 0:
             file_id = write_bam(r, ns_handle)
@@ -210,6 +205,7 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
     merged_bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
     for dtype in filtered_bam_file_ids:
         for ref_group, file_ids in filtered_bam_file_ids[dtype].iteritems():
+            file_ids = [x for x in file_ids if x is not None]  # some groups will end up empty
             disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
             merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk=disk_usage).rv()
 
