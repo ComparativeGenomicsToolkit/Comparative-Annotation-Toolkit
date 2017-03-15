@@ -250,7 +250,7 @@ def load_hgm_vectors(db_path, tx_mode):
 
 def load_metrics_from_db(db_path, tx_mode, aln_mode):
     """
-    Loads the alignment metrics for the mRNA alignments of transMap/AugustusTM/TMR
+    Loads the alignment metrics for the mRNA/CDS alignments of transMap/AugustusTM/TMR
     """
     def aggfunc(s):
         """used to aggregate columns. Attempts to convert each cell to a float if possible"""
@@ -268,7 +268,7 @@ def load_metrics_from_db(db_path, tx_mode, aln_mode):
     metrics_df = pd.pivot_table(metrics_df, index='AlignmentId', columns='classifier',
                                 values='value', fill_value=None, aggfunc=aggfunc).reset_index()
     metrics_df['OriginalIntrons'] = metrics_df['OriginalIntrons'].apply(parse_text_vector)
-    metrics_df['OriginalIntronsPercent'] = metrics_df['OriginalIntrons'].apply(calculate_vector_support)
+    metrics_df['OriginalIntronsPercent'] = metrics_df['OriginalIntrons'].apply(calculate_vector_support, resolve_nan=1)
     session.close()
     return metrics_df
 
@@ -356,9 +356,10 @@ def combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, 
     coding_df = pd.merge(coding_df, metrics_df, on='AlignmentId')
     # add evaluation information to coding df, where possible. This adds information on frame shifts.
     coding_df = pd.merge(coding_df, evaluation_df, on='AlignmentId', how='left')
-    # fill the original intron values to zero so we don't filter them out
-    coding_df['OriginalIntronsPercent_mRNA'] = coding_df.OriginalIntronsPercent_mRNA.fillna(0)
-    coding_df['OriginalIntronsPercent_CDS'] = coding_df.OriginalIntronsPercent_CDS.fillna(0)
+    # fill the original intron values to 100 so we don't filter them out -- means a no-intron gene
+    coding_df['OriginalIntronsPercent_mRNA'] = coding_df.OriginalIntronsPercent_mRNA.fillna(100)
+    coding_df['OriginalIntronsPercent_CDS'] = coding_df.OriginalIntronsPercent_CDS.fillna(100)
+    non_coding_df['TransMapOriginalIntronsPercent'] = non_coding_df.TransMapOriginalIntronsPercent.fillna(100)
     # reclassify coding transcripts based on pairwise BLAT alignments
     coding_df['TranscriptClass'] = coding_df.apply(reevaluate_class, axis=1)
 

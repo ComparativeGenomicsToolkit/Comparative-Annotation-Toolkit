@@ -54,7 +54,6 @@ def filter_transmap(filter_tm_args, out_target):
     paralog_filtered_df = resolved_df[resolved_df.UpdatedParalogStatus != 'ToRemove']
     paralog_filtered_df = paralog_filtered_df.drop('ParalogStatus', axis=1)
     paralog_filtered_df = paralog_filtered_df.rename(columns={'UpdatedParalogStatus': 'ParalogStatus'})
-    assert len(paralog_filtered_df) == len(set(paralog_filtered_df.TranscriptId))
 
     # keep some metrics
     for biotype, biotype_df in resolved_df.groupby('TranscriptBiotype'):

@@ -356,7 +356,7 @@ def load_alignment_evaluation(db_path):
     """
     engine = create_engine('sqlite:///' + db_path)
     df = pd.read_sql_table(TmEval.__tablename__, engine)
-    df = pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value', fill_value=0)
+    df = pd.pivot_table(df, index=['TranscriptId', 'AlignmentId'], columns='classifier', values='value')
     return df.reset_index()
 
 
