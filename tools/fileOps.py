@@ -27,7 +27,10 @@ class TemporaryFilePath(object):
         return self.path
 
     def __exit__(self, type, value, traceback):
-        os.remove(self.path)
+        try:
+            os.remove(self.path)
+        except OSError:
+            pass
 
 
 class TemporaryDirectoryPath(object):
@@ -43,7 +46,10 @@ class TemporaryDirectoryPath(object):
         return self.path
 
     def __exit__(self, type, value, traceback):
-        shutil.rmtree(self.path)
+        try:
+            shutil.rmtree(self.path)
+        except OSError:
+            pass
 
 
 def dir_is_writeable(d):
