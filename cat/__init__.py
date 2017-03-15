@@ -1267,6 +1267,7 @@ class AugustusCgp(ToilTask):
         args.augustus_cgp_gp = output_gp_files
         args.augustus_cgp_gtf = output_gtf_files
         args.augustus_cgp_raw_gtf = raw_output_gtf_files
+        args.stdout_file = os.path.join(base_dir, 'CGP_stdout.txt')
         args.species = pipeline_args.augustus_species
         args.chunksize = pipeline_args.maf_chunksize
         args.overlap = pipeline_args.maf_overlap

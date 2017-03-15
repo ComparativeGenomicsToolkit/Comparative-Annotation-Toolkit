@@ -8,14 +8,11 @@
           (or the set of target genomes)
 
  authors: Stefanie Koenig, Ian Fiddes
- 
-  date    |  author         |  changes
- ---------|-----------------|------------------------------------------
- 10.08.16 | Stefanie Koenig | creation of the file
 """
 
 import argparse
 import os
+import collections
 
 from toil.fileStore import FileID
 from toil.common import Toil
@@ -49,9 +46,16 @@ def augustus_cgp(args, toil_options):
             input_file_ids.fasta = {genome: FileID.forPath(t.importFile('file://' + fasta), fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk='2G')
-            results = t.start(job)
+            results, stdout_file_ids = t.start(job)
         else:
-            results = t.restart()
+            results, stdout_file_ids = t.restart()
+        tools.fileOps.ensure_file_dir(args.stdout_file)
+        with open(args.stdout_file, 'w') as outf, tools.fileOps.TemporaryFilePath() as tmp:
+            for (chrom, start, chunksize), stdout_file in stdout_file_ids.iteritems():
+                outf.write('## BEGIN CHUNK chrom: {} start: {} chunksize: {}\n'.format(chrom, start, chunksize))
+                t.exportFile(stdout_file, 'file://' + tmp)
+                for l in open(tmp):
+                    outf.write(l)
         for genome, (raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id) in results.iteritems():
             tools.fileOps.ensure_file_dir(args.augustus_cgp_raw_gtf[genome])
             t.exportFile(raw_gtf_file_id, 'file://' + args.augustus_cgp_raw_gtf[genome])
@@ -70,9 +74,10 @@ def setup(job, args, input_file_ids):
     # create a file with the phylogenetic tree in NEWICK format
     tree = writeTree(job, input_file_ids)
 
-    # list of dicts, each storing all gffs for one alignment chunk
-    # key: genome, value: file handle to gff
-    gff_chunks = []
+    # results holds Promise objects
+    # each Promise object will resolve to a tuple of gff_chunk_dict, stdout_file_id
+    # cgp_job.rv():  key: genome, value: file handle to gff
+    results = []
 
     # TODO: do not split within genic regions of the reference genome
     chrom_sizes = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
@@ -89,12 +94,14 @@ def setup(job, args, input_file_ids):
             maf_chunk = j.rv()
             # run AugustusCGP on alignment chunk
             cgp_job = j.addFollowOnJobFn(cgp, tree, maf_chunk, args, input_file_ids, memory='8G', disk=cgp_usage)
-            gff_chunk = cgp_job.rv()
-            gff_chunks.append(gff_chunk)
+            results.append([chrom, start, chunksize, cgp_job.rv()])
 
     # merge all gff files for alignment chunks to one gff for each species
-    # results contains a 3 member tuple of [raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id]
-    results = job.addFollowOnJobFn(merge_results, args, gff_chunks, memory='8G', disk='8G').rv()
+    # results is a 2-member tuple of a joined genes list and a stdout file id dict
+    # stdout_file_id dict is keyed by (chromosome, start, chunksize) tuples
+    # for the joined genes dict its a dict keyed by genome and values are a 3 member tuple of:
+    # [raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id]
+    results = job.addFollowOnJobFn(merge_results, results, memory='8G', disk='8G').rv()
     return results
 
 
@@ -116,6 +123,7 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
     """
     genomeFofn = writeGenomeFofn(job, input_file_ids.fasta)
     cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
+    stdout = tools.fileOps.get_tmp_toil_file()
 
     cmd = ['augustus', '--dbhints=1', '--UTR=1', '--allow_hinted_splicesites=atac',
            '--extrinsicCfgFile={}'.format(cgp_cfg),
@@ -131,21 +139,30 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
            '--printOEs=false',
            '--/CompPred/outdir={}'.format(os.getcwd()),
            '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param))]
-    tools.procOps.run_proc(cmd)
-    return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}
+    tools.procOps.run_proc(cmd, stdout=stdout)
+    stdout_file_id = job.fileStore.writeGlobalFile(stdout)
+    return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}, stdout_file_id
 
 
-def merge_results(job, args, gff_chunks):
+def merge_results(job, results):
     """
-    Merges the results using joinGenes. The results have parental genes assigned.
+    Results is a list of lists in the form [chrom, start, chunksize, (gff_chunk_dict, stdout_file_id)]
+    gff_chunk is a dict of {genome: gff_file_id}
+    Merges the results using joinGenes.
     """
+    # reshape results into a dict of dicts:
+    # {genome: (chrom, start, chunksize): gff_file_id
+    gff_chunks_by_genome = collections.defaultdict(dict)
+    stdout_file_ids = {}
+    for chrom, start, chunksize, (gff_chunks, stdout_file_id) in results:
+        stdout_file_ids[(chrom, start, chunksize)] = stdout_file_id
+        for genome, gff_file_id in gff_chunks.iteritems():
+            gff_chunks_by_genome[genome][(chrom, start, chunksize)] = gff_file_id
     results = {}
-    for genome in args.genomes:
-        # merge all gff_chunks of one genome
-        genome_gff_chunks = [d[genome] for d in gff_chunks]
-        j = job.addChildJobFn(join_genes, genome_gff_chunks, memory='8G', disk='8G')
+    for genome in gff_chunks_by_genome:
+        j = job.addChildJobFn(join_genes, gff_chunks_by_genome[genome], memory='8G', disk='8G')
         results[genome] = j.rv()
-    return results
+    return results, stdout_file_ids
 
 
 def join_genes(job, gff_chunks):
@@ -159,9 +176,10 @@ def join_genes(job, gff_chunks):
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
-        for chunk in gff_chunks:
+        for (chrom, start, chunksize), chunk in gff_chunks.iteritems():
             local_path = job.fileStore.readGlobalFile(chunk)
             fofn_handle.write(local_path + '\n')
+            raw_handle.write('## BEGIN CHUNK chrom: {} start: {} chunksize: {}\n'.format(chrom, start, chunksize))
             for line in open(local_path):
                 raw_handle.write(line)
 
