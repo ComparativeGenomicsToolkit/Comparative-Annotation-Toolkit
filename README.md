@@ -1,7 +1,5 @@
 ![pipeline](https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit/blob/master/img/cat-logo.png)
 
-#Comparative-Annotation-Toolkit
-
 This project aims to provide a straightforward end-to-end pipeline that takes as input a HAL-format multiple whole genome alignment as well as a GFF3 file representing annotations on one high quality assembly in the HAL alignment, and produces a output GFF3 annotation on all target genomes chosen.
 
 This pipeline is capable of running both on local cluster hardware as well as on common cloud infrastructure using the [toil](http://toil.readthedocs.io/en/latest/) workflow engine. For full runs on many genomes, a decent amount of computational effort is required. Memory usage is moderate.
@@ -42,10 +40,10 @@ Either form of `pip` installation will install all of the python dependencies. H
   2. `bam2hints`. Compiling this program will place it in the `augustus` binary directory. Requires `bamtools` to be installed. If the `bamtools` headers are not at `/usr/include/bamtools`, you will need to modify the makefile.
   3. `filterBam`. Also requires the `bamtools` headers.
   4. `bam2wig`. Compiling this program will NOT place it in the `augustus` binary directory, you must do so yourself. This program requires you modify the makefile to explicitly point to your installation of `htslib`, `bcftools`, `samtools`, and `tabix`. `Tabix` is now packaged with `htslib`, and both are included in your `kent` directory at `$kent/src/htslib/`.
-  5. `homGeneMapping`. This program must also have its makefile at `$augustus/trunks/auxprogs/homGeneMapping/src/Makefile` to turn on the `BOOST = true` and `SQLITE = true` flags. Then run `make clean && make` to recompile.
+  5. `homGeneMapping`. This program must also have its makefile at `$augustus/trunks/auxprogs/homGeneMapping/src/Makefile` modified to turn on the `BOOST = true` and `SQLITE = true` flags. Then run `make clean && make` to recompile.
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 6. [wiggletools](https://github.com/Ensembl/WiggleTools). Used to combine RNA-seq expression in assembly hubs.
-7. [deeptools](https://github.com/fidelram/deepTools). Used to combine RNA-seq expression in assembly hubs by providing the tool `bamCoverage`.
+7. [deeptools](https://github.com/fidelram/deepTools). Used to combine RNA-seq expression in assembly hubs by providing the tool `bamCoverage`. **NOT ACTUALLY CURRENTLY USED**
 8. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
