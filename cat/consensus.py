@@ -854,7 +854,10 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
 
     def find_feature_support(attrs, feature, i):
         """Extracts the boolean value from the comma delimited string"""
-        vals = map(bool, attrs[feature].split(','))
+        try:
+            vals = map(bool, attrs[feature].split(','))
+        except KeyError:
+            return 'N/A'
         return vals[i]
 
     def generate_gene_record(chrom, tx_objs, gene_id, attrs_list):
