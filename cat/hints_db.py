@@ -118,7 +118,7 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
                                 iso_seq_hints_file_ids).rv()
 
 
-def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, num_reads=100 ** 6):
+def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, num_reads=50 ** 6):
     """
     Slices out the reference subset from a BAM, name sorts that subset, then chunks the resulting reads up for
     processing by filterBam.
@@ -180,7 +180,7 @@ def filter_bam(job, file_id, is_paired):
         raise RuntimeError('After filtering one BAM subset became empty. This could be bad.')
 
     out_filter = tools.fileOps.get_tmp_toil_file()
-    sort_cmd = ['sambamba', 'sort', tmp_filtered, '-o', out_filter]
+    sort_cmd = ['sambamba', 'sort', tmp_filtered, '-o', out_filter, '-t', '1']
     tools.procOps.run_proc(sort_cmd)
     return job.fileStore.writeGlobalFile(out_filter)
 
@@ -210,7 +210,8 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
         for ref_group, file_ids in filtered_bam_file_ids[dtype].iteritems():
             file_ids = [x for x in file_ids if x is not None]  # some groups will end up empty
             disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
-            merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk=disk_usage).rv()
+            merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk=disk_usage,
+                                                                      memory='16G', cores=8).rv()
 
     return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids).rv()
 
@@ -241,7 +242,7 @@ def cat_sort_bams(job, bam_file_ids):
 
     # combine and merge
     merged = tools.fileOps.get_tmp_toil_file()
-    cmd = ['sambamba', 'sort', catfile, '-o', merged]
+    cmd = ['sambamba', 'sort', catfile, '-o', merged, '-t', '8', '-m', '15G']
     tools.procOps.run_proc(cmd)
     return job.fileStore.writeGlobalFile(merged)
 
