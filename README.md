@@ -8,7 +8,7 @@ This pipeline is capable of running both on local cluster hardware as well as on
 
 Above is a flowchart schematic of the functionality of the `CAT` pipeline.
 
-#Installation
+# Installation
 
 The pipeline can be installed by a simple `pip` install: 
 
@@ -25,7 +25,7 @@ If you want to do the direct pip installation, you can grab the config files fro
 
 Either form of `pip` installation will install all of the python dependencies. However, there are binary dependencies that must be compiled and installed in addition.
 
-##Dependencies
+## Dependencies
 
 1. [Kent toolkit](https://github.com/ucscGenomeBrowser/kent). Follow the installation instructions there. Make sure you put the newly created `~/bin/$MACHTYPE` directory on your path.
 2. [bedtools](http://bedtools.readthedocs.io/en/latest/).
@@ -49,7 +49,7 @@ Either form of `pip` installation will install all of the python dependencies. H
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
 `hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed bamCoverage sambamba`
 
-#Running the pipeline
+# Running the pipeline
 
 This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the various steps together. First, start the `luigid` daemon:
 
@@ -64,11 +64,11 @@ To run the test data, change directories to the CAT installation folder and do t
 The test should take around 30 minutes to execute. You can track progress in the log file.
 
 
-#Command line options
+# Command line options
 
 As described above, the primary method to executing the pipeline is to follow the invocation `luigi --module cat RunCat --hal=${halfile} --ref-genome=${ref-genome} --config=${config}`. Below are the flags that can modify execution and output.
 
-##Main options
+## Main options
 
 `--hal`: Input HAL alignment file. (REQUIRED).
 
@@ -84,13 +84,13 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with the balance of this value and the `--maxCores` parameter.
 
-##AugustusTM(R) options
+## AugustusTM(R) options
 
 `--augustus`: Run AugustusTM(R)? 
 
 `--augustus-species`: What Augustus species do we want to use? If your species is not a mammal, please choose [one of the species listed here](http://bioinf.uni-greifswald.de/augustus/).
 
-##AugustusCGP options
+## AugustusCGP options
 
 `--augustus-cgp`: Run AugustusCGP?
 
@@ -100,7 +100,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--maf-overlap`: How much overlap to use in HAL chunks. Larger values increase redundant predictions (which are merged). Default is 500000. 
 
-##AugustusPB options
+## AugustusPB options
 
 `--augustus-pb`: Run AugustusPB? Will only run on genomes with IsoSeq data in the config file.
 
@@ -108,7 +108,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--maf-overlap`: How much overlap to use in genome chunks. Default is 500000.
 
-##Filtering and consensus finding options
+## Filtering and consensus finding options
 
 `--resolve-split-genes`: Activate the split gene resolution process. See the [FilterTransMap section](#filtertransmap) for more.
 
@@ -138,7 +138,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 See below for `toil` options shared with the hints database pipeline.
 
-##Toil
+## Toil
 
 The remaining options are passed directly along to `toil`:
 
@@ -147,7 +147,7 @@ The remaining options are passed directly along to `toil`:
 `--maxCores`: The number of cores each `toil` module will use. If submitting to a batch system, this limits the number of concurrent submissions.
 
 
-#Config file
+# Config file
 
 The config file contains the paths to two important pieces of information -- the reference GFF3 and the extrinsic hints (bams).
 
@@ -173,13 +173,13 @@ Genome = /path/to/isoseq/bams
 
 Note that the BAM/INTRONBAM fields can be populated either with a comma separated list of BAMs or a single file with a line pointing to each BAM (a FOFN, or file-of-file-names). The reference sequence information will be extracted from the HAL alignment.
 
-##RNA-seq libraries
+## RNA-seq libraries
 
 It is **extremely** important that you use high quality RNA-seq. Libraries should be poly-A selected and paired end with a minimum read length of 75bp. If any of these are not true, it is advisable to place these libraries in the INTRONBAM field. Any genome can have a mix of BAM and INTRONBAM hints.
 
 **BAM files must be indexed!**
 
-##ISoSeq libraries
+## ISoSeq libraries
 
 If you are using IsoSeq data, it is recommended that you doing your mapping with `gmap`. Follow [the tutorial](https://github.com/PacificBiosciences/cDNA_primer/wiki/Aligner-tutorial:-GMAP,-STAR,-BLAT,-and-BLASR).
 
@@ -189,7 +189,7 @@ CAT relies on a proper GFF3 file from the reference. One very important part of 
 
 If you are downloading a GFF3 from Ensembl, you will need to run it through the script `scripts/convert_ensembl_gff3.py` to make the feature tags consistent across biotypes. The mouse/human GFF3 from GENCODE should work out of the box. A script is also included to convert NCBI-format GFF3.
 
-#Execution modes
+# Execution modes
 
 The default mode of this pipeline will perform the following tasks:
 
@@ -200,41 +200,41 @@ The default mode of this pipeline will perform the following tasks:
 
 These steps will run reasonably fast on one machine without any need for cluster computing. However, to construct a high quality annotation set, it is recommended that the pipeline be run with as many modes of `augustus` as possible.
 
-##AugustusTM(R)
+## AugustusTM(R)
 The primary parameterization of `augustus` for comparative annotation is primarily a method to clean up transMap projections. Due to a combination of assembly error, alignment noise and real biological changes transMap projections have frame shifting indels, missing or incomplete exons, and invalid splice sites. `AugustusTM` is given every protein coding transMap projection one at a time with some flanking sequence and asked to construct a transcript that closely matches the intron-exon structure that `transMap` provides. Since `augustus` enforces a standard gene model, frame shifts and invalid splices will be adjusted to a valid form. In some cases this will mangle the transcript, producing either another isoform or something that does not resemble the source transcript. `AugustusTMR` runs the same genomic interval and transMap derived hints through `augustus` a second time, but with less strict weights on the `transMa`p hints and with the addition of extrinsic hints from RNA-seq and/or IsoSeq. This is particularly useful in regions where an exon was dropped in the Cactus alignment.
 
 `AugustusTM` and `AugustusTMR` can be ran by providing the `--augustus` flag to the pipeline. `AugustusTMR` will only be ran for genomes with extrinsic information in the hints database. If you are running `CAT` on a non-mammal, you will want to modify the `--augustus-species` flag to [one of the species listed here](http://bioinf.uni-greifswald.de/augustus/).
 
-##AugustusCGP
+## AugustusCGP
 `augustusCGP` is the comparative mode of `augustus` recently introduced by [Stefanie Köneig](https://academic.oup.com/bioinformatics/article/32/22/3388/2525611/Simultaneous-gene-finding-in-multiple-genomes). This mode of `augustus` takes as input a HAL format multiple whole genome alignment and simultaneously produces *de-novo* transcript predictions in all genomes, taking into account conservation as well as any extrinsic information provided. `AugustusCGP` allows for the introduction of novel isoforms and loci in the final gene sets.
 
 `AugustusCGP` can be ran by providing the `--augustus-cgp` flag to the pipeline. If you wish to run `AugustusCGP`, you will likely want to train the underlying model, or the results will be poor. The guide to comparative augustus can be found [here](http://bioinf.uni-greifswald.de/augustus/binaries/tutorial-cgp/). A default parameter set is included. New parameter sets can be incorporated using the `--cgp-param` flag.
 
-##AugustusPB
+## AugustusPB
 `AugustsPB` is a parameterization of `augustus` to try and predict alternative isoforms using long range data. If any IsoSeq data are provided in the config file, and the `--augustus-pb` flag is set, the genomes with IsoSeq data will be run through and the results incorporated in the final gene set. `AugustusPB` runs on single whole genomes.
 
 
-#Modules
+# Modules
 
 While the primary mode of operation of the pipeline is to launch the `RunCat` module, you may want to run specific modules. Any submodule can be ran by changing the `luigi` invocation to specify a submodule class instead.
 
-##PrepareFiles
+## PrepareFiles
 
 This module parses the GFF3 annotation input, creating a genePred format file as well as a sqlite database. In addition, sequence files for all target genomes are extracted and converted to 2bit.
 
 This module will populate the folders `--work-dir/reference` and `--work-dir/genome_files`.
 
-##Chaining
+## Chaining
 
 This step is the first precursor step to `transMap`. Pairwise genomic Kent-style chains are produced for each target genome from the designated reference. This step uses `Toil` and can be parallelized on a cluster.
 
 This module will populate the folder `--work-dir/chaining`.
 
-##TransMap
+## TransMap
 
 This step runs `transMap`. The chain files are used to project annotations present in the GFF3 from the reference genome to each target genome.
 
-##EvaluateTransMap
+## EvaluateTransMap
 
 This step performs the preliminary classification of `transMap` transcripts. This step populates the `TransMapEvaluation` table in the sqlite database for each target genome with the following classifiers:
 
@@ -249,7 +249,7 @@ This step performs the preliminary classification of `transMap` transcripts. Thi
    
 This module will populate the folder `--work-dir/transMap`.
 
-##FilterTransMap
+## FilterTransMap
 
 Resolves paralogs in transMap output based on MLE estimate of the distribution of alignment identities in the transMap
 process. A normal distribution is fit to the -log(1 - identity) where identity != 1, which is a transformation of the underlying lognormal distribution. This is performed only on transcripts who map over in a 1-1 fashion. A cutoff is established as one standard deviation from the mean of this fit. 
@@ -264,13 +264,13 @@ contig. This should be used carefully on genomes that have a low N50. Looking at
 
 This module will populate the folder `--work-dir/filtered_transMap`.
 
-##Augustus
+## Augustus
 
 As [discussed above](#augustustmr), this module runs `AugustusTM(R)`. If the pipeline is ran without a hints database, only the `AugustusTM` mode will be executed. This process is one of the most computationally intensive steps, and should not be ran without a cluster.
 
 This module will populate the folder `--work-dir/augustus`.
 
-##AugustusCgp
+## AugustusCgp
 
 Running `AugustusCGP` is trickier than other modes. If your genomes are not closely related to an existing training set, you may need to perform logistic regression to train `AugustusCGP` before execution. A default parameter set is provided. This mode is also computationally intensive, and requires a cluster.
 
@@ -280,13 +280,13 @@ Transcripts which are not assigned a parental gene will be considered *novel* in
 
 This module will populate the folder `--work-dir/augustus_cgp`.
 
-##AugustusPb
+## AugustusPb
 
 Running `AugustusPB` reuires that IsoSeq data be provided. This mode runs on single genomes, and attempts to discover new isoforms. Transcripts predicted in this process undergo the same parental gene assignment described above. 
 
 This module will populate the folder `--work-dir/augustus_pb`.
 
-##Hgm
+## Hgm
 
 `homGeneMapping` is a companion tool of `AugustusCGP`. This tool uses a HAL alignment to project RNA-seq and annotation information to target genomes. This is used to validate a splice junction in a target genome as being supported in one or more alternative genomes, as well as being supported in the reference annotation. This module populates the `*_Hgm` database table, where `*` is one of `transMap`, `augTM`, `augTMR`, `augCGP` or `augPB` depending on the transcripts being evaluated. This table has the following comma separated columns:
 
@@ -306,11 +306,11 @@ The output of the `homGeneMapping` module has more information embedded in the o
 
 Which can be interpreted as 'species 0 had 6273 extrinsic hints (RNA-seq coverage), species 1 has 1524 extrinsic hints, species 2 (the reference) had both a non-coding (N) and coding (M) junction', and so on. The species numeric values are at the top of the file, and correlate to the species ID assigned internally in the hints database. These data can be useful if you want to dig in to a specific annotation.
 
-##AlignTranscripts
+## AlignTranscripts
 
 Transcript alignment allows for `AugustusTM(R)` transcripts to be compared to their parental `transMap`. As a result, only protein coding transcripts are aligned. For each transcripts, alignment is performed by BLAT two ways -- in frame codon aware alignment, and mRNA alignment. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
 
-##EvaluateTranscripts
+## EvaluateTranscripts
 
 A series of classifiers that evaluate transcript pairwise alignments for `transMap` and `AugustusTM(R)` output.
 
@@ -344,7 +344,7 @@ Where txMode is one of transMap, augTM, augTMR and alnMode is one of CDS or mRNA
 
 The evaluation tables will be loaded as tracks in the final [assembly hub](#assemblyhub).
 
-##Consensus
+## Consensus
 
 The consensus finding process takes in transcripts from every mode and attempts to find the highest quality ortholog for a source transcript. The de-novo transcript modes are also evaluated for providing novel isoforms or novel loci. The final gene set is output with a series of features measuring how confident the prediction is.
 
@@ -360,7 +360,7 @@ After consensus finding, a final output gene set is produced in both `GFF3` and 
 
 The output will appear in `--output-dir/consensus`.
 
-##Plots
+## Plots
 
 A large range of plots are produced in `--output-dir/plots`. These include:
 
@@ -382,7 +382,7 @@ A large range of plots are produced in `--output-dir/plots`. These include:
 17. `IsoSeq_isoform_validation.pdf`: The number of transcripts in the consensus set whose intron structure is exactly validated by at least one IsoSeq read.
 
 
-###GFF3 tags:
+### GFF3 tags:
 
 1. `gene_id`: Unique gene ID assigned to this gene.
 2. `transcript_id`: Unique transcript ID assigned to this gene.
