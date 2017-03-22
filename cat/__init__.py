@@ -17,6 +17,7 @@ import luigi.contrib.sqla
 from luigi.util import requires
 from toil.job import Job
 import pandas as pd
+from bx.intervals.cluster import ClusterTree
 
 import tools.bio
 import tools.fileOps
@@ -494,7 +495,7 @@ class RunCat(PipelineWrapperTask):
         if self.augustus_pb is True:
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
-            yield self.clone(IsoSeqIntronVectors)
+            yield self.clone(IsoSeqTranscripts)
         yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
@@ -1588,10 +1589,12 @@ class HgmDriverTask(PipelineTask):
             logger.info('Loaded table: {}.{}'.format(genome, tablename))
 
 
-class IsoSeqIntronVectors(PipelineWrapperTask):
+class IsoSeqTranscripts(PipelineWrapperTask):
     """
-    Constructs a database table representing all unique intron vectors from a IsoSeq dataset, based on the hints
-    produced. This is a supplement to the homGeneMapping approach, but within the individual species in question.
+    Constructs a database table representing all unique exon structures seen in an IsoSeq dataset. This is used
+    to validate isoforms (compared to homGeneMapping, which just validates exons/introns independently).
+
+    These structures are analogous to Transcript objects.
     """
     @staticmethod
     def get_args(pipeline_args, genome):
@@ -1603,15 +1606,15 @@ class IsoSeqIntronVectors(PipelineWrapperTask):
     def requires(self):
         pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.isoseq_genomes:
-            yield self.clone(IsoSeqIntronVectorsDriverTask, genome=genome)
+            yield self.clone(IsoSeqTranscriptsDriverTask, genome=genome)
 
 
-class IsoSeqIntronVectorsDriverTask(PipelineTask):
+class IsoSeqTranscriptsDriverTask(PipelineTask):
     """
-    Driver task for IsoSeqIntronVectors
+    Driver task for IsoSeqTranscripts
     """
     genome = luigi.Parameter()
-    tablename = tools.sqlInterface.IsoSeqIntronIntervals.__tablename__
+    tablename = tools.sqlInterface.IsoSeqExonStructures.__tablename__
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -1623,31 +1626,57 @@ class IsoSeqIntronVectorsDriverTask(PipelineTask):
                                                    update_id='_'.join([self.tablename, str(hash(pipeline_args))]))
 
     def requires(self):
-        yield self.clone(AugustusPb)
+        yield self.clone(BuildDb)
 
     def construct_intervals(self, hints):
         """
-        Converts the IsoSeq intron hints into groups of distinct intervals
+        Converts hints derived from IsoSeq BAMs into discrete clusters of transcript objects. Merges all alignment gaps
+        below 50bp and separates clusters over 100kb separated to avoid mega-transcripts for tandem gene families.
         """
-        lines = [x.split() for x in open(hints) if 'PB' in x]
-        groups = collections.defaultdict(set)
+        lines = [x.split() for x in open(hints) if 'PB' in x and '\texon\t' in x]
+        # group these exons by grp tag
+        groups = collections.defaultdict(list)
         for l in lines:
-            if l[2] != 'intron':
-                continue
             attrs = dict([x.split('=') for x in l[-1].split(';')])
             if 'grp' not in attrs:  # not all introns get confidently assigned a group
                 continue
-            groups[attrs['grp']].add(tools.intervals.ChromosomeInterval(l[0], int(l[3]) - 1, int(l[4]), '.'))
+            groups[attrs['grp']].append([l[0], int(l[3]) - 1, int(l[4])])
 
-        # isolate unique interval groups
-        intervals = {frozenset(intervals) for intervals in groups.itervalues()}
-        for i, interval_grp in enumerate(intervals):
-            for interval in sorted(interval_grp):
-                yield i, interval.chromosome, interval.start, interval.stop
+        # for each grp, perform clustering with 100kb distance to separate contigs as well as disjoint mappings
+        # to do this, we use the ClusterTree data structure from bx-python.
+        # we need one cluster-tree for every chromosome-grp combination
+        # the 1 after the 100000 says 'read depth of 1 is sufficient for output'
+        # see https://bcbio.wordpress.com/2009/04/29/finding-and-displaying-short-reads-clustered-in-the-genome/
+        cluster_trees = collections.defaultdict(lambda: collections.defaultdict(lambda: ClusterTree(100000, 1)))
+        # we also need to keep track of every interval for downstream processing
+        i = 0
+        interval_flat_list = []
+        for grp, intervals in groups.iteritems():
+            for chrom, start, stop in intervals:
+                interval_flat_list.append([chrom, start, stop])
+                cluster_trees[chrom][grp].insert(start, stop, i)
+                i += 1
+
+        # for each cluster, convert to a transcript object
+        txs = []
+        for chrom in cluster_trees:
+            for grp, cluster_tree in cluster_trees[chrom].iteritems():
+                for start, end, interval_indices in cluster_tree.getregions():
+                    intervals = [interval_flat_list[i] for i in interval_indices]
+                    intervals = {tools.intervals.ChromosomeInterval(chrom, start, stop, '.')
+                                 for chrom, start, stop in intervals}
+                    intervals = tools.intervals.gap_merge_intervals(intervals, 50)
+                    txs.append(tools.transcripts.intervals_to_bed(intervals, name=grp))
+
+        # convert these to a dataframe for sql output
+        txs = [x.get_bed() for x in txs]
+        df = pd.DataFrame(txs, columns=['chromosome', 'start', 'stop', 'name', 'score', 'strand', 'thickStart',
+                                        'thickStop', 'rgb', 'blockCount', 'blockSizes', 'blockStarts'])
+        return df
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
-        intron_args = IsoSeqIntronVectors.get_args(pipeline_args, self.genome)
+        intron_args = IsoSeqTranscripts.get_args(pipeline_args, self.genome)
         df = pd.DataFrame(self.construct_intervals(intron_args.hints_gff))
         df.columns = ['SequenceId', 'chromosome', 'start', 'stop']
         with tools.sqlite.ExclusiveSqlConnection(pipeline_args.dbs[self.genome]) as engine:
@@ -1890,7 +1919,7 @@ class ConsensusDriverTask(RebuildableTask):
         yield self.clone(FilterTransMap)
         if pipeline_args.augustus_pb:
             yield self.clone(AugustusPb)
-            yield self.clone(IsoSeqIntronVectors)
+            yield self.clone(IsoSeqTranscripts)
             yield self.clone(FindDenovoParents, mode='augPB')
         if pipeline_args.augustus_cgp:
             yield self.clone(AugustusCgp)
@@ -2116,12 +2145,12 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'evaluation.txt'),
                              tx_modes=tuple(tx_modes))
 
-            tm_args = TransMap.get_args(pipeline_args, self.genome)
+            filter_tm_args = FilterTransMap.get_args(pipeline_args, self.genome)
             yield self.clone(TransMapTrack, track_path=os.path.join(out_dir, 'transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'transmap.txt'))
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
-                             genepred_path=tm_args.tm_gp, label='Filtered transMap', visibility='hide')
+                             genepred_path=filter_tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide')
 
             if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),

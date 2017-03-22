@@ -4,10 +4,12 @@ chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
 import collections
 from itertools import izip
+from bx.intervals.cluster import ClusterTree
 
 from mathOps import find_closest, find_intervals
 from bio import reverse_complement, translate_sequence
-from fileOps import iter_lines
+from fileOps import iter_lines, print_row, TemporaryFilePath
+from procOps import call_proc_lines, run_proc
 from intervals import ChromosomeInterval
 
 __author__ = "Ian Fiddes"
@@ -625,3 +627,90 @@ def intervals_to_bed(intervals, name=None, score=0, rgb=0, thick_start=0, thick_
     i = intervals[0]
     return Transcript([i.chromosome, start, stop, name, score, i.strand, thick_start, thick_stop, rgb,
                        len(intervals), block_sizes, block_starts])
+
+
+def cluster_txs(txs):
+    """Uses a ClusterTree to cluster to cluster transcript objects"""
+    cluster_trees = collections.defaultdict(lambda: ClusterTree(0, 1))
+    for i, tx in enumerate(txs):
+        cluster_trees[tx.chromosome].insert(tx.start, tx.stop, i)
+    # convert the clusters to a nested structure of chrom -> cluster_id -> tx objects
+    clustered_reads = collections.defaultdict(dict)
+    cluster_id = 0
+    for chrom, cluster_tree in cluster_trees.iteritems():
+        for start, end, interval_indices in cluster_tree.getregions():
+            clustered_reads[chrom][cluster_id] = [txs[ix] for ix in interval_indices]
+            cluster_id += 1
+    return clustered_reads
+
+
+def divide_clusters(clustered_reads, ref_names):
+    """
+    Takes the output of cluster_txs and splits them into two groups based on having their name be in ref_names or not.
+
+    Returns a dict mapping cluster IDs to tuples of [ref_txs, non_ref_txs].
+
+    Discards any cluster that does not contain members of both ref and non-ref.
+
+    """
+    divided_clusters = {}
+    for chrom in clustered_reads:
+        for cluster_id, tx_list in clustered_reads[chrom].iteritems():
+            ref = [tx for tx in tx_list if tx.name in ref_names and len(tx.intron_intervals) > 0]
+            iso = [tx for tx in tx_list if tx.name not in ref_names and len(tx.intron_intervals) > 0]
+            if len(ref) > 0 and len(iso) > 0:
+                divided_clusters[cluster_id] = [ref, iso]
+    return divided_clusters
+
+
+def construct_start_stop_intervals(intron_intervals):
+    """Splits a iterable of intervals into two parallel tuples of 0bp intervals representing their start and stop"""
+    left_intervals = []
+    right_intervals = []
+    for i in intron_intervals:
+        left_intervals.append(ChromosomeInterval(i.chromosome, i.start, i.start, i.strand))
+        right_intervals.append(ChromosomeInterval(i.chromosome, i.stop, i.stop, i.strand))
+    return tuple(left_intervals), tuple(right_intervals)
+
+
+def find_subset_match(iso_intervals, enst_intervals, fuzz_distance):
+    """
+    Compares intervals produced by construct_start_stop_intervals to each other to find subset matches.
+    Used for fuzzy matching of IsoSeq transcripts (iso_intervals) to existing annotations (enst_intervals)
+    """
+    iso_l, iso_r = iso_intervals
+    enst_l, enst_r = enst_intervals
+    lm = False
+    for il in iso_l:
+        for el in enst_l:
+            if il.separation(el) <= fuzz_distance:
+                lm = True
+                break
+    lr = False
+    for ir in iso_r:
+        for er in enst_r:
+            if ir.separation(er) <= fuzz_distance:
+                lr = True
+                break
+    return lm and lr
+
+
+def calculate_subset_matches(divided_clusters, fuzz_distance=8):
+    """
+    A wrapper for find_subset_match that looks at every cluster of transcripts produced by divide_clusters and finds
+    a fuzzy match between any non-reference sequence and a reference sequence.
+
+    """
+    r = collections.defaultdict(list)
+    for cluster_id, (ensts, isos) in divided_clusters.iteritems():
+        enst_intervals = collections.defaultdict(list)
+        for tx in ensts:
+            enst_interval = construct_start_stop_intervals(tx.intron_intervals)
+            enst_intervals[tuple(enst_interval)].append(tx)
+        for iso in isos:
+            iso_intervals = construct_start_stop_intervals(iso.intron_intervals)
+            for enst_interval, enst_txs in enst_intervals.iteritems():
+                m = find_subset_match(iso_intervals, enst_interval, fuzz_distance)
+                if m:
+                    r[iso.name].extend(enst_txs)
+    return r

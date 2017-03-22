@@ -296,7 +296,7 @@ def generate_iso_seq_hints(job, bam_file_id, bai_file_id):
     job.fileStore.readGlobalFile(bai_file_id, bam_path + '.bai')
     pacbio_gff_path = tools.fileOps.get_tmp_toil_file()
     cmd = [['samtools', 'view', '-b', '-F', '4', bam_path],  # unmapped reads causes bamToPsl to crash
-           ['bamToPsl', '/dev/stdin', '/dev/stdout'],
+           ['bamToPsl', '-nohead', '/dev/stdin', '/dev/stdout'],
            ['sort', '-n', '-k', '16,16'],
            ['sort', '-s', '-k', '14,14'],
            ['perl', '-ne', '@f=split; print if ($f[0]>=100)'],

@@ -462,16 +462,6 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
                     s.ExonRnaSupportPercent >= denovo_exon_support and
                     len(tx.intron_intervals) >= denovo_num_introns)
 
-    def is_possible_paralog(s):
-        """if we have alternative gene IDs this is a possible paralog"""
-        return s.AlternativeGeneIds is not None
-
-    def is_poor_alignment(s):
-        """If we have no alternative GeneIds, but we have annotation support, this may be a poorly mapped gene"""
-        return bool(s.ExonAnnotSupportPercent == 0 and
-                    s.CdsAnnotSupportPercent == 0 and
-                    s.IntronAnnotSupportPercent == 0)
-
     # novel loci will have None in the AssignedGeneId field but may be non-None in the AlternativeGeneIds field
     for aln_id, df in denovo_df.groupby('AlignmentId'):
         s = df.iloc[0]
@@ -488,17 +478,18 @@ def find_novel_transcripts(denovo_df, tx_dict, denovo_num_introns, denovo_splice
                 continue
             d = {'gene_biotype': 'unknown_likely_coding', 'transcript_biotype': 'unknown_likely_coding',
                  'alignment_id': aln_id}
-            # if we have alternatives, this is not novel but could be a gene family expansion
+            # if we previously flagged this as ambiguousOrFusion, proapagate this tag
             if s.ResolutionMethod == 'ambiguousOrFusion':
                 d['transcript_class'] = 'possible_fusion'
                 metrics['denovo'][tx_mode]['Possible fusion'] += 1
-            if is_possible_paralog(s):
+            # if we have alternatives, this is not novel but could be a gene family expansion
+            elif s.AlternativeGeneIds is not None:
                 d['transcript_class'] = 'possible_paralog'
                 metrics['denovo'][tx_mode]['Possible paralog'] += 1
                 metrics['Transcript Modes'][tx_mode] += 1
             # if we have no alternatives assigned, but we have any sign of mapped over annotations,
             # this may be a poor mapping
-            elif is_poor_alignment(s):
+            elif bool(s.ExonAnnotSupportPercent > 0 or s.CdsAnnotSupportPercent > 0 or s.IntronAnnotSupportPercent > 0):
                 d['transcript_class'] = 'poor_alignment'
                 metrics['denovo'][tx_mode]['Poor alignment'] += 1
                 metrics['Transcript Modes'][tx_mode] += 1
@@ -523,17 +514,22 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
     """
     Tag transcripts as having PacBio support.
     If users passed the --require-pacbio-support, remove any transcript which does not have support.
-
-    TODO: consider doing fuzzy matching due to noisy nature of PacBio reads.
     """
-    pb_intervals = tools.sqlInterface.load_pb_intron_intervals(db_path)
+    iso_txs = tools.sqlInterface.load_isoseq_txs(db_path)
+    tx_ids, _ = zip(*deduplicated_strand_resolved_consensus)
+    txs = [tx_dict[tx_id] for tx_id in tx_ids]
+    clustered = tools.transcripts.cluster_txs(txs + iso_txs)
+    divided_clusters = tools.transcripts.divide_clusters(clustered, tx_ids)
+    subset_matches = tools.transcripts.calculate_subset_matches(divided_clusters)
+    # invert the subset_matches to extract all validated tx_ids
+    validated_ids = set()
+    for tx_list in subset_matches.itervalues():
+        for tx in tx_list:
+            validated_ids.add(tx.name)
+    # begin resolving
     pb_resolved_consensus = []
     for tx_id, d in deduplicated_strand_resolved_consensus:
-        tx = tx_dict[tx_id]
-        # remove strand information from the existing intervals
-        intervals = frozenset([tools.intervals.ChromosomeInterval(i.chromosome, i.start, i.stop, '.')
-                               for i in tx.intron_intervals])
-        if intervals in pb_intervals:
+        if tx_id in validated_ids:
             d['pacbio_isoform_supported'] = True
             metrics['IsoSeq Transcript Validation'][True] += 1
             pb_resolved_consensus.append([tx_id, d])

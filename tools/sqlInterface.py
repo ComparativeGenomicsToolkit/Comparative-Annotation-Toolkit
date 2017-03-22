@@ -2,7 +2,7 @@
 Functions to interface with the sqlite databases produced by various steps of the annotation pipeline
 """
 import intervals
-import collections
+import transcripts
 
 import pandas as pd
 from sqlalchemy import Column, Integer, Text, Float, Boolean, func, create_engine
@@ -30,9 +30,8 @@ class Annotation(Base):
     StopCodon = Column(Boolean)
 
 
-class EvaluationColumns(object):
-    """Mixin class for all TranscriptEvaluation module tables. Represents a bed12 with a leading ID column"""
-    AlignmentId = Column(Text, primary_key=True)
+class Bed12(object):
+    """General table description for storing BED12 features"""
     chromosome = Column(Text)
     start = Column(Integer)
     stop = Column(Integer)
@@ -45,6 +44,11 @@ class EvaluationColumns(object):
     blockCount = Column(Integer)
     blockSizes = Column(Text)
     blockStarts = Column(Text)
+
+
+class EvaluationColumns(Bed12):
+    """Mixin class for all TranscriptEvaluation module tables. Represents a bed12 with a leading ID column"""
+    AlignmentId = Column(Text, primary_key=True)
 
 
 class MrnaTmEval(EvaluationColumns, Base):
@@ -202,14 +206,10 @@ class AugPbAlternativeGenes(AlternativeGeneIdColumns, Base):
     __tablename__ = 'augPB_AlternativeGenes'
 
 
-class IsoSeqIntronIntervals(Base):
-    """Table for recording all distinct intron vectors present in a IsoSeq hints file"""
-    __tablename__ = 'augPB_IntronIntervals'
+class IsoSeqExonStructures(Bed12, Base):
+    """Table for recording all distinct exon structures present in a IsoSeq hints file"""
+    __tablename__ = 'IsoSeqExonStructures'
     index = Column(Integer, primary_key=True)
-    SequenceId = Column(Integer)
-    chromosome = Column(Text)
-    start = Column(Integer)
-    stop = Column(Integer)
 
 
 ###
@@ -379,24 +379,19 @@ def load_tm_fit(db_path, biotype='protein_coding'):
     session = start_session(db_path)
     query = session.query(TmFit.IdentityCutoff).filter(TmFit.TranscriptBiotype == biotype)
     r = query.one()[0]
-    return r if r is not None else 0   # handle case where we had no coding paralogs
+    return r if r is not None else 0   # handle case where we unable to find a model fit, allow everything to pass
 
 
-def load_pb_intron_intervals(db_path):
+def load_isoseq_txs(db_path):
     """
-    Loads the table augPB_IntronIntervals, constructing actual ChromosomeInterval objects.
+    Loads the table IsoSeqExonStructures, constructing actual ChromosomeInterval objects.
     :param db_path: path to genome db
-    :return: Set of frozensets which contain intervals.
+    :return: list of Transcript objects
     """
-    def convert_chrom_interval(s):
-        return intervals.ChromosomeInterval(s.chromosome, s.start, s.stop, '.')
-
     engine = create_engine('sqlite:///' + db_path)
-    df = pd.read_sql_table(IsoSeqIntronIntervals.__tablename__, engine, index_col='index')
-    pb_intervals = set()
-    for s_id, d in df.groupby('SequenceId'):
-        pb_intervals.add(frozenset([convert_chrom_interval(s) for _, s in d.iterrows()]))
-    return pb_intervals
+    df = pd.read_sql_table(IsoSeqExonStructures.__tablename__, engine, index_col='index')
+    txs = [transcripts.Transcript(list(s)) for _, s in df.iterrows()]
+    return txs
 
 
 def load_evaluation(table, session):
