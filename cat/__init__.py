@@ -1253,15 +1253,14 @@ class AugustusCgp(ToilTask):
     @staticmethod
     def get_args(pipeline_args):
         # add reference to the target genomes
-        tgt_genomes = list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]
-        fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome).fasta for genome in tgt_genomes}
+        fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome).fasta for genome in pipeline_args.hal_genomes}
         base_dir = os.path.join(pipeline_args.work_dir, 'augustus_cgp')
         # output
-        output_gp_files = {genome: os.path.join(base_dir, genome + '.augCGP.gp') for genome in tgt_genomes}
-        output_gtf_files = {genome: os.path.join(base_dir, genome + '.augCGP.gtf') for genome in tgt_genomes}
-        raw_output_gtf_files = {genome: os.path.join(base_dir, genome + '.raw.augCGP.gtf') for genome in tgt_genomes}
+        output_gp_files = {genome: os.path.join(base_dir, genome + '.augCGP.gp') for genome in pipeline_args.hal_genomes}
+        output_gtf_files = {genome: os.path.join(base_dir, genome + '.augCGP.gtf') for genome in pipeline_args.hal_genomes}
+        raw_output_gtf_files = {genome: os.path.join(base_dir, genome + '.raw.augCGP.gtf') for genome in pipeline_args.hal_genomes}
         args = tools.misc.HashableNamespace()
-        args.genomes = tgt_genomes
+        args.genomes = pipeline_args.hal_genomes
         args.fasta_files = fasta_files
         args.hal = pipeline_args.hal
         args.ref_genome = pipeline_args.ref_genome
@@ -1678,7 +1677,6 @@ class IsoSeqTranscriptsDriverTask(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         intron_args = IsoSeqTranscripts.get_args(pipeline_args, self.genome)
         df = pd.DataFrame(self.construct_intervals(intron_args.hints_gff))
-        df.columns = ['SequenceId', 'chromosome', 'start', 'stop']
         with tools.sqlite.ExclusiveSqlConnection(pipeline_args.dbs[self.genome]) as engine:
             df.to_sql(self.tablename, engine, if_exists='replace')
         self.output().touch()
