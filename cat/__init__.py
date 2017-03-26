@@ -710,7 +710,7 @@ class Gff3ToAttrs(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         results = tools.gff3.extract_attrs(pipeline_args.annotation)
         self.validate(pipeline_args, results)
-        if 'protein_coding' not in results.TranscriptBiotype[1] or 'protein_coding' not in results.GeneBiotype[1]:
+        if 'protein_coding' not in list(results.TranscriptBiotype) or 'protein_coding' not in list(results.GeneBiotype):
             logger.warning('No protein_coding annotations found!')
         database = pipeline_args.dbs[pipeline_args.ref_genome]
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
@@ -1446,12 +1446,15 @@ class FindDenovoParents(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         denovo_args = FindDenovoParents.get_args(pipeline_args, self.mode)
         for genome in denovo_args.gps:
-            yield self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
+            if genome in pipeline_args.target_genomes:
+                yield self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
         denovo_args = FindDenovoParents.get_args(pipeline_args, self.mode)
         for genome, denovo_gp in denovo_args.gps.iteritems():
+            if genome not in pipeline_args.target_genomes:
+                continue
             table_target = self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
             filtered_tm_gp = denovo_args.filtered_tm_gps[genome]
             unfiltered_tm_gp = denovo_args.unfiltered_tm_gps[genome]
