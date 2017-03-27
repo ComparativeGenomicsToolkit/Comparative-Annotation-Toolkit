@@ -166,7 +166,7 @@ def merge(job, results, args):
     results_file_ids = {}
     for gp_category, result_list in results.iteritems():
         tmp_results_file = tools.fileOps.get_tmp_toil_file()
-        with tools.fileOps.opengz(tmp_results_file, 'w') as outf:
+        with open(tmp_results_file, 'w') as outf:
             for line in itertools.chain.from_iterable(result_list):  # results is list of lists
                 if line is not None:
                     outf.write(line + '\n')

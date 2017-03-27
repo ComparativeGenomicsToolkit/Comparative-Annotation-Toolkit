@@ -2120,7 +2120,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             return
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
-        if pipeline_args.augustus_cgp is True:
+        if pipeline_args.augustus_cgp is True and self.genome in pipeline_args.target_genomes:
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_cgp.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_cgp.txt'), mode='augCGP')
         if pipeline_args.augustus_pb is True and self.genome in pipeline_args.isoseq_genomes:
