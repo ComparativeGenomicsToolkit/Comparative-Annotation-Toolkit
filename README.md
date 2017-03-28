@@ -189,6 +189,8 @@ CAT relies on a proper GFF3 file from the reference. One very important part of 
 
 If you are downloading a GFF3 from Ensembl, you will need to run it through the script `scripts/convert_ensembl_gff3.py` to make the feature tags consistent across biotypes. The mouse/human GFF3 from GENCODE should work out of the box. A script is also included to convert NCBI-format GFF3.
 
+If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes. If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR $gff > $gff.fixed`
+
 # Execution modes
 
 The default mode of this pipeline will perform the following tasks:
