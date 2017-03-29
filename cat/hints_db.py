@@ -149,9 +149,9 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
     ns_handle = pysam.Samfile(name_sorted)
     filtered_file_ids = []
     r = []
-    for i, (qname, reads) in enumerate(itertools.groupby(ns_handle, lambda x: x.qname)):
+    for qname, reads in itertools.groupby(ns_handle, lambda x: x.qname):
         r.extend(list(reads))
-        if i != 0 and i % num_reads == 0:
+        if len(r) >= num_reads:
             file_id = write_bam(r, ns_handle)
             j = job.addChildJobFn(filter_bam, file_id, is_paired, disk='4G', memory='2G')
             filtered_file_ids.append(j.rv())
