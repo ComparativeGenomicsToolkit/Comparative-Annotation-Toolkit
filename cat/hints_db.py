@@ -213,7 +213,6 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
                 disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
                 merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk=disk_usage,
                                                                           memory='16G', cores=4).rv()
-    assert len(merged_bam_file_ids['BAM']) + len(merged_bam_file_ids['INTRONBAM']) > 0
     return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids).rv()
 
 

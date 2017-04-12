@@ -146,12 +146,14 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     # extract all exonpart hints from the database
     speciesnames, seqnames, hints, featuretypes, session = tools.hintsDatabaseInterface.reflect_hints_db(hints_db)
     hints_file = tools.fileOps.get_tmp_file()
+    # there is a weird bug in sqlalchemy where sometimes empty genomes hang indefinitely.
+    # Either way, we don't want to attempt to extract exon hints from genomes without exon (wiggle) hints anyways
+    if tools.hintsDatabaseInterface.genome_has_no_wiggle_hints(hints_db, genome):
+        return []
     with open(hints_file, 'w') as outf_h:
         wiggle_iter = tools.hintsDatabaseInterface.get_wiggle_hints(genome, speciesnames, seqnames, hints, session)
         for seqname, start, end, score in wiggle_iter:
             outf_h.write('\t'.join(map(str, [seqname, start, end, score])) + '\n')
-    if os.path.getsize(hints_file) == 0:  # no wiggle hints
-        return []
     # merge exonpart hints, averaging the coverage
     merged_hints_file = tools.fileOps.get_tmp_file()
     cmd = ['bedtools', 'merge', '-i', hints_file, '-c', '4', '-o', 'mean']

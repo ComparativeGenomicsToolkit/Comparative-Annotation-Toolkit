@@ -8,8 +8,7 @@ from bx.intervals.cluster import ClusterTree
 
 from mathOps import find_closest, find_intervals
 from bio import reverse_complement, translate_sequence
-from fileOps import iter_lines, print_row, TemporaryFilePath
-from procOps import call_proc_lines, run_proc
+from fileOps import iter_lines
 from intervals import ChromosomeInterval
 
 __author__ = "Ian Fiddes"

@@ -181,7 +181,8 @@ class PipelineTask(luigi.Task):
         args.set('annotation_genomes', frozenset(set(args.cfg['ANNOTATION'].keys())), True)
         args.set('modes', self.get_modes(args), True)
         args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
-        self.validate_cfg(args)
+        if self.__class__.__name__ in ['RunCat', 'Augustus', 'AugustusCgp', 'AugustusPb']:
+            self.validate_cfg(args)
 
         # calculate the number of cores a hgm run should use
         # this is sort of a hack, but the reality is that halLiftover uses a fraction of a CPU most of the time
