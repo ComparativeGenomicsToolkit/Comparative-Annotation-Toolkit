@@ -882,8 +882,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     def generate_transcript_record(chrom, tx_obj, attrs):
         """generates transcript records, calls generate_exon_records to generate those too"""
         tx_id = tx_obj.name
-        gene_id = tx_obj.name2
-        attrs['Parent'] = gene_id
+        attrs['Parent'] = attrs['gene_id']
         score, attrs_field = convert_attrs(attrs, tx_id)
         yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop, score, tx_obj.strand, '.', attrs_field]
         # hack to remove the frameshift field from lower objects
