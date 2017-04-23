@@ -941,7 +941,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     with consensus_gff3.open('w') as out_gff3:
         out_gff3.write('##gff-version 3\n')
         for chrom in sorted(consensus_gene_dict):
-            out_gff3.write('###sequence-region {}\n'.format(chrom))
+            #out_gff3.write('###sequence-region {}\n'.format(chrom))
             for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
                 tx_objs, attrs_list = zip(*tx_list)
                 tx_lines = [generate_gene_record(chrom, tx_objs, gene_id, attrs_list)]

@@ -2366,6 +2366,8 @@ class ConsensusTrack(TrackTask):
         consensus_args = Consensus.get_args(pipeline_args, self.genome)
         consensus_gp_info = pd.read_csv(consensus_args.consensus_gp_info, sep='\t',
                                         header=0, na_filter=False).set_index('transcript_id')
+
+        has_rnaseq = len(pipeline_args.rnaseq_genomes) > 0
         has_pb = 'pacbio_isoform_supported' in consensus_gp_info.columns
 
         tmp_gp = luigi.LocalTarget(is_tmp=True)
@@ -2381,15 +2383,16 @@ class ConsensusTrack(TrackTask):
                        info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts, info.failed_gene,
-                       info.frameshift, info.exon_rna_support, info.exon_annotation_support,
-                       info.intron_annotation_support, info.intron_rna_support, info.transcript_class,
-                       info.transcript_modes]
+                       info.frameshift, info.exon_annotation_support,
+                       info.intron_annotation_support, info.transcript_class, info.transcript_modes]
+                if has_rnaseq:
+                    row.extend([info.intron_rna_support, info.exon_rna_support])
                 if has_pb:
                     row.append(info.pacbio_isoform_supported)
                 tools.fileOps.print_row(outf, row)
 
         with as_file.open('w') as outf:
-            as_str = construct_consensus_gp_as(has_pb)
+            as_str = construct_consensus_gp_as(has_rnaseq, has_pb)
             outf.write(as_str)
         tools.procOps.run_proc(['bedSort', tmp_gp.path, tmp_gp.path])
 
@@ -2669,7 +2672,7 @@ def construct_org_str(genomes):
     return ' '.join(['{0}={0}'.format(genome) for genome in genomes])
 
 
-def construct_consensus_gp_as(has_pb):
+def construct_consensus_gp_as(has_rna, has_pb):
     """Dynamically generate an autosql file for consensus"""
     consensus_gp_as = '''table bigCat
 "bigCat gene models"
@@ -2701,12 +2704,13 @@ def construct_consensus_gp_as(has_pb):
     string failedGene;   "Did this gene fail the identity cutoff?"
     string frameshift;  "Frameshifted relative to source?"
     lstring exonAnnotationSupport;   "Exon support in reference annotation"
-    lstring exonRnaSupport;  "RNA exon support"
     lstring intronAnnotationSupport;   "Intron support in reference annotation"
-    lstring intronRnaSupport;   "RNA intron support"
     string transcriptClass;    "Transcript class"
     string transcriptModes;    "Transcript mode(s)"
 '''
+    if has_rna:
+        consensus_gp_as += '    lstring intronRnaSupport;   "RNA intron support"\n'
+        consensus_gp_as += '    lstring exonRnaSupport;  "RNA exon support"\n'
     if has_pb:
         consensus_gp_as += '    string pbIsoformSupported;   "Is this transcript supported by IsoSeq?"'
     consensus_gp_as += '\n)\n'
