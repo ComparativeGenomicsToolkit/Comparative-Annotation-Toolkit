@@ -190,13 +190,15 @@ def in_frame_stop(tx, fasta):
     :param fasta: pyfasta Fasta object mapping the genome fasta for this analysis
     :return: A ChromosomeInterval object if an in frame stop was found otherwise None
     """
-    seq = tx.get_cds(fasta)
+    seq = tx.get_cds(fasta, in_frame=True)
     for pos, codon in tools.bio.read_codons_with_position(seq):
         if tools.bio.translate_sequence(codon) == '*':
-            start = tx.cds_coordinate_to_chromosome(pos)
-            stop = tx.cds_coordinate_to_chromosome(pos + 3)
-            if tx.strand == '-':
-                start, stop = stop, start
+            if tx.strand == '+':
+                start = tx.cds_coordinate_to_chromosome(pos) + tx.offset
+                stop = tx.cds_coordinate_to_chromosome(pos + 3) + tx.offset
+            else:
+                stop = tx.cds_coordinate_to_chromosome(pos) - tx.offset + 1
+                start = tx.cds_coordinate_to_chromosome(pos + 3) - tx.offset + 1
             new_bed = tx.get_bed(new_start=start, new_stop=stop, rgb='135,78,191', name='InFrameStop')
             return [tx.name] + new_bed
     return None
