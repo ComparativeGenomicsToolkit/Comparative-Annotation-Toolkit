@@ -662,35 +662,28 @@ def divide_clusters(clustered_reads, ref_names):
     return divided_clusters
 
 
-def construct_start_stop_intervals(intron_intervals):
+def construct_start_stop_intervals(intron_intervals, d):
     """Splits a iterable of intervals into two parallel tuples of 0bp intervals representing their start and stop"""
     left_intervals = []
     right_intervals = []
     for i in intron_intervals:
-        left_intervals.append(ChromosomeInterval(i.chromosome, i.start, i.start, i.strand))
-        right_intervals.append(ChromosomeInterval(i.chromosome, i.stop, i.stop, i.strand))
+        left_intervals.append(ChromosomeInterval(i.chromosome, i.start - d, i.start + d, i.strand))
+        right_intervals.append(ChromosomeInterval(i.chromosome, i.stop - d, i.stop + d, i.strand))
     return tuple(left_intervals), tuple(right_intervals)
 
 
-def find_subset_match(iso_intervals, enst_intervals, fuzz_distance):
+def find_subset_match(iso_intervals, enst_intervals):
     """
     Compares intervals produced by construct_start_stop_intervals to each other to find subset matches.
     Used for fuzzy matching of IsoSeq transcripts (iso_intervals) to existing annotations (enst_intervals)
     """
     iso_l, iso_r = iso_intervals
     enst_l, enst_r = enst_intervals
-    lm = False
-    for il in iso_l:
-        for el in enst_l:
-            if il.separation(el) <= fuzz_distance:
-                lm = True
-                break
-    lr = False
-    for ir in iso_r:
-        for er in enst_r:
-            if ir.separation(er) <= fuzz_distance:
-                lr = True
-                break
+    # if we have fewer reference junctions than isoseq, we can't have a subset match by definition
+    if len(iso_l) > len(enst_l):
+        return False
+    lm = all([any([il.overlap(el) for el in enst_l]) for il in iso_l])
+    lr = all([any([ir.overlap(er) for er in enst_r]) for ir in iso_r])
     return lm and lr
 
 
@@ -704,12 +697,12 @@ def calculate_subset_matches(divided_clusters, fuzz_distance=8):
     for cluster_id, (ensts, isos) in divided_clusters.iteritems():
         enst_intervals = collections.defaultdict(list)
         for tx in ensts:
-            enst_interval = construct_start_stop_intervals(tx.intron_intervals)
+            enst_interval = construct_start_stop_intervals(tx.intron_intervals, fuzz_distance)
             enst_intervals[tuple(enst_interval)].append(tx)
         for iso in isos:
-            iso_intervals = construct_start_stop_intervals(iso.intron_intervals)
+            iso_intervals = construct_start_stop_intervals(iso.intron_intervals, fuzz_distance)
             for enst_interval, enst_txs in enst_intervals.iteritems():
-                m = find_subset_match(iso_intervals, enst_interval, fuzz_distance)
+                m = find_subset_match(iso_intervals, enst_interval)
                 if m:
                     r[iso.name].extend(enst_txs)
     return r
