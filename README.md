@@ -100,6 +100,8 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--maf-overlap`: How much overlap to use in HAL chunks. Larger values increase redundant predictions (which are merged). Default is 500000. 
 
+`--cgp_-train-num-exons`: Number of exons to require in the alignment subset used for training CGP. See the [AugustusCGP section](#augustuscgp).
+
 ## AugustusPB options
 
 `--augustus-pb`: Run AugustusPB? Will only run on genomes with IsoSeq data in the config file.
@@ -210,10 +212,10 @@ The primary parameterization of `augustus` for comparative annotation is primari
 ## AugustusCGP
 `augustusCGP` is the comparative mode of `augustus` recently introduced by [Stefanie Köneig](https://academic.oup.com/bioinformatics/article/32/22/3388/2525611/Simultaneous-gene-finding-in-multiple-genomes). This mode of `augustus` takes as input a HAL format multiple whole genome alignment and simultaneously produces *de-novo* transcript predictions in all genomes, taking into account conservation as well as any extrinsic information provided. `AugustusCGP` allows for the introduction of novel isoforms and loci in the final gene sets.
 
-`AugustusCGP` can be ran by providing the `--augustus-cgp` flag to the pipeline. If you wish to run `AugustusCGP`, you will likely want to train the underlying model, or the results will be poor. The guide to comparative augustus can be found [here](http://bioinf.uni-greifswald.de/augustus/binaries/tutorial-cgp/). A default parameter set is included. New parameter sets can be incorporated using the `--cgp-param` flag.
+`AugustusCGP` can be ran by providing the `--augustus-cgp` flag to the pipeline. If no previously trained model is provided to `AugustusCGP` via the `--cgp-param` flag, then the pipeline will automatically train the model using the given alignment. To do so, random subsets of the alignment will be extracted until `--cgp-train-num-exons` exons are included. In practice, for vertebrate genomes, a few thousand exons corresponding to a few megabases of sequence are sufficient. If your genomes are more dense, this may vary. The trained model will be written to the `AugustusCGP` working directory, and can be used again on alignments with similar genomes.
 
 ## AugustusPB
-`AugustsPB` is a parameterization of `augustus` to try and predict alternative isoforms using long range data. If any IsoSeq data are provided in the config file, and the `--augustus-pb` flag is set, the genomes with IsoSeq data will be run through and the results incorporated in the final gene set. `AugustusPB` runs on single whole genomes.
+`AugustusPB` is a parameterization of `augustus` to try and predict alternative isoforms using long range data. If any IsoSeq data are provided in the config file, and the `--augustus-pb` flag is set, the genomes with IsoSeq data will be run through and the results incorporated in the final gene set. `AugustusPB` runs on single whole genomes.
 
 
 # Modules
