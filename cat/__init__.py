@@ -74,6 +74,7 @@ class PipelineTask(luigi.Task):
     out_dir = luigi.Parameter(default='./cat_output')
     work_dir = luigi.Parameter(default='./cat_work')
     target_genomes = luigi.TupleParameter(default=None)
+    annotate_ancestors = luigi.BoolParameter(default=False)
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human', significant=False)
@@ -81,10 +82,11 @@ class PipelineTask(luigi.Task):
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
     # AugustusCGP parameters
     augustus_cgp = luigi.BoolParameter(default=False)
-    cgp_param = luigi.Parameter(default='augustus_cfgs/log_reg_parameters_default.cfg', significant=False)
+    cgp_param = luigi.Parameter(default=None, significant=False)
     augustus_cgp_cfg_template = luigi.Parameter(default='augustus_cfgs/cgp_extrinsic_template.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
+    cgp_train_num_exons = luigi.IntParameter(default=2000, significant=False)
     # AugustusPB parameters
     augustus_pb = luigi.BoolParameter(default=False)
     pb_genome_chunksize = luigi.IntParameter(default=5000000, significant=False)
@@ -145,7 +147,11 @@ class PipelineTask(luigi.Task):
         args.set('pb_cfg', os.path.abspath(self.pb_cfg), True)
         args.set('resolve_split_genes', self.resolve_split_genes, True)
         args.set('augustus_cgp_cfg_template', os.path.abspath(self.augustus_cgp_cfg_template), True)
-        args.set('cgp_param', os.path.abspath(self.cgp_param), True)
+        if self.cgp_param is not None:
+            args.set('cgp_param', os.path.abspath(self.cgp_param), True)
+        else:
+            args.set('cgp_param', None, True)
+        args.set('cgp_train_num_exons', self.cgp_train_num_exons, True)
         
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
@@ -164,7 +170,9 @@ class PipelineTask(luigi.Task):
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
 
-        args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal)), True)
+        # flags for figuring out which genomes we are going to annotate
+        args.set('annotate_ancestors', self.annotate_ancestors, True)
+        args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal, self.annotate_ancestors)), True)
         if self.target_genomes is None:
             args.set('target_genomes', tuple(set(args.hal_genomes) - {self.ref_genome}), True)
         else:
@@ -1253,15 +1261,17 @@ class AugustusCgp(ToilTask):
     """
     @staticmethod
     def get_args(pipeline_args):
-        # add reference to the target genomes
-        fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome).fasta for genome in pipeline_args.hal_genomes}
+        # CGP doesn't work on ancestral genomes. Remove them.
+        leaf_genomes = tools.hal.extract_genomes(pipeline_args.hal, False)
+        genomes = [x for x in pipeline_args.hal_genomes if x in leaf_genomes]
+        fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome).fasta for genome in genomes}
         base_dir = os.path.join(pipeline_args.work_dir, 'augustus_cgp')
         # output
-        output_gp_files = {genome: os.path.join(base_dir, genome + '.augCGP.gp') for genome in pipeline_args.hal_genomes}
-        output_gtf_files = {genome: os.path.join(base_dir, genome + '.augCGP.gtf') for genome in pipeline_args.hal_genomes}
-        raw_output_gtf_files = {genome: os.path.join(base_dir, genome + '.raw.augCGP.gtf') for genome in pipeline_args.hal_genomes}
+        output_gp_files = {genome: os.path.join(base_dir, genome + '.augCGP.gp') for genome in genomes}
+        output_gtf_files = {genome: os.path.join(base_dir, genome + '.augCGP.gtf') for genome in genomes}
+        raw_output_gtf_files = {genome: os.path.join(base_dir, genome + '.raw.augCGP.gtf') for genome in genomes}
         args = tools.misc.HashableNamespace()
-        args.genomes = pipeline_args.hal_genomes
+        args.genomes = genomes
         args.fasta_files = fasta_files
         args.hal = pipeline_args.hal
         args.ref_genome = pipeline_args.ref_genome
@@ -1273,8 +1283,12 @@ class AugustusCgp(ToilTask):
         args.chunksize = pipeline_args.maf_chunksize
         args.overlap = pipeline_args.maf_overlap
         args.cgp_param = pipeline_args.cgp_param
+        if args.cgp_param is None:
+            args.param_out_path = os.path.join(base_dir, 'trained_parameters.cfg')
+        args.num_exons = pipeline_args.cgp_train_num_exons
         args.hints_db = pipeline_args.hints_db
         args.query_sizes = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
+        args.gtf = ReferenceFiles.get_args(pipeline_args).annotation_gtf
         return args
 
     def output(self):

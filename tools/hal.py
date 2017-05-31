@@ -24,13 +24,17 @@ def build_genome_order(hal, ref_genome, genome_subset=None):
     return ordered_names
 
 
-def extract_genomes(hal):
+def extract_genomes(hal, include_ancestors=False):
     """
     Constructs a set of genomes present in this alignment
     :param hal: HAL file.
+    :param include_ancestors: Should we also extract ancestral genomes?
     :return: list of genomes.
     """
     cmd = ['halStats', '--tree', hal]
     newick = call_proc_lines(cmd)[0]
     t = ete3.Tree(newick, format=1)
-    return t.get_leaf_names()
+    if include_ancestors is True:
+        return [x.name for x in t.get_descendants()]
+    else:
+        return t.get_leaf_names()

@@ -11,8 +11,10 @@
 """
 
 import argparse
+import sqlalchemy
 import os
 import collections
+import random
 
 from toil.fileStore import FileID
 from toil.common import Toil
@@ -26,6 +28,7 @@ import tools.intervals
 import tools.procOps
 import tools.sqlInterface
 import tools.transcripts
+import tools.hintsDatabaseInterface
 
 
 def augustus_cgp(args, toil_options):
@@ -41,14 +44,19 @@ def augustus_cgp(args, toil_options):
             input_file_ids.hal = FileID.forPath(t.importFile('file://' + args.hal), args.hal)
             input_file_ids.chrom_sizes = FileID.forPath(t.importFile('file://' + args.query_sizes), args.query_sizes)
             input_file_ids.hints_db = FileID.forPath(t.importFile('file://' + args.hints_db), args.hints_db)
-            input_file_ids.cgp_param = FileID.forPath(t.importFile('file://' + args.cgp_param), args.cgp_param)
+            if args.cgp_param is not None:
+                input_file_ids.cgp_param = FileID.forPath(t.importFile('file://' + args.cgp_param), args.cgp_param)
+            else:
+                input_file_ids.cgp_param = None
+                input_file_ids.gtf = FileID.forPath(t.importFile('file://' + args.gtf), args.gtf)
             input_file_ids.cgp_cfg = FileID.forPath(t.importFile('file://' + args.cgp_cfg), args.cgp_cfg)
             input_file_ids.fasta = {genome: FileID.forPath(t.importFile('file://' + fasta), fasta)
                                     for genome, fasta in args.fasta_files.iteritems()}
-            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk='2G')
-            results, stdout_file_ids = t.start(job)
+            du = tools.toilInterface.find_total_disk_usage([input_file_ids.hints_db], buffer='4G')
+            job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk=du)
+            results, stdout_file_ids, param_file_id = t.start(job)
         else:
-            results, stdout_file_ids = t.restart()
+            results, stdout_file_ids, param_file_id = t.restart()
         tools.fileOps.ensure_file_dir(args.stdout_file)
         with open(args.stdout_file, 'w') as outf, tools.fileOps.TemporaryFilePath() as tmp:
             for (chrom, start, chunksize), stdout_file in stdout_file_ids.iteritems():
@@ -61,47 +69,126 @@ def augustus_cgp(args, toil_options):
             t.exportFile(raw_gtf_file_id, 'file://' + args.augustus_cgp_raw_gtf[genome])
             t.exportFile(joined_gtf_file_id, 'file://' + args.augustus_cgp_gtf[genome])
             t.exportFile(joined_gp_file_id, 'file://' + args.augustus_cgp_gp[genome])
+        if args.cgp_param is None:
+            t.exportFile(param_file_id, 'file://' + args.param_out_path)
 
 
 def setup(job, args, input_file_ids):
     """
-    Entry function for running AugustusCGP.
-    HAL alignment is converted to MAF format and splitted into overlapping
+    Entry function for running AugustusCGP. Will first determine if we need to perform training, and do so.
+    HAL alignment is converted to MAF format and split into overlapping
     alignment chunks for parallel computing. Each alignment chunk is one child process.
     Gene predictions on alignment chunks are subsequently merged into one gff for each species.
     For merging of the gene sets, the auxiliary tool 'joingenes' from the Augustus tool package is used.
     """
     # create a file with the phylogenetic tree in NEWICK format
-    tree = writeTree(job, input_file_ids)
+    tree = write_tree(job, input_file_ids)
 
-    # results holds Promise objects
-    # each Promise object will resolve to a tuple of gff_chunk_dict, stdout_file_id
-    # cgp_job.rv():  key: genome, value: file handle to gff
-    results = []
+    # construct all MAF chunks
+    chrom_sizes = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
+    # 4G buffer for MAF chunk, should be more than enough (famous last words)
+    hal2maf_usage = tools.toilInterface.find_total_disk_usage(input_file_ids.hal)
 
     # TODO: do not split within genic regions of the reference genome
-    chrom_sizes = job.fileStore.readGlobalFile(input_file_ids.chrom_sizes)
-    hal2maf_usage = tools.toilInterface.find_total_disk_usage(input_file_ids.hal)
-    # 4G buffer for MAF chunk, should be more than enough (famous last words)
-    cgp_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.fasta, input_file_ids.hints_db], buffer='4G')
-
+    maf_chunks = []  # list of lists [chrom, start, chunksize, fileID]
     for chrom, chrom_size in tools.fileOps.iter_lines(chrom_sizes):
         chrom_size = int(chrom_size)
         for start in xrange(0, chrom_size, args.chunksize - args.overlap):
             chunksize = args.chunksize if start + args.chunksize <= chrom_size else chrom_size - start
             j = job.addChildJobFn(hal2maf, input_file_ids, args.ref_genome, chrom, start, chunksize, memory='8G',
                                   disk=hal2maf_usage)
-            maf_chunk = j.rv()
-            # run AugustusCGP on alignment chunk
-            cgp_job = j.addFollowOnJobFn(cgp, tree, maf_chunk, args, input_file_ids, memory='8G', disk=cgp_usage)
-            results.append([chrom, start, chunksize, cgp_job.rv()])
+            maf_chunks.append([chrom, start, chunksize, j.rv()])
+
+    # if we have no params, time to train
+    if input_file_ids.cgp_param is None:
+        du = tools.toilInterface.find_total_disk_usage([input_file_ids.hints_db], buffer='40G')
+        results = job.addFollowOnJobFn(train_cgp, maf_chunks, tree, args, input_file_ids, disk=du).rv()
+    else:
+        results = job.addFollowOnJobFn(cgp_wrapper, maf_chunks, tree, args, input_file_ids, disk='4G').rv()
+    return results
+
+
+def train_cgp(job, maf_chunks, tree, args, input_file_ids):
+    """
+    Trains CGP on a subset of alignments.
+    :param maf_chunks: List of lists [chrom, start, chunksize, fileID]
+    :param tree: fileID for tree from write_tree()
+    :param args: input arguments
+    :param input_file_ids: input file IDs
+    :return: output of merge_results()
+    """
+    hints_db = job.fileStore.readGlobalFile(input_file_ids.hints_db)
+    tree_path = job.fileStore.readGlobalFile(tree)
+    genome_fofn = write_genome_fofn(job, input_file_ids.fasta)
+    gtf = job.fileStore.readGlobalFile(input_file_ids.gtf)
+
+    # load hints database and seqnr information
+    speciesnames, seqnames, hints, featuretypes, session = tools.hintsDatabaseInterface.reflect_hints_db(hints_db)
+    speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=args.ref_genome)
+    seqs = {x.seqname: x.seqnr for x in session.query(seqnames).filter_by(speciesid=speciesid)}
+
+    # begin selecting random intervals
+    selected_intervals = []
+    seen_exons = 0
+    for chrom, start, chunksize, maf_chunk in random.sample(maf_chunks, len(maf_chunks)):
+        seqnr = seqs[chrom]
+        query = session.query(hints).filter(
+                sqlalchemy.and_(hints.speciesid.in_(speciesid), hints.source == 'a2h', hints.seqnr == seqnr,
+                               hints.start >= start, hints.end <= start + chunksize))
+        exon_count = query.count()
+        selected_intervals.append(maf_chunk)
+        seen_exons += exon_count
+        if seen_exons >= args.num_exons:
+            break
+
+    # concatenate all these chunks together for training
+    cat_maf = tools.fileOps.get_tmp_toil_file(suffix='maf')
+    local_mafs = [job.fileStore.readGlobalFile(x) for x in selected_intervals]
+    cmd = ['cat'] + local_mafs
+    tools.procOps.run_proc(cmd, stdout=cat_maf)
+            
+    # run the training process
+    params = tools.fileOps.get_tmp_toil_file()
+    cmd = ['augustus',
+           '--species={}'.format(args.species),
+           '--treefile={}'.format(tree_path),
+           '--alnfile={}'.format(cat_maf),
+           '--dbaccess={}'.format(hints_db),
+           '--speciesfilenames={}'.format(genome_fofn),
+           '--refSpecies={}'.format(args.ref_genome),
+           '--referenceFile={}'.format(gtf),
+           '--param_outfile={}'.format(params)]
+    tools.procOps.run_proc(cmd)
+    input_file_ids.cgp_param = job.fileStore.writeGlobalFile(params)
+    return job.addFollowOnJobFn(cgp_wrapper, maf_chunks, tree, args, input_file_ids).rv()
+
+
+def cgp_wrapper(job, maf_chunks, tree, args, input_file_ids):
+    """
+    Wrapper for launching CGP jobs.
+    :param maf_chunks: List of lists [chrom, start, chunksize, fileID]
+    :param tree: fileID for tree from write_tree()
+    :param args: input arguments
+    :param input_file_ids: input file IDs
+    :return: output of merge_results()
+    """
+    # results holds Promise objects
+    # each Promise object will resolve to a tuple of gff_chunk_dict, stdout_file_id
+    # cgp_job.rv():  key: genome, value: file handle to gff
+    results = []
+    cgp_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.fasta, input_file_ids.hints_db], buffer='4G')
+
+    for chrom, start, chunksize, maf_chunk in maf_chunks:
+        # run AugustusCGP on alignment chunk
+        cgp_job = job.addChildJobFn(cgp, tree, maf_chunk, args, input_file_ids, memory='8G', disk=cgp_usage)
+        results.append([chrom, start, chunksize, cgp_job.rv()])
 
     # merge all gff files for alignment chunks to one gff for each species
-    # results is a 2-member tuple of a joined genes list and a stdout file id dict
+    # results is a 3-member tuple of a joined genes list, a stdout file id dict and a file ID for the trained parameters
     # stdout_file_id dict is keyed by (chromosome, start, chunksize) tuples
     # for the joined genes dict its a dict keyed by genome and values are a 3 member tuple of:
     # [raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id]
-    results = job.addFollowOnJobFn(merge_results, results, memory='8G', disk='8G').rv()
+    results = job.addFollowOnJobFn(merge_results, results, input_file_ids, memory='8G', disk='8G').rv()
     return results
 
 
@@ -121,7 +208,7 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
     """
     core function that runs AugustusCGP on one alignment chunk
     """
-    genomeFofn = writeGenomeFofn(job, input_file_ids.fasta)
+    genome_fofn = write_genome_fofn(job, input_file_ids.fasta)
     cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
     stdout = tools.fileOps.get_tmp_toil_file()
 
@@ -131,7 +218,7 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
            '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
            '--alnfile={}'.format(job.fileStore.readGlobalFile(mafChunk)),
            '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
-           '--speciesfilenames={}'.format(genomeFofn),
+           '--speciesfilenames={}'.format(genome_fofn),
            '--softmasking=1',
            '--exoncands=0',
            '--alternatives-from-evidence=0',
@@ -144,7 +231,7 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
     return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}, stdout_file_id
 
 
-def merge_results(job, results):
+def merge_results(job, results, input_file_ids):
     """
     Results is a list of lists in the form [chrom, start, chunksize, (gff_chunk_dict, stdout_file_id)]
     gff_chunk is a dict of {genome: gff_file_id}
@@ -162,7 +249,7 @@ def merge_results(job, results):
     for genome in gff_chunks_by_genome:
         j = job.addChildJobFn(join_genes, gff_chunks_by_genome[genome], memory='8G', disk='8G')
         results[genome] = j.rv()
-    return results, stdout_file_ids
+    return results, stdout_file_ids, input_file_ids.cgp_param
 
 
 def join_genes(job, gff_chunks):
@@ -207,18 +294,18 @@ def join_genes(job, gff_chunks):
 ###
 
 
-def writeTree(job,input_file_ids):
+def write_tree(job,input_file_ids):
     """
     writes a file with the phylogenetic tree in NEWICK format
     """
-    hal = job.fileStore.readGlobalFile(input_file_ids.hal) 
+    hal = job.fileStore.readGlobalFile(input_file_ids.hal)
     cmd = ['halStats', '--tree', hal]
     tree = tools.fileOps.get_tmp_toil_file()
     tools.procOps.run_proc(cmd, stdout=tree)
     return job.fileStore.writeGlobalFile(tree)
 
 
-def writeGenomeFofn(job, fasta_file_ids):
+def write_genome_fofn(job, fasta_file_ids):
     """
     writes a file with the location of the fasta files, e.g.
 
@@ -230,11 +317,11 @@ def writeGenomeFofn(job, fasta_file_ids):
 
     These files are loaded from the fileStore
     """
-    genomeFofn = tools.fileOps.get_tmp_toil_file()
-    with open(genomeFofn, 'w') as outf:
+    genome_fofn = tools.fileOps.get_tmp_toil_file()
+    with open(genome_fofn, 'w') as outf:
         for genome, file_id in fasta_file_ids.iteritems():
             local_path = job.fileStore.readGlobalFile(file_id)
             tools.fileOps.print_row(outf, [genome, local_path])
-    return genomeFofn
+    return genome_fofn
 
 
