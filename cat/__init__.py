@@ -92,6 +92,8 @@ class PipelineTask(luigi.Task):
     pb_genome_chunksize = luigi.IntParameter(default=5000000, significant=False)
     pb_genome_overlap = luigi.IntParameter(default=500000, significant=False)
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
+    # Hgm parameters
+    hgm_cpu = luigi.IntParameter(default=4, significant=False)
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
     # consensus options
@@ -152,6 +154,7 @@ class PipelineTask(luigi.Task):
         else:
             args.set('cgp_param', None, True)
         args.set('cgp_train_num_exons', self.cgp_train_num_exons, True)
+        args.set('hgm_cpu', self.hgm_cpu, False)
         
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
@@ -192,10 +195,6 @@ class PipelineTask(luigi.Task):
         if self.__class__.__name__ in ['RunCat', 'Augustus', 'AugustusCgp', 'AugustusPb']:
             self.validate_cfg(args)
 
-        # calculate the number of cores a hgm run should use
-        # this is sort of a hack, but the reality is that halLiftover uses a fraction of a CPU most of the time
-        num_cpu = int(tools.mathOps.format_ratio(multiprocessing.cpu_count(), len(args.modes)))
-        args.set('hgm_cpu', num_cpu, False)
         return args
 
     def parse_cfg(self):
@@ -1261,9 +1260,10 @@ class AugustusCgp(ToilTask):
     """
     @staticmethod
     def get_args(pipeline_args):
-        # CGP doesn't work on ancestral genomes. Remove them.
-        leaf_genomes = tools.hal.extract_genomes(pipeline_args.hal, False)
-        genomes = [x for x in pipeline_args.hal_genomes if x in leaf_genomes]
+        if pipeline_args.annotate_ancestors:
+            genomes = pipeline_args.hal_genomes
+        else:
+            genomes = tools.hal.extract_genomes(pipeline_args.hal, False)
         fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome).fasta for genome in genomes}
         base_dir = os.path.join(pipeline_args.work_dir, 'augustus_cgp')
         # output
@@ -1272,6 +1272,7 @@ class AugustusCgp(ToilTask):
         raw_output_gtf_files = {genome: os.path.join(base_dir, genome + '.raw.augCGP.gtf') for genome in genomes}
         args = tools.misc.HashableNamespace()
         args.genomes = genomes
+        args.annotate_ancestors = pipeline_args.annotate_ancestors
         args.fasta_files = fasta_files
         args.hal = pipeline_args.hal
         args.ref_genome = pipeline_args.ref_genome

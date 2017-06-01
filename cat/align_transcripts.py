@@ -91,14 +91,14 @@ def setup(job, args, input_file_ids):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)
             for chunk in group_transcripts(seq_iter):
-                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode, memory='2G', disk='2G')
+                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode, memory='8G', disk='2G')
                 results[out_path].append(j.rv())
 
     if len(results) == 0:
         err_msg = 'Align Transcripts pipeline did not detect any input genePreds for {}'.format(args.genome)
         raise RuntimeError(err_msg)
     # convert the results Promises into resolved values
-    return job.addFollowOnJobFn(merge, results, args, memory='2G', disk='4G').rv()
+    return job.addFollowOnJobFn(merge, results, args, memory='8G', disk='4G').rv()
 
 
 def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, mode):
