@@ -95,14 +95,14 @@ def setup(job, args, input_file_ids):
         chrom_size = int(chrom_size)
         for start in xrange(0, chrom_size, args.chunksize - args.overlap):
             chunksize = args.chunksize if start + args.chunksize <= chrom_size else chrom_size - start
-            j = job.addChildJobFn(hal2maf, input_file_ids, args.ref_genome, args.annotate_ancestors, chrom, start,
-                                  chunksize, memory='8G', disk=hal2maf_usage)
+            j = job.addChildJobFn(hal2maf, input_file_ids, args.genomes, args.ref_genome, args.annotate_ancestors,
+                                  chrom, start, chunksize, memory='8G', disk=hal2maf_usage)
             maf_chunks.append([chrom, start, chunksize, j.rv()])
 
     # if we have no params, time to train
     if input_file_ids.cgp_param is None:
         du = tools.toilInterface.find_total_disk_usage([input_file_ids.hints_db], buffer='40G')
-        results = job.addFollowOnJobFn(train_cgp, maf_chunks, tree, args, input_file_ids, memory='16G', disk=du).rv()
+        results = job.addFollowOnJobFn(train_cgp, maf_chunks, tree, args, input_file_ids, memory='32G', disk=du).rv()
     else:
         results = job.addFollowOnJobFn(cgp_wrapper, maf_chunks, tree, args, input_file_ids, disk='4G').rv()
     return results
@@ -192,13 +192,14 @@ def cgp_wrapper(job, maf_chunks, tree, args, input_file_ids):
     return results
 
 
-def hal2maf(job, input_file_ids, ref_genome, annotate_ancestors, chrom, start, chunk_size):
+def hal2maf(job, input_file_ids, genomes, ref_genome, annotate_ancestors, chrom, start, chunk_size):
     """
     exports hal to maf on a genomic region specified by (genome, seq, start, len)
     """
     hal = job.fileStore.readGlobalFile(input_file_ids.hal)
     maf_chunk = tools.fileOps.get_tmp_toil_file()
-    cmd = ['hal2maf', '--noDupes', '--refGenome', ref_genome,
+    genomes = ','.join(genomes)
+    cmd = ['hal2maf', '--noDupes', '--refGenome', ref_genome, '--targetGenomes', genomes,
            '--refSequence', chrom, '--start', start, '--length', chunk_size, hal, maf_chunk]
     if not annotate_ancestors:
         cmd.append('--noAncestors')

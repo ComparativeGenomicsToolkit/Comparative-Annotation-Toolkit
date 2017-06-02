@@ -4,7 +4,6 @@ Comparative Annotation Toolkit.
 import collections
 import itertools
 import logging
-import multiprocessing
 import os
 import shutil
 import json
@@ -175,11 +174,10 @@ class PipelineTask(luigi.Task):
 
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
-        args.set('hal_genomes', tuple(tools.hal.extract_genomes(self.hal, self.annotate_ancestors)), True)
-        if self.target_genomes is None:
-            args.set('target_genomes', tuple(set(args.hal_genomes) - {self.ref_genome}), True)
-        else:
-            args.set('target_genomes', tuple([x for x in self.target_genomes]), True)
+        args.set('hal_genomes', tools.hal.extract_genomes(self.hal, self.annotate_ancestors), True)
+        target_genomes = tools.hal.extract_genomes(self.hal, self.annotate_ancestors, self.target_genomes)
+        target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
+        args.set('target_genomes', target_genomes, True)
 
         args.set('cfg', self.parse_cfg(), True)
         args.set('dbs', PipelineTask.get_databases(args), True)
@@ -553,7 +551,7 @@ class GenomeFiles(PipelineWrapperTask):
     def requires(self):
         self.validate()
         pipeline_args = self.get_pipeline_args()
-        for genome in pipeline_args.hal_genomes:
+        for genome in pipeline_args.target_genomes:
             args = self.get_args(pipeline_args, genome)
             yield self.clone(GenomeFasta, **vars(args))
             yield self.clone(GenomeTwoBit, **vars(args))
@@ -839,7 +837,7 @@ class BuildDb(PipelineTask):
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
-        for genome in pipeline_args.hal_genomes:
+        for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             hints_args = BuildDb.get_args(pipeline_args, genome)
             yield self.clone(GenerateHints, hints_args=hints_args, genome=genome)
 
@@ -851,7 +849,7 @@ class BuildDb(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         self.validate()
-        for genome in pipeline_args.hal_genomes:
+        for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             args = BuildDb.get_args(pipeline_args, genome)
             logger.info('Loading sequence for {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
@@ -1260,10 +1258,7 @@ class AugustusCgp(ToilTask):
     """
     @staticmethod
     def get_args(pipeline_args):
-        if pipeline_args.annotate_ancestors:
-            genomes = pipeline_args.hal_genomes
-        else:
-            genomes = tools.hal.extract_genomes(pipeline_args.hal, False)
+        genomes = list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]
         fasta_files = {genome: GenomeFiles.get_args(pipeline_args, genome).fasta for genome in genomes}
         base_dir = os.path.join(pipeline_args.work_dir, 'augustus_cgp')
         # output
@@ -1958,7 +1953,8 @@ class Plots(RebuildableTask):
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
         ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
-                                                       genome_subset=pipeline_args.target_genomes)
+                                                       genome_subset=pipeline_args.target_genomes,
+                                                       include_ancestors=pipeline_args.annotate_ancestors)
         args = tools.misc.HashableNamespace()
         args.ordered_genomes = ordered_genomes
         # plots derived from transMap results
@@ -2034,13 +2030,12 @@ class CreateDirectoryStructure(PipelineTask):
     @staticmethod
     def get_args(pipeline_args):
         args = tools.misc.HashableNamespace()
-        args.genomes = pipeline_args.hal_genomes
+        args.genomes = pipeline_args.target_genomes
         args.out_dir = os.path.join(pipeline_args.out_dir, 'assemblyHub')
         args.hub_txt = os.path.join(args.out_dir, 'hub.txt')
         args.genomes_txt = os.path.join(args.out_dir, 'genomes.txt')
         args.groups_txt = os.path.join(args.out_dir, 'groups.txt')
-        genome_files = frozendict({genome: GenomeFiles.get_args(pipeline_args, genome)
-                                   for genome in pipeline_args.hal_genomes})
+        genome_files = frozendict({genome: GenomeFiles.get_args(pipeline_args, genome) for genome in args.genomes})
         sizes = {}
         twobits = {}
         trackdbs = {}
@@ -2119,9 +2114,8 @@ class CreateTracks(PipelineWrapperTask):
         pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.target_genomes:
             yield self.clone(CreateTracksDriverTask, genome=genome)
-        yield self.clone(CreateTracksDriverTask, genome=pipeline_args.ref_genome)
-        for genome in pipeline_args.hal_genomes:
             yield self.clone(CreateTrackDbs, genome=genome)
+        yield self.clone(CreateTracksDriverTask, genome=pipeline_args.ref_genome)
 
 
 class CreateTracksDriverTask(PipelineWrapperTask):
