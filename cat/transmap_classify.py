@@ -61,7 +61,7 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'TransMapOriginalIntronsPercent', percent_original_introns(aln, tx, ref_aln)])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
-    return df.set_index(['AlignmentId', 'TranscriptId', 'GeneId', 'classifier'])
+    return df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
 
 
 ###

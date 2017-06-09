@@ -2030,7 +2030,7 @@ class CreateDirectoryStructure(PipelineTask):
     @staticmethod
     def get_args(pipeline_args):
         args = tools.misc.HashableNamespace()
-        args.genomes = pipeline_args.target_genomes
+        args.genomes = list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]
         args.out_dir = os.path.join(pipeline_args.out_dir, 'assemblyHub')
         args.hub_txt = os.path.join(args.out_dir, 'hub.txt')
         args.genomes_txt = os.path.join(args.out_dir, 'genomes.txt')
@@ -2084,7 +2084,6 @@ class CreateDirectoryStructure(PipelineTask):
             outf.write(groups_str)
 
         # write the genomes.txt file, construct a dir
-        # TODO: include ancestors? Provide a flag?
         with luigi.LocalTarget(args.genomes_txt).open('w') as outf:
             for genome, (sizes_local_path, sizes_hub_path) in args.sizes.iteritems():
                 outf.write(genome_str.format(genome=genome, default_pos=find_default_pos(sizes_local_path)))
@@ -2116,6 +2115,7 @@ class CreateTracks(PipelineWrapperTask):
             yield self.clone(CreateTracksDriverTask, genome=genome)
             yield self.clone(CreateTrackDbs, genome=genome)
         yield self.clone(CreateTracksDriverTask, genome=pipeline_args.ref_genome)
+        yield self.clone(CreateTrackDbs, genome=pipeline_args.ref_genome)
 
 
 class CreateTracksDriverTask(PipelineWrapperTask):
