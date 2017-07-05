@@ -877,7 +877,19 @@ class GenerateHints(ToilTask):
     def requires(self):
         return self.clone(PrepareFiles), self.clone(ReferenceFiles)
 
+    def validate(self):
+        for tool in ['samtools', 'sambamba']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('{} is not in global path.'.format(tool))
+        for tool in ['gff3ToGenePred', 'bamToPsl']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
+        for tool in ['join_mult_hints.pl', 'blat2hints.pl', 'wig2hints.pl', 'bam2wig', 'bam2hints', 'filterBam']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('{} from the augustus tool package not in global path.'.format(tool))
+
     def run(self):
+        self.validate()
         logger.info('Beginning GenerateHints Toil pipeline for {}.'.format(self.genome))
         work_dir = os.path.abspath(os.path.join(self.work_dir, 'toil', 'hints_db', self.genome))
         toil_options = self.prepare_toil_options(work_dir)
