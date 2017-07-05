@@ -663,7 +663,7 @@ def divide_clusters(clustered_reads, ref_names):
 
 
 def construct_start_stop_intervals(intron_intervals, d):
-    """Splits a iterable of intervals into two parallel tuples of 0bp intervals representing their start and stop"""
+    """Splits a iterable of intervals into two parallel tuples of 2d bp intervals representing their start and stop"""
     left_intervals = []
     right_intervals = []
     for i in intron_intervals:

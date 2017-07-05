@@ -1492,7 +1492,7 @@ class FindDenovoParents(PipelineTask):
             assigned_str = '{}: {:,}'.format('assigned', counts[None])
             log_msg = log_msg.format(genome, denovo_args.tablename, assigned_str)
             result_str = ', '.join(['{}: {:,}'.format(name, val)
-                                    for name, val in counts.iteritems() if name is not None])
+                                    for name, val in sorted(counts.iteritems()) if name is not None])
             if len(result_str) > 0:
                 log_msg += ', ' + result_str + '.'
             logger.info(log_msg)
