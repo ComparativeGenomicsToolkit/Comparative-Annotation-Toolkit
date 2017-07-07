@@ -157,7 +157,7 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     # merge exonpart hints, averaging the coverage
     merged_hints_file = tools.fileOps.get_tmp_file()
     cmd = ['bedtools', 'merge', '-i', hints_file, '-c', '4', '-o', 'mean']
-    tools.procOps.run_proc(cmd, stdout=merged_hints_file)
+    tools.procOps.run_proc(cmd, stdout=merged_hints_file, stderr='/dev/null')
     # overlap the merged exons with the given GTF, producing a final set.
     cmd = [['grep', '\texon\t', in_gtf],  # exons only
            ['cut', '-d', '\t', '-f', '1,4,5'],  # slice into BED format
@@ -166,7 +166,8 @@ def extract_exon_hints(hints_db, in_gtf, genome):
            ['bedtools', 'intersect', '-a', 'stdin', '-b', merged_hints_file, '-f', '0.8', '-wa', '-wb'],
            # bedtools reports both entire A and entire B if at least 80% of A overlaps a B
            ['cut', '-d', '\t', '-f', '1,2,3,7']]  # retain the A positions with the B score
-    bed_plus_1 = tools.procOps.call_proc_lines(cmd)  # these BED-like records are actually GFF intervals
+    # these BED-like records are actually GFF intervals with 1-based starts and closed intervals
+    bed_plus_1 = tools.procOps.call_proc_lines(cmd)
 
     hints = []
     for line in bed_plus_1:

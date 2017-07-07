@@ -33,7 +33,7 @@ Either form of `pip` installation will install all of the python dependencies. H
 4. [Augustus](http://bioinf.uni-greifswald.de/augustus/binaries/). Make sure you are installing `augustus >= 3.2.3`. You need to follow the instructions to compile `augustus` in comparative augustus mode. This requires that you modify a few lines in the `common.mk` file, and also need to have `sqlite3`, `lp-solve`, `bamtools`, and `libboost` installed. If you are using ubuntu, this should work:
    `apt-get install libboost-all-dev libboost sqlite3 libsqlite3-0 libsqlite3-dev libgsl0-dev lp-solve liblpsolve55-dev bamtools libbamtools-dev`
    
-  After you have the primary `augustus` binaries compiled, add the directory to your path. Note that if you move the `augustus` binaries from their original location, you will need to set the `augustus_CONFIG_PATH` global variable to point to the species directory. 
+  After you have the primary `augustus` binaries compiled, add the directory to your path. Note that if you move the `augustus` binaries from their original location, you will need to set the `AUGUSTUS_CONFIG_PATH` global variable to point to the species directory. 
   
   You will also need to put the contents of the `scripts` directory on your path. Next, you need to compile the following auxiliary programs from the folder `auxprogs`:
   1. `joingenes`. Compiling this program will place it in the `augustus` binary directory.
@@ -100,7 +100,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--maf-overlap`: How much overlap to use in HAL chunks. Larger values increase redundant predictions (which are merged). Default is 500000. 
 
-`--cgp_-train-num-exons`: Number of exons to require in the alignment subset used for training CGP. See the [AugustusCGP section](#augustuscgp).
+`--cgp-train-num-exons`: Number of exons to require in the alignment subset used for training CGP. See the [AugustusCGP section](#augustuscgp).
 
 ## AugustusPB options
 

@@ -270,7 +270,7 @@ class Transcript(object):
         5'-3' transcript orientation.
         """
         sequence = seq_dict[self.chromosome]
-        assert self.stop <= len(sequence)
+        assert self.stop <= len(sequence) + 1
         s = []
         for e in self.exon_intervals:
             s.append(sequence[e.start:e.stop])
@@ -295,7 +295,7 @@ class Transcript(object):
         been reverse complemented if necessary).
         """
         sequence = seq_dict[self.chromosome]
-        assert self.stop <= len(sequence)
+        assert self.stop <= len(sequence) + 1
         # make sure this isn't a non-coding gene
         if self.thick_start == self.thick_stop == 0:
             return ''
