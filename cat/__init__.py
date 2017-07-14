@@ -252,7 +252,12 @@ class PipelineTask(luigi.Task):
                         # this is a single BAM
                         cfg[dtype][genome] = [os.path.abspath(path)]
                 else:
-                    cfg[dtype][genome] = [os.path.abspath(x) for x in path]
+                    cfg[dtype][genome] = []
+                    for p in path:
+                        if tools.misc.is_bam(p):  # is a bam
+                            cfg[dtype][genome].append(os.path.abspath(p))
+                        else:  # assume to be a fofn
+                            cfg[dtype][genome].extend([os.path.abspath(x.rstrip()) for x in open(p)])
         # return a hashable version
         return frozendict((key, frozendict((ikey, tuple(ival) if isinstance(ival, list) else ival)
                                            for ikey, ival in val.iteritems())) for key, val in cfg.iteritems())
@@ -270,6 +275,8 @@ class PipelineTask(luigi.Task):
                 for bam in args.cfg[dtype][genome]:
                     if not os.path.exists(bam):
                         raise MissingFileException('Missing BAM {}.'.format(bam))
+                    if not tools.misc.is_bam(bam):
+                        raise InvalidInputException('BAM {} is not a valid BAM.'.format(bam))
                     if not os.path.exists(bam + '.bai'):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
 
