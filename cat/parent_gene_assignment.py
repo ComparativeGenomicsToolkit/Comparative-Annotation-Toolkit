@@ -110,8 +110,8 @@ def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance):
     best_scores = {gene_id: max(scores[gene_id]) for gene_id in scores}
     high_score = max(best_scores.itervalues())
     if all(high_score - x >= min_distance for x in best_scores.itervalues() if x != high_score):
-        best = sorted(scores.iteritems(), key=lambda (gene_id, score): score)[-1]
-        return best[0], 'rescued'
+        best = sorted(best_scores.iteritems(), key=lambda (gene_id, score): score)[-1][0]
+        return best, 'rescued'
     else:
         return None, 'ambiguousOrFusion'
 
