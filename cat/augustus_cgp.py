@@ -102,15 +102,16 @@ def setup(job, args, input_file_ids):
     # if we have no params, time to train
     if input_file_ids.cgp_param is None:
         du = tools.toilInterface.find_total_disk_usage([input_file_ids.hints_db], buffer='40G')
-        results = job.addFollowOnJobFn(train_cgp, maf_chunks, tree, args, input_file_ids, memory='32G', disk=du).rv()
+        results = job.addFollowOnJobFn(cgp_training_wrapper, maf_chunks, tree, args, input_file_ids, memory='8G',
+                                       disk=du).rv()
     else:
         results = job.addFollowOnJobFn(cgp_wrapper, maf_chunks, tree, args, input_file_ids, disk='4G').rv()
     return results
 
 
-def train_cgp(job, maf_chunks, tree, args, input_file_ids):
+def cgp_training_wrapper(job, maf_chunks, tree, args, input_file_ids):
     """
-    Trains CGP on a subset of alignments.
+    Wrapper around calling augustusCGP for training on a subset of the alignment.
     :param maf_chunks: List of lists [chrom, start, chunksize, fileID]
     :param tree: fileID for tree from write_tree()
     :param args: input arguments
@@ -118,9 +119,6 @@ def train_cgp(job, maf_chunks, tree, args, input_file_ids):
     :return: output of merge_results()
     """
     hints_db = job.fileStore.readGlobalFile(input_file_ids.hints_db)
-    tree_path = job.fileStore.readGlobalFile(tree)
-    genome_fofn = write_genome_fofn(job, input_file_ids.fasta)
-    gtf = job.fileStore.readGlobalFile(input_file_ids.gtf)
 
     # load hints database and seqnr information
     speciesnames, seqnames, hints, featuretypes, session = tools.hintsDatabaseInterface.reflect_hints_db(hints_db)
@@ -134,29 +132,45 @@ def train_cgp(job, maf_chunks, tree, args, input_file_ids):
         seqnr = seqs[chrom]
         query = session.query(hints).filter(
                 sqlalchemy.and_(hints.speciesid.in_(speciesid), hints.source == 'a2h', hints.seqnr == seqnr,
-                               hints.start >= start, hints.end <= start + chunksize))
+                                hints.start >= start, hints.end <= start + chunksize))
         exon_count = query.count()
         selected_intervals.append(maf_chunk)
         seen_exons += exon_count
         if seen_exons >= args.num_exons:
             break
 
-    # concatenate all these chunks together for training
-    cat_maf = tools.fileOps.get_tmp_toil_file(suffix='maf')
-    local_mafs = [job.fileStore.readGlobalFile(x) for x in selected_intervals]
-    cmd = ['cat'] + local_mafs
-    tools.procOps.run_proc(cmd, stdout=cat_maf)
-            
+    # run each chunk through augustus in training mode
+    cgp_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.fasta, input_file_ids.hints_db], buffer='4G')
+    training_gffs = []
+    for maf_chunk in selected_intervals:
+        j = job.addChildJobFn(cgp, tree, maf_chunk, args, input_file_ids, training=True, memory='8G', disk=cgp_usage)
+        training_gffs.append(j.rv())
+    return job.addFollowOnJobFn(train_cgp, maf_chunks, tree, args, input_file_ids, training_gffs).rv()
+
+
+def train_cgp(job, maf_chunks, tree, args, input_file_ids, training_gffs):
+    """
+    Trains CGP on a subset of alignments.
+    :param maf_chunks: List of lists [chrom, start, chunksize, fileID]
+    :param tree: fileID for tree from write_tree()
+    :param args: input arguments
+    :param input_file_ids: input file IDs
+    :param training_gffs: List of fileIDs of chunks of CGP training
+    :return: output of merge_results()
+    """
+    training_gff_files = [job.fileStore.readGlobalFile(x) for x in training_gffs]
+    cmd = ['cat'] + training_gff_files
+    combined = tools.fileOps.get_tmp_toil_file()
+    tools.procOps.run_proc(cmd, stdout=combined)
+
     # run the training process
     params = tools.fileOps.get_tmp_toil_file()
     cmd = ['augustus',
            '--species={}'.format(args.species),
-           '--treefile={}'.format(tree_path),
-           '--alnfile={}'.format(cat_maf),
-           '--dbaccess={}'.format(hints_db),
-           '--speciesfilenames={}'.format(genome_fofn),
+           '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
            '--refSpecies={}'.format(args.ref_genome),
-           '--referenceFile={}'.format(gtf),
+           '--referenceFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.gtf)),
+           '--trainFeatureFile={}'.format(combined),
            '--param_outfile={}'.format(params)]
     tools.procOps.run_proc(cmd)
     input_file_ids.cgp_param = job.fileStore.writeGlobalFile(params)
@@ -207,7 +221,7 @@ def hal2maf(job, input_file_ids, genomes, ref_genome, annotate_ancestors, chrom,
     return job.fileStore.writeGlobalFile(maf_chunk)
 
 
-def cgp(job, tree, mafChunk, args, input_file_ids):
+def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
     """
     core function that runs AugustusCGP on one alignment chunk
     """
@@ -219,19 +233,27 @@ def cgp(job, tree, mafChunk, args, input_file_ids):
            '--extrinsicCfgFile={}'.format(cgp_cfg),
            '--species={}'.format(args.species),
            '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
-           '--alnfile={}'.format(job.fileStore.readGlobalFile(mafChunk)),
+           '--alnfile={}'.format(job.fileStore.readGlobalFile(maf_chunk)),
            '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
            '--speciesfilenames={}'.format(genome_fofn),
            '--softmasking=1',
-           '--exoncands=0',
+           '--exoncands={}'.format(1 if training else 0),
            '--alternatives-from-evidence=0',
            '--/CompPred/logreg=on',
-           '--printOEs=false',
-           '--/CompPred/outdir={}'.format(os.getcwd()),
-           '--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param))]
+           '--printOEs={}'.format(1 if training else 0),
+           '--/CompPred/outdir={}'.format(os.getcwd())]
+    if training is False:
+        cmd.append('--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param)))
     tools.procOps.run_proc(cmd, stdout=stdout)
-    stdout_file_id = job.fileStore.writeGlobalFile(stdout)
-    return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}, stdout_file_id
+    if training is True:
+        cmd = ['cat', '{}.sampled_GFs.gff'.format(args.ref_genome), 'exonCands.{}.gff3'.format(args.ref_genome),
+               'orthoExons.{}.gff3'.format(args.ref_genome)]
+        combined_file = tools.fileOps.get_tmp_toil_file()
+        tools.procOps.run_proc(cmd, stdout=combined_file)
+        return job.fileStore.writeGlobalFile(combined_file)
+    else:
+        stdout_file_id = job.fileStore.writeGlobalFile(stdout)
+        return {genome: job.fileStore.writeGlobalFile(genome + '.cgp.gff') for genome in args.genomes}, stdout_file_id
 
 
 def merge_results(job, results, input_file_ids):
