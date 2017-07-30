@@ -313,6 +313,7 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
             df['Ordered Modes'] = pd.Categorical(df['Modes'], ordered_values, ordered=True)
             df = df.sort_values('Ordered Modes')
             df = df[['Ordered Modes'] + ordered_genomes].set_index('Ordered Modes')
+            df = df.fillna(0)
             generic_stacked_barplot(df, pdf, title_string, df.index, ylabel, ordered_genomes, 'Transcript mode(s)',
                                     bbox_to_anchor=(1.25, 0.7))
 
