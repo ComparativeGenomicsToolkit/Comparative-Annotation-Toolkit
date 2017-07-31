@@ -211,7 +211,12 @@ class PipelineTask(luigi.Task):
         [ISO_SEQ_BAM]
         genome1 = /path/to/bam/or/fofn
 
+        [PROTEIN_FASTA]
+        genome1 = /path/to/fasta/or/fofn
+
         The annotation field must be populated for the reference genome.
+
+        The protein fasta field should be populated for every genome you wish to perform protein alignment to.
 
         BAM annotations can be put either under INTRONBAM or BAM. Any INTRONBAM will only have intron data loaded,
         and is suitable for lower quality RNA-seq.
@@ -223,19 +228,21 @@ class PipelineTask(luigi.Task):
         configspec = ['[ANNOTATION]', '__many__ = string',
                       '[INTRONBAM]', '__many__ = list',
                       '[BAM]', '__many__ = list',
-                      '[ISO_SEQ_BAM]', '__many__ = list']
+                      '[ISO_SEQ_BAM]', '__many__ = list',
+                      '[PROTEIN_FASTA]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
 
-        # convert the config into a new dict, parsing the BAMs
+        # convert the config into a new dict, parsing the fofns
         cfg = collections.defaultdict(dict)
-        if 'ANNOTATION' not in parser:
-            cfg['ANNOTATION'] = {}
-        else:
-            for genome, annot in parser['ANNOTATION'].iteritems():
-                annot = os.path.abspath(annot)
-                if not os.path.exists(annot):
-                    raise MissingFileException('Missing annotation file {}.'.format(annot))
-                cfg['ANNOTATION'][genome] = annot
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+            if dtype not in parser:
+                cfg[dtype] = {}
+            else:
+                for genome, annot in parser[dtype].iteritems():
+                    annot = os.path.abspath(annot)
+                    if not os.path.exists(annot):
+                        raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
+                    cfg[dtype][genome] = annot
 
         # if a given genome only has one BAM, it is a string. Fix this. Extract all paths from fofn files.
         for dtype in ['BAM', 'INTRONBAM', 'ISO_SEQ_BAM']:
@@ -258,6 +265,7 @@ class PipelineTask(luigi.Task):
                             cfg[dtype][genome].append(os.path.abspath(p))
                         else:  # assume to be a fofn
                             cfg[dtype][genome].extend([os.path.abspath(x.rstrip()) for x in open(p)])
+
         # return a hashable version
         return frozendict((key, frozendict((ikey, tuple(ival) if isinstance(ival, list) else ival)
                                            for ikey, ival in val.iteritems())) for key, val in cfg.iteritems())
@@ -280,9 +288,10 @@ class PipelineTask(luigi.Task):
                     if not os.path.exists(bam + '.bai'):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
 
-        for genome, annot in args.cfg['ANNOTATION'].iteritems():
-            if not os.path.exists(annot):
-                raise MissingFileException('Missing annotation file {}.'.format(annot))
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+            for genome, annot in args.cfg[dtype].iteritems():
+                if not os.path.exists(annot):
+                    raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
 
         if all(g in args.hal_genomes for g in args.target_genomes) is False:
             bad_genomes = set(args.hal_genomes) - set(args.target_genomes)
@@ -832,6 +841,7 @@ class BuildDb(PipelineTask):
         args.hal = pipeline_args.hal
         args.cfg = pipeline_args.cfg
         args.annotation = pipeline_args.cfg['ANNOTATION'].get(genome, None)
+        args.protein_fasta = pipeline_args.cfg['PROTEIN_FASTA'].get(genome, None)
         args.hints_path = os.path.join(base_dir, genome + '.extrinsic_hints.gff')
         return args
 

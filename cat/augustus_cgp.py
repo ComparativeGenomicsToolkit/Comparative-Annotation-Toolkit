@@ -229,7 +229,7 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
     cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
     stdout = tools.fileOps.get_tmp_toil_file()
 
-    cmd = ['augustus', '--dbhints=1', '--UTR=1', '--allow_hinted_splicesites=atac',
+    cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
            '--extrinsicCfgFile={}'.format(cgp_cfg),
            '--species={}'.format(args.species),
            '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),

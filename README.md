@@ -155,6 +155,8 @@ The config file contains the paths to two important pieces of information -- the
 
 A major component of producing high quality comparative annotations is making use of RNA-seq and/or IsoSeq information. This information is used as hints to the `augustus` gene finding tool along with `transMap`, and is a major component of cleaning up transcript projections. This is also useful if you run the `augustusCGP` or `augustusPB` portions of the pipeline.
 
+If the genetic distances in your alignment are high (say maybe an average identity in the 70s-80s), then you may derive great benefit from using a protein reference, if possible. This will be particularly useful for `augustusCGP`.
+
 A template for the config file is below. At a minimum, your config file must have the annotation section. A example config file is provided in the `test_data` folder.
 
 **BAM files must be indexed!**
@@ -171,9 +173,14 @@ Genome = /path/to/fofn/of/noisy/rnaseq
 
 [ISO_SEQ_BAM]
 Genome = /path/to/isoseq/bams
+
+[PROTEIN_FASTA]
+Genome = /path/to/protein/fasta
 ~~~~
 
-Note that the BAM/INTRONBAM fields can be populated either with a comma separated list of BAMs or a single file with a line pointing to each BAM (a FOFN, or file-of-file-names). The reference sequence information will be extracted from the HAL alignment.
+Note that the BAM/INTRONBAM/ISO_SEQ_BAM fields can be populated either with a comma separated list of BAMs or a single file with a line pointing to each BAM (a FOFN, or file-of-file-names). The reference sequence information will be extracted from the HAL alignment.
+
+For the PROTEIN_FASTA field, every genome you wish to have the protein fasta be aligned to must be on its own separate line. All of these can point to the same FASTA.
 
 ## RNA-seq libraries
 

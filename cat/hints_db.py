@@ -20,6 +20,7 @@ import tools.procOps
 import tools.toilInterface
 import tools.transcripts
 import tools.hal
+import tools.bio
 from exceptions import UserException
 
 logger = logging.getLogger(__name__)
@@ -61,13 +62,26 @@ def hints_db(hints_args, toil_options):
             else:
                 annotation_file_id = FileID.forPath(t.importFile('file://' + hints_args.annotation),
                                                     hints_args.annotation)
-            input_file_ids = {'bams': bam_file_ids, 'iso_seq_bams': iso_seq_file_ids, 'annotation': annotation_file_id}
+            if hints_args.protein_fasta is None:
+                protein_fasta_file_id = genome_fasta_file_id = None
+            else:
+                protein_fasta_file_id = FileID.forPath(t.importFile('file://' + hints_args.protein_fasta),
+                                                       hints_args.protein_fasta)
+                genome_fasta_file_id = FileID.forPath(t.importFile('file://' + hints_args.fasta), hints_args.fasta)
+
+            input_file_ids = {'bams': bam_file_ids,
+                              'iso_seq_bams': iso_seq_file_ids,
+                              'annotation': annotation_file_id,
+                              'protein_fasta': protein_fasta_file_id,
+                              'genome_fasta': genome_fasta_file_id}
+
             logger.info('{} has {} valid intron-only BAMs, {} valid BAMs and {} valid IsoSeq BAMs. '
                         'Beginning Toil hints pipeline.'.format(hints_args.genome, len(bam_file_ids['INTRONBAM']),
                                                                 len(bam_file_ids['BAM']),
                                                                 len(iso_seq_file_ids)))
+
             disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids)
-            job = Job.wrapJobFn(setup_hints, input_file_ids, iso_seq_file_ids, disk=disk_usage)
+            job = Job.wrapJobFn(setup_hints, input_file_ids, disk=disk_usage)
             combined_hints = t.start(job)
         else:
             logger.info('Restarting Toil hints pipeline for {}.'.format(hints_args.genome))
@@ -76,7 +90,7 @@ def hints_db(hints_args, toil_options):
         t.exportFile(combined_hints, 'file://' + hints_args.hints_path)
 
 
-def setup_hints(job, input_file_ids, iso_seq_file_ids):
+def setup_hints(job, input_file_ids):
     """
     Generates hints for a given genome with a list of BAMs. Will add annotation if it exists.
     """
@@ -101,11 +115,21 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
 
     # IsoSeq hints
     iso_seq_hints_file_ids = []
+    iso_seq_file_ids = input_file_ids['iso_seq_bams']
     if len(iso_seq_file_ids) > 0:
         for bam_file_id, bai_file_id in iso_seq_file_ids:
             disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id])
             j = job.addChildJobFn(generate_iso_seq_hints, bam_file_id, bai_file_id, disk=disk_usage)
             iso_seq_hints_file_ids.append(j.rv())
+
+    # protein hints
+    if input_file_ids['protein_fasta'] is not None:
+        disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids['protein_fasta'])
+        j = job.addChildJobFn(generate_protein_hints, input_file_ids['protein_fasta'], input_file_ids['genome_fasta'],
+                              disk=disk_usage)
+        protein_hints_file_id = j.rv()
+    else:
+        protein_hints_file_id = None
 
     # annotation hints
     if input_file_ids['annotation'] is not None:
@@ -115,7 +139,7 @@ def setup_hints(job, input_file_ids, iso_seq_file_ids):
     else:
         annotation_hints_file_id = None
     return job.addFollowOnJobFn(merge_bams, filtered_bam_file_ids, annotation_hints_file_id,
-                                iso_seq_hints_file_ids).rv()
+                                iso_seq_hints_file_ids, protein_hints_file_id).rv()
 
 
 def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, num_reads=50 ** 6):
@@ -200,10 +224,12 @@ def merge_filtered_bams(job, filtered_file_ids):
     return job.fileStore.writeGlobalFile(out_bam)
 
 
-def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids):
+def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids,
+               protein_hints_file_id):
     """
     Takes a dictionary mapping reference chunks to filtered BAMs. For each reference chunk, these BAMs will be
-    first concatenated then sorted, then passed off to hint building.
+    first concatenated then sorted, then passed off to hint building. Passes through the annotation/protein hints file
+    IDs for inclusion.
     """
     merged_bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
     for dtype in filtered_bam_file_ids:
@@ -213,7 +239,8 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
                 disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
                 merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk=disk_usage,
                                                                           memory='16G', cores=4).rv()
-    return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids).rv()
+    return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids,
+                                protein_hints_file_id).rv()
 
 
 def cat_sort_bams(job, bam_file_ids):
@@ -247,7 +274,63 @@ def cat_sort_bams(job, bam_file_ids):
     return job.fileStore.writeGlobalFile(merged)
 
 
-def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids):
+def generate_protein_hints(job, protein_fasta_file_id, genome_fasta_file_id):
+    """
+    Entry point to a BLAT-based protein alignment pipeline
+    """
+    disk_usage = tools.toilInterface.find_total_disk_usage(genome_fasta_file_id)
+    protein_fasta = job.fileStore.readGlobalFile(protein_fasta_file_id)
+    cmd = ['pyfasta', 'flatten', protein_fasta]
+    tools.procOps.run_proc(cmd)
+    protein_handle = tools.bio.get_sequence_dict(protein_fasta)
+    # group up proteins for sub-jobs
+    results = []
+    for chunk in tools.dataOps.grouper(protein_handle.iteritems(), 500):
+        j = job.addChildJobFn(run_protein_blat, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
+        results.append(j.rv())
+    # return merged results
+    return job.addFollowOnJobFn(convert_blat_results_to_hints, results, memory='8G').rv()
+
+
+def run_protein_blat(job, protein_subset, genome_fasta_file_id):
+    """
+    Runs BLAT on a small chunk of proteins
+    """
+    genome_fasta = job.fileStore.readGlobalFile(genome_fasta_file_id)
+    # write proteins to fasta
+    protein_fasta = tools.fileOps.get_tmp_toil_file()
+    with open(protein_fasta, 'w') as outf:
+        for name, seq in protein_subset:
+            tools.bio.write_fasta(outf, name, str(seq))
+    # perform alignment
+    tmp_psl = tools.fileOps.get_tmp_toil_file()
+    cmd = ['blat', '-t=dnax', '-q=prot', '-noHead', genome_fasta, protein_fasta, tmp_psl]
+    tools.procOps.run_proc(cmd)
+    return job.fileStore.writeGlobalFile(tmp_psl)
+
+
+def convert_blat_results_to_hints(job, results):
+    """
+    Concatenates protein blat, converts to hints
+    """
+    merged_psl = tools.fileOps.get_tmp_toil_file()
+    with open(merged_psl, 'w') as outf:
+        for r in results:
+            f = job.fileStore.readGlobalFile(r)
+            outf.write(open(f).read())
+    # sort psl and generate hints
+    out_hints = tools.fileOps.get_tmp_toil_file()
+    cmd = [['sort', '-n', '-k16,16', merged_psl],
+           ['sort', '-s', '-k14,14'],
+           ['blat2hints.pl', '--in=/dev/stdin', '--out={}'.format(out_hints)]]
+    tools.procOps.run_proc(cmd)
+    # fix the names
+    cmd = ['sed', '-i', 's/exon/CDS/; s/ep/CDSpart/', out_hints]
+    tools.procOps.run_proc(cmd)
+    return job.fileStore.writeGlobalFile(out_hints)
+
+
+def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids, protein_hints_file_id):
     """
     Takes the merged BAM for a genome and produces both intron and exon hints.
     """
@@ -260,9 +343,11 @@ def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hint
                 exon_hints_file_ids.append(job.addChildJobFn(build_exon_hints, file_ids).rv())
     disk_usage = tools.toilInterface.find_total_disk_usage(itertools.chain.from_iterable([intron_hints_file_ids,
                                                                                           exon_hints_file_ids,
-                                                                                          [annotation_hints_file_id]]))
+                                                                                          iso_seq_hints_file_ids,
+                                                                                          [annotation_hints_file_id,
+                                                                                           protein_hints_file_id]]))
     return job.addFollowOnJobFn(cat_hints, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_file_id,
-                                iso_seq_hints_file_ids, disk=disk_usage).rv()
+                                iso_seq_hints_file_ids, protein_hints_file_id, disk=disk_usage).rv()
 
 
 def build_intron_hints(job, merged_bam_file_id):
@@ -338,7 +423,8 @@ def generate_annotation_hints(job, annotation_hints_file_id):
     return job.fileStore.writeGlobalFile(annotation_hints_gff)
 
 
-def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids):
+def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids,
+              protein_hints_file_id):
     """Returns file ID to combined, sorted hints"""
     cat_hints = tools.fileOps.get_tmp_toil_file()
     with open(cat_hints, 'w') as outf:
@@ -346,10 +432,11 @@ def cat_hints(job, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_
             f = job.fileStore.readGlobalFile(file_id)
             for line in open(f):
                 outf.write(line)
-        if annotation_hints_file_id is not None:
-            f = job.fileStore.readGlobalFile(annotation_hints_file_id)
-            for line in open(f):
-                outf.write(line)
+        for file_id in [annotation_hints_file_id, protein_hints_file_id]:
+            if file_id is not None:
+                f = job.fileStore.readGlobalFile(file_id)
+                for line in open(f):
+                    outf.write(line)
     # sorted so that hints that should be summarized are below each other
     cmd = [['sort', '-n', '-k4,4', cat_hints],
            ['sort', '-s', '-n', '-k5,5'],
