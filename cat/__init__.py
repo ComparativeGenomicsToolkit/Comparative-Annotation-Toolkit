@@ -21,7 +21,6 @@ from bx.intervals.cluster import ClusterTree
 import tools.bio
 import tools.fileOps
 import tools.intervals
-import tools.gff3
 import tools.hal
 import tools.misc
 import tools.nameConversions
