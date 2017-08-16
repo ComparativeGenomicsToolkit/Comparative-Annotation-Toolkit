@@ -26,6 +26,8 @@ def build_genome_order(hal, ref_genome, genome_subset=None, include_ancestors=Fa
     :return: list of genomes.
     """
     t = get_tree(hal)
+    if len(t) == 1:  # this is a hacked HAL, we cannot determine distances
+        return [t.name]
     if include_ancestors is True:
         distances = [[t.get_distance(ref_genome, x), x.name] for x in t.get_descendants() if x.name != ref_genome]
     else:
