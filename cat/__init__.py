@@ -654,6 +654,7 @@ class ReferenceFiles(PipelineWrapperTask):
         annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
         args = tools.misc.HashableNamespace()
         args.annotation_gp = os.path.join(base_dir, annotation + '.gp')
+        args.annotation_attrs = os.path.join(base_dir, annotation + '.gp_attrs')
         args.annotation_gtf = os.path.join(base_dir, annotation + '.gtf')
         args.transcript_fasta = os.path.join(base_dir, annotation + '.fa')
         args.transcript_flat_fasta = os.path.join(base_dir, annotation + '.fa.flat')
@@ -685,6 +686,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
     Generates a genePred from a gff3 file.
     """
     annotation_gp = luigi.Parameter()
+    annotation_attrs = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.annotation_gp)
@@ -693,13 +695,14 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
         pipeline_args = self.get_pipeline_args()
         logger.info('Converting annotation gff3 to genePred.')
         cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
-               pipeline_args.annotation, '/dev/stdout']
+               '-attrsOut={}'.format(self.annotation_attrs), pipeline_args.annotation, '/dev/stdout']
         self.run_cmd(cmd)
 
 
+@requires(Gff3ToGenePred)
 class Gff3ToAttrs(PipelineTask):
     """
-    Uses the gff3 parser to extract the attributes table, converting the table into a sqlite database.
+    Converts the attrs file from -attrsOut in gff3ToGenePred into a SQLite table.
     """
     table = tools.sqlInterface.Annotation.__tablename__
 
@@ -718,25 +721,55 @@ class Gff3ToAttrs(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args).annotation_gp)
 
-    def validate(self, pipeline_args, results):
-        """Ensure that after attribute extraction we have the same number of transcripts"""
-        annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
-        num_gp_entries = len(open(annotation_gp).readlines())
-        if len(results) != num_gp_entries:
-            raise UserException('The number of transcripts parsed out of the gff3 ({}) did not match the number '
-                                'present ({}). Please validate your gff3. '
-                                'See the documentation for info.'.format(num_gp_entries, len(results)))
-
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         pipeline_args = self.get_pipeline_args()
-        results = tools.gff3.extract_attrs(pipeline_args.annotation)
-        self.validate(pipeline_args, results)
-        if 'protein_coding' not in list(results.TranscriptBiotype) or 'protein_coding' not in list(results.GeneBiotype):
-            logger.warning('No protein_coding annotations found!')
+        df = pd.read_csv(self.annotation_attrs, sep='\t', names=['transcript_id', 'key', 'value'], header=None)
+        results = []
+        for tx_id, d in df.groupby('transcript_id'):
+            d = dict(zip(d.key, d.value))
+            if 'gbkey' in d:  # this is a NCBI GFF3
+                if d['gbkey'] == 'Gene':
+                    gene_biotype = tx_biotype = d['gene_biotype']
+                    gene_name = d['gene']
+                    gene_id = d['Parent']
+                else:
+                    gene_biotype = tx_biotype = d['gbkey']
+                    gene_name = gene_id = d['ID']
+                tx_name = d.get('product', tx_id)
+            else:  # this is either ensembl or gencode
+                if 'biotype' in d:  # Ensembl
+                    gene_biotype = tx_biotype = d['biotype']
+                elif 'gene_type' in d:  # Gencode
+                    gene_biotype = d['gene_type']
+                    tx_biotype = d['transcript_type']
+                else:
+                    raise InvalidInputException('Could not parse biotype for {}. Values: {}'.format(tx_id, d))
+                # Ensembl formats their GFF3 with the format ID=transcript:XXX, while Gencode doesn't have the
+                # extraneous transcript: portion.
+                # Gencode also includes the gene name on the transcript level, so it is carried over.
+                # Ensembl does not do this, but we can infer this via the regular schema Name-Version
+                # However, Ensembl also does not always include a Name tag, so we have to account for this as well
+                if 'transcript' in d['ID']:  # Ensembl
+                    gene_id = d['Parent'].replace('gene:', '')
+                    if 'Name' in d:
+                        gene_name = d['Name'].split('-')[0]
+                        tx_name = d['Name']
+                    else:  # no names here, just use IDs
+                        gene_name = gene_id
+                        tx_name = tx_id
+                else:  # Gencode
+                    gene_name = d['gene_name']
+                    gene_id = d['gene_id']
+                    tx_name = d['transcript_name']
+            results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
+        df = pd.DataFrame(results, columns=['GeneId', 'TranscriptId', 'TranscriptName', 'GeneName',
+                                            'GeneBiotype', 'TranscriptBiotype'])
+        if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
+            logger.critical('No protein_coding annotations found!')
         database = pipeline_args.dbs[pipeline_args.ref_genome]
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
-            results.to_sql(self.table, engine, if_exists='replace')
+            df.to_sql(self.table, engine, if_exists='replace')
         self.output().touch()
 
 

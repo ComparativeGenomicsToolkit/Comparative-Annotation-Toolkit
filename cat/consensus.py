@@ -342,8 +342,6 @@ def combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, 
         """Reclassify a transcript as passing if it is above coding cutoff"""
         return 'passing' if s.AlnIdentity_mRNA >= coding_cutoff else 'failing'
 
-    # remove the start/stop codon information from the ref_df because we don't currently use it and it makes life hard
-    ref_df = ref_df.drop(['StartCodon', 'StopCodon'], axis=1)
     # add the reference information to gain biotype information
     hgm_ref_df = pd.merge(hgm_df, ref_df, on=['GeneId', 'TranscriptId'])
     # combine in homGeneMapping results
