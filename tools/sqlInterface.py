@@ -26,8 +26,6 @@ class Annotation(Base):
     GeneName = Column(Text)
     GeneBiotype = Column(Text)
     TranscriptBiotype = Column(Text)
-    StartCodon = Column(Boolean)
-    StopCodon = Column(Boolean)
 
 
 class Bed12(object):
@@ -101,17 +99,9 @@ class TmFilterEval(MetricsColumns, Base):
     GeneId = Column(Text, primary_key=True)
     TranscriptId = Column(Text, primary_key=True)
     AlignmentId = Column(Text, primary_key=True)
-    TranscriptClass = Column(Text)
-    ParalogStatus = Column(Text)
     GeneAlternateContigs = Column(Text)
     SplitGene = Column(Text)
-
-
-class TmFit(Base):
-    """Table for the identity cutoffs found by distribution fitting"""
-    __tablename__ = 'TransMapIdentityCutoffs'
-    TranscriptBiotype = Column(Text, primary_key=True)
-    IdentityCutoff = Column(Float)
+    Paralogy = Column(Text)
 
 
 class TmMetrics(MetricsColumns, Base):
@@ -368,18 +358,6 @@ def load_filter_evaluation(db_path):
     """
     engine = create_engine('sqlite:///' + db_path)
     return pd.read_sql_table(TmFilterEval.__tablename__, engine)
-
-
-def load_tm_fit(db_path, biotype='protein_coding'):
-    """
-    Loads the transMap identity fit, necessary to evaluate Augustus transcripts
-    :param db_path: path to genome database
-    :return: float
-    """
-    session = start_session(db_path)
-    query = session.query(TmFit.IdentityCutoff).filter(TmFit.TranscriptBiotype == biotype)
-    r = query.one()[0]
-    return r if r is not None else 0   # handle case where we unable to find a model fit, allow everything to pass
 
 
 def load_isoseq_txs(db_path):

@@ -5,7 +5,7 @@ Perform name conversions on transMap/AugustusTMR transcripts.
 import re
 
 
-def remove_alignment_number(aln_id, aln_re=re.compile("-[0-9]+$")):
+def remove_alignment_number(aln_id, aln_re=re.compile("#[0-9]+$")):
     """
     If the name of the transcript ends with -d as in
     ENSMUST00000169901.2-1, return ENSMUST00000169901.2
