@@ -84,7 +84,7 @@ class PipelineTask(luigi.Task):
     augustus_cgp_cfg_template = luigi.Parameter(default='augustus_cfgs/cgp_extrinsic_template.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
-    cgp_train_num_exons = luigi.IntParameter(default=2000, significant=False)
+    cgp_train_num_exons = luigi.IntParameter(default=5000, significant=False)
     # AugustusPB parameters
     augustus_pb = luigi.BoolParameter(default=False)
     pb_genome_chunksize = luigi.IntParameter(default=5000000, significant=False)

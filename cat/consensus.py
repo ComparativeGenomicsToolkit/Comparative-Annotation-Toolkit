@@ -141,7 +141,7 @@ def generate_consensus(args):
                 metrics['Transcript Missing'][tx_biotype] += 1
             continue
         # evaluate if this gene is failing.
-        failed_gene = is_failed_df(gene_df)
+        failed_gene = is_failed_df(gene_df, gene_biotype)
         if failed_gene is True:
             aln_id, d = rescue_failed_gene(gene_df, gene_id, metrics, args.hints_db_has_rnaseq)
             gene_consensus_dict[aln_id] = d
@@ -153,7 +153,7 @@ def generate_consensus(args):
                 tx_df = tools.misc.slice_df(gene_df, tx_id)
                 if len(tx_df) == 0:  # keep track of isoforms that did not map over
                     metrics['Transcript Missing'][tx_biotype] += 1
-                elif is_failed_df(tx_df):  # failed transcripts do not get incorporated
+                elif is_failed_df(tx_df, gene_biotype):  # failed transcripts do not get incorporated
                     metrics['Transcript Failed'][tx_biotype] += 1
                 else:
                     best_rows = find_best_score(tx_df)
@@ -539,12 +539,14 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
     return pb_resolved_consensus
 
 
-def is_failed_df(df):
+def is_failed_df(df, gene_biotype):
     """Failed genes have no passing transcripts. Handles series"""
-    try:
-        return not df.TranscriptClass.str.contains('passing').any()
-    except AttributeError:
+    if isinstance(df, pd.core.series.Series):
         return df.TranscriptClass == 'failing'
+    biotype_df = df[(df.TranscriptBiotype == gene_biotype) & (df.TranscriptClass == 'passing')]
+    if len(biotype_df) == 0:
+        return True
+    return not df.TranscriptClass.str.contains('passing').any()
 
 
 def rescue_failed_gene(gene_df, gene_id, metrics, hints_db_has_rnaseq):

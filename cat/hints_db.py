@@ -19,7 +19,6 @@ import tools.misc
 import tools.procOps
 import tools.toilInterface
 import tools.transcripts
-import tools.hal
 import tools.bio
 from exceptions import UserException
 
@@ -48,7 +47,6 @@ def hints_db(hints_args, toil_options):
                     bam_file_ids[dtype][os.path.basename(bam_path)] = validate_import_bam(t, bam_path,
                                                                                           fasta_sequences,
                                                                                           hints_args.genome)
-                    logger.info('{} {} ({}) is valid.'.format(dtype, os.path.basename(bam_path), hints_args.genome))
 
             # load the IsoSeq data, if we have any
             iso_seq_file_ids = []
@@ -75,10 +73,7 @@ def hints_db(hints_args, toil_options):
                               'protein_fasta': protein_fasta_file_id,
                               'genome_fasta': genome_fasta_file_id}
 
-            logger.info('{} has {} valid intron-only BAMs, {} valid BAMs and {} valid IsoSeq BAMs. '
-                        'Beginning Toil hints pipeline.'.format(hints_args.genome, len(bam_file_ids['INTRONBAM']),
-                                                                len(bam_file_ids['BAM']),
-                                                                len(iso_seq_file_ids)))
+            logger.info('All BAMs validated for {}. Beginning Toil hints pipeline'.format(hints_args.genome))
 
             disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids)
             job = Job.wrapJobFn(setup_hints, input_file_ids, disk=disk_usage)
@@ -322,7 +317,8 @@ def convert_blat_results_to_hints(job, results):
     out_hints = tools.fileOps.get_tmp_toil_file()
     cmd = [['sort', '-n', '-k16,16', merged_psl],
            ['sort', '-s', '-k14,14'],
-           ['blat2hints.pl', '--in=/dev/stdin', '--out={}'.format(out_hints)]]
+           ['perl', '-ne', '@f=split; print if ($f[0]>=100)'],
+           ['blat2hints.pl', '--in=/dev/stdin', '--nomult', '--ep_cutoff=5', '--out={}'.format(out_hints)]]
     tools.procOps.run_proc(cmd)
     # fix the names
     cmd = ['sed', '-i', 's/exon/CDS/; s/ep/CDSpart/', out_hints]
