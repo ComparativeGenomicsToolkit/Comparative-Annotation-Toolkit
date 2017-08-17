@@ -77,13 +77,11 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
 
         # load stats
         stats = parse_stats(stats_tmp)
-        stats_dict = {'Coverage': stats['dropminCover:'].alns, 'Span': stats['dropminSpan:'].alns,
-                      'Paralogy': stats['dropglobalBest:'].alns, 'Total': int(stats['kept:'].alns)}
         stats['genome'] = genome
         logger.info('Dropped {Coverage:,} alignments due to low coverage, {Span:,} '
                     'alignments due to low spanning distance'
-                    ' and {Paralogy;} alignments during ortholog resolution '
-                    'for a total of {Total:,} orthologs for genome {genome}.'.format(**stats_dict))
+                    ' and {Paralogy:,} alignments during ortholog resolution '
+                    'for a total of {Total:,} orthologs for genome {genome}.'.format(**stats))
         metrics['Orthology'] = stats
 
         # load globalBest IDs by using the hash table to figure out which one we had
@@ -134,7 +132,24 @@ def parse_stats(stats):
     # munge the stats and report them
     stats.index = [x.replace(' ', '') for x in stats.index]
     stats = stats.T
-    return stats
+    stats_dict = {}
+    if 'dropminCover:' in stats:
+        stats_dict['Coverage'] = int(stats['dropminCover:'].alns)
+    else:
+        stats_dict['Coverage'] = 0
+    if 'dropminSpan:' in stats:
+        stats_dict['Span'] = int(stats['dropminSpan:'].alns)
+    else:
+        stats_dict['Span'] = 0
+    if 'dropglobalBest:' in stats:
+        stats_dict['Paralogy'] = int(stats['dropglobalBest:'].alns)
+    else:
+        stats_dict['Paralogy'] = 0
+    if 'kept:' in stats:
+        stats_dict['Total'] = int(stats['kept:'].alns)
+    else:
+        stats_dict['Total'] = 0
+    return stats_dict
 
 
 def parse_verbose(verbose):
@@ -143,7 +158,7 @@ def parse_verbose(verbose):
     for l in open(verbose):
         if l.startswith('align'):
             l = l.split()
-            aln_id = l[-3].split(':')[0]
+            aln_id = l[-3].split(':')[0].split(']')[1]
             score = l[5]
             score = float(score.split('=')[1])
             scores[aln_id] = score
