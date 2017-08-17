@@ -5,10 +5,11 @@ Original Author: Dent Earl
 Modified by Ian Fiddes
 """
 import math
-from collections import Counter
+from collections import Counter, defaultdict
 
 from tools.fileOps import iter_lines
 from tools.mathOps import format_ratio
+from tools.nameConversions import strip_alignment_numbers
 
 __author__ = 'Ian Fiddes'
 
@@ -45,11 +46,6 @@ class PslRow(object):
         self.block_sizes = [int(x) for x in data_tokens[18].split(',') if x]
         self.q_starts = [int(x) for x in data_tokens[19].split(',') if x]
         self.t_starts = [int(x) for x in data_tokens[20].split(',') if x]
-
-    def hash_key(self):
-        """ return a string to use as dict key.
-        """
-        return '%s_%s_%d_%d' % (self.q_name, self.t_name, self.t_start, self.t_end)
 
     def target_coordinate_to_query(self, p):
         """ Take position P in target coordinates (positive) and convert it
@@ -159,8 +155,8 @@ def psl_iterator(psl_file, make_unique=False):
         for tokens in iter_lines(inf):
             psl = PslRow(tokens)
             if make_unique is True:
-                counts[psl.q_name] += 1
                 numbered_aln_id = '-'.join([psl.q_name, str(counts[psl.q_name])])
+                counts[psl.q_name] += 1
                 psl.q_name = numbered_aln_id
             yield psl
 
@@ -170,3 +166,11 @@ def get_alignment_dict(psl_file, make_unique=False):
     Convenience function for creating a dictionary of PslRow objects.
     """
     return {psl.q_name: psl for psl in psl_iterator(psl_file, make_unique)}
+
+
+def group_alignments_by_qname(psl_iterator):
+    """Convenience function for grouping PSLs by their name"""
+    r = defaultdict(list)
+    for p in psl_iterator:
+        r[strip_alignment_numbers(p.q_name)].append(p)
+    return r
