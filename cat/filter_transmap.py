@@ -39,6 +39,11 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
     # load all of the input alignments
     unfiltered = tools.psl.get_alignment_dict(tm_psl)
 
+    # get transcript -> gene map
+    transcript_gene_map = tools.sqlInterface.get_transcript_gene_map(db_path)
+    # get transcript -> biotype map for metrics
+    transcript_biotype_map = tools.sqlInterface.get_transcript_biotype_map(db_path)
+
     # Construct a hash of alignment metrics to alignment IDs
     # The reason for this is that pslCDnaFilter rearranges them internally, so we lose order information
 
@@ -64,9 +69,12 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
 
     # local localBest IDs by using the hash table to figure out which ones we had
     local_best = {unfiltered[unfiltered_hash_table[hash_aln(aln)]] for aln in paralogy_alns}
-    # report counts
+    # report counts by biotype
     grouped = tools.psl.group_alignments_by_qname(local_best)
-    metrics = {'Paralogy': collections.Counter(len(c) for c in grouped.itervalues())}
+    metrics = {'Paralogy': collections.defaultdict(lambda: collections.Counter())}
+    for tx_id, aln_ids in grouped.iteritems():
+        biotype = transcript_biotype_map[tx_id]
+        metrics['Paralogy'][biotype][len(aln_ids)] += 1
 
     # now perform globalNearBest to resolve exact orthologs
     with tools.fileOps.TemporaryFilePath() as stats_tmp, tools.fileOps.TemporaryFilePath() as filtered_psl:
@@ -78,25 +86,18 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
         # load stats
         stats = parse_stats(stats_tmp)
         stats['genome'] = genome
-        logger.info('Dropped {Coverage:,} alignments due to low coverage, {Span:,} '
-                    'alignments due to low spanning distance'
-                    ' and {Paralogy:,} alignments during ortholog resolution '
-                    'for a total of {Total:,} orthologs for genome {genome}.'.format(**stats))
-        metrics['Orthology'] = stats
 
         # load globalBest IDs by using the hash table to figure out which one we had
         filtered = tools.psl.get_alignment_dict(filtered_psl)
         best_ids = {unfiltered_hash_table[hash_aln(aln)] for aln in filtered.itervalues()}
 
-    # get transcript -> gene map
-    transcript_gene_map = tools.sqlInterface.get_transcript_gene_map(db_path)
     # run pslCDnaFilter again, with no options, to get scores
     with tools.fileOps.TemporaryFilePath() as tmp_verbose:
         cmd = ['pslCDnaFilter', '-verbose=5', tm_psl, '/dev/stdout']
         tools.procOps.run_proc(cmd, stderr=tmp_verbose, stdout='/dev/null')
         scores = parse_verbose(tmp_verbose)
 
-    resolved_df, split_gene_metrics = resolve_split_genes(best_ids, unfiltered, transcript_gene_map, scores)
+    resolved_df, to_remove, split_gene_metrics = resolve_split_genes(best_ids, unfiltered, transcript_gene_map, scores)
     metrics['Split Genes'] = split_gene_metrics
 
     # flatten these out to a dataframe for SQL
@@ -106,11 +107,22 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
         gene_id = transcript_gene_map[tx_id]
         r.append([gene_id, tx_id, aln_id])
     df = pd.DataFrame(r, columns=['GeneId', 'TranscriptId', 'AlignmentId'])
+    df = df[~df.TranscriptId.isin(to_remove)]
     m = pd.concat([df, resolved_df])
-    m['SplitGene'] = m['SplitGene'].fillna(False)
     # add paralogy info
     m['Paralogy'] = [','.join({y.q_name for y in grouped[tx_id]} - {aln_id}) for tx_id, aln_id in
                      zip(*[m['TranscriptId'], m['AlignmentId']])]
+    m['Paralogy'] = m.Paralogy.replace('', np.nan)
+
+    # record stats and report to log
+    stats['Total'] = len(m)
+    stats['Rescued'] = stats['Total'] - len(filtered) + len(to_remove)
+    logger.info('Dropped {Coverage:,} alignments due to low coverage, {Span:,} '
+                'alignments due to low spanning distance '
+                'and {Paralogy:,} alignments during ortholog resolution. '
+                'Split gene resolution rescued {Rescued:,} transcripts '
+                'for a total of {Total:,} orthologs for genome {genome}.'.format(**stats))
+    metrics['Orthology'] = stats
 
     # write the paralog resolved PSL
     with psl_tgt.open('w') as outf:
@@ -123,7 +135,7 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
     with json_tgt.open('w') as outf:
         json.dump(metrics, outf)
 
-    return m
+    return m.set_index(['GeneId', 'TranscriptId'])
 
 
 def parse_stats(stats):
@@ -145,10 +157,6 @@ def parse_stats(stats):
         stats_dict['Paralogy'] = int(stats['dropglobalBest:'].alns)
     else:
         stats_dict['Paralogy'] = 0
-    if 'kept:' in stats:
-        stats_dict['Total'] = int(stats['kept:'].alns)
-    else:
-        stats_dict['Total'] = 0
     return stats_dict
 
 
@@ -185,6 +193,8 @@ def resolve_split_genes(best_ids, unfiltered, transcript_gene_map, scores):
     split_gene_metrics = {'Number of contig split genes': 0,
                           'Number of intra-contig split genes': 0}
     resolved = []
+    # set of alignments in the globalNearBest set we want to remove after resolution
+    to_remove = set()
     # cluster the best alignments of each gene separately
     for gene_id, alns in by_gene_best.iteritems():
         # construct by-target cluster trees
@@ -224,11 +234,9 @@ def resolve_split_genes(best_ids, unfiltered, transcript_gene_map, scores):
                 if len(overlapping_alns) > 0:
                     best_overlap = sorted(overlapping_alns, key=lambda x: x[1])[-1][0]
                     rescued_alns.append(best_overlap)
-            for aln in rescued_alns:
-                tx_id = transcript_gene_map[tools.nameConversions.strip_alignment_numbers(aln.q_name)]
-                alt_contigs = ','.join({a.t_name for a in alns} - {aln.t_name})
-                resolved.append([gene_id, tx_id, aln.q_name, alt_contigs, True])
-    resolved_df = pd.DataFrame(resolved, columns=['GeneId', 'TranscriptId', 'AlignmentId', 'GeneAlternateContigs',
-                                                  'SplitGene'])
-    return resolved_df, split_gene_metrics
+                alt_contigs = ','.join({a.t_name for a in rescued_alns} - {aln.t_name})
+                resolved.append([gene_id, tx_id, aln.q_name, alt_contigs])
+                to_remove.add(tx_id)  # remove these tx IDs from globalNearBest set
+    resolved_df = pd.DataFrame(resolved, columns=['GeneId', 'TranscriptId', 'AlignmentId', 'GeneAlternateContigs'])
+    return resolved_df, to_remove, split_gene_metrics
 

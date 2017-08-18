@@ -34,7 +34,7 @@ def transmap_classify(tm_eval_args):
     :param tm_eval_args: argparse Namespace produced by EvaluateTransMap.get_args()
     :return: DataFrame
     """
-    psl_dict = tools.psl.get_alignment_dict(tm_eval_args.filtered_tm_psl)
+    psl_dict = tools.psl.get_alignment_dict(tm_eval_args.tm_psl)
     ref_psl_dict = tools.psl.get_alignment_dict(tm_eval_args.ref_psl)
     gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.tm_gp)
     ref_gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.annotation_gp)
