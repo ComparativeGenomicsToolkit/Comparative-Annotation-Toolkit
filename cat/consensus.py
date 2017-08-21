@@ -409,7 +409,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
     best_series = best_rows.iloc[0]
     transcript_modes = evaluate_ties(best_rows)
     # construct the tags for this transcript
-    d = {'source_transcript': best_series.name,
+    d = {'source_transcript': best_series.TranscriptId,
          'source_transcript_name': best_series.TranscriptName,
          'source_gene': gene_id,
          'score': int(10 * round(best_series.AlnGoodness_mRNA, 3)),
