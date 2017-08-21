@@ -153,7 +153,7 @@ def generate_consensus(args):
                 tx_df = tools.misc.slice_df(gene_df, tx_id)
                 if len(tx_df) == 0:  # keep track of isoforms that did not map over
                     metrics['Transcript Missing'][tx_biotype] += 1
-                elif is_failed_df(tx_df, gene_biotype):  # failed transcripts do not get incorporated
+                elif 'passing' not in tx_df.TranscriptClass.tolist():  # failed transcripts do not get incorporated
                     metrics['Transcript Failed'][tx_biotype] += 1
                 else:
                     best_rows = find_best_score(tx_df)
@@ -243,7 +243,7 @@ def load_hgm_vectors(db_path, tx_mode):
             'ExonRnaSupport', 'IntronRnaSupport',
             'AllSpeciesExonRnaSupport', 'AllSpeciesIntronRnaSupport']
     for col in cols:
-        hgm_df[col] = hgm_df[col].apply(parse_text_vector)
+        hgm_df[col] = [list(map(int, x)) if len(x[0]) > 0 else [] for x in hgm_df[col].str.split(',').tolist()]
         hgm_df[col + 'Percent'] = hgm_df[col].apply(calculate_vector_support, resolve_nan=1)
     return hgm_df
 
@@ -252,22 +252,18 @@ def load_metrics_from_db(db_path, tx_mode, aln_mode):
     """
     Loads the alignment metrics for the mRNA/CDS alignments of transMap/AugustusTM/TMR
     """
-    def aggfunc(s):
-        """used to aggregate columns. Attempts to convert each cell to a float if possible"""
-        try:
-            return float(s)
-        except ValueError:
-            return s.iloc[0]
-        except TypeError:
-            assert s.iloc[0] is None
-            return None
-
     session = tools.sqlInterface.start_session(db_path)
     metrics_table = tools.sqlInterface.tables[aln_mode][tx_mode]['metrics']
     metrics_df = tools.sqlInterface.load_metrics(metrics_table, session)
-    metrics_df = pd.pivot_table(metrics_df, index='AlignmentId', columns='classifier',
-                                values='value', fill_value=None, aggfunc=aggfunc).reset_index()
-    metrics_df['OriginalIntrons'] = metrics_df['OriginalIntrons'].apply(parse_text_vector)
+    # unstack flattens the long-form data structure
+    metrics_df = metrics_df.set_index(['AlignmentId', 'classifier']).unstack('classifier')
+    metrics_df.columns = [col[1] for col in metrics_df.columns]
+    metrics_df = metrics_df.reset_index()
+    cols = ['AlnCoverage', 'AlnGoodness', 'AlnIdentity', 'PercentUnknownBases']
+    metrics_df[cols] = metrics_df[cols].apply(pd.to_numeric)
+    metrics_df['OriginalIntrons'] = metrics_df['OriginalIntrons'].fillna('')
+    metrics_df['OriginalIntrons'] = [list(map(int, x)) if len(x[0]) > 0 else [] for x in
+                                     metrics_df['OriginalIntrons'].str.split(',').tolist()]
     metrics_df['OriginalIntronsPercent'] = metrics_df['OriginalIntrons'].apply(calculate_vector_support, resolve_nan=1)
     session.close()
     return metrics_df
@@ -278,27 +274,30 @@ def load_evaluations_from_db(db_path, tx_mode):
     Loads the indel information from the evaluation database. We give preference to CDS alignments, but fall back
     to mRNA alignments.
     """
+    def aggfunc(s):
+        """
+        Preferentially pick CDS stats over mRNA stats, if they exist
+        They only exist for coding transcripts, and only those whose CDS alignments didn't fail
+        """
+        if s.value_CDS.any():
+            c = set(s[s.value_CDS > 0].name)
+        else:
+            c = set(s[s.value_mRNA > 0].name)
+        cols = ['Frameshift', 'CodingInsertion', 'CodingDeletion', 'CodingMult3Indel']
+        return pd.Series(('CodingDeletion' in c or 'CodingInsertion' in c,
+                          'CodingInsertion' in c, 'CodingDeletion' in c,
+                          'CodingMult3Deletion' in c or 'CodingMult3Insertion' in c), index=cols)
+
     session = tools.sqlInterface.start_session(db_path)
     cds_table = tools.sqlInterface.tables['CDS'][tx_mode]['evaluation']
     mrna_table = tools.sqlInterface.tables['mRNA'][tx_mode]['evaluation']
     cds_df = tools.sqlInterface.load_evaluation(cds_table, session)
     mrna_df = tools.sqlInterface.load_evaluation(mrna_table, session)
-    aln_ids = set(cds_df.AlignmentId) | set(mrna_df.AlignmentId)
     cds_df = cds_df.set_index('AlignmentId')
     mrna_df = mrna_df.set_index('AlignmentId')
-    r = []
-    for aln_id in aln_ids:
-        df = tools.misc.slice_df(cds_df, aln_id)
-        if len(df) == 0:
-            df = tools.misc.slice_df(mrna_df, aln_id)
-        c = set(df.name)
-        r.append([aln_id,
-                  'CodingDeletion' in c or 'CodingInsertion' in c,
-                  'CodingInsertion' in c,
-                  'CodingDeletion' in c,
-                  'CodingMult3Deletion' in c or 'CodingMult3Insertion' in c])
-    eval_df = pd.DataFrame(r)
-    eval_df.columns = ['AlignmentId', 'Frameshift', 'CodingInsertion', 'CodingDeletion', 'CodingMult3Indel']
+    merged = mrna_df.reset_index().merge(cds_df.reset_index(), how='outer', on=['AlignmentId', 'name'],
+                                         suffixes=['_mRNA', '_CDS'])
+    eval_df = merged.groupby('AlignmentId').apply(aggfunc).reset_index()
     return eval_df
 
 
@@ -540,13 +539,11 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
 
 
 def is_failed_df(df, gene_biotype):
-    """Failed genes have no passing transcripts. Handles series"""
-    if isinstance(df, pd.core.series.Series):
-        return df.TranscriptClass == 'failing'
+    """Failed genes have no passing transcripts within their own biotype"""
     biotype_df = df[(df.TranscriptBiotype == gene_biotype) & (df.TranscriptClass == 'passing')]
     if len(biotype_df) == 0:
         return True
-    return not df.TranscriptClass.str.contains('passing').any()
+    return not biotype_df.TranscriptClass.str.contains('passing').any()
 
 
 def rescue_failed_gene(gene_df, gene_id, metrics, hints_db_has_rnaseq):
