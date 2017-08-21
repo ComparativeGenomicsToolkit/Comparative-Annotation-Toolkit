@@ -53,7 +53,6 @@ def generate_consensus(args):
     coding_count = ref_biotype_counts['protein_coding']
     non_coding_count = sum(y for x, y in ref_biotype_counts.iteritems() if x != 'protein_coding')
     # gene transcript map to iterate over so that we capture missing gene information
-    gene_transcript_map = tools.sqlInterface.get_gene_transcript_map(args.ref_db_path)
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(args.ref_db_path)
     transcript_biotype_map = tools.sqlInterface.get_transcript_biotype_map(args.ref_db_path)
     # load transMap evaluation data
@@ -64,7 +63,7 @@ def generate_consensus(args):
     # load the alignment metrics data
     mrna_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
     cds_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'CDS') for tx_mode in tx_modes])
-    eval_df = pd.concat([load_evaluations_from_db(args.db_path, tx_mode) for tx_mode in tx_modes])
+    eval_df = pd.concat([load_evaluations_from_db(args.db_path, tx_mode) for tx_mode in tx_modes]).reset_index()
     coding_df, non_coding_df = combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df,
                                                       eval_df, args.intron_rnaseq_support, args.exon_rnaseq_support,
                                                       args.intron_annot_support, args.exon_annot_support,
@@ -281,7 +280,6 @@ def combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, 
     :param in_species_rna_support_only: Should we use the homGeneMapping vectors within-species or all-species?
     :return: filtered and merged dataframe
     """
-
     # add the reference information to gain biotype information
     hgm_ref_df = pd.merge(hgm_df, ref_df, on=['GeneId', 'TranscriptId'])
     # combine in homGeneMapping results

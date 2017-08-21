@@ -84,6 +84,11 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with the balance of this value and the `--maxCores` parameter.
 
+## transMap options
+`--local-near-best`: Adjusts the `localNearBest` parameter passed to `pslCDnaFilter`. This algorithm attempts to resolve paralogous alignments for a given source transcript, allowing for distinct portions of the transcript to align to different locations. The default value is 0.15, which is a fairly lenient setting. Decreasing this value increases the number of alignments called as paralogous. If your alignment is fragmented, keep this value higher. Note that this parameter does not affect paralog resolution, just the calling of paralogous alignments (populates the Paralogy tag in the output).
+
+`--minimum-paralog-coverage`: After the `localNearBest` algorithm is used to filter out paralogous alignments, the filtered alignments are evaluated for having at least this much coverage of the whole transcript before being considered a paralog. Default value is 25. Increasing this value restricts paralog calls.
+
 ## AugustusTM(R) options
 
 `--augustus`: Run AugustusTM(R)? 
@@ -112,8 +117,6 @@ As described above, the primary method to executing the pipeline is to follow th
 
 ## Filtering and consensus finding options
 
-`--resolve-split-genes`: Activate the split gene resolution process. See the [FilterTransMap section](#filtertransmap) for more.
-
 `--intron-rnaseq-support`: Amount of RNA-seq intron support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
 `--exon-rnaseq-support`: Amount of RNA-seq exon support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
@@ -132,9 +135,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--require-pacbio-support`: If set, all isoforms in the final set must be supported by at least one IsoSeq read. This flag is likely to discard a ton of transcripts, so be careful.
 
-`--minimum-coverage`: The minimum coverage to the reference a `transMap`/`AugustusTMR` transcript must have to be considered. Default is 40.
-
-`--in-species-rna-support-only`: If set, all of the above intron/exon support flags will look only at RNA-seq/IsoSeq data from the species in question, and not make use of `homGeneMapping` to check support in all species.
+`--in-species-rna-support-only`: If set, all of the above intron/exon support flags will look only at RNA-seq/IsoSeq data from the species in question, and not make use of `homGeneMapping` to check support in all species. The output plots are not effected by this flag.
 
 `--rebuild-consensus`: A convenience flag to allow you to adjust the flags above. When set, will force the pipeline to re-run consensus finding and will also re-build the downstream plots and assembly hub.
 
@@ -247,31 +248,26 @@ This step runs `transMap`. The chain files are used to project annotations prese
 
 This step performs the preliminary classification of `transMap` transcripts. This step populates the `TransMapEvaluation` table in the sqlite database for each target genome with the following classifiers:
 
-1. Paralogy: The # of times this transcript was aligned.
-2. AlnExtendsOffConfig: Does this alignment run off the end of a contig?
-3. AlignmentPartialMap: Did this transcript not map completely?
-4. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
-5. AlnContainsUnknownBases: Are there any Ns within the transcript alignment?
-6. Synteny: Counts the number of genes in linear order that match up to +/- 3 genes.
-7. TransMapOriginalIntrons: The number of transMap introns within a wiggle distance of a intron in the parent transcript
-   in transcript coordinates.
+1. AlnExtendsOffConfig: Does this alignment run off the end of a contig?
+2. AlignmentPartialMap: Did this transcript not map completely?
+3. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
+4. PercentN: Percent of N bases in the alignment.
+5. TransMapCoverage.
+6. TransMapIdentity.
+7. TransMapGoodness: A measure of alignment quality that takes into account both coverage and alignment size in the target. Related to Jim Kent's badness score.
+8. TransMapOriginalIntronsPercent: The number of transMap introns within a wiggle distance of a intron in the parent transcript in transcript coordinates.
+9. Synteny: Counts the number of genes in linear order that match up to +/- 5 genes.
+
    
 This module will populate the folder `--work-dir/transMap`.
 
 ## FilterTransMap
 
-Resolves paralogs in transMap output based on MLE estimate of the distribution of alignment identities in the transMap
-process. A normal distribution is fit to the -log(1 - identity) where identity != 1, which is a transformation of the underlying lognormal distribution. This is performed only on transcripts who map over in a 1-1 fashion. A cutoff is established as one standard deviation from the mean of this fit. 
+This module runs the program `PslCDnaFilter` in a few different parameterizations. First, it runs the program with `-globalNearBest=0 -minSpan=0.2 -minCover=0.1`, which filters out alignments with coverage <10% and whose target genome span is less than 20% of the largest alignment, then uses the alignment score to pick the best single alignment. The output of this process is then split-gene resolved. This process involves identifying source genes that map to multiple contigs or disjoint on a single contig, identifying the highest scoring locus, then selecting alignments for transcripts in that locus that were filtered out by `globalNearBest`. The result is a single discrete locus for each source transcript.
 
-This process is performed separately for each **transcript biotype** present in the annotation set. *This is one of many reasons why it is very important that your reference be properly biotyped!* Transcript projections whose identity are below the cutoff will be marked as `Failing`, which is a key component of the [consensus finding process](##consensus).
+This module also runs `PslCDnaFilter` again, this time to discover paralogs. In this run, instead of `-globalNearBest` being set, `-localNearBest` is set to the user determined value (default is 0.15). This algorithm allows for multiple alignments from a given source to pass through if they are on different parts of the source transcript. In practice, this generally means filtering out truly paralogous alignments while retaining alignments of transcripts split across contigs. The alignments that are filtered out by this process are used to populate the `Paralogy` field in the final output, as well as the diagnostic plots.
 
-The output of this step populates the sqlite tables `TransMapFilterEvaluation` and `TransMapIdentityCutoffs` for each target genome. The table `TransMapIdentityCutoffs` records the identity cutoff established for each biotype.
-
-If the `--resolve-split-genes` flag is set, this step will also resolve mappings of the same gene to multiple contigs. This process
-combines information from both synteny and phylogenetic distance to determine which contig is likely the parental
-contig. This should be used carefully on genomes that have a low N50. Looking at the `AlnExtendsOffConfig` field from the `EvaluateTransMap` step may help guide this decision.
-
-This module will populate the folder `--work-dir/filtered_transMap`.
+This module will further populate the folder `--work-dir/transMap`.
 
 ## Augustus
 
