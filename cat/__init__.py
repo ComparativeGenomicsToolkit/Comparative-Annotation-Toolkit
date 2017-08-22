@@ -118,6 +118,7 @@ class PipelineTask(luigi.Task):
     disableCaching = luigi.BoolParameter(default=False, significant=False)
     workDir = luigi.Parameter(default=None, significant=False)
     defaultDisk = luigi.Parameter(default='8G', significant=False)
+    stats = luigi.BoolParameter(default=False, significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -173,6 +174,9 @@ class PipelineTask(luigi.Task):
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
+
+        # keep stat information?
+        args.set('stats', self.stats, False)
 
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
@@ -440,6 +444,13 @@ class ToilTask(PipelineTask):
         namespace = parser.parse_args([''])  # empty jobStore attribute
         namespace.jobStore = None  # jobStore attribute will be updated per-batch
         return namespace
+
+    def get_stats(self, toil_options, out_stats):
+        """
+        Write the toil stats to a file for subsequent processing
+        """
+        cmd = ['toil', 'stats', '--raw', toil_options.jobStore]
+        tools.procOps.run_proc(cmd, stdout=out_stats)
 
 
 class RebuildableTask(PipelineTask):
@@ -881,6 +892,8 @@ class BuildDb(PipelineTask):
         args.annotation = pipeline_args.cfg['ANNOTATION'].get(genome, None)
         args.protein_fasta = pipeline_args.cfg['PROTEIN_FASTA'].get(genome, None)
         args.hints_path = os.path.join(base_dir, genome + '.extrinsic_hints.gff')
+        if pipeline_args.stats:
+            args.stats_path = os.path.join(base_dir, genome + '.toil_stats.json')
         return args
 
     def validate(self):
@@ -894,7 +907,7 @@ class BuildDb(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             hints_args = BuildDb.get_args(pipeline_args, genome)
-            yield self.clone(GenerateHints, hints_args=hints_args, genome=genome)
+            yield self.clone(GenerateHints, hints_args=hints_args, genome=genome, stats=pipeline_args.stats)
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -925,6 +938,7 @@ class GenerateHints(ToilTask):
     """
     hints_args = luigi.Parameter()
     genome = luigi.Parameter()
+    stats = luigi.BoolParameter()
 
     def output(self):
         return luigi.LocalTarget(self.hints_args.hints_path)
@@ -949,6 +963,8 @@ class GenerateHints(ToilTask):
         work_dir = os.path.abspath(os.path.join(self.work_dir, 'toil', 'hints_db', self.genome))
         toil_options = self.prepare_toil_options(work_dir)
         hints_db(self.hints_args, toil_options)
+        if self.stats:
+            self.get_stats(toil_options, self.hints_args.stats_path)
         logger.info('Finished GenerateHints Toil pipeline for {}.'.format(self.genome))
 
 
@@ -972,6 +988,8 @@ class Chaining(ToilTask):
         args.query_sizes = ref_files.sizes
         args.target_two_bits = tgt_two_bits
         args.chain_files = chain_files
+        if pipeline_args.stats:
+            args.stats_path = os.path.join(base_dir, 'stats.json')
         return args
 
     def output(self):
@@ -998,6 +1016,8 @@ class Chaining(ToilTask):
         toil_options = self.prepare_toil_options(toil_work_dir)
         chain_args = self.get_args(pipeline_args)
         chaining(chain_args, toil_options)
+        if pipeline_args.stats:
+            self.get_stats(toil_options, chain_args.stats_path)
         logger.info('Pairwise Chaining toil pipeline is complete.')
 
 
@@ -1228,6 +1248,8 @@ class Augustus(PipelineWrapperTask):
         if args.augustus_tmr:
             args.augustus_tmr_gp = os.path.join(base_dir, genome + '.augTMR.gp')
             args.augustus_tmr_gtf = os.path.join(base_dir, genome + '.augTMR.gtf')
+        if pipeline_args.stats:
+            args.stats_path = os.path.join(base_dir, genome + '.stats.json')
         return args
 
     def validate(self):
@@ -1280,6 +1302,8 @@ class AugustusDriverTask(ToilTask):
         augustus_args = self.get_module_args(Augustus, genome=self.genome)
         coding_gp = self.extract_coding_genes(augustus_args)
         augustus(augustus_args, coding_gp, toil_options)
+        if 'stats_path' in augustus_args:
+            self.get_stats(toil_options, augustus_args.stats_path)
         logger.info('Augustus toil pipeline for {} completed.'.format(self.genome))
         os.remove(coding_gp)
         for out_gp, out_gtf in tools.misc.pairwise(self.output()):
@@ -1319,6 +1343,8 @@ class AugustusCgp(ToilTask):
         args.hints_db = pipeline_args.hints_db
         args.query_sizes = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
         args.gtf = ReferenceFiles.get_args(pipeline_args).annotation_gtf
+        if pipeline_args.stats:
+            args.stats_path = os.path.join(base_dir, 'stats.json')
         return args
 
     def output(self):
@@ -1371,6 +1397,8 @@ class AugustusCgp(ToilTask):
         cgp_args = self.get_args(pipeline_args)
         cgp_args.cgp_cfg = self.prepare_cgp_cfg(pipeline_args)
         augustus_cgp(cgp_args, toil_options)
+        if 'stats_path' in cgp_args:
+            self.get_stats(toil_options, cgp_args.stats_path)
         logger.info('Finished AugustusCGP toil pipeline.')
 
 
@@ -1395,6 +1423,8 @@ class AugustusPb(PipelineWrapperTask):
         args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')
         args.augustus_pb_gp = os.path.join(base_dir, genome + '.augPB.gp')
         args.augustus_pb_raw_gtf = os.path.join(base_dir, genome + '.raw.augPB.gtf')
+        if pipeline_args.stats:
+            args.stats_path = os.path.join(base_dir, genome + '.stats.json')
         return args
 
     def validate(self):
@@ -1431,6 +1461,8 @@ class AugustusPbDriverTask(ToilTask):
         toil_options = self.prepare_toil_options(toil_work_dir)
         augustus_pb_args = self.get_module_args(AugustusPb, genome=self.genome)
         augustus_pb(augustus_pb_args, toil_options)
+        if 'stats_path' in augustus_pb_args:
+            self.get_stats(toil_options, augustus_pb_args.stat_file)
         logger.info('Finished AugustusPB toil pipeline on {}.'.format(self.genome))
 
 
@@ -1756,6 +1788,8 @@ class AlignTranscripts(PipelineWrapperTask):
             args.transcript_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
                                                'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
                                                'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
+        if pipeline_args.stats:
+            args.stats_path = os.path.join(base_dir, 'stats.json')
         return args
 
     def validate(self):
@@ -1799,6 +1833,8 @@ class AlignTranscriptDriverTask(ToilTask):
         toil_options = self.prepare_toil_options(toil_work_dir)
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
         align_transcripts(alignment_args, toil_options)
+        if 'stats_path' in alignment_args:
+            self.get_stats(toil_options, args.stats_path)
         logger.info('Align Transcript toil pipeline for {} completed.'.format(self.genome))
 
 
