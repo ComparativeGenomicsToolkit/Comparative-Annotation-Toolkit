@@ -53,8 +53,9 @@ def generate_plots(args):
     tm_filter_plots(tm_data, args.ordered_genomes, args.transmap_filtering)
     tm_metrics_plot(tm_metrics, args.ordered_genomes, biotypes, transcript_biotype_map, args.tm_coverage,
                     args.tm_identity)
-    tm_para_plot(tm_data, args.ordered_genomes, biotypes, transcript_biotype_map, args.paralogy)
+    tm_para_plot(tm_data, args.ordered_genomes, biotypes, args.paralogy)
     consensus_metrics_plot(consensus_data, args.ordered_genomes, biotypes, args.coverage, args.identity)
+    missing_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.missing)
     consensus_support_plot(consensus_data, args.ordered_genomes, biotypes,
                            modes=['Splice Annotation Support', 'Exon Annotation Support', 'Original Introns'],
                            title='Reference annotation support',
@@ -180,7 +181,7 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
                 multipage_close(pdf, tight_layout=False)
 
 
-def tm_para_plot(tm_data, ordered_genomes, biotypes, transcript_biotype_map, para_tgt):
+def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt):
     """transMap paralogy plots"""
     legend_labels = ['= 1', '= 2', '= 3', u'\u2265 4']
     title_string = 'Proportion of transcripts that have multiple alignments'

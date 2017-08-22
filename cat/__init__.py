@@ -1093,7 +1093,7 @@ class FilterTransMap(PipelineTask):
         logger.info('Filtering transMap PSL for {}.'.format(self.genome))
         table_target, psl_target, json_target = self.output()
         resolved_df = filter_transmap(tm_args.tm_psl, self.genome, tm_args.ref_db_path, psl_target,
-                                               tm_args.minimum_paralog_coverage, tm_args.local_near_best, json_target)
+                                      tm_args.minimum_paralog_coverage, tm_args.local_near_best, json_target)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
@@ -1116,10 +1116,10 @@ class TransMapGp(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@requires(TransMapGp)
+@requires(FilterTransMap)
 class TransMapGtf(PipelineTask):
     """
-    Converts the transMap genePred to GTF
+    Converts the unfiltered transMap PSL to GTF
     """
     def output(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
@@ -1127,8 +1127,12 @@ class TransMapGtf(PipelineTask):
 
     def run(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
-        logger.info('Converting transMap genePred to GTF for {}.'.format(self.genome))
-        tools.misc.convert_gp_gtf(self.output(), luigi.LocalTarget(tm_args.tm_gp))
+        logger.info('Creating unfiltered transMap GTF for {}.'.format(self.genome))
+        tmp_gp = luigi.LocalTarget(is_tmp=True)
+        cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
+               tm_args.annotation_gp, tm_args.tm_psl, tmp_gp.path]
+        tools.procOps.run_proc(cmd)
+        tools.misc.convert_gp_gtf(self.output(), tmp_gp)
 
 
 class EvaluateTransMap(PipelineWrapperTask):
@@ -2127,7 +2131,7 @@ class CreateTracks(PipelineWrapperTask):
     Wrapper task for track creation.
     """
     def validate(self):
-        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig', 'bamCoverage']:
+        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig']:#, 'bamCoverage']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Tool {} not in global path.'.format(tool))
 
@@ -2384,9 +2388,7 @@ class ConsensusTrack(TrackTask):
     def run(self):
         def find_rgb(info):
             """red for failed, blue for coding, green for non-coding, purple for denovo"""
-            if info.failed_gene == 'True':
-                return '212,76,85'
-            elif info.transcript_biotype == 'unknown_likely_coding':
+            if info.transcript_biotype == 'unknown_likely_coding':
                 return '135,76,212'
             elif info.transcript_biotype == 'protein_coding':
                 return '76,85,212'
@@ -2414,8 +2416,8 @@ class ConsensusTrack(TrackTask):
                        tx.thick_start, tx.thick_stop, find_rgb(info), tx.block_count, block_sizes, block_starts,
                        info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
-                       info.source_transcript, info.alignment_id, info.alternative_source_transcripts, info.failed_gene,
-                       info.frameshift, info.exon_annotation_support,
+                       info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
+                       info.paralogy, info.frameshift, info.exon_annotation_support,
                        info.intron_annotation_support, info.transcript_class, info.transcript_modes]
                 if has_rnaseq:
                     row.extend([info.intron_rna_support, info.exon_rna_support])
@@ -2733,7 +2735,7 @@ def construct_consensus_gp_as(has_rna, has_pb):
     string sourceTranscript;    "Source transcript ID"
     string alignmentId;  "Alignment ID"
     lstring alternativeSourceTranscripts;    "Alternative source transcripts"
-    string failedGene;   "Did this gene fail the identity cutoff?"
+    lstring Paralogy;    "Paralogous alignment IDs"
     string frameshift;  "Frameshifted relative to source?"
     lstring exonAnnotationSupport;   "Exon support in reference annotation"
     lstring intronAnnotationSupport;   "Intron support in reference annotation"

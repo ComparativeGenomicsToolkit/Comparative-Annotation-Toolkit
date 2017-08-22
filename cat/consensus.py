@@ -417,7 +417,8 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'alignment_id': str(best_series.AlignmentId),
          'frameshift': str(best_series.Frameshift),
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
-         'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport))}
+         'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport)),
+         'transcript_class': 'ortholog'}
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
@@ -457,7 +458,6 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     2) PoorMapping -- the transcript has no assigned or alternative genes but has exons/introns supported by annotation
     3) PutativeNovel -- the transcript has no matches to the reference
     4) PossibleFusion -- the transcript was flagged in parent finding as a fusion, and has all valid splices
-
 
     Also finds novel splice junctions in CGP/PB transcripts. A novel splice junction is defined as a splice which
     homGeneMapping did not map over and which is supported by RNA-seq.
