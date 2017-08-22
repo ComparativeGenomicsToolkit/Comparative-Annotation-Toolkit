@@ -12,7 +12,7 @@ def call_proc(cmd, keepLastNewLine=False):
     The  cmd is either a list of command and arguments, or pipeline, specified by
     a list of lists of commands and arguments."""
     stdout = pipeline.DataReader()
-    pl = pipeline.Procline(cmd, stdin="/dev/null", stdout=stdout)
+    pl = pipeline.Procline(cmd, stdin="/dev/null", stdout=stdout, stderr='/dev/null')
     pl.wait()
     out = stdout.get()
     if (not keepLastNewLine) and (len(out) > 0) and (out[-1] == "\n"):

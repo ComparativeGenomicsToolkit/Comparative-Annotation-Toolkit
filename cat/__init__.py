@@ -1,6 +1,7 @@
 """
 Comparative Annotation Toolkit.
 """
+import datetime
 import collections
 import itertools
 import logging
@@ -118,7 +119,6 @@ class PipelineTask(luigi.Task):
     disableCaching = luigi.BoolParameter(default=False, significant=False)
     workDir = luigi.Parameter(default=None, significant=False)
     defaultDisk = luigi.Parameter(default='8G', significant=False)
-    stats = luigi.BoolParameter(default=False, significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -175,8 +175,8 @@ class PipelineTask(luigi.Task):
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
 
-        # keep stat information?
-        args.set('stats', self.stats, False)
+        # stats location
+        args.set('stats_db', os.path.join(args.out_dir, 'databases', 'timing_stats.db'), False)
 
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
@@ -369,6 +369,22 @@ class PipelineTask(luigi.Task):
             json.dump(metrics_dict, outf)
 
 
+@PipelineTask.event_handler(luigi.Event.PROCESSING_TIME)
+def processing_time(task, processing_time):
+    """
+    An event to record processing time of each task. This event records directly to a sqlite database.
+    """
+    pipeline_args = task.get_pipeline_args()
+    stats_db = pipeline_args.stats_db
+    finish_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    with tools.sqlite.ExclusiveSqlConnection(stats_db) as engine:
+        c = engine.cursor()
+        c.execute('create table if not exists stats '
+                  '(TaskId string unique, FinishTime string, ProcessingTime real)')
+        c.execute('insert or replace into stats values (?, ?, ?)', [task.task_id, finish_time, processing_time])
+        engine.commit()
+
+
 class PipelineWrapperTask(PipelineTask, luigi.WrapperTask):
     """add WrapperTask functionality to PipelineTask"""
     pass
@@ -410,6 +426,7 @@ class ToilTask(PipelineTask):
         tools.fileOps.ensure_file_dir(job_store)
         toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
+        toil_args.stats = True
 
         # this logic tries to determine if we should try and restart an existing jobStore
         if os.path.exists(job_store):
@@ -432,7 +449,9 @@ class ToilTask(PipelineTask):
 
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
+        job_store = 'file:' + job_store
         toil_args.jobStore = job_store
+        self.job_store = job_store
         return toil_args
 
     def get_toil_defaults(self):
@@ -445,12 +464,24 @@ class ToilTask(PipelineTask):
         namespace.jobStore = None  # jobStore attribute will be updated per-batch
         return namespace
 
-    def get_stats(self, toil_options, out_stats):
-        """
-        Write the toil stats to a file for subsequent processing
-        """
-        cmd = ['toil', 'stats', '--raw', toil_options.jobStore]
-        tools.procOps.run_proc(cmd, stdout=out_stats)
+
+@ToilTask.event_handler(luigi.Event.SUCCESS)
+def success(task):
+    """
+    An event to record the total CPU time of a toil job.
+    """
+    pipeline_args = task.get_pipeline_args()
+    stats_db = pipeline_args.stats_db
+    cmd = ['toil', 'stats', '--raw', task.job_store]
+    stats = json.loads(tools.procOps.call_proc(cmd))
+    with tools.sqlite.ExclusiveSqlConnection(stats_db) as engine:
+        c = engine.cursor()
+        c.execute('create table if not exists toil_stats '
+                  '(TaskId string unique, TotalTime real, AverageTime real)')
+        c.execute('insert or replace into toil_stats values (?, ?, ?)', [task.task_id,
+                                                                         stats['jobs']['total_clock'],
+                                                                         stats['jobs']['average_clock']])
+        engine.commit()
 
 
 class RebuildableTask(PipelineTask):
@@ -540,6 +571,7 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(Plots)
         if self.assembly_hub is True:
             yield self.clone(AssemblyHub)
+        yield self.clone(ReportStats)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -892,8 +924,6 @@ class BuildDb(PipelineTask):
         args.annotation = pipeline_args.cfg['ANNOTATION'].get(genome, None)
         args.protein_fasta = pipeline_args.cfg['PROTEIN_FASTA'].get(genome, None)
         args.hints_path = os.path.join(base_dir, genome + '.extrinsic_hints.gff')
-        if pipeline_args.stats:
-            args.stats_path = os.path.join(base_dir, genome + '.toil_stats.json')
         return args
 
     def validate(self):
@@ -907,7 +937,7 @@ class BuildDb(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             hints_args = BuildDb.get_args(pipeline_args, genome)
-            yield self.clone(GenerateHints, hints_args=hints_args, genome=genome, stats=pipeline_args.stats)
+            yield self.clone(GenerateHints, hints_args=hints_args, genome=genome)
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -922,13 +952,13 @@ class BuildDb(PipelineTask):
             logger.info('Loading sequence for {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(pipeline_args.hints_db)]
-            tools.procOps.run_proc(base_cmd + [args.fasta])
+            tools.procOps.run_proc(base_cmd + [args.fasta], stderr='/dev/null')
             if os.path.getsize(args.hints_path) != 0:
                 logger.info('Loading hints for {} into database.'.format(genome))
-                tools.procOps.run_proc(base_cmd + [args.hints_path])
+                tools.procOps.run_proc(base_cmd + [args.hints_path], stderr='/dev/null')
         logger.info('Indexing database.')
         cmd = ['load2sqlitedb', '--makeIdx', '--clean', '--dbaccess={}'.format(pipeline_args.hints_db)]
-        tools.procOps.run_proc(cmd)
+        tools.procOps.run_proc(cmd, stderr='/dev/null')
         logger.info('Hints database completed.')
 
 
@@ -963,8 +993,6 @@ class GenerateHints(ToilTask):
         work_dir = os.path.abspath(os.path.join(self.work_dir, 'toil', 'hints_db', self.genome))
         toil_options = self.prepare_toil_options(work_dir)
         hints_db(self.hints_args, toil_options)
-        if self.stats:
-            self.get_stats(toil_options, self.hints_args.stats_path)
         logger.info('Finished GenerateHints Toil pipeline for {}.'.format(self.genome))
 
 
@@ -988,8 +1016,6 @@ class Chaining(ToilTask):
         args.query_sizes = ref_files.sizes
         args.target_two_bits = tgt_two_bits
         args.chain_files = chain_files
-        if pipeline_args.stats:
-            args.stats_path = os.path.join(base_dir, 'stats.json')
         return args
 
     def output(self):
@@ -1016,8 +1042,6 @@ class Chaining(ToilTask):
         toil_options = self.prepare_toil_options(toil_work_dir)
         chain_args = self.get_args(pipeline_args)
         chaining(chain_args, toil_options)
-        if pipeline_args.stats:
-            self.get_stats(toil_options, chain_args.stats_path)
         logger.info('Pairwise Chaining toil pipeline is complete.')
 
 
@@ -1248,8 +1272,6 @@ class Augustus(PipelineWrapperTask):
         if args.augustus_tmr:
             args.augustus_tmr_gp = os.path.join(base_dir, genome + '.augTMR.gp')
             args.augustus_tmr_gtf = os.path.join(base_dir, genome + '.augTMR.gtf')
-        if pipeline_args.stats:
-            args.stats_path = os.path.join(base_dir, genome + '.stats.json')
         return args
 
     def validate(self):
@@ -1302,8 +1324,6 @@ class AugustusDriverTask(ToilTask):
         augustus_args = self.get_module_args(Augustus, genome=self.genome)
         coding_gp = self.extract_coding_genes(augustus_args)
         augustus(augustus_args, coding_gp, toil_options)
-        if 'stats_path' in augustus_args:
-            self.get_stats(toil_options, augustus_args.stats_path)
         logger.info('Augustus toil pipeline for {} completed.'.format(self.genome))
         os.remove(coding_gp)
         for out_gp, out_gtf in tools.misc.pairwise(self.output()):
@@ -1343,8 +1363,6 @@ class AugustusCgp(ToilTask):
         args.hints_db = pipeline_args.hints_db
         args.query_sizes = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
         args.gtf = ReferenceFiles.get_args(pipeline_args).annotation_gtf
-        if pipeline_args.stats:
-            args.stats_path = os.path.join(base_dir, 'stats.json')
         return args
 
     def output(self):
@@ -1397,8 +1415,6 @@ class AugustusCgp(ToilTask):
         cgp_args = self.get_args(pipeline_args)
         cgp_args.cgp_cfg = self.prepare_cgp_cfg(pipeline_args)
         augustus_cgp(cgp_args, toil_options)
-        if 'stats_path' in cgp_args:
-            self.get_stats(toil_options, cgp_args.stats_path)
         logger.info('Finished AugustusCGP toil pipeline.')
 
 
@@ -1423,8 +1439,6 @@ class AugustusPb(PipelineWrapperTask):
         args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')
         args.augustus_pb_gp = os.path.join(base_dir, genome + '.augPB.gp')
         args.augustus_pb_raw_gtf = os.path.join(base_dir, genome + '.raw.augPB.gtf')
-        if pipeline_args.stats:
-            args.stats_path = os.path.join(base_dir, genome + '.stats.json')
         return args
 
     def validate(self):
@@ -1788,8 +1802,6 @@ class AlignTranscripts(PipelineWrapperTask):
             args.transcript_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
                                                'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
                                                'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
-        if pipeline_args.stats:
-            args.stats_path = os.path.join(base_dir, 'stats.json')
         return args
 
     def validate(self):
@@ -1833,8 +1845,6 @@ class AlignTranscriptDriverTask(ToilTask):
         toil_options = self.prepare_toil_options(toil_work_dir)
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
         align_transcripts(alignment_args, toil_options)
-        if 'stats_path' in alignment_args:
-            self.get_stats(toil_options, args.stats_path)
         logger.info('Align Transcript toil pipeline for {} completed.'.format(self.genome))
 
 
@@ -2078,6 +2088,54 @@ class Plots(RebuildableTask):
         pipeline_args = self.get_pipeline_args()
         logger.info('Generating plots.')
         generate_plots(Plots.get_args(pipeline_args))
+
+
+class ReportStats(PipelineTask):
+    """
+    Reports all the stats at the end of the pipeline
+    """
+    def requires(self):
+        yield self.clone(PrepareFiles)
+        yield self.clone(BuildDb)
+        yield self.clone(Chaining)
+        yield self.clone(TransMap)
+        yield self.clone(EvaluateTransMap)
+        if self.augustus is True:
+            yield self.clone(Augustus)
+        if self.augustus_cgp is True:
+            yield self.clone(AugustusCgp)
+            yield self.clone(FindDenovoParents, mode='augCGP')
+        if self.augustus_pb is True:
+            yield self.clone(AugustusPb)
+            yield self.clone(FindDenovoParents, mode='augPB')
+            yield self.clone(IsoSeqTranscripts)
+        yield self.clone(Hgm)
+        yield self.clone(AlignTranscripts)
+        yield self.clone(EvaluateTranscripts)
+        yield self.clone(Consensus)
+        yield self.clone(Plots)
+        if self.assembly_hub is True:
+            yield self.clone(AssemblyHub)
+
+    def output(self):
+        # dumb -- need it to be something
+        pipeline_args = self.get_pipeline_args()
+        tools.fileOps.ensure_file_dir(pipeline_args.stats_db)
+        conn_str = 'sqlite:///{}'.format(pipeline_args.stats_db)
+        return luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                   target_table='stats',
+                                                   update_id='_'.join(['stats', str(hash(pipeline_args))]))
+
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
+        toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
+        core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 4)
+        toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 4)
+        total = core_time + toil_core_time
+        logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
+                    'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
+        self.output().touch()
 
 
 class AssemblyHub(PipelineWrapperTask):

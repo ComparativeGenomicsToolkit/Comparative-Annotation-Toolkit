@@ -1,7 +1,6 @@
 """
 Functions to interface with the sqlite databases produced by various steps of the annotation pipeline
 """
-import intervals
 import transcripts
 
 import pandas as pd
@@ -421,3 +420,17 @@ def load_alternatives(table, session):
     assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
+
+
+###
+# Stats functions
+###
+
+def load_luigi_stats(db_path, table):
+    """
+    Loads the luigi stats from the stats db
+    :param db_path: path to database
+    :return: DataFrame
+    """
+    engine = create_engine('sqlite:///' + db_path)
+    return pd.read_sql_table(table, engine)
