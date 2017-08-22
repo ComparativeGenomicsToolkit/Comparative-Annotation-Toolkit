@@ -102,17 +102,14 @@ def load_tm_metrics(dbs):
 
 def tm_filter_plots(tm_data, ordered_genomes, tgt):
     """Plots for the transMap filtering process."""
-    data = OrderedDict()
+    data = []
     for genome in ordered_genomes:
-        for filter_mode in tm_data[genome]['Orthology']:
-            data[(genome, filter_mode)] = OrderedDict(sorted(tm_data[genome]['Orthology'].items()))
-    df = pd.DataFrame.from_dict(data)
-    df = df.transpose().reset_index()
-    df.columns = ['genome', 'Filter Mode'] + list(df.columns[2:])
+        for filter_mode, val in tm_data[genome]['Orthology'].iteritems():
+            data.append([genome, filter_mode, val])
+    df = pd.DataFrame(data, columns=['genome', 'Filter Mode', 'value'])
     df['genome'] = pd.Categorical(df.genome, ordered_genomes, ordered=True)
-    df = pd.melt(df, id_vars=['genome', 'Filter Mode'])
     with tgt.open('w') as outf, PdfPages(outf) as pdf:
-        g = sns.factorplot(data=df, x='genome', y='value', col='variable', kind='bar', col_wrap=2)
+        g = sns.factorplot(data=df, x='genome', y='value', col='Filter Mode', kind='bar', col_wrap=2)
         g.fig.suptitle('transMap filtering outcomes')
         g.fig.subplots_adjust(top=0.9)
         g.set_xticklabels(rotation=90)
