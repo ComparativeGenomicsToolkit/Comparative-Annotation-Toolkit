@@ -95,6 +95,8 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--augustus-species`: What Augustus species do we want to use? If your species is not a mammal, please choose [one of the species listed here](http://bioinf.uni-greifswald.de/augustus/).
 
+`--augustus-utr-off`: AugustusTMR will crash trying to predict UTRs if your `--augustus-species` lacks a trained UTR model. You can check if `$augustusDir/config/species/$augustusSecies/$augustusSpecies_utr_probs.pbl` exists. If it does not, set this flag.
+
 ## AugustusCGP options
 
 `--augustus-cgp`: Run AugustusCGP?

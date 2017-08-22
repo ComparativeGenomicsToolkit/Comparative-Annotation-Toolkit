@@ -78,13 +78,14 @@ class PipelineTask(luigi.Task):
     augustus_species = luigi.Parameter(default='human', significant=False)
     tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
+    augustus_utr_off = luigi.BoolParameter(default=False, significant=False)
     # AugustusCGP parameters
     augustus_cgp = luigi.BoolParameter(default=False)
     cgp_param = luigi.Parameter(default=None, significant=False)
     augustus_cgp_cfg_template = luigi.Parameter(default='augustus_cfgs/cgp_extrinsic_template.cfg', significant=False)
     maf_chunksize = luigi.IntParameter(default=2500000, significant=False)
     maf_overlap = luigi.IntParameter(default=500000, significant=False)
-    cgp_train_num_exons = luigi.IntParameter(default=2000, significant=False)
+    cgp_train_num_exons = luigi.IntParameter(default=5000, significant=False)
     # AugustusPB parameters
     augustus_pb = luigi.BoolParameter(default=False)
     pb_genome_chunksize = luigi.IntParameter(default=5000000, significant=False)
@@ -148,6 +149,7 @@ class PipelineTask(luigi.Task):
         args.set('pb_cfg', os.path.abspath(self.pb_cfg), True)
 
         args.set('augustus_cgp_cfg_template', os.path.abspath(self.augustus_cgp_cfg_template), True)
+        args.set('augustus_utr_off', self.augustus_utr_off, True)
         if self.cgp_param is not None:
             args.set('cgp_param', os.path.abspath(self.cgp_param), True)
         else:
@@ -1219,6 +1221,8 @@ class Augustus(PipelineWrapperTask):
         args.tm_cfg = pipeline_args.tm_cfg
         args.tmr_cfg = pipeline_args.tmr_cfg
         args.augustus_species = pipeline_args.augustus_species
+        # invert the UTR flag
+        args.utr = not pipeline_args.augustus_utr_off
         args.augustus_hints_db = pipeline_args.hints_db
         args.augustus_tmr = genome in pipeline_args.rnaseq_genomes
         if args.augustus_tmr:
