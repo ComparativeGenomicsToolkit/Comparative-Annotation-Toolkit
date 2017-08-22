@@ -1991,12 +1991,11 @@ class Plots(RebuildableTask):
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
         args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))
         args.completeness = luigi.LocalTarget(os.path.join(base_dir, 'completeness.pdf'))
-        args.gene_failure = luigi.LocalTarget(os.path.join(base_dir, 'gene_failure.pdf'))
-        args.transcript_failure = luigi.LocalTarget(os.path.join(base_dir, 'transcript_failure.pdf'))
         args.consensus_extrinsic_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_extrinsic_support.pdf'))
         args.consensus_annot_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_annotation_support.pdf'))
         args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
         args.indel = luigi.LocalTarget(os.path.join(base_dir, 'coding_indels.pdf'))
+        args.missing = luigi.LocalTarget(os.path.join(base_dir, 'missing_genes_transcripts.pdf'))
         # plots that depend on execution mode
         if pipeline_args.augustus is True:
             args.improvement = luigi.LocalTarget(os.path.join(base_dir, 'augustus_improvement.pdf'))

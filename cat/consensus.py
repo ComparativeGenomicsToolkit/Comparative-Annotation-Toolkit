@@ -104,7 +104,7 @@ def generate_consensus(args):
         metrics['Gene Missing'][gene_biotype] = len(biotype_genes) - len(set(tx_df.GeneId))
     for tx_biotype, tx_df in best_df.groupby('TranscriptBiotype'):
         biotype_txs = {gene_id for gene_id, b in transcript_biotype_map.iteritems() if b == tx_biotype}
-        metrics['Gene Missing'][tx_biotype] = len(biotype_txs) - len(set(tx_df.TranscriptId))
+        metrics['Transcript Missing'][tx_biotype] = len(biotype_txs) - len(set(tx_df.TranscriptId))
 
     # main consensus finding -- using incorporate_tx to transform best scoring transcripts
     # stores a mapping of alignment IDs to tags for the final consensus set

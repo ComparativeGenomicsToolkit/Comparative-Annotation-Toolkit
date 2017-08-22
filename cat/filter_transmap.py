@@ -85,7 +85,6 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
 
         # load stats
         stats = parse_stats(stats_tmp)
-        stats['genome'] = genome
 
         # load globalBest IDs by using the hash table to figure out which one we had
         filtered = tools.psl.get_alignment_dict(filtered_psl)
@@ -115,13 +114,12 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
     m['Paralogy'] = m.Paralogy.replace('', np.nan)
 
     # record stats and report to log
-    stats['Total'] = len(m)
-    stats['Rescued'] = stats['Total'] - len(filtered) + len(to_remove)
-    logger.info('Dropped {Coverage:,} alignments due to low coverage, {Span:,} '
+    stats['Rescued'] = len(m) - len(filtered) + len(to_remove)
+    logger.info('Dropped {Coverage Filter:,} alignments due to low coverage, {Span Distance:,} '
                 'alignments due to low spanning distance '
-                'and {Paralogy:,} alignments during ortholog resolution. '
+                'and {Paralog Filter:,} alignments during ortholog resolution. '
                 'Split gene resolution rescued {Rescued:,} transcripts '
-                'for a total of {Total:,} orthologs for genome {genome}.'.format(**stats))
+                'for a total of {Total:,} orthologs for genome {genome}.'.format(genome=genome, Total=len(m), **stats))
     metrics['Orthology'] = stats
 
     # write the paralog resolved PSL
@@ -146,17 +144,17 @@ def parse_stats(stats):
     stats = stats.T
     stats_dict = {}
     if 'dropminCover:' in stats:
-        stats_dict['Coverage'] = int(stats['dropminCover:'].alns)
+        stats_dict['Coverage Filter'] = int(stats['dropminCover:'].alns)
     else:
-        stats_dict['Coverage'] = 0
+        stats_dict['Coverage Filter'] = 0
     if 'dropminSpan:' in stats:
-        stats_dict['Span'] = int(stats['dropminSpan:'].alns)
+        stats_dict['Span Distance'] = int(stats['dropminSpan:'].alns)
     else:
-        stats_dict['Span'] = 0
+        stats_dict['Span Distance'] = 0
     if 'dropglobalBest:' in stats:
-        stats_dict['Paralogy'] = int(stats['dropglobalBest:'].alns)
+        stats_dict['Paralog Filter'] = int(stats['dropglobalBest:'].alns)
     else:
-        stats_dict['Paralogy'] = 0
+        stats_dict['Paralog Filter'] = 0
     return stats_dict
 
 
