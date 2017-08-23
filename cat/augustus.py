@@ -42,7 +42,7 @@ def augustus(args, coding_gp, toil_options):
             input_file_ids.tm_cfg = FileID.forPath(t.importFile('file://' + args.tm_cfg), args.tm_cfg)
             input_file_ids.coding_gp = FileID.forPath(t.importFile('file://' + coding_gp), coding_gp)
             input_file_ids.ref_psl = FileID.forPath(t.importFile('file://' + args.ref_psl), args.ref_psl)
-            input_file_ids.tm_psl = FileID.forPath(t.importFile('file://' + args.tm_psl), args.tm_psl)
+            input_file_ids.tm_psl = FileID.forPath(t.importFile('file://' + args.filtered_tm_psl), args.filtered_tm_psl)
             input_file_ids.annotation_gp = FileID.forPath(t.importFile('file://' + args.annotation_gp),
                                                           args.annotation_gp)
             file_ids = [input_file_ids.genome_fasta, input_file_ids.coding_gp, input_file_ids.ref_psl,
@@ -137,7 +137,8 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
             hint = ''.join([tm_hints, rnaseq_hints])
         else:
             hint = tm_hints
-        transcript = run_augustus(hint, genome_fasta, tm_tx, cfg_file, start, stop, args.augustus_species, mode)
+        transcript = run_augustus(hint, genome_fasta, tm_tx, cfg_file, start, stop, args.augustus_species, mode,
+                                  args.utr)
         if transcript is not None:
             results.extend(transcript)
     if args.augustus_tmr:
@@ -145,7 +146,7 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
     return results
 
 
-def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, mode):
+def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, mode, utr):
     """
     Runs Augustus.
     :param hint: GFF formatted hint string
@@ -154,6 +155,7 @@ def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, mode):
     :param cfg_file: config file
     :param species: species parameter to pass to Augustus
     :param mode: 1 for TM, 2 for TMR
+    :param utr: Predict UTRs? Turn on if model exists
     :return: GTF formatted output from Augustus or None if nothing was produced
     """
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
@@ -162,7 +164,7 @@ def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, mode):
     with open(hints_out, 'w') as outf:
         outf.write(hint)
     cmd = ['augustus', tmp_fasta, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
-           '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR=on',
+           '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR={}'.format(int(utr)),
            '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
            '--protein=0', '--softmasking=1']
     aug_output = tools.procOps.call_proc_lines(cmd)

@@ -1,6 +1,7 @@
 """
 Comparative Annotation Toolkit.
 """
+import datetime
 import collections
 import itertools
 import logging
@@ -78,6 +79,7 @@ class PipelineTask(luigi.Task):
     augustus_species = luigi.Parameter(default='human', significant=False)
     tm_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM1.cfg', significant=False)
     tmr_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.ETM2.cfg', significant=False)
+    augustus_utr_off = luigi.BoolParameter(default=False, significant=False)
     # AugustusCGP parameters
     augustus_cgp = luigi.BoolParameter(default=False)
     cgp_param = luigi.Parameter(default=None, significant=False)
@@ -94,8 +96,10 @@ class PipelineTask(luigi.Task):
     hgm_cpu = luigi.IntParameter(default=4, significant=False)
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
+    # Paralogy detection options
+    local_near_best = luigi.FloatParameter(default=0.15, significant=False)
+    minimum_paralog_coverage = luigi.FloatParameter(25, significant=False)
     # consensus options
-    resolve_split_genes = luigi.BoolParameter(default=False, significant=False)
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     intron_annot_support = luigi.IntParameter(default=0, significant=False)
@@ -105,7 +109,6 @@ class PipelineTask(luigi.Task):
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
-    minimum_coverage = luigi.IntParameter(default=40, significant=False)
     in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
     rebuild_consensus = luigi.BoolParameter(default=False, significant=True)
     # Toil options
@@ -145,14 +148,19 @@ class PipelineTask(luigi.Task):
         args.set('pb_genome_chunksize', self.pb_genome_chunksize, True)
         args.set('pb_genome_overlap', self.pb_genome_overlap, True)
         args.set('pb_cfg', os.path.abspath(self.pb_cfg), True)
-        args.set('resolve_split_genes', self.resolve_split_genes, True)
+
         args.set('augustus_cgp_cfg_template', os.path.abspath(self.augustus_cgp_cfg_template), True)
+        args.set('augustus_utr_off', self.augustus_utr_off, True)
         if self.cgp_param is not None:
             args.set('cgp_param', os.path.abspath(self.cgp_param), True)
         else:
             args.set('cgp_param', None, True)
         args.set('cgp_train_num_exons', self.cgp_train_num_exons, True)
         args.set('hgm_cpu', self.hgm_cpu, False)
+
+        # user flags for paralog resolution
+        args.set('local_near_best', self.local_near_best, True)
+        args.set('minimum_paralog_coverage', self.minimum_paralog_coverage, True)
         
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
@@ -163,10 +171,12 @@ class PipelineTask(luigi.Task):
         args.set('denovo_num_introns', self.denovo_num_introns, False)
         args.set('denovo_splice_support', self.denovo_splice_support, False)
         args.set('denovo_exon_support', self.denovo_exon_support, False)
-        args.set('minimum_coverage', self.minimum_coverage, False)
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
+
+        # stats location
+        args.set('stats_db', os.path.join(args.out_dir, 'databases', 'timing_stats.db'), False)
 
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
@@ -359,6 +369,22 @@ class PipelineTask(luigi.Task):
             json.dump(metrics_dict, outf)
 
 
+@PipelineTask.event_handler(luigi.Event.PROCESSING_TIME)
+def processing_time(task, processing_time):
+    """
+    An event to record processing time of each task. This event records directly to a sqlite database.
+    """
+    pipeline_args = task.get_pipeline_args()
+    stats_db = pipeline_args.stats_db
+    finish_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    with tools.sqlite.ExclusiveSqlConnection(stats_db) as engine:
+        c = engine.cursor()
+        c.execute('create table if not exists stats '
+                  '(TaskId string unique, FinishTime string, ProcessingTime real)')
+        c.execute('insert or replace into stats values (?, ?, ?)', [task.task_id, finish_time, processing_time])
+        engine.commit()
+
+
 class PipelineWrapperTask(PipelineTask, luigi.WrapperTask):
     """add WrapperTask functionality to PipelineTask"""
     pass
@@ -400,6 +426,7 @@ class ToilTask(PipelineTask):
         tools.fileOps.ensure_file_dir(job_store)
         toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
+        toil_args.stats = True
 
         # this logic tries to determine if we should try and restart an existing jobStore
         if os.path.exists(job_store):
@@ -422,7 +449,9 @@ class ToilTask(PipelineTask):
 
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
+        job_store = 'file:' + job_store
         toil_args.jobStore = job_store
+        self.job_store = job_store
         return toil_args
 
     def get_toil_defaults(self):
@@ -434,6 +463,25 @@ class ToilTask(PipelineTask):
         namespace = parser.parse_args([''])  # empty jobStore attribute
         namespace.jobStore = None  # jobStore attribute will be updated per-batch
         return namespace
+
+
+@ToilTask.event_handler(luigi.Event.SUCCESS)
+def success(task):
+    """
+    An event to record the total CPU time of a toil job.
+    """
+    pipeline_args = task.get_pipeline_args()
+    stats_db = pipeline_args.stats_db
+    cmd = ['toil', 'stats', '--raw', task.job_store]
+    stats = json.loads(tools.procOps.call_proc(cmd))
+    with tools.sqlite.ExclusiveSqlConnection(stats_db) as engine:
+        c = engine.cursor()
+        c.execute('create table if not exists toil_stats '
+                  '(TaskId string unique, TotalTime real, AverageTime real)')
+        c.execute('insert or replace into toil_stats values (?, ?, ?)', [task.task_id,
+                                                                         stats['jobs']['total_clock'],
+                                                                         stats['jobs']['average_clock']])
+        engine.commit()
 
 
 class RebuildableTask(PipelineTask):
@@ -461,7 +509,7 @@ class TrackTask(RebuildableTask):
         yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
-        yield self.clone(FilterTransMap)
+        yield self.clone(TransMap)
 
     def output(self):
         return luigi.LocalTarget(self.track_path), luigi.LocalTarget(self.trackdb_path)
@@ -507,7 +555,6 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(Chaining)
         yield self.clone(TransMap)
         yield self.clone(EvaluateTransMap)
-        yield self.clone(FilterTransMap)
         if self.augustus is True:
             yield self.clone(Augustus)
         if self.augustus_cgp is True:
@@ -524,6 +571,7 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(Plots)
         if self.assembly_hub is True:
             yield self.clone(AssemblyHub)
+        yield self.clone(ReportStats)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -764,6 +812,7 @@ class Gff3ToAttrs(PipelineTask):
             results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
         df = pd.DataFrame(results, columns=['GeneId', 'TranscriptId', 'TranscriptName', 'GeneName',
                                             'GeneBiotype', 'TranscriptBiotype'])
+        df = df.set_index('TranscriptId')
         if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
             logger.critical('No protein_coding annotations found!')
         database = pipeline_args.dbs[pipeline_args.ref_genome]
@@ -903,13 +952,13 @@ class BuildDb(PipelineTask):
             logger.info('Loading sequence for {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(pipeline_args.hints_db)]
-            tools.procOps.run_proc(base_cmd + [args.fasta])
+            tools.procOps.run_proc(base_cmd + [args.fasta], stdout='/dev/null', stderr='/dev/null')
             if os.path.getsize(args.hints_path) != 0:
                 logger.info('Loading hints for {} into database.'.format(genome))
-                tools.procOps.run_proc(base_cmd + [args.hints_path])
+                tools.procOps.run_proc(base_cmd + [args.hints_path], stderr='/dev/null')
         logger.info('Indexing database.')
         cmd = ['load2sqlitedb', '--makeIdx', '--clean', '--dbaccess={}'.format(pipeline_args.hints_db)]
-        tools.procOps.run_proc(cmd)
+        tools.procOps.run_proc(cmd, stdout='/dev/null', stderr='/dev/null')
         logger.info('Hints database completed.')
 
 
@@ -919,6 +968,7 @@ class GenerateHints(ToilTask):
     """
     hints_args = luigi.Parameter()
     genome = luigi.Parameter()
+    stats = luigi.BoolParameter()
 
     def output(self):
         return luigi.LocalTarget(self.hints_args.hints_path)
@@ -1012,10 +1062,17 @@ class TransMap(PipelineWrapperTask):
         args.tm_psl = os.path.join(base_dir, genome + '.psl')
         args.tm_gp = os.path.join(base_dir, genome + '.gp')
         args.tm_gtf = os.path.join(base_dir, genome + '.gtf')
+        args.filtered_tm_psl = os.path.join(base_dir, genome + '.filtered.psl')
+        args.filtered_tm_gp = os.path.join(base_dir, genome + '.filtered.gp')
+        args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'filter_tm_metrics.json')
+        args.ref_db_path = pipeline_args.dbs[pipeline_args.ref_genome]
+        args.db_path = pipeline_args.dbs[genome]
+        args.minimum_paralog_coverage = pipeline_args.minimum_paralog_coverage
+        args.local_near_best = pipeline_args.local_near_best
         return args
 
     def validate(self):
-        for tool in ['pslMap', 'pslRecalcMatch', 'pslMapPostChain', 'pslCDnaFilter']:
+        for tool in ['pslMap', 'pslRecalcMatch', 'postTransMapChain', 'pslCDnaFilter']:
             if not tools.misc.is_exec(tool):
                     raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
@@ -1024,7 +1081,7 @@ class TransMap(PipelineWrapperTask):
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
             yield self.clone(TransMapPsl, genome=target_genome)
-            yield self.clone(TransMapGp, genome=target_genome)
+            yield self.clone(FilterTransMap, genome=target_genome)
             yield self.clone(TransMapGtf, genome=target_genome)
 
 
@@ -1036,51 +1093,72 @@ class TransMapPsl(PipelineTask):
 
     def output(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
-        return luigi.LocalTarget(tm_args.tm_psl)
+        return luigi.LocalTarget(tm_args.tm_psl), luigi.LocalTarget(tm_args.tm_gp)
 
     def requires(self):
-        return self.clone(PrepareFiles), self.clone(Chaining)
+        return self.clone(PrepareFiles), self.clone(Chaining), self.clone(ReferenceFiles)
 
     def run(self):
-        logger.info('Running transMap for {}.'.format(self.genome))
         tm_args = self.get_module_args(TransMap, genome=self.genome)
+        logger.info('Running transMap for {}.'.format(self.genome))
         cmd = [['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, '/dev/stdout'],
-               ['pslMapPostChain', '/dev/stdin', '/dev/stdout'],
-               ['sort', '-k', '14,14', '-k', '16,16n'],
+               ['postTransMapChain', '/dev/stdin', '/dev/stdout'],
+               ['sort', '-k14,14', '-k16,16n'],
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
-               ['pslCDnaFilter', '-localNearBest=0.0001', '-minCover=0.1', '/dev/stdin', '/dev/stdout'],
-               ['awk', '$17 - $16 < 3000000 {print $0}']]  # hard coded filter for 3mb transcripts
-        # hacky way to make unique - capture output to a file, then process
+               ['sort', '-k10,10']]  # re-sort back to query name for filtering
         tmp_file = luigi.LocalTarget(is_tmp=True)
         with tmp_file.open('w') as tmp_fh:
             tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
-        tools.fileOps.ensure_file_dir(self.output().path)
-        with self.output().open('w') as outf:
+        tm_psl_tgt, tm_gp_tgt = self.output()
+        tools.fileOps.ensure_file_dir(tm_psl_tgt.path)
+        with tm_psl_tgt.open('w') as outf:
             for psl_rec in tools.psl.psl_iterator(tmp_file.path, make_unique=True):
-                outf.write('\t'.join(psl_rec.psl_string()) + '\n')
+                tools.fileOps.print_row(outf, psl_rec.psl_string())
+        with tm_gp_tgt.open('w') as outf:
+            cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
+                   tm_args.annotation_gp, tm_psl_tgt.path, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf)
 
 
 @requires(TransMapPsl)
-class TransMapGp(AbstractAtomicFileTask):
+class FilterTransMap(PipelineTask):
     """
-    Produces the final transMapped genePred
+    Filters transMap output using the localNearBest algorithm.
     """
+    eval_table = tools.sqlInterface.TmFilterEval.__tablename__
+
     def output(self):
+        pipeline_args = self.get_pipeline_args()
         tm_args = self.get_module_args(TransMap, genome=self.genome)
-        return luigi.LocalTarget(tm_args.tm_gp)
+        tools.fileOps.ensure_file_dir(tm_args.db_path)
+        conn_str = 'sqlite:///{}'.format(tm_args.db_path)
+        tm_args = self.get_module_args(TransMap, genome=self.genome)
+        return (luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                    target_table=self.eval_table,
+                                                    update_id='_'.join([self.eval_table, str(hash(pipeline_args))])),
+                luigi.LocalTarget(tm_args.filtered_tm_psl),
+                luigi.LocalTarget(tm_args.metrics_json),
+                luigi.LocalTarget(tm_args.filtered_tm_gp))
 
     def run(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
-        logger.info('Converting transMap PSL to genePred for {}.'.format(self.genome))
-        cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
-               tm_args.annotation_gp, tm_args.tm_psl, '/dev/stdout']
-        self.run_cmd(cmd)
+        logger.info('Filtering transMap PSL for {}.'.format(self.genome))
+        table_target, psl_target, json_target, gp_target = self.output()
+        resolved_df = filter_transmap(tm_args.tm_psl, self.genome, tm_args.ref_db_path, psl_target,
+                                      tm_args.minimum_paralog_coverage, tm_args.local_near_best, json_target)
+        with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
+            resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
+            table_target.touch()
+        with gp_target.open('w') as outf:
+            cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
+                   tm_args.annotation_gp, psl_target.path, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf)
 
 
-@requires(TransMapGp)
+@requires(FilterTransMap)
 class TransMapGtf(PipelineTask):
     """
-    Converts the transMap genePred to GTF
+    Converts the unfiltered transMap PSL to GTF
     """
     def output(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
@@ -1088,8 +1166,12 @@ class TransMapGtf(PipelineTask):
 
     def run(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
-        logger.info('Converting transMap genePred to GTF for {}.'.format(self.genome))
-        tools.misc.convert_gp_gtf(self.output(), luigi.LocalTarget(tm_args.tm_gp))
+        logger.info('Creating unfiltered transMap GTF for {}.'.format(self.genome))
+        tmp_gp = luigi.LocalTarget(is_tmp=True)
+        cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
+               tm_args.annotation_gp, tm_args.tm_psl, tmp_gp.path]
+        tools.procOps.run_proc(cmd)
+        tools.misc.convert_gp_gtf(self.output(), tmp_gp)
 
 
 class EvaluateTransMap(PipelineWrapperTask):
@@ -1101,9 +1183,9 @@ class EvaluateTransMap(PipelineWrapperTask):
         tm_args = TransMap.get_args(pipeline_args, genome)
         args = tools.misc.HashableNamespace()
         args.db_path = pipeline_args.dbs[genome]
-        args.tm_psl = tm_args.tm_psl
+        args.filtered_tm_psl = tm_args.filtered_tm_psl
         args.ref_psl = ReferenceFiles.get_args(pipeline_args).ref_psl
-        args.tm_gp = tm_args.tm_gp
+        args.filtered_tm_gp = tm_args.filtered_tm_gp
         args.annotation_gp = tm_args.annotation_gp
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.genome = genome
@@ -1154,80 +1236,6 @@ class EvaluateTransMapDriverTask(PipelineTask):
         self.write_to_sql(results)
 
 
-class FilterTransMap(PipelineWrapperTask):
-    """
-    Filters transMap alignments for paralogs, as well as multiple chromosomes if the --resolve-split-genes flag is set.
-    """
-    @staticmethod
-    def get_args(pipeline_args, genome):
-        base_dir = os.path.join(pipeline_args.work_dir, 'filtered_transMap')
-        args = tools.misc.HashableNamespace()
-        args.genome = genome
-        args.tm_gp = TransMap.get_args(pipeline_args, genome).tm_gp
-        args.filtered_tm_gp = os.path.join(base_dir, genome + '.filtered.gp')
-        args.filtered_tm_gtf = os.path.join(base_dir, genome + '.filtered.gtf')
-        args.db_path = pipeline_args.dbs[genome]
-        args.ref_db_path = pipeline_args.dbs[pipeline_args.ref_genome]
-        args.resolve_split_genes = pipeline_args.resolve_split_genes
-        args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'filter_tm_metrics.json')
-        return args
-
-    def validate(self):
-        pass
-
-    def requires(self):
-        self.validate()
-        pipeline_args = self.get_pipeline_args()
-        for target_genome in pipeline_args.target_genomes:
-            filter_tm_args = FilterTransMap.get_args(pipeline_args, target_genome)
-            yield self.clone(FilterTransMapDriverTask, filter_tm_args=filter_tm_args, genome=target_genome)
-
-
-class FilterTransMapDriverTask(PipelineTask):
-    """
-    Driver task for per-genome transMap filtering.
-    """
-    genome = luigi.Parameter()
-    filter_tm_args = luigi.Parameter()
-    eval_table = tools.sqlInterface.TmFilterEval.__tablename__
-    cutoff_table = tools.sqlInterface.TmFit.__tablename__
-
-    def write_to_sql(self, updated_df, fit_df, filter_table_target, fit_table_target):
-        """Load the results into the SQLite database"""
-        with tools.sqlite.ExclusiveSqlConnection(self.filter_tm_args.db_path) as engine:
-            updated_df.to_sql(self.eval_table, engine, if_exists='replace')
-            filter_table_target.touch()
-            logger.info('Loaded table: {}.{}'.format(self.genome, self.eval_table))
-            fit_df.to_sql(self.cutoff_table, engine, if_exists='replace')
-            fit_table_target.touch()
-            logger.info('Loaded table: {}.{}'.format(self.genome, self.cutoff_table))
-
-    def output(self):
-        pipeline_args = self.get_pipeline_args()
-        tools.fileOps.ensure_file_dir(self.filter_tm_args.db_path)
-        conn_str = 'sqlite:///{}'.format(self.filter_tm_args.db_path)
-        return (luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
-                                                    target_table=self.eval_table,
-                                                    update_id='_'.join([self.eval_table, str(hash(pipeline_args))])),
-                luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
-                                                    target_table=self.cutoff_table,
-                                                    update_id='_'.join([self.cutoff_table, str(hash(pipeline_args))])),
-                luigi.LocalTarget(self.filter_tm_args.filtered_tm_gp),
-                luigi.LocalTarget(self.filter_tm_args.filtered_tm_gtf),
-                luigi.LocalTarget(self.filter_tm_args.metrics_json))
-
-    def requires(self):
-        return self.clone(EvaluateTransMap), self.clone(ReferenceFiles), self.clone(TransMap)
-
-    def run(self):
-        logger.info('Filtering transMap results for {}.'.format(self.genome))
-        filter_table_target, fit_table_target, filtered_tm_gp, filtered_tm_gtf, metrics_json = self.output()
-        metrics_dict, updated_df, fit_df = filter_transmap(self.filter_tm_args, filtered_tm_gp)
-        PipelineTask.write_metrics(metrics_dict, metrics_json)
-        tools.misc.convert_gp_gtf(filtered_tm_gtf, filtered_tm_gp)
-        self.write_to_sql(updated_df, fit_df, filter_table_target, fit_table_target)
-
-
 class Augustus(PipelineWrapperTask):
     """
     Runs AugustusTM(R) on the coding output from transMap.
@@ -1241,15 +1249,17 @@ class Augustus(PipelineWrapperTask):
         args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
-        args.filtered_tm_gp = FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
+        args.filtered_tm_gp = TransMap.get_args(pipeline_args, genome).filtered_tm_gp
         tm_args = TransMap.get_args(pipeline_args, genome)
         args.ref_psl = tm_args.ref_psl
-        args.tm_psl = tm_args.tm_psl
+        args.filtered_tm_psl = tm_args.filtered_tm_psl
         args.augustus_tm_gp = os.path.join(base_dir, genome + '.augTM.gp')
         args.augustus_tm_gtf = os.path.join(base_dir, genome + '.augTM.gtf')
         args.tm_cfg = pipeline_args.tm_cfg
         args.tmr_cfg = pipeline_args.tmr_cfg
         args.augustus_species = pipeline_args.augustus_species
+        # invert the UTR flag
+        args.utr = not pipeline_args.augustus_utr_off
         args.augustus_hints_db = pipeline_args.hints_db
         args.augustus_tmr = genome in pipeline_args.rnaseq_genomes
         if args.augustus_tmr:
@@ -1285,7 +1295,7 @@ class AugustusDriverTask(ToilTask):
             yield luigi.LocalTarget(augustus_args.augustus_tmr_gtf)
 
     def requires(self):
-        return self.clone(FilterTransMap), self.clone(BuildDb)
+        return self.clone(TransMap), self.clone(BuildDb)
 
     def extract_coding_genes(self, augustus_args):
         """extracts only coding genes from the input genePred, returning a path to a tmp file"""
@@ -1361,7 +1371,7 @@ class AugustusCgp(ToilTask):
                 raise ToolMissingException('tool {} not in global path.'.format(tool))
 
     def requires(self):
-        yield self.clone(FilterTransMap), self.clone(ReferenceFiles), self.clone(BuildDb)
+        yield self.clone(TransMap), self.clone(ReferenceFiles), self.clone(BuildDb)
 
     def prepare_cgp_cfg(self, pipeline_args):
         """use the config template to create a config file"""
@@ -1450,7 +1460,7 @@ class AugustusPbDriverTask(ToilTask):
         yield luigi.LocalTarget(augustus_pb_args.augustus_pb_raw_gtf)
 
     def requires(self):
-        return self.clone(FilterTransMap), self.clone(BuildDb)
+        return self.clone(TransMap), self.clone(BuildDb)
 
     def run(self):
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'augustus_pb', self.genome)
@@ -1458,6 +1468,8 @@ class AugustusPbDriverTask(ToilTask):
         toil_options = self.prepare_toil_options(toil_work_dir)
         augustus_pb_args = self.get_module_args(AugustusPb, genome=self.genome)
         augustus_pb(augustus_pb_args, toil_options)
+        if 'stats_path' in augustus_pb_args:
+            self.get_stats(toil_options, augustus_pb_args.stat_file)
         logger.info('Finished AugustusPB toil pipeline on {}.'.format(self.genome))
 
 
@@ -1472,7 +1484,7 @@ class FindDenovoParents(PipelineTask):
             args.tablename = tools.sqlInterface.AugPbAlternativeGenes.__tablename__
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
                         for genome in pipeline_args.isoseq_genomes}
-            args.filtered_tm_gps = {genome: FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
+            args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
                                     for genome in pipeline_args.isoseq_genomes}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
                                       for genome in pipeline_args.isoseq_genomes}
@@ -1481,7 +1493,7 @@ class FindDenovoParents(PipelineTask):
         elif mode == 'augCGP':
             args.tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
             args.gps = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp
-            filtered_tm_gp_files = {genome: FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp
+            filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
                                     for genome in pipeline_args.target_genomes}
             unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
                                       for genome in pipeline_args.target_genomes}
@@ -1503,7 +1515,6 @@ class FindDenovoParents(PipelineTask):
             yield self.clone(AugustusCgp)
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
-        yield self.clone(FilterTransMap)
         yield self.clone(TransMap)
 
     def get_table_targets(self, genome, tablename, pipeline_args):
@@ -1576,7 +1587,7 @@ class Hgm(PipelineWrapperTask):
                             for genome in tgt_genomes}
         elif mode == 'transMap':
             tgt_genomes = pipeline_args.target_genomes
-            gtf_in_files = {genome: FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gtf
+            gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
                             for genome in tgt_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
@@ -1638,7 +1649,7 @@ class HgmDriverTask(PipelineTask):
         elif self.mode == 'augTM' or self.mode == 'augTMR':
             yield self.clone(Augustus)
         elif self.mode == 'transMap':
-            yield self.clone(FilterTransMap)
+            yield self.clone(TransMap)
         elif self.mode == 'augPB':
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
@@ -1773,7 +1784,7 @@ class AlignTranscripts(PipelineWrapperTask):
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
-        args.transcript_modes = {'transMap': {'gp': FilterTransMap.get_args(pipeline_args, genome).filtered_tm_gp,
+        args.transcript_modes = {'transMap': {'gp': TransMap.get_args(pipeline_args, genome).filtered_tm_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
         if pipeline_args.augustus is True:
@@ -1817,7 +1828,7 @@ class AlignTranscriptDriverTask(ToilTask):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
         if 'augTM' in alignment_args.transcript_modes:
             yield self.clone(Augustus)
-        yield self.clone(FilterTransMap)
+        yield self.clone(TransMap)
         yield self.clone(ReferenceFiles)
         yield self.clone(GenomeFiles)
 
@@ -1898,7 +1909,7 @@ class EvaluateDriverTask(PipelineTask):
                                                       update_id='_'.join([table, str(hash(pipeline_args))]))
 
     def requires(self):
-        return self.clone(AlignTranscripts), self.clone(ReferenceFiles)
+        return self.clone(AlignTranscripts), self.clone(ReferenceFiles), self.clone(TransMap)
 
     def run(self):
         logger.info('Evaluating transcript alignments for {}.'.format(self.genome))
@@ -1917,7 +1928,7 @@ class Consensus(PipelineWrapperTask):
         base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
         # grab the genePred of every mode
         args = tools.misc.HashableNamespace()
-        gp_list = [TransMap.get_args(pipeline_args, genome).tm_gp]
+        gp_list = [TransMap.get_args(pipeline_args, genome).filtered_tm_gp]
         args.tx_modes = ['transMap']
         args.denovo_tx_modes = []
         if pipeline_args.augustus is True:
@@ -1953,7 +1964,6 @@ class Consensus(PipelineWrapperTask):
         args.denovo_num_introns = pipeline_args.denovo_num_introns
         args.denovo_splice_support = pipeline_args.denovo_splice_support
         args.denovo_exon_support = pipeline_args.denovo_exon_support
-        args.minimum_coverage = pipeline_args.minimum_coverage
         args.require_pacbio_support = pipeline_args.require_pacbio_support
         args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         return args
@@ -1989,7 +1999,7 @@ class ConsensusDriverTask(RebuildableTask):
         yield self.clone(AlignTranscripts)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
-        yield self.clone(FilterTransMap)
+        yield self.clone(TransMap)
         if pipeline_args.augustus_pb:
             yield self.clone(AugustusPb)
             yield self.clone(IsoSeqTranscripts)
@@ -2028,12 +2038,11 @@ class Plots(RebuildableTask):
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
         args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))
         args.completeness = luigi.LocalTarget(os.path.join(base_dir, 'completeness.pdf'))
-        args.gene_failure = luigi.LocalTarget(os.path.join(base_dir, 'gene_failure.pdf'))
-        args.transcript_failure = luigi.LocalTarget(os.path.join(base_dir, 'transcript_failure.pdf'))
         args.consensus_extrinsic_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_extrinsic_support.pdf'))
         args.consensus_annot_support = luigi.LocalTarget(os.path.join(base_dir, 'consensus_annotation_support.pdf'))
         args.tx_modes = luigi.LocalTarget(os.path.join(base_dir, 'transcript_modes.pdf'))
         args.indel = luigi.LocalTarget(os.path.join(base_dir, 'coding_indels.pdf'))
+        args.missing = luigi.LocalTarget(os.path.join(base_dir, 'missing_genes_transcripts.pdf'))
         # plots that depend on execution mode
         if pipeline_args.augustus is True:
             args.improvement = luigi.LocalTarget(os.path.join(base_dir, 'augustus_improvement.pdf'))
@@ -2046,7 +2055,7 @@ class Plots(RebuildableTask):
         # input data
         args.metrics_jsons = OrderedDict([[genome, Consensus.get_args(pipeline_args, genome).metrics_json]
                                           for genome in ordered_genomes])
-        args.tm_jsons = OrderedDict([[genome, FilterTransMap.get_args(pipeline_args, genome).metrics_json]
+        args.tm_jsons = OrderedDict([[genome, TransMap.get_args(pipeline_args, genome).metrics_json]
                                      for genome in ordered_genomes])
         args.annotation_db = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.dbs = OrderedDict([[genome, PipelineTask.get_database(pipeline_args, genome)]
@@ -2066,12 +2075,60 @@ class Plots(RebuildableTask):
         yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
-        yield self.clone(FilterTransMap)
+        yield self.clone(TransMap)
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
         logger.info('Generating plots.')
         generate_plots(Plots.get_args(pipeline_args))
+
+
+class ReportStats(PipelineTask):
+    """
+    Reports all the stats at the end of the pipeline
+    """
+    def requires(self):
+        yield self.clone(PrepareFiles)
+        yield self.clone(BuildDb)
+        yield self.clone(Chaining)
+        yield self.clone(TransMap)
+        yield self.clone(EvaluateTransMap)
+        if self.augustus is True:
+            yield self.clone(Augustus)
+        if self.augustus_cgp is True:
+            yield self.clone(AugustusCgp)
+            yield self.clone(FindDenovoParents, mode='augCGP')
+        if self.augustus_pb is True:
+            yield self.clone(AugustusPb)
+            yield self.clone(FindDenovoParents, mode='augPB')
+            yield self.clone(IsoSeqTranscripts)
+        yield self.clone(Hgm)
+        yield self.clone(AlignTranscripts)
+        yield self.clone(EvaluateTranscripts)
+        yield self.clone(Consensus)
+        yield self.clone(Plots)
+        if self.assembly_hub is True:
+            yield self.clone(AssemblyHub)
+
+    def output(self):
+        # dumb -- need it to be something
+        pipeline_args = self.get_pipeline_args()
+        tools.fileOps.ensure_file_dir(pipeline_args.stats_db)
+        conn_str = 'sqlite:///{}'.format(pipeline_args.stats_db)
+        return luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                   target_table='stats',
+                                                   update_id='_'.join(['stats', str(hash(pipeline_args))]))
+
+    def run(self):
+        pipeline_args = self.get_pipeline_args()
+        luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
+        toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
+        core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
+        toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
+        total = core_time + toil_core_time
+        logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
+                    'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
+        self.output().touch()
 
 
 class AssemblyHub(PipelineWrapperTask):
@@ -2117,7 +2174,7 @@ class CreateDirectoryStructure(PipelineTask):
         yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
-        yield self.clone(FilterTransMap)
+        yield self.clone(TransMap)
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -2165,7 +2222,7 @@ class CreateTracks(PipelineWrapperTask):
     Wrapper task for track creation.
     """
     def validate(self):
-        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig', 'bamCoverage']:
+        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig']:#, 'bamCoverage']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Tool {} not in global path.'.format(tool))
 
@@ -2217,12 +2274,12 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'evaluation.txt'),
                              tx_modes=tuple(tx_modes))
 
-            filter_tm_args = FilterTransMap.get_args(pipeline_args, self.genome)
+            tm_args = TransMap.get_args(pipeline_args, self.genome)
             yield self.clone(TransMapTrack, track_path=os.path.join(out_dir, 'transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'transmap.txt'))
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
-                             genepred_path=filter_tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide')
+                             genepred_path=tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide')
 
             if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
@@ -2422,9 +2479,7 @@ class ConsensusTrack(TrackTask):
     def run(self):
         def find_rgb(info):
             """red for failed, blue for coding, green for non-coding, purple for denovo"""
-            if info.failed_gene == 'True':
-                return '212,76,85'
-            elif info.transcript_biotype == 'unknown_likely_coding':
+            if info.transcript_biotype == 'unknown_likely_coding':
                 return '135,76,212'
             elif info.transcript_biotype == 'protein_coding':
                 return '76,85,212'
@@ -2452,8 +2507,8 @@ class ConsensusTrack(TrackTask):
                        tx.thick_start, tx.thick_stop, find_rgb(info), tx.block_count, block_sizes, block_starts,
                        info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
-                       info.source_transcript, info.alignment_id, info.alternative_source_transcripts, info.failed_gene,
-                       info.frameshift, info.exon_annotation_support,
+                       info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
+                       info.paralogy, info.frameshift, info.exon_annotation_support,
                        info.intron_annotation_support, info.transcript_class, info.transcript_modes]
                 if has_rnaseq:
                     row.extend([info.intron_rna_support, info.exon_rna_support])
@@ -2771,7 +2826,7 @@ def construct_consensus_gp_as(has_rna, has_pb):
     string sourceTranscript;    "Source transcript ID"
     string alignmentId;  "Alignment ID"
     lstring alternativeSourceTranscripts;    "Alternative source transcripts"
-    string failedGene;   "Did this gene fail the identity cutoff?"
+    lstring Paralogy;    "Paralogous alignment IDs"
     string frameshift;  "Frameshifted relative to source?"
     lstring exonAnnotationSupport;   "Exon support in reference annotation"
     lstring intronAnnotationSupport;   "Intron support in reference annotation"

@@ -87,27 +87,6 @@ def get_wiggle_hints(genome, speciesnames, seqnames, hints, session):
             yield seqname, start, end + 1, score
 
 
-def get_annotation_hints(genome, speciesnames, seqnames, hints, session):
-    """
-    Extracts annotation hints for a genome to a BED3 format.
-    :param genome: genome (table) to query
-    :param speciesnames: speciesnames Table from reflect_hints_db
-    :param seqnames: seqnames Table from reflect_hints_db
-    :param hints: hints Table from reflect_hints_db
-    :param session: Session object from reflect_hints_db
-    :return: iterator of BED format lists
-    """
-    speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
-    seqs = {x.seqnr: x.seqname for x in session.query(seqnames).filter_by(speciesid=speciesid)}
-    # chunk up the genome to reduce memory usage
-    for seqnr, seqname in seqs.iteritems():
-        query = session.query(hints.start, hints.end).filter(
-                sqlalchemy.and_(hints.speciesid.in_(speciesid), hints.source == 'a2h', hints.seqnr == seqnr))
-        for start, end, score in query:
-            # add 1 to end to convert to half-open interval
-            yield seqname, start, end + 1
-
-
 def hints_db_has_rnaseq(db_path, genome=None):
     """
     Determines if the hints DB has RNAseq. Is done by querying for one b2h or w2h in hints

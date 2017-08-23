@@ -1,14 +1,16 @@
 """
 Classify transMap transcripts producing the TransMapEvaluation table for each genome's database
 
-1. Paralogy: The # of times this transcript was aligned
-2. AlnExtendsOffConfig: Does this alignment run off the end of a contig?
-3. AlignmentPartialMap: Did this transcript not map completely?
-4. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
-5. AlnContainsUnknownBases: Are there any Ns within the transcript alignment?
-6. Synteny: Counts the number of genes in linear order that match up to +/- 5 genes.
-7. TransMapOriginalIntrons: The number of transMap introns within a wiggle distance of a intron in the parent transcript
-   in transcript coordinates.
+1. AlnExtendsOffConfig: Does this alignment run off the end of a contig?
+2. AlnPartialMap: Did this transcript not map completely?
+3. AlnAbutsUnknownBases: Does this alignment have Ns immediately touching any exons?
+4. PercentN: Percent of bases aligned to Ns
+5. TransMapCoverage
+6. TransMapIdentity
+7. TransMapGoodness
+8. TransMapOriginalIntronsPercent: The number of transMap introns within a wiggle distance of a intron in the parent
+ transcript in transcript coordinates.
+ 9. Synteny. Count of the # of genes that match the reference in both directions (+/- 5 genes)
 """
 import bisect
 import collections
@@ -28,20 +30,17 @@ import tools.mathOps
 
 def transmap_classify(tm_eval_args):
     """
-    Runs alignment classification based on transMap PSLs, genePreds and the genome FASTA. Launches a toil pipeline
-    within this module which runs MUSCLE + FastTree on all alignments, reporting the genetic distance
+    Wrapper function that runs alignment classification based on transMap PSLs, genePreds and the genome FASTA.
     :param tm_eval_args: argparse Namespace produced by EvaluateTransMap.get_args()
     :return: DataFrame
     """
-    psl_dict = tools.psl.get_alignment_dict(tm_eval_args.tm_psl)
+    psl_dict = tools.psl.get_alignment_dict(tm_eval_args.filtered_tm_psl)
     ref_psl_dict = tools.psl.get_alignment_dict(tm_eval_args.ref_psl)
-    gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.tm_gp)
+    gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.filtered_tm_gp)
     ref_gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.annotation_gp)
     fasta = tools.bio.get_sequence_dict(tm_eval_args.fasta)
 
-    paralog_count, paralog_names = paralogy(psl_dict)  # we have to count paralogs globally
-
-    synteny_scores = synteny(ref_gp_dict, gp_dict)  # we also have to score synteny globally
+    synteny_scores = synteny(ref_gp_dict, gp_dict)
 
     r = []
     for aln_id, tx in gp_dict.iteritems():
@@ -49,16 +48,15 @@ def transmap_classify(tm_eval_args):
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         ref_aln = ref_psl_dict[tx_id]
         gene_id = ref_gp_dict[tx_id].name2
-        r.append([aln_id, tx_id, gene_id, 'Paralogy', paralog_count[tools.nameConversions.strip_alignment_numbers(aln_id)]])
-        r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
         r.append([aln_id, tx_id, gene_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
         r.append([aln_id, tx_id, gene_id, 'AlnPartialMap', alignment_partial_map(aln)])
         r.append([aln_id, tx_id, gene_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, gene_id, 'AlnContainsUnknownBases', aln_contains_unknown_bases(tx, fasta)])
+        r.append([aln_id, tx_id, gene_id, 'PercentN', aln.percent_n])
         r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', 100 * aln.coverage])
         r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', 100 * aln.identity])
         r.append([aln_id, tx_id, gene_id, 'TransMapGoodness', 100 * (1 - aln.badness)])
         r.append([aln_id, tx_id, gene_id, 'TransMapOriginalIntronsPercent', percent_original_introns(aln, tx, ref_aln)])
+        r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
     return df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
@@ -67,20 +65,6 @@ def transmap_classify(tm_eval_args):
 ###
 # Classifiers
 ###
-
-
-def paralogy(psl_dict):
-    """
-    Count the number of occurrences of each parental annotation in the target genome
-    :param psl_dict: PslDict from psl module of transMap alignments
-    :return: collections.Counter, collections.defaultdict
-    """
-    counts = collections.Counter()
-    names = collections.defaultdict(list)
-    for aln_id in psl_dict:
-        counts[tools.nameConversions.strip_alignment_numbers(aln_id)] += 1
-        names[tools.nameConversions.strip_alignment_numbers(aln_id)].append(aln_id)
-    return counts, names
 
 
 def aln_extends_off_contig(aln):
@@ -112,7 +96,7 @@ def alignment_partial_map(aln):
     :param aln: PslRow object
     :return: boolean
     """
-    return True if aln.q_size != aln.q_end - aln.q_start else False
+    return aln.q_size != aln.q_end - aln.q_start
 
 
 def aln_abuts_unknown_bases(tx, fasta):
@@ -136,17 +120,6 @@ def aln_abuts_unknown_bases(tx, fasta):
         if left_base == 'N' or right_base == 'N':
             return True
     return False
-
-
-def aln_contains_unknown_bases(tx, fasta):
-    """
-    Does this alignment contain unknown bases (Ns)?
-
-    :param tx: a GenePredTranscript object
-    :param fasta: pyfasta Fasta object for genome
-    :return: boolean
-    """
-    return 'N' in tx.get_mrna(fasta)
 
 
 def synteny(ref_gp_dict, gp_dict):
