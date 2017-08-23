@@ -118,64 +118,11 @@ def generate_consensus(args):
         metrics['denovo'] = {}
         for tx_mode in args.denovo_tx_modes:
             metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
-<<<<<<< HEAD
-                                          'Possible fusion': 0, 'Discarded': 0, 'Novel isoforms': 0}
-        denovo_hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in args.denovo_tx_modes])
-        # remove the TranscriptId and GeneId columns so they can be populated by others
-        denovo_hgm_df = denovo_hgm_df.drop(['GeneId', 'TranscriptId'], axis=1)
-        # load the alignment metrics data
-        denovo_alt_names = load_alt_names(args.db_path, args.denovo_tx_modes)
-        denovo_df = pd.merge(denovo_hgm_df, denovo_alt_names, on='AlignmentId')
-        find_novel_transcripts(denovo_df, tx_dict, args.denovo_num_introns, args.denovo_splice_support,
-                               args.denovo_exon_support, metrics, consensus_dict)
-        denovo_df = denovo_df.set_index('AssignedGeneId')
-
-    # main consensus finding logic. Start iterating over each gene then each transcript
-    for gene_id, tx_list in gene_transcript_map.iteritems():
-        gene_consensus_dict = {}
-        gene_df = tools.misc.slice_df(scored_df, gene_id)
-        gene_biotype = gene_biotype_map[gene_id]
-        # if we have no transcripts, record this gene and all tx's as missing and continue
-        if len(gene_df) == 0:
-            metrics['Gene Missing'][gene_biotype] += 1
-            for tx_id in tx_list:
-                tx_biotype = transcript_biotype_map[tx_id]
-                metrics['Transcript Missing'][tx_biotype] += 1
-            continue
-        # evaluate if this gene is failing.
-        failed_gene = is_failed_df(gene_df, gene_biotype)
-        if failed_gene is True:
-            aln_id, d = rescue_failed_gene(gene_df, gene_id, metrics, args.hints_db_has_rnaseq)
-            gene_consensus_dict[aln_id] = d
-            metrics['Gene Failed'][gene_biotype] += 1
-            metrics['Transcript Failed'][gene_biotype] += 1
-        else:  # begin consensus finding for each transcript
-            for tx_id in tx_list:
-                tx_biotype = transcript_biotype_map[tx_id]
-                tx_df = tools.misc.slice_df(gene_df, tx_id)
-                if len(tx_df) == 0:  # keep track of isoforms that did not map over
-                    metrics['Transcript Missing'][tx_biotype] += 1
-                elif 'passing' not in tx_df.TranscriptClass.tolist():  # failed transcripts do not get incorporated
-                    metrics['Transcript Failed'][tx_biotype] += 1
-                else:
-                    best_rows = find_best_score(tx_df)
-                    aln_id, d = incorporate_tx(best_rows, gene_id, metrics, args.hints_db_has_rnaseq, failed_gene=False)
-                    gene_consensus_dict[aln_id] = d
-        if len(args.denovo_tx_modes) > 0:
-            denovo_gene_df = tools.misc.slice_df(denovo_df, gene_id)
-            if len(denovo_gene_df) != 0:
-                denovo_gene_df = denovo_gene_df.set_index('AlignmentId')
-                gene_consensus_dict.update(find_novel_splices(gene_consensus_dict, denovo_gene_df, tx_dict, gene_id,
-                                                              common_name_map, metrics, failed_gene, gene_biotype,
-                                                              args.denovo_num_introns))
-        consensus_dict.update(gene_consensus_dict)
-=======
                                           'Possible fusion': 0, 'Putative novel isoform': 0}
         denovo_dict = find_novel(args.db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map,
                                  args.denovo_num_introns, args.in_species_rna_support_only,
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support)
         consensus_dict.update(denovo_dict)
->>>>>>> paralogy
 
     # perform final filtering steps
     deduplicated_consensus = deduplicate_consensus(consensus_dict, tx_dict, metrics)
@@ -294,11 +241,7 @@ def load_evaluations_from_db(db_path, tx_mode):
     mrna_df = mrna_df.set_index('AlignmentId')
     merged = mrna_df.reset_index().merge(cds_df.reset_index(), how='outer', on=['AlignmentId', 'name'],
                                          suffixes=['_mRNA', '_CDS'])
-<<<<<<< HEAD
-    eval_df = merged.groupby('AlignmentId').apply(aggfunc).reset_index()
-=======
     eval_df = merged.groupby('AlignmentId').apply(aggfunc)
->>>>>>> paralogy
     return eval_df
 
 
@@ -457,26 +400,7 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
     return pb_resolved_consensus
 
 
-<<<<<<< HEAD
-def is_failed_df(df, gene_biotype):
-    """Failed genes have no passing transcripts within their own biotype"""
-    biotype_df = df[(df.TranscriptBiotype == gene_biotype) & (df.TranscriptClass == 'passing')]
-    if len(biotype_df) == 0:
-        return True
-    return not biotype_df.TranscriptClass.str.contains('passing').any()
-
-
-def rescue_failed_gene(gene_df, gene_id, metrics, hints_db_has_rnaseq):
-    """Rescues a failed gene by picking the one transcript with the highest coverage"""
-    gene_df = gene_df.sort_values('AlnCoverage_mRNA', ascending=False)
-    best_rows = find_best_score(gene_df, column='AlnCoverage_mRNA')
-    return incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene=True)
-
-
-def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq, failed_gene):
-=======
 def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
->>>>>>> paralogy
     """incorporate a transcript into the consensus set, storing metrics."""
     best_series = best_rows.iloc[0]
     transcript_modes = evaluate_ties(best_rows)
