@@ -163,9 +163,7 @@ def load_transmap_evals(db_path):
 
     # combine transMap evaluation and transMap filtering into one table
     # the transMap filtering columns are used for tags in the output
-    merged = pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
-    # remove the AlignmentId column -- paralog resolution made it unnecessary
-    return merged.drop('AlignmentId', axis=1)
+    return pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
 
 
 def calculate_vector_support(s, resolve_nan=None, num_digits=4):
@@ -283,7 +281,7 @@ def combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, 
     # add the reference information to gain biotype information
     hgm_ref_df = pd.merge(hgm_df, ref_df, on=['GeneId', 'TranscriptId'])
     # combine in homGeneMapping results
-    hgm_ref_tm_df = pd.merge(hgm_ref_df, tm_eval_df, on=['GeneId', 'TranscriptId'])
+    hgm_ref_tm_df = pd.merge(hgm_ref_df, tm_eval_df, on=['GeneId', 'TranscriptId', 'AlignmentId'])
     # split merged_df into coding and noncoding
     coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype == 'protein_coding']
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']

@@ -952,13 +952,13 @@ class BuildDb(PipelineTask):
             logger.info('Loading sequence for {} into database.'.format(genome))
             base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
                         '--dbaccess={}'.format(pipeline_args.hints_db)]
-            tools.procOps.run_proc(base_cmd + [args.fasta], stderr='/dev/null')
+            tools.procOps.run_proc(base_cmd + [args.fasta], stdout='/dev/null', stderr='/dev/null')
             if os.path.getsize(args.hints_path) != 0:
                 logger.info('Loading hints for {} into database.'.format(genome))
                 tools.procOps.run_proc(base_cmd + [args.hints_path], stderr='/dev/null')
         logger.info('Indexing database.')
         cmd = ['load2sqlitedb', '--makeIdx', '--clean', '--dbaccess={}'.format(pipeline_args.hints_db)]
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        tools.procOps.run_proc(cmd, stdout='/dev/null', stderr='/dev/null')
         logger.info('Hints database completed.')
 
 
@@ -1063,6 +1063,7 @@ class TransMap(PipelineWrapperTask):
         args.tm_gp = os.path.join(base_dir, genome + '.gp')
         args.tm_gtf = os.path.join(base_dir, genome + '.gtf')
         args.filtered_tm_psl = os.path.join(base_dir, genome + '.filtered.psl')
+        args.filtered_tm_gp = os.path.join(base_dir, genome + '.filtered.gp')
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'filter_tm_metrics.json')
         args.ref_db_path = pipeline_args.dbs[pipeline_args.ref_genome]
         args.db_path = pipeline_args.dbs[genome]
@@ -1080,7 +1081,6 @@ class TransMap(PipelineWrapperTask):
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
             yield self.clone(TransMapPsl, genome=target_genome)
-            yield self.clone(TransMapGp, genome=target_genome)
             yield self.clone(FilterTransMap, genome=target_genome)
             yield self.clone(TransMapGtf, genome=target_genome)
 
@@ -1093,7 +1093,7 @@ class TransMapPsl(PipelineTask):
 
     def output(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
-        return luigi.LocalTarget(tm_args.tm_psl)
+        return luigi.LocalTarget(tm_args.tm_psl), luigi.LocalTarget(tm_args.tm_gp)
 
     def requires(self):
         return self.clone(PrepareFiles), self.clone(Chaining), self.clone(ReferenceFiles)
@@ -1109,10 +1109,15 @@ class TransMapPsl(PipelineTask):
         tmp_file = luigi.LocalTarget(is_tmp=True)
         with tmp_file.open('w') as tmp_fh:
             tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
-        tools.fileOps.ensure_file_dir(self.output().path)
-        with self.output().open('w') as outf:
+        tm_psl_tgt, tm_gp_tgt = self.output()
+        tools.fileOps.ensure_file_dir(tm_psl_tgt.path)
+        with tm_psl_tgt.open('w') as outf:
             for psl_rec in tools.psl.psl_iterator(tmp_file.path, make_unique=True):
                 tools.fileOps.print_row(outf, psl_rec.psl_string())
+        with tm_gp_tgt.open('w') as outf:
+            cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
+                   tm_args.annotation_gp, tm_psl_tgt.path, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf)
 
 
 @requires(TransMapPsl)
@@ -1132,34 +1137,22 @@ class FilterTransMap(PipelineTask):
                                                     target_table=self.eval_table,
                                                     update_id='_'.join([self.eval_table, str(hash(pipeline_args))])),
                 luigi.LocalTarget(tm_args.filtered_tm_psl),
-                luigi.LocalTarget(tm_args.metrics_json))
+                luigi.LocalTarget(tm_args.metrics_json),
+                luigi.LocalTarget(tm_args.filtered_tm_gp))
 
     def run(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         logger.info('Filtering transMap PSL for {}.'.format(self.genome))
-        table_target, psl_target, json_target = self.output()
+        table_target, psl_target, json_target, gp_target = self.output()
         resolved_df = filter_transmap(tm_args.tm_psl, self.genome, tm_args.ref_db_path, psl_target,
                                       tm_args.minimum_paralog_coverage, tm_args.local_near_best, json_target)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
-
-
-@requires(FilterTransMap)
-class TransMapGp(AbstractAtomicFileTask):
-    """
-    Convert the transMap PSL to genePred format, filling in gaps
-    """
-    def output(self):
-        tm_args = self.get_module_args(TransMap, genome=self.genome)
-        return luigi.LocalTarget(tm_args.tm_gp)
-
-    def run(self):
-        tm_args = self.get_module_args(TransMap, genome=self.genome)
-        logger.info('Converting transMap PSL to genePred for {}.'.format(self.genome))
-        cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
-               tm_args.annotation_gp, tm_args.filtered_tm_psl, '/dev/stdout']
-        self.run_cmd(cmd)
+        with gp_target.open('w') as outf:
+            cmd = ['transMapPslToGenePred', '-nonCodingGapFillMax=80', '-codingGapFillMax=50',
+                   tm_args.annotation_gp, psl_target.path, '/dev/stdout']
+            tools.procOps.run_proc(cmd, stdout=outf)
 
 
 @requires(FilterTransMap)
@@ -1190,9 +1183,9 @@ class EvaluateTransMap(PipelineWrapperTask):
         tm_args = TransMap.get_args(pipeline_args, genome)
         args = tools.misc.HashableNamespace()
         args.db_path = pipeline_args.dbs[genome]
-        args.tm_psl = tm_args.tm_psl
+        args.filtered_tm_psl = tm_args.filtered_tm_psl
         args.ref_psl = ReferenceFiles.get_args(pipeline_args).ref_psl
-        args.tm_gp = tm_args.tm_gp
+        args.filtered_tm_gp = tm_args.filtered_tm_gp
         args.annotation_gp = tm_args.annotation_gp
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.genome = genome
@@ -1256,10 +1249,10 @@ class Augustus(PipelineWrapperTask):
         args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
-        args.tm_gp = TransMap.get_args(pipeline_args, genome).tm_gp
+        args.filtered_tm_gp = TransMap.get_args(pipeline_args, genome).filtered_tm_gp
         tm_args = TransMap.get_args(pipeline_args, genome)
         args.ref_psl = tm_args.ref_psl
-        args.tm_psl = tm_args.tm_psl
+        args.filtered_tm_psl = tm_args.filtered_tm_psl
         args.augustus_tm_gp = os.path.join(base_dir, genome + '.augTM.gp')
         args.augustus_tm_gtf = os.path.join(base_dir, genome + '.augTM.gtf')
         args.tm_cfg = pipeline_args.tm_cfg
@@ -1310,7 +1303,7 @@ class AugustusDriverTask(ToilTask):
         attrs = tools.sqlInterface.read_attrs(augustus_args.ref_db_path)
         names = set(attrs[attrs.TranscriptBiotype == 'protein_coding'].index)
         with open(coding_gp, 'w') as outf:
-            for tx in tools.transcripts.gene_pred_iterator(augustus_args.tm_gp):
+            for tx in tools.transcripts.gene_pred_iterator(augustus_args.filtered_tm_gp):
                 if tools.nameConversions.strip_alignment_numbers(tx.name) in names:
                     tools.fileOps.print_row(outf, tx.get_gene_pred())
         if os.path.getsize(coding_gp) == 0:
@@ -1491,24 +1484,24 @@ class FindDenovoParents(PipelineTask):
             args.tablename = tools.sqlInterface.AugPbAlternativeGenes.__tablename__
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
                         for genome in pipeline_args.isoseq_genomes}
-            args.tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+            args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
                                     for genome in pipeline_args.isoseq_genomes}
-            args.untm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+            args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
                                       for genome in pipeline_args.isoseq_genomes}
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in pipeline_args.isoseq_genomes}
         elif mode == 'augCGP':
             args.tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
             args.gps = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp
-            tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+            filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
                                     for genome in pipeline_args.target_genomes}
-            untm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+            unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
                                       for genome in pipeline_args.target_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
-            tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            untm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            args.tm_gps = tm_gp_files
-            args.untm_gps = untm_gp_files
+            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            args.filtered_tm_gps = filtered_tm_gp_files
+            args.unfiltered_tm_gps = unfiltered_tm_gp_files
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         else:
@@ -1546,10 +1539,10 @@ class FindDenovoParents(PipelineTask):
             if genome not in pipeline_args.target_genomes:
                 continue
             table_target = self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
-            tm_gp = denovo_args.tm_gps[genome]
-            untm_gp = denovo_args.untm_gps[genome]
+            filtered_tm_gp = denovo_args.filtered_tm_gps[genome]
+            unfiltered_tm_gp = denovo_args.unfiltered_tm_gps[genome]
             chrom_sizes = denovo_args.chrom_sizes[genome]
-            df = assign_parents(tm_gp, untm_gp, chrom_sizes, denovo_gp)
+            df = assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp)
             db = pipeline_args.dbs[genome]
             with tools.sqlite.ExclusiveSqlConnection(db) as engine:
                 df.to_sql(denovo_args.tablename, engine, if_exists='replace')
@@ -1791,7 +1784,7 @@ class AlignTranscripts(PipelineWrapperTask):
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
-        args.transcript_modes = {'transMap': {'gp': TransMap.get_args(pipeline_args, genome).tm_gp,
+        args.transcript_modes = {'transMap': {'gp': TransMap.get_args(pipeline_args, genome).filtered_tm_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
         if pipeline_args.augustus is True:
@@ -1935,7 +1928,7 @@ class Consensus(PipelineWrapperTask):
         base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
         # grab the genePred of every mode
         args = tools.misc.HashableNamespace()
-        gp_list = [TransMap.get_args(pipeline_args, genome).tm_gp]
+        gp_list = [TransMap.get_args(pipeline_args, genome).filtered_tm_gp]
         args.tx_modes = ['transMap']
         args.denovo_tx_modes = []
         if pipeline_args.augustus is True:
@@ -2130,8 +2123,8 @@ class ReportStats(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
         toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
-        core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 4)
-        toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 4)
+        core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
+        toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
         total = core_time + toil_core_time
         logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
                     'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
@@ -2286,7 +2279,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'transmap.txt'))
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
-                             genepred_path=tm_args.tm_gp, label='Filtered transMap', visibility='hide')
+                             genepred_path=tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide')
 
             if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),

@@ -42,7 +42,7 @@ def augustus(args, coding_gp, toil_options):
             input_file_ids.tm_cfg = FileID.forPath(t.importFile('file://' + args.tm_cfg), args.tm_cfg)
             input_file_ids.coding_gp = FileID.forPath(t.importFile('file://' + coding_gp), coding_gp)
             input_file_ids.ref_psl = FileID.forPath(t.importFile('file://' + args.ref_psl), args.ref_psl)
-            input_file_ids.tm_psl = FileID.forPath(t.importFile('file://' + args.tm_psl), args.tm_psl)
+            input_file_ids.tm_psl = FileID.forPath(t.importFile('file://' + args.filtered_tm_psl), args.filtered_tm_psl)
             input_file_ids.annotation_gp = FileID.forPath(t.importFile('file://' + args.annotation_gp),
                                                           args.annotation_gp)
             file_ids = [input_file_ids.genome_fasta, input_file_ids.coding_gp, input_file_ids.ref_psl,
