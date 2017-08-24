@@ -2732,7 +2732,7 @@ class SpliceTrack(TrackTask):
 
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf)
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(splice_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2761,12 +2761,12 @@ class ExpressionTracks(RebuildableTask):
         with median_track.open('w') as outf:
             cmd = [['wiggletools', 'median'] + bams,
                    ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, '/dev/stdout']]
-            tools.procOps.run_proc(cmd, stdout=outf)
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
         with max_track.open('w') as outf:
             cmd = [['wiggletools', 'max'] + bams,
                    ['wigToBigWig', '-clip', '/dev/stdin', chrom_sizes, '/dev/stdout']]
-            tools.procOps.run_proc(cmd, stdout=outf)
+            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
             outf.write(wiggle_template.format(genome=self.genome, mode='Median',

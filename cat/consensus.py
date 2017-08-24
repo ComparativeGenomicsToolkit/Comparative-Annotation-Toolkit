@@ -64,10 +64,11 @@ def generate_consensus(args):
     mrna_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
     cds_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'CDS') for tx_mode in tx_modes])
     eval_df = pd.concat([load_evaluations_from_db(args.db_path, tx_mode) for tx_mode in tx_modes]).reset_index()
-    coding_df, non_coding_df = combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df,
-                                                      eval_df, args.intron_rnaseq_support, args.exon_rnaseq_support,
-                                                      args.intron_annot_support, args.exon_annot_support,
-                                                      args.original_intron_support, args.in_species_rna_support_only)
+    coding_df, non_coding_df = combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df,
+                                                      ref_df, eval_df, args.intron_rnaseq_support,
+                                                      args.exon_rnaseq_support, args.intron_annot_support,
+                                                      args.exon_annot_support, args.original_intron_support,
+                                                      args.in_species_rna_support_only)
     if len(coding_df) + len(non_coding_df) == 0:
         raise RuntimeError('No transcripts pass filtering for species {}. '
                            'Consider lowering requirements. Please see the manual.'.format(args.genome))
@@ -163,7 +164,8 @@ def load_transmap_evals(db_path):
 
     # combine transMap evaluation and transMap filtering into one table
     # the transMap filtering columns are used for tags in the output
-    return pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
+    tm_eval_df = pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
+    return tm_eval_df.drop('AlignmentId', axis=1)
 
 
 def calculate_vector_support(s, resolve_nan=None, num_digits=4):
@@ -259,11 +261,12 @@ def load_alt_names(db_path, denovo_tx_modes):
     return df
 
 
-def combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df, eval_df,
+def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df, eval_df,
                            intron_rnaseq_support, exon_rnaseq_support, intron_annot_support, exon_annot_support,
                            original_intron_support, in_species_rna_support_only):
     """
     Updates the DataFrame based on support levels. Filters based on user-tunable flags for support levels.
+    :param tx_dict: dictionary of genePredTranscript objects. Used to remove things filtered out by transMap
     :param hgm_df: df produced by load_hgm_vectors() (all transcripts)
     :param mrna_metrics_df: df produced by load_metrics() (coding transcripts only) for mRNA alignments
     :param cds_metrics_df: df produced by load_metrics() (coding transcripts only) for CDS alignments
@@ -281,7 +284,9 @@ def combine_and_filter_dfs(hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, 
     # add the reference information to gain biotype information
     hgm_ref_df = pd.merge(hgm_df, ref_df, on=['GeneId', 'TranscriptId'])
     # combine in homGeneMapping results
-    hgm_ref_tm_df = pd.merge(hgm_ref_df, tm_eval_df, on=['GeneId', 'TranscriptId', 'AlignmentId'])
+    hgm_ref_tm_df = pd.merge(hgm_ref_df, tm_eval_df, on=['GeneId', 'TranscriptId'])
+    # remove filtered transMap
+    hgm_ref_tm_df = hgm_ref_tm_df[hgm_ref_tm_df.AlignmentId.isin(tx_dict.viewkeys())]
     # split merged_df into coding and noncoding
     coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype == 'protein_coding']
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
