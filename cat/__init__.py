@@ -706,6 +706,7 @@ class ReferenceFiles(PipelineWrapperTask):
         args.transcript_fasta = os.path.join(base_dir, annotation + '.fa')
         args.transcript_flat_fasta = os.path.join(base_dir, annotation + '.fa.flat')
         args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
+        args.duplicates = os.path.join(base_dir, annotation + '.duplicates.txt')
         args.ref_psl = os.path.join(base_dir, annotation + '.psl')
         args.__dict__.update(**vars(GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)))
         return args
@@ -734,9 +735,25 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
     """
     annotation_gp = luigi.Parameter()
     annotation_attrs = luigi.Parameter()
+    duplicates = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.annotation_gp)
+
+    def validate(self):
+        c = collections.Counter()
+        for l in open(self.output().path):
+            l = l.split()
+            c[l[0]] += 1
+        duplicates = {x for x, y in c.iteritems() if y > 1}
+        if len(duplicates) > 0:
+            with open(self.duplicates, 'w') as outf:
+                for l in duplicates:
+                    outf.write(l + '\n')
+            raise InvalidInputException('Found {:,} duplicate transcript IDs after parsing input GFF3. '
+                                        'Please check your input. One possible cause is the lack of a transcript-level'
+                                        'identifier on a gene record. Duplicate IDs have been written to: '
+                                        '{}'.format(len(duplicates), self.duplicates))
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
@@ -744,6 +761,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
         cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
                '-attrsOut={}'.format(self.annotation_attrs), pipeline_args.annotation, '/dev/stdout']
         self.run_cmd(cmd)
+        self.validate()
 
 
 @requires(Gff3ToGenePred)
@@ -1072,7 +1090,7 @@ class TransMap(PipelineWrapperTask):
         return args
 
     def validate(self):
-        for tool in ['pslMap', 'pslRecalcMatch', 'postTransMapChain', 'pslCDnaFilter']:
+        for tool in ['pslMap', 'pslRecalcMatch', 'pslMapPostChain', 'pslCDnaFilter']:
             if not tools.misc.is_exec(tool):
                     raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
@@ -1087,7 +1105,7 @@ class TransMap(PipelineWrapperTask):
 
 class TransMapPsl(PipelineTask):
     """
-    Runs transMap. Requires Kent tools pslMap, postTransMapChain, pslRecalcMatch
+    Runs transMap. Requires Kent tools pslMap, pslMapPostChain, pslRecalcMatch
     """
     genome = luigi.Parameter()
 
@@ -1102,7 +1120,7 @@ class TransMapPsl(PipelineTask):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         logger.info('Running transMap for {}.'.format(self.genome))
         cmd = [['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, '/dev/stdout'],
-               ['postTransMapChain', '/dev/stdin', '/dev/stdout'],
+               ['pslMapPostChain', '/dev/stdin', '/dev/stdout'],
                ['sort', '-k14,14', '-k16,16n'],
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
                ['sort', '-k10,10']]  # re-sort back to query name for filtering

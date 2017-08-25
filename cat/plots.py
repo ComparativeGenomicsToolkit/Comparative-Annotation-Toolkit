@@ -354,7 +354,8 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
 def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
     def do_kdeplot(x, y, ax, n_levels=None, bw='scott'):
         try:
-            sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=n_levels, bw=bw)
+            sns.kdeplot(x, y, ax=ax, cut=0, cmap='Purples_d', shade=True, shade_lowest=False, n_levels=n_levels, bw=bw,
+                        rasterized=True)
         except:
             logger.warning('Unable to do a KDE fit to AUGUSTUS improvement.')
             pass
@@ -382,17 +383,17 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
             ax4.set_ylim(goodness_min, 100)
             do_kdeplot(data['transMap original introns'], data['Original introns'], ax1, n_levels=25, bw=2)
             sns.regplot(x=data['transMap original introns'], y=data['Original introns'], ax=ax1,
-                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
             do_kdeplot(data['transMap intron annotation support'], data['Intron annotation support'], ax2,
                        n_levels=25, bw=2)
             sns.regplot(x=data['transMap intron annotation support'], y=data['Intron annotation support'], ax=ax2,
-                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
             do_kdeplot(data['transMap intron RNA support'], data['Intron RNA support'], ax3, n_levels=25, bw=2)
             sns.regplot(x=data['transMap intron RNA support'], y=data['Intron RNA support'], ax=ax3,
-                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
             do_kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax4, n_levels=20, bw=1)
             sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
-                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7}, fit_reg=False)
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}.\n'
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             for ax in [ax1, ax2, ax3, ax4]:
