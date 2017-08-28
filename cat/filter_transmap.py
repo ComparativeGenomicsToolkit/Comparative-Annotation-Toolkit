@@ -67,7 +67,7 @@ def filter_transmap(tm_psl, genome, db_path, psl_tgt, minimum_paralog_coverage, 
         tools.procOps.run_proc(cmd, stdout=local_tmp)
         paralogy_alns = list(tools.psl.psl_iterator(local_tmp))
 
-    # local localBest IDs by using the hash table to figure out which ones we had
+    # load localBest IDs by using the hash table to figure out which ones we had
     local_best = {unfiltered[unfiltered_hash_table[hash_aln(aln)]] for aln in paralogy_alns}
     # report counts by biotype
     grouped = tools.psl.group_alignments_by_qname(local_best)
