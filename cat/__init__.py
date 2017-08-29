@@ -794,11 +794,15 @@ class Gff3ToAttrs(PipelineTask):
         for tx_id, d in df.groupby('transcript_id'):
             d = dict(zip(d.key, d.value))
             if 'gbkey' in d:  # this is a NCBI GFF3
-                if d['gbkey'] in ['mRNA', 'CDS']:
+                if d['gbkey'] == 'mRNA':
                     gene_biotype = tx_biotype = 'protein_coding'
                 else:
                     gene_biotype = tx_biotype = d['gbkey']
-                gene_name = gene_id = d['gene']
+                if 'gene' in d:
+                    gene_name = d['gene']
+                    gene_id = d['Dbxref'].replace('GeneID:', '')
+                else:
+                    gene_name = gene_id = d['ID']
                 tx_name = d.get('product', tx_id)
             else:  # this is either ensembl or gencode
                 if 'biotype' in d:  # Ensembl
