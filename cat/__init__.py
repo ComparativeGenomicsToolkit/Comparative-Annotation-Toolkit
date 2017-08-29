@@ -794,13 +794,11 @@ class Gff3ToAttrs(PipelineTask):
         for tx_id, d in df.groupby('transcript_id'):
             d = dict(zip(d.key, d.value))
             if 'gbkey' in d:  # this is a NCBI GFF3
-                if d['gbkey'] == 'Gene':
-                    gene_biotype = tx_biotype = d['gene_biotype']
-                    gene_name = d['gene']
-                    gene_id = d['Parent']
+                if d['gbkey'] in ['mRNA', 'CDS']:
+                    gene_biotype = tx_biotype = 'protein_coding'
                 else:
                     gene_biotype = tx_biotype = d['gbkey']
-                    gene_name = gene_id = d['ID']
+                gene_name = gene_id = d['gene']
                 tx_name = d.get('product', tx_id)
             else:  # this is either ensembl or gencode
                 if 'biotype' in d:  # Ensembl
@@ -832,7 +830,11 @@ class Gff3ToAttrs(PipelineTask):
                                             'GeneBiotype', 'TranscriptBiotype'])
         df = df.set_index('TranscriptId')
         if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
-            logger.critical('No protein_coding annotations found!')
+            if pipeline_args.augustus:
+                raise InvalidInputException('No protein_coding annotations found. This will cause problems for '
+                                            'AugustusTMR. Please check your GFF3 input.')
+            else:
+                logger.critical('No protein_coding annotations found!')
         database = pipeline_args.dbs[pipeline_args.ref_genome]
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
             df.to_sql(self.table, engine, if_exists='replace')
@@ -1266,7 +1268,6 @@ class Augustus(PipelineWrapperTask):
         args.genome = genome
         args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
-        args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.filtered_tm_gp = TransMap.get_args(pipeline_args, genome).filtered_tm_gp
         tm_args = TransMap.get_args(pipeline_args, genome)
         args.ref_psl = tm_args.ref_psl
@@ -1318,11 +1319,9 @@ class AugustusDriverTask(ToilTask):
     def extract_coding_genes(self, augustus_args):
         """extracts only coding genes from the input genePred, returning a path to a tmp file"""
         coding_gp = tools.fileOps.get_tmp_file()
-        attrs = tools.sqlInterface.read_attrs(augustus_args.ref_db_path)
-        names = set(attrs[attrs.TranscriptBiotype == 'protein_coding'].index)
         with open(coding_gp, 'w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(augustus_args.filtered_tm_gp):
-                if tools.nameConversions.strip_alignment_numbers(tx.name) in names:
+                if tx.cds_size > 0:
                     tools.fileOps.print_row(outf, tx.get_gene_pred())
         if os.path.getsize(coding_gp) == 0:
             raise InvalidInputException('Unable to extract coding transcripts from the filtered transMap genePred.')
