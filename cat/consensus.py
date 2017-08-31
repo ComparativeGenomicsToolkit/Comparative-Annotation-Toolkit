@@ -837,7 +837,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         if tx_obj.cds_end_stat == 'cmpl':
             score, attrs_field = convert_attrs(attrs, 'stop_codon:{}'.format(tx_id))
             for interval in tx_obj.get_stop_intervals():
-                yield [chrom, 'CAT', 'start_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
+                yield [chrom, 'CAT', 'stop_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
                        interval.data, attrs_field]
 
     # main gff3 writing logic
