@@ -159,11 +159,17 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     cmd = ['bedtools', 'merge', '-i', hints_file, '-c', '4', '-o', 'mean']
     tools.procOps.run_proc(cmd, stdout=merged_hints_file, stderr='/dev/null')
     # overlap the merged exons with the given GTF, producing a final set.
-    cmd = [['grep', '\texon\t', in_gtf],  # exons only
-           ['cut', '-d', '\t', '-f', '1,4,5'],  # slice into BED format
-           ['sort'],  # sort to make unique
-           ['uniq'],  # make unique to remove duplicate exons
-           ['bedtools', 'intersect', '-a', 'stdin', '-b', merged_hints_file, '-f', '0.8', '-wa', '-wb'],
+    tmp_bed = tools.fileOps.get_tmp_file()
+    cmd = [['grep', '-P', '(\texon\t|\tCDS\t)', in_gtf],  # exons or CDS only
+           ['cut', '-d', '\t', '-f', '1,4,5']]  # slice into BED-like format with GTF intervals
+    tools.procOps.run_proc(cmd, stdout=tmp_bed)
+    # sort the BED
+    tools.procOps.run_proc(['bedSort', tmp_bed, tmp_bed])
+    # merge the CDS and exon intervals
+    tmp_merged = tools.fileOps.get_tmp_file()
+    tools.procOps.run_proc(['bedtools', 'merge', '-i', tmp_bed], stdout=tmp_merged)
+    # intersect with hints and retain scores
+    cmd = [['bedtools', 'intersect', '-a', tmp_merged, '-b', merged_hints_file, '-f', '0.8', '-wa', '-wb'],
            # bedtools reports both entire A and entire B if at least 80% of A overlaps a B
            ['cut', '-d', '\t', '-f', '1,2,3,7']]  # retain the A positions with the B score
     # these BED-like records are actually GFF intervals with 1-based starts and closed intervals

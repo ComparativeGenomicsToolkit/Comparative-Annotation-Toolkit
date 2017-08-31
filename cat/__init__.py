@@ -1632,8 +1632,9 @@ class Hgm(PipelineWrapperTask):
                                            'package not in global path.'.format(tool))
         if not tools.misc.is_exec('halLiftover'):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
-        if not tools.misc.is_exec('bedtools'):
-            raise ToolMissingException('bedtools is required for the homGeneMapping module.')
+        for tool in ['bedtools', 'bedSort']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('{} is required for the homGeneMapping module.'.format(tool))
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()

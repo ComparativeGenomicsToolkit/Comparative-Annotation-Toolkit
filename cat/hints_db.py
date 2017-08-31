@@ -21,6 +21,7 @@ import tools.toilInterface
 import tools.transcripts
 import tools.bio
 from exceptions import UserException
+from tools.pipeline import ProcException
 
 logger = logging.getLogger(__name__)
 
@@ -299,8 +300,12 @@ def run_protein_blat(job, protein_subset, genome_fasta_file_id):
             tools.bio.write_fasta(outf, name, str(seq))
     # perform alignment
     tmp_psl = tools.fileOps.get_tmp_toil_file()
-    cmd = ['blat', '-t=dnax', '-q=prot', '-noHead', genome_fasta, protein_fasta, tmp_psl]
-    tools.procOps.run_proc(cmd)
+    cmd = [['blat', '-t=dnax', '-q=prot', '-noHead', genome_fasta, protein_fasta, '/dev/stdout'],
+           ['pslCheck', '-skipInsertCounts', '/dev/stdin', '-pass={}'.format(tmp_psl)]]
+    try:  # we expect pslCheck to fail
+        tools.procOps.run_proc(cmd, stderr='/dev/null')
+    except ProcException:
+        pass
     return job.fileStore.writeGlobalFile(tmp_psl)
 
 
@@ -319,9 +324,6 @@ def convert_blat_results_to_hints(job, results):
            ['sort', '-s', '-k14,14'],
            ['perl', '-ne', '@f=split; print if ($f[0]>=100)'],
            ['blat2hints.pl', '--in=/dev/stdin', '--nomult', '--ep_cutoff=5', '--out={}'.format(out_hints)]]
-    tools.procOps.run_proc(cmd)
-    # fix the names
-    cmd = ['sed', '-i', 's/exon/CDS/; s/ep/CDSpart/', out_hints]
     tools.procOps.run_proc(cmd)
     return job.fileStore.writeGlobalFile(out_hints)
 
