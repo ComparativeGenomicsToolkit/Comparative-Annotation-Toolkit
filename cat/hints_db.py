@@ -305,6 +305,7 @@ def run_protein_blat(job, protein_subset, genome_fasta_file_id):
     try:  # we expect pslCheck to fail
         tools.procOps.run_proc(cmd, stderr='/dev/null')
     except ProcException:
+        tools.fileOps.touch(tmp_psl)
         pass
     return job.fileStore.writeGlobalFile(tmp_psl)
 
