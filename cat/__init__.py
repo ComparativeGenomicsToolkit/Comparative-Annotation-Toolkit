@@ -800,7 +800,7 @@ class Gff3ToAttrs(PipelineTask):
                     gene_biotype = tx_biotype = d['gbkey']
                 if 'gene' in d:
                     gene_name = d['gene']
-                    gene_id = d['Dbxref'].replace('GeneID:', '')
+                    gene_id = d['Parent']
                 else:
                     gene_name = gene_id = d['ID']
                 tx_name = d.get('product', tx_id)
