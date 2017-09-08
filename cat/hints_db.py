@@ -73,8 +73,8 @@ def hints_db(hints_args, toil_options):
                               'annotation': annotation_file_id,
                               'protein_fasta': protein_fasta_file_id,
                               'genome_fasta': genome_fasta_file_id}
-
-            logger.info('All BAMs validated for {}. Beginning Toil hints pipeline'.format(hints_args.genome))
+            if len(input_file_ids['bams']) + len(input_file_ids['iso_seq_bams']) > 0:
+                logger.info('All BAMs validated for {}. Beginning Toil hints pipeline'.format(hints_args.genome))
 
             disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids)
             job = Job.wrapJobFn(setup_hints, input_file_ids, disk=disk_usage)

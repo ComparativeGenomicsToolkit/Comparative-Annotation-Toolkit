@@ -213,7 +213,7 @@ def hal2maf(job, input_file_ids, genomes, ref_genome, annotate_ancestors, chrom,
     hal = job.fileStore.readGlobalFile(input_file_ids.hal)
     maf_chunk = tools.fileOps.get_tmp_toil_file()
     genomes = ','.join(genomes)
-    cmd = ['hal2maf', '--noDupes', '--refGenome', ref_genome, '--targetGenomes', genomes,
+    cmd = ['hal2maf', '--onlyOrthologs', '--refGenome', ref_genome, '--targetGenomes', genomes,
            '--refSequence', chrom, '--start', start, '--length', chunk_size, hal, maf_chunk]
     if not annotate_ancestors:
         cmd.append('--noAncestors')

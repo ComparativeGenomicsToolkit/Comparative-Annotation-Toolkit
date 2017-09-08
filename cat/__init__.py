@@ -1453,6 +1453,8 @@ class AugustusPb(PipelineWrapperTask):
         args.augustus_pb_gtf = os.path.join(base_dir, genome + '.augPB.gtf')
         args.augustus_pb_gp = os.path.join(base_dir, genome + '.augPB.gp')
         args.augustus_pb_raw_gtf = os.path.join(base_dir, genome + '.raw.augPB.gtf')
+        # invert the UTR flag
+        args.utr = not pipeline_args.augustus_utr_off
         return args
 
     def validate(self):

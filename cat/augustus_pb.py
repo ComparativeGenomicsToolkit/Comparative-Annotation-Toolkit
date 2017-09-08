@@ -119,8 +119,8 @@ def augustus_pb_chunk(job, args, input_file_ids, hints_file_id, chrom, start, st
     tools.bio.write_fasta(tmp_fasta, chrom, genome_fasta[chrom][start:stop])
     results = tools.fileOps.get_tmp_toil_file()
 
-    cmd = ['augustus', '--UTR=1', '--softmasking=1', '--allow_hinted_splicesites=atac',
-           '--alternatives-from-evidence=1',
+    cmd = ['augustus', '--softmasking=1', '--allow_hinted_splicesites=atac',
+           '--alternatives-from-evidence=1', '--UTR={}'.format(int(args.utr)),
            '--hintsfile={}'.format(hints),
            '--extrinsicCfgFile={}'.format(pb_cfg),
            '--species={}'.format(args.species),
