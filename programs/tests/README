@@ -1,0 +1,11 @@
+
+- cat_to_ncbi_submit tests:
+   - chimp1.gp
+     - Clint_Chim_T0000026 - 5' truncated, negative strand
+     - Clint_Chim_T0000117 - 3' truncated, negative strand
+     - Clint_Chim_T0000175 - 3' truncated, positive strand, single exon, CDS not multiple of three, not flagged incmpl (bug?)
+     - Clint_Chim_T0000181 - 5' truncated, positive strand
+     - Clint_Chim_T0000452 - internal shift, negative strand
+     - Clint_Chim_T0000791 - internal shift, positive strand
+     - Clint_Chim_T0000159 - CDS is adjust off of end.
+
