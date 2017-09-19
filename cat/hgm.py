@@ -165,11 +165,8 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     tools.procOps.run_proc(cmd, stdout=tmp_bed)
     # sort the BED
     tools.procOps.run_proc(['bedSort', tmp_bed, tmp_bed])
-    # merge the CDS and exon intervals
-    tmp_merged = tools.fileOps.get_tmp_file()
-    tools.procOps.run_proc(['bedtools', 'merge', '-i', tmp_bed], stdout=tmp_merged)
     # intersect with hints and retain scores
-    cmd = [['bedtools', 'intersect', '-a', tmp_merged, '-b', merged_hints_file, '-f', '0.8', '-wa', '-wb'],
+    cmd = [['bedtools', 'intersect', '-a', tmp_bed, '-b', merged_hints_file, '-f', '0.8', '-wa', '-wb'],
            # bedtools reports both entire A and entire B if at least 80% of A overlaps a B
            ['cut', '-d', '\t', '-f', '1,2,3,7']]  # retain the A positions with the B score
     # these BED-like records are actually GFF intervals with 1-based starts and closed intervals
@@ -178,7 +175,7 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     hints = []
     for line in bed_plus_1:
         chrom, start, end, score = line.split()
-        tags = 'pri=3;source=E;mult={}'.format(score)
+        tags = 'pri=3;source=E;mult={}'.format(int(round(float(score))))
         hints.append([chrom, 'tmp', 'exon', start, end, '.', '.', '.', tags])
     os.remove(hints_file)
     os.remove(merged_hints_file)
