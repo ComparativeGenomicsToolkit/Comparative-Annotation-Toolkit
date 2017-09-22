@@ -1,0 +1,409 @@
+#!/usr/bin/env python
+from __future__ import print_function
+import sys
+import os
+import re
+import argparse
+import pandas as pd
+from collections import defaultdict, namedtuple
+my_bin_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+sys.path.insert(0, os.path.join(my_bin_dir, "../tools"))
+from transcripts import gene_pred_iterator
+from defaultOrderedDict import DefaultOrderedDict
+from intervals import ChromosomeInterval
+
+verbose = False
+
+def parse_args():
+    desc = """convert a CAT generated genePred and associated information to an NCBI submission table file
+      The following FATAL table2asn errors in the report file can be ignored:
+         FATAL: JOINED_FEATURES_NO_EXCEPTION'
+         FATAL: CONTAINED_CDS
+         FATAL: BACTERIAL_PARTIAL_NONEXTENDABLE_PROBLEMS
+      The following table2asn report message can be ignored
+         FEATURE_LOCATION_CONFLICT: Coding region location does not match gene location
+         GENE_PARTIAL_CONFLICT: 1 feature locations conflict with partialness of overlapping gene (and similar messages)
+         SHORT_INTRON: 1 intron is shorter than 10 nt
+         SUSPECT_PRODUCT_NAMES: 12 features are all capital letters
+    """
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument('--verbose',
+                        help="run on some tracing")
+    parser.add_argument("cat_genepred",
+                        help="input CAT genePred results")
+    parser.add_argument("cat_genepred_info",
+                        help="associated genePred info")
+    parser.add_argument("locus_tag_prefix",
+                        help="locus tag prefix to use")
+    parser.add_argument("ncbi_tbl_file",
+                        help="output NCBI table file")
+    args = parser.parse_args()
+    verbose = args.verbose
+    return args
+
+# this maps Ensembl/GENCODE biotypes to feature-level identifiers
+# non-transcribed pseudogenes are called mRNAs as they are mostly
+# annotated from protein alignments.  Transcribed pseudogenes are called
+# ncRNAs, because they actually produce a transcript that could
+# have non-coding function.
+biotype_map = {
+    '3prime_overlapping_ncrna': 'ncRNA',
+    'IG_C_gene': 'mRNA',
+    'IG_C_pseudogene': 'mRNA',
+    'IG_D_gene': 'mRNA',
+    'IG_J_gene': 'mRNA',
+    'IG_V_gene': 'mRNA',
+    'IG_V_pseudogene': 'mRNA',
+    'Mt_rRNA': 'rRNA',
+    'Mt_tRNA': 'tRNA',
+    'TEC': 'mRNA',
+    'TR_C_gene': 'mRNA',
+    'TR_J_gene': 'mRNA',
+    'TR_J_pseudogene': 'mRNA',
+    'TR_V_gene': 'mRNA',
+    'TR_V_pseudogene': 'ncRNA',
+    'antisense': 'ncRNA',
+    'bidirectional_promoter_lncrna': 'ncRNA',
+    'lincRNA': 'ncRNA',
+    'macro_lncRNA': 'ncRNA',
+    'miRNA': 'ncRNA',
+    'misc_RNA': 'ncRNA',
+    'non_coding': 'ncRNA',
+    'non_stop_decay': 'ncRNA',
+    'nonsense_mediated_decay': 'ncRNA',
+    'polymorphic_pseudogene': 'ncRNA',
+    'processed_pseudogene': 'ncRNA',
+    'processed_transcript': 'ncRNA',
+    'protein_coding': 'mRNA',
+    'pseudogene': 'mRNA',
+    'rRNA': 'rRNA',
+    'retained_intron': 'ncRNA',
+    'ribozyme': 'ncRNA',
+    'sRNA': 'ncRNA',
+    'scaRNA': 'ncRNA',
+    'sense_intronic': 'ncRNA',
+    'sense_overlapping': 'ncRNA',
+    'snRNA': 'ncRNA',
+    'snoRNA': 'ncRNA',
+    'transcribed_processed_pseudogene': 'ncRNA',
+    'transcribed_unitary_pseudogene': 'ncRNA',
+    'transcribed_unprocessed_pseudogene': 'ncRNA',
+    'translated_unprocessed_pseudogene': 'ncRNA',
+    'unitary_pseudogene': 'mRNA',
+    'unknown_likely_coding': 'mRNA',
+    'unprocessed_pseudogene': 'ncRNA',
+    'vaultRNA': 'ncRNA'}
+
+
+# for non-coding RNAs, this defines the ncrna_class key/value pair
+ncrna_class = {
+    '3prime_overlapping_ncrna': 'other',
+    'antisense': 'antisense_RNA',
+    'bidirectional_promoter_lncrna': 'lncRNA',
+    'lincRNA': 'lncRNA',
+    'macro_lncRNA': 'lncRNA',
+    'miRNA': 'miRNA',
+    'non_stop_decay': 'other',
+    'nonsense_mediated_decay': 'other',
+    'polymorphic_pseudogene': 'other',
+    'processed_pseudogene': 'other',
+    'processed_transcript': 'other',
+    'pseudogene': 'other',
+    'retained_intron': 'other',
+    'ribozyme': 'ribozyme',
+    'sRNA': 'other',
+    'scaRNA': 'other',
+    'sense_intronic': 'other',
+    'sense_overlapping': 'other',
+    'snRNA': 'snRNA',
+    'snoRNA': 'snoRNA',
+    'transcribed_processed_pseudogene': 'other',
+    'transcribed_unitary_pseudogene': 'other',
+    'transcribed_unprocessed_pseudogene': 'other',
+    'translated_unprocessed_pseudogene': 'other',
+    'unitary_pseudogene': 'other',
+    'unprocessed_pseudogene': 'other',
+    'vaultRNA': 'vault_RNA'}
+
+
+# for pseudogenes, this defines the pseudogene key/value pair
+pseudo_map = {
+    'IG_C_pseudogene': 'unknown',
+    'IG_V_pseudogene': 'unknown',
+    'TR_J_pseudogene': 'unknown',
+    'TR_V_pseudogene': 'unknown',
+    'processed_pseudogene': 'processed',
+    'pseudogene': 'unknown',
+    'transcribed_processed_pseudogene': 'processed',
+    'transcribed_unprocessed_pseudogene': 'unprocessed',
+    'translated_unprocessed_pseudogene': 'unprocessed',
+    'unprocessed_pseudogene': 'unprocessed'}
+
+
+class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
+    """transcript annotation and attributes"""
+    __slots__ = ()
+
+def load_annotations(gp_file, gp_info_file):
+    """load all transcript into OrderedDict of (chrom, gene) of TranscriptAttrs"""
+    txd_by_chrom_gene = DefaultOrderedDict(lambda: DefaultOrderedDict(list))
+    attrs = pd.read_csv(gp_info_file, sep='\t')
+    attrs = attrs.set_index(['transcript_id'])
+    for tx in gene_pred_iterator(gp_file):
+        txd_by_chrom_gene[tx.chromosome][tx.name2].append(TranscriptData(tx, attrs.ix[tx.name]))
+    return txd_by_chrom_gene
+        
+
+class NcbiTblWriter(object):
+    """class to write NCBI tables"""
+
+    def __init__(self, fh):
+        self.fh = fh
+
+    def start_seq(self, seqname):
+        print(">Features", seqname, file=self.fh)
+
+    def __write_feature_region(self, region, strand, feature_key, start_incmpl, end_incmpl):
+        "write one region range from list, feature_key should be None for continuations"
+        start, stop = region
+        start += 1
+        if strand == '-':
+            start, stop = stop, start
+        if start_incmpl:
+            start = "<{}".format(start)
+        if end_incmpl:
+            stop = ">{}".format(stop)
+        row = [start, stop]
+        if feature_key is not None:
+            row.append(feature_key)
+        print(*row, sep='\t', file=self.fh)
+
+    def write_feature(self, regions, strand, feature_key, start_incmpl=False, end_incmpl=False):
+        """Write feature definition rows.  Ranges is a list in the form
+        ((start1, end1), (start2, end2), ...), for each regions of the feature.
+        The range are zero-based, half-open, and coordinates will be swapped on negative strand."""
+
+        # correct order for strand
+        regions = list(sorted(regions, key=lambda r: r[0] if strand == '+' else -r[1]))
+        if strand == '-':
+            start_incmpl, end_incmpl = end_incmpl, start_incmpl
+        self.__write_feature_region(regions[0], strand, feature_key,
+                                    start_incmpl=start_incmpl, end_incmpl=False)
+        for region in regions[1:]:
+            self.__write_feature_region(region, strand, None,
+                                        start_incmpl=None,
+                                        end_incmpl=(end_incmpl and (region == regions[-1])))
+
+    def write_qualifier(self, qualifier_key, qualifier_value=None):
+        """write a qualifier with optional value"""
+        row = ["", "", "", qualifier_key]
+        if qualifier_value is not None:
+            row += [qualifier_value]
+        print(*row, sep='\t', file=self.fh)
+
+
+def frame_incr(frame, amt=1):
+    """increment frame by positive or negative amount"""
+    if frame >= 0:
+        return (frame + amt) % 3
+    else:
+        amt3 = (-amt) % 3
+        return (frame - (amt - amt3)) % 3
+
+def adjust_cds_start(cds_interval, expected_frame, frame):
+    """adjust cds_interval to match the expected frame.  It is possible
+    for the cds_interval to become zero"""
+    amt = 0
+    # this could be calculated rather than increment by in a loop,  this is safer
+    # for the feeble minded
+    while frame != expected_frame:
+        frame = frame_incr(frame)
+        amt += 1
+    gap = (cds_interval.start, cds_interval.start + amt)
+    # min here avoids going negative
+    cds_interval = ChromosomeInterval(cds_interval.chromosome,
+                                      min(cds_interval.start + amt, cds_interval.stop), cds_interval.stop, cds_interval.strand)
+    return gap, cds_interval
+
+def get_gene_locus_tag(locus_tag_prefix, txd):
+    # remove species identifier from CAT names (Clint_Chim, etc)
+    return txd.tx.name2.split('_')[-1]
+
+def get_transcript_id(locus_tag_prefix, txd):
+    # remove species identifier from CAT names (Clint_Chim, etc)
+    tx_name = txd.tx.name.split('_')[-1]
+
+    # transcript ID is the gnl|${locus_tag_prefix}|${tx_name} format
+    return 'gnl|{}|{}'.format(locus_tag_prefix, tx_name)
+
+def get_transcript_feature(txd):
+    if txd.tx.cds_size > 0:
+        return 'mRNA'
+    else:
+        # for non-coding, make use of translation table above to get feature type
+        return biotype_map[txd.attrs.transcript_biotype]
+
+def is_non_coding(txd):
+    return txd.attrs.transcript_biotype in ncrna_class
+    
+def has_cds(txd):
+    return txd.tx.cds_size > 0
+    
+def get_gene_name(txd):
+    # GENCODE uses clone derived names for some genomic annotations, which NCBI doesn't
+    # (understandably) like.  Drop these.
+    if re.match('^A[CL][0-9]+\\.[0-9]+$', txd.attrs.source_gene_common_name):
+        return None
+    else:
+        return txd.attrs.source_gene_common_name
+
+def get_transcript_product(locus_tag_prefix, txd):
+    prod = get_gene_name(txd)
+    if prod is None:
+        prod = get_transcript_id(locus_tag_prefix, txd)
+    return prod
+
+def write_product_qualifier(locus_tag_prefix, txd, tblwr):
+    "write product qualifier as needed"
+    # if we have a source gene name, use it
+    # product tag must match the gene-level gene tag or the conversion program gets mad
+    if isinstance(txd.attrs.source_gene, str):
+        tblwr.write_qualifier("product", get_transcript_product(locus_tag_prefix, txd))
+
+def add_cds_region(cds_interval, frame, expected_frame, cds_regions, gaps):
+    """Add the next CDS region to the lists, adding gaps to if there are indels,
+    as NCBI doesn't explicitly support frame shifts. Returns next expected frame"""
+    if frame != expected_frame:
+        gap, cds_interval = adjust_cds_start(cds_interval, expected_frame, frame)
+        gaps.append(gap)
+
+    if len(cds_interval) != 0:
+        cds_regions.append((cds_interval.start, cds_interval.stop))
+    
+    return frame_incr(frame, len(cds_interval))
+
+        
+def get_cds_regions(txd):
+    """Get list of CDS regions and list of partial codons.  If there is a frame
+    shift, adjust the CDS accordingly, inserting a gap"""
+    cds_regions = []
+    gaps = []
+    expected_frame = 0
+    # traverse in transcription order
+    if txd.tx.strand  == '+':
+        exon_iter = xrange(0, len(txd.tx.exon_intervals))
+    else:
+        exon_iter = xrange(len(txd.tx.exon_intervals) - 1, -1, -1)
+    for iexon in exon_iter:
+        cds_interval = txd.tx.exon_intervals[iexon].intersection(txd.tx.coding_interval)
+        if cds_interval is not None:
+            expected_frame = add_cds_region(cds_interval, txd.tx.exon_frames[iexon], expected_frame, cds_regions, gaps)
+    return cds_regions, gaps
+
+
+def write_cds(locus_tag_prefix, txd, cds_regions, gaps_added, tblwr):
+    tx = txd.tx
+    txa = txd.attrs
+    tblwr.write_feature(cds_regions, tx.strand, "CDS",
+                        (tx.cds_start_stat == "incmpl"),
+                        (tx.cds_end_stat == "incmpl"))
+
+    # product must be same on mRNA and CDS
+    write_product_qualifier(locus_tag_prefix, txd, tblwr)
+
+    # coding transcripts must have a protein_id tag -- just use the name with _prot suffix
+    tblwr.write_qualifier('protein_id', "{}_prot".format(get_transcript_id(locus_tag_prefix, txd)))
+    tblwr.write_qualifier('transcript_id', get_transcript_id(locus_tag_prefix, txd))
+
+    if gaps_added:
+        tblwr.write_qualifier("note", "gaps were added to CDS to maintain frame")
+        
+
+def write_cds_gaps(locus_tag_prefix, txd, cds_gaps, tblwr):
+    tx = txd.tx
+    txa = txd.attrs
+    for cds_gap in cds_gaps:
+        tblwr.write_feature([cds_gap], tx.strand, "misc_feature")
+        tblwr.write_qualifier("note", "gap added in CDS to maintain frame, possibly due to error in genome")
+
+
+def convert_cds(locus_tag_prefix, txd, tblwr):
+    cds_regions, cds_gaps = get_cds_regions(txd)
+    write_cds(locus_tag_prefix, txd, cds_regions, len(cds_gaps) > 0, tblwr)
+    if len(cds_gaps) > 0:
+        write_cds_gaps(locus_tag_prefix, txd, cds_gaps, tblwr)
+
+def get_transcript_exons(txd):
+    return [(e.start, e.stop) for e in txd.tx.exon_intervals]
+
+def write_transcript_features(locus_tag_prefix, txd, tblwr):
+    tx = txd.tx
+    txa = txd.attrs
+
+    # feature with correct type and all exons
+    tblwr.write_feature(get_transcript_exons(txd), tx.strand, get_transcript_feature(txd))
+    
+    tblwr.write_qualifier('transcript_id', get_transcript_id(locus_tag_prefix, txd))
+
+    # if non-coding, fill ncRNA_class tag
+    if is_non_coding(txd):
+        tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
+
+    # product must be same on mRNA and CDS, also gene name for ncRNA
+    write_product_qualifier(locus_tag_prefix, txd, tblwr)
+
+    # record true biotype (if possible) in note tag
+    if txa.transcript_biotype != 'unknown_likely_coding':
+        biotype_note = "GENCODE_biotype|{}".format(txa.transcript_biotype)
+    else:
+        biotype_note = 'novel_prediction|{}'.format(txa.transcript_modes)
+    tblwr.write_qualifier('note', biotype_note)
+
+
+def convert_transcript(locus_tag_prefix, txd, tblwr):
+    if verbose:
+        print("converting", txd.tx.name, file=sys.stderr)
+    write_transcript_features(locus_tag_prefix, txd, tblwr)
+    if has_cds(txd):
+        convert_cds(locus_tag_prefix, txd, tblwr)
+
+def write_gene_features(locus_tag_prefix, gene_txds, tblwr):
+    txd = gene_txds[0]  # arbitrary transcript
+    tx = txd.tx
+    txa = txd.attrs
+
+    # coordinates
+    start = min([txd.tx.start for txd in gene_txds])
+    end = max([txd.tx.stop for txd in gene_txds])
+    tblwr.write_feature([(start, end)], tx.strand, "gene")
+
+    # locus tag is ${locus_tag_prefix}_${gene_name}
+    tblwr.write_qualifier("locus_tag", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(locus_tag_prefix, txd)))
+
+    # if this is a pseudogene, record the pseudogene tag on the gene-level feature
+    if txa.gene_biotype in pseudo_map:
+        tblwr.write_qualifier("pseudogene", pseudo_map[txa.gene_biotype])
+    
+def convert_gene(locus_tag_prefix, gene_txds, tblwr):
+    write_gene_features(locus_tag_prefix, gene_txds, tblwr)
+    for txd in gene_txds:
+        convert_transcript(locus_tag_prefix, txd, tblwr)
+
+def convert_chrom(locus_tag_prefix, chrom, chrom_txds, tblwr):
+
+    """write features for a chromosome"""
+    tblwr.start_seq(chrom)
+    for gene_txds in chrom_txds.values():
+        convert_gene(locus_tag_prefix, gene_txds, tblwr)
+
+def cat_to_ncbi_tbl(locus_tag_prefix, txd_by_chrom_gene, tblwr):
+    for chrom in txd_by_chrom_gene.keys():
+        convert_chrom(locus_tag_prefix, chrom, txd_by_chrom_gene[chrom], tblwr)
+        
+def main(args):
+    txd_by_chrom_gene = load_annotations(args.cat_genepred, args.cat_genepred_info)
+    with open(args.ncbi_tbl_file, "w") as tblwr:
+        cat_to_ncbi_tbl(args.locus_tag_prefix, txd_by_chrom_gene, NcbiTblWriter(tblwr))
+
+
+main(parse_args())
