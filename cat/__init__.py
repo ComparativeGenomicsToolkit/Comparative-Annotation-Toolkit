@@ -614,7 +614,7 @@ class GenomeFiles(PipelineWrapperTask):
     def requires(self):
         self.validate()
         pipeline_args = self.get_pipeline_args()
-        for genome in pipeline_args.target_genomes:
+        for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             args = self.get_args(pipeline_args, genome)
             yield self.clone(GenomeFasta, **vars(args))
             yield self.clone(GenomeTwoBit, **vars(args))
@@ -1168,8 +1168,9 @@ class FilterTransMap(PipelineTask):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         logger.info('Filtering transMap PSL for {}.'.format(self.genome))
         table_target, psl_target, json_target, gp_target = self.output()
-        resolved_df = filter_transmap(tm_args.tm_psl, self.genome, tm_args.ref_db_path, psl_target,
-                                      tm_args.minimum_paralog_coverage, tm_args.local_near_best, json_target)
+        resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp, self.genome,
+                                      tm_args.ref_db_path, psl_target, tm_args.minimum_paralog_coverage,
+                                      tm_args.local_near_best, json_target)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()

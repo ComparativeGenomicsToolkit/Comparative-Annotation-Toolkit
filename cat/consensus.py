@@ -427,8 +427,8 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
     if best_series.Paralogy is not None:
         d['paralogy'] = best_series.Paralogy
-    if best_series.GeneAlternateContigs is not None:
-        d['gene_alternate_contigs'] = best_series.GeneAlternateContigs
+    if best_series.GeneAlternateLoci is not None:
+        d['gene_alternate_contigs'] = best_series.GeneAlternateLoci
     if best_series.GeneName is not None:
         d['source_gene_common_name'] = best_series.GeneName
 

@@ -17,7 +17,8 @@ setup(
         'pysam>=0.10',
         'numpy>=1.10',
         'scipy>=0.18.1',
-        'bx-python>=0.7.1'
+        'bx-python>=0.7.1',
+        'networkx'
     ],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',
