@@ -27,7 +27,7 @@ def parse_args():
          SUSPECT_PRODUCT_NAMES: 12 features are all capital letters
     """
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('--verbose',
+    parser.add_argument('--verbose', action="store_true", default=False,
                         help="run on some tracing")
     parser.add_argument("cat_genepred",
                         help="input CAT genePred results")
@@ -38,6 +38,7 @@ def parse_args():
     parser.add_argument("ncbi_tbl_file",
                         help="output NCBI table file")
     args = parser.parse_args()
+    global verbose
     verbose = args.verbose
     return args
 
@@ -219,10 +220,18 @@ def adjust_cds_start(cds_interval, expected_frame, frame):
     while frame != expected_frame:
         frame = frame_incr(frame)
         amt += 1
-    gap = (cds_interval.start, cds_interval.start + amt)
-    # min here avoids going negative
-    cds_interval = ChromosomeInterval(cds_interval.chromosome,
-                                      min(cds_interval.start + amt, cds_interval.stop), cds_interval.stop, cds_interval.strand)
+    # min/max here avoids going negative, making a zero-length block
+    if cds_interval.strand == '+':
+        gap = (cds_interval.start, cds_interval.start + amt)
+        start = min(cds_interval.start + amt, cds_interval.stop)
+        stop = cds_interval.stop
+    else:
+        gap = (cds_interval.stop - amt, cds_interval.stop)
+        start = cds_interval.start
+        stop = max(cds_interval.stop - amt, cds_interval.start)
+    cds_interval = ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
+    if verbose:
+        print("  adj", cds_interval, "[{}]".format(len(cds_interval)), "frame", "{}..{}".format(frame, frame_incr(frame, len(cds_interval))), amt, "gap", gap, file=sys.stderr)
     return gap, cds_interval
 
 def get_gene_locus_tag(locus_tag_prefix, txd):
@@ -273,6 +282,8 @@ def write_product_qualifier(locus_tag_prefix, txd, tblwr):
 def add_cds_region(cds_interval, frame, expected_frame, cds_regions, gaps):
     """Add the next CDS region to the lists, adding gaps to if there are indels,
     as NCBI doesn't explicitly support frame shifts. Returns next expected frame"""
+    if verbose:
+        print("  cds", cds_interval, "[{}]".format(len(cds_interval)), "frame", frame, "exframe", expected_frame, file=sys.stderr)
     if frame != expected_frame:
         gap, cds_interval = adjust_cds_start(cds_interval, expected_frame, frame)
         gaps.append(gap)
@@ -280,7 +291,7 @@ def add_cds_region(cds_interval, frame, expected_frame, cds_regions, gaps):
     if len(cds_interval) != 0:
         cds_regions.append((cds_interval.start, cds_interval.stop))
     
-    return frame_incr(frame, len(cds_interval))
+    return frame_incr(expected_frame, len(cds_interval))
 
         
 def get_cds_regions(txd):
