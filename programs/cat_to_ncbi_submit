@@ -202,6 +202,8 @@ class NcbiTblWriter(object):
             row += [qualifier_value]
         print(*row, sep='\t', file=self.fh)
 
+    def write_note(self, note):
+        self.write_qualifier("note", note)
 
 def frame_incr(frame, amt=1):
     """increment frame by positive or negative amount"""
@@ -327,7 +329,7 @@ def write_cds(locus_tag_prefix, txd, cds_regions, gaps_added, tblwr):
     tblwr.write_qualifier('transcript_id', get_transcript_id(locus_tag_prefix, txd))
 
     if gaps_added:
-        tblwr.write_qualifier("note", "gaps were added to CDS to maintain frame")
+        tblwr.write_note("gaps were added to CDS to maintain frame")
         
 
 def write_cds_gaps(locus_tag_prefix, txd, cds_gaps, tblwr):
@@ -335,7 +337,7 @@ def write_cds_gaps(locus_tag_prefix, txd, cds_gaps, tblwr):
     txa = txd.attrs
     for cds_gap in cds_gaps:
         tblwr.write_feature([cds_gap], tx.strand, "misc_feature")
-        tblwr.write_qualifier("note", "gap added in CDS to maintain frame, possibly due to error in genome")
+        tblwr.write_note("gap added in CDS to maintain frame, possibly due to error in genome")
 
 
 def convert_cds(locus_tag_prefix, txd, tblwr):
@@ -368,10 +370,12 @@ def write_transcript_features(locus_tag_prefix, txd, tblwr):
 
     # record true biotype (if possible) in note tag
     if txa.transcript_biotype != 'unknown_likely_coding':
-        biotype_note = "GENCODE_biotype|{}".format(txa.transcript_biotype)
+        biotype_note = "GENCODE_biotype: {}".format(txa.transcript_biotype)
     else:
-        biotype_note = 'novel_prediction|{}'.format(txa.transcript_modes)
-    tblwr.write_qualifier('note', biotype_note)
+        biotype_note = 'novel_prediction: {}'.format(txa.transcript_modes)
+    tblwr.write_note("CAT alignment id: {}".format(txa.alignment_id))
+    tblwr.write_note("CAT source transcript id: {}".format(txa.source_transcript))
+    tblwr.write_note(biotype_note)
 
 
 def convert_transcript(locus_tag_prefix, txd, tblwr):
