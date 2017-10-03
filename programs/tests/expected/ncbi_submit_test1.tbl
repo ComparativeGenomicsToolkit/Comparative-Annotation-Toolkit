@@ -252,6 +252,7 @@
 17344278	17345077
 17345078	17345272
 			transcript_id	gnl|fred|T0000791
+			exception	low-quality sequence region
 			product	TAAR2
 			note	CAT alignment id: ENST00000367931.1-1
 			note	CAT source transcript id: ENST00000367931.1
