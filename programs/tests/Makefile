@@ -34,12 +34,13 @@ endif
 test: ncbi_submit_tests
 
 
-ncbi_submit_tests: ncbi_submit_test1
+ncbi_submit_tests: ncbi_submit_test1  ncbi_submit_test2
 
 
 
 ncbi_submit_test1: mkdirs
 	${cat_to_ncbi_submit} input/chimp1.gp input/chimp1.gp_info fred output/$@.tbl
+	diff expected/$@.tbl output/$@.tbl
 ifeq (${useTable2asn}, yes)
 	rm -rf output/$@.table2asn
 	mkdir -p  output/$@.table2asn
@@ -51,6 +52,8 @@ ifeq (${useTbl2asn}, yes)
 	${tbl2asn} -V vb -t input/chimp1.sbt -i chimp1.fa -f output/$@.tbl -o output/$@.tbl2asn/chimp1.sqn -Z output/$@.tbl2asn/chimp1.report
 	mv chimp1.gbf chimp1.val errorsummary.val output/$@.tbl2asn/
 endif
+
+ncbi_submit_test2:
 
 mkdirs:
 	@mkdir -p output
