@@ -11,8 +11,9 @@ These classifiers are per-transcript evaluations based on both the transcript al
 3. AlnIdentity: Alignment identity in transcript space.
 4. OriginalIntronVector: Number of original introns within a wiggle distance of any introns in the target. Different
    from the intron support calculated by homGeneMapping because it verifies the actual isoform.
-5. CdsStartStat: Is the CDS likely to be a complete start? Simply extracted from the genePred
-6. CdsEndStat: Is the CDS likely to be a complete stop? Simply extracted from the genePred
+5. ValidStart -- start with ATG?
+6. ValidStop -- valid stop codon (in frame)?
+7. ProperOrf -- is the orf a multiple of 3?
 
 <alnMode>_<txMode>_Evaluation:
 
@@ -78,14 +79,14 @@ def classify(eval_args):
         aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
         for aln_mode in aln_modes:
             psl_iter = list(tools.psl.psl_iterator(path_dict[aln_mode]))
-            mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter)
+            mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict)
             ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict)
             results[tools.sqlInterface.tables[aln_mode][tx_mode]['metrics'].__tablename__] = mc_df
             results[tools.sqlInterface.tables[aln_mode][tx_mode]['evaluation'].__tablename__] = ec_df
     return results
 
 
-def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
+def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict):
     """
     Calculates the alignment metrics and the number of missing original introns on this transcript_chunk
     :return: DataFrame
@@ -98,6 +99,9 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter):
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnGoodness', 100 * (1 - psl.badness)])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'OriginalIntrons', original_intron_vector])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'ValidStart', tools.transcripts.has_start_codon(seq_dict, tx)])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'ValidStop', tools.transcripts.has_stop_codon(seq_dict, tx)])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'ProperOrf', tx.cds_size % 3 == 0])
     columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
     df = pd.DataFrame(r, columns=columns)
     df = df.sort_values(columns)

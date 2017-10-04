@@ -2280,7 +2280,9 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_pb.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
-        if self.genome in pipeline_args.annotation_genomes:
+        # TODO: allow non-reference annotations
+        #if self.genome in pipeline_args.annotation_genomes:
+        if self.genome == pipeline_args.ref_genome:
             annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
@@ -2530,10 +2532,11 @@ class ConsensusTrack(TrackTask):
                 tx_name = info.source_transcript_name if info.source_transcript_name != 'N/A' else tx.name
                 row = [tx.chromosome, tx.start, tx.stop, tx_name, tx.score, tx.strand,
                        tx.thick_start, tx.thick_stop, find_rgb(info), tx.block_count, block_sizes, block_starts,
-                       info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
+                       info.source_gene_common_name, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
                        info.paralogy, info.frameshift, info.exon_annotation_support,
+                       info.valid_start, info.valid_stop, info.proper_orf,
                        info.intron_annotation_support, info.transcript_class, info.transcript_modes]
                 if has_rnaseq:
                     row.extend([info.intron_rna_support, info.exon_rna_support])
@@ -2840,8 +2843,6 @@ def construct_consensus_gp_as(has_rna, has_pb):
     int[blockCount] blockSizes; "Comma separated list of block sizes"
     int[blockCount] chromStarts; "Start positions relative to chromStart"
     string name2;       "Gene name"
-    string cdsStartStat; "Status of CDS start annotation"
-    string cdsEndStat;   "Status of CDS end annotation"
     int[blockCount] exonFrames; "Exon frame {0,1,2}, or -1 if no frame for exon"
     string txId; "Transcript ID"
     string type;        "Transcript type"
@@ -2857,6 +2858,9 @@ def construct_consensus_gp_as(has_rna, has_pb):
     lstring intronAnnotationSupport;   "Intron support in reference annotation"
     string transcriptClass;    "Transcript class"
     string transcriptModes;    "Transcript mode(s)"
+    string validStart;         "Valid start codon"
+    string validStop;          "Valid stop codon"
+    string properOrf;           "Proper multiple of 3 ORF"
 '''
     if has_rna:
         consensus_gp_as += '    lstring intronRnaSupport;   "RNA intron support"\n'

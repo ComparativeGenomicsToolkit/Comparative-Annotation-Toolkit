@@ -10,7 +10,10 @@ Classify transMap transcripts producing the TransMapEvaluation table for each ge
 7. TransMapGoodness
 8. TransMapOriginalIntronsPercent: The number of transMap introns within a wiggle distance of a intron in the parent
  transcript in transcript coordinates.
- 9. Synteny. Count of the # of genes that match the reference in both directions (+/- 5 genes)
+9. Synteny. Count of the # of genes that match the reference in both directions (+/- 5 genes)
+10. ValidStart -- start with ATG?
+11. ValidStop -- valid stop codon (in frame)?
+12. ProperOrf -- is the orf a multiple of 3?
 """
 import bisect
 import collections
@@ -57,6 +60,9 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'TransMapGoodness', 100 * (1 - aln.badness)])
         r.append([aln_id, tx_id, gene_id, 'TransMapOriginalIntronsPercent', percent_original_introns(aln, tx, ref_aln)])
         r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
+        r.append([aln_id, tx_id, gene_id, 'ValidStart', tools.transcripts.has_start_codon(fasta, tx)])
+        r.append([aln_id, tx_id, gene_id, 'ValidStop', tools.transcripts.has_stop_codon(fasta, tx)])
+        r.append([aln_id, tx_id, gene_id, 'ProperOrf', tx.cds_size % 3 == 0])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
     return df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])

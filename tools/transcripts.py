@@ -115,24 +115,6 @@ class Transcript(object):
             intron_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand))
         return intron_intervals
 
-    def get_gtf_coding_interval(self):
-        """
-        GTF/GFF3 files do not include the stop codon as part of the CDS. For this reason, we have a special case.
-
-        Using the get_bed() functionality to achieve this.
-        """
-        if self.strand == '+':
-            # special case -- we have a 3bp transcript with a complete start marking. Then, start codon == stop codon
-            if self.cds_size == 3:
-                bed = self.get_bed(new_stop=self.cds_coordinate_to_chromosome(3), new_start=self.thick_start)
-            else:
-                bed = self.get_bed(new_stop=self.cds_coordinate_to_chromosome(self.cds_size - 3),
-                                   new_start=self.thick_start)
-        else:
-            bed = self.get_bed(new_start=self.cds_coordinate_to_chromosome(self.cds_size - 3),
-                               new_stop=self.thick_stop)
-        return Transcript(bed).coding_interval
-
     def get_bed(self, rgb=None, name=None, new_start=None, new_stop=None):
         """
         Returns BED tokens for this object. Can be sliced into sub regions.
@@ -706,3 +688,27 @@ def calculate_subset_matches(divided_clusters, fuzz_distance=8):
                 if m:
                     r[iso.name].extend(enst_txs)
     return r
+
+
+def has_start_codon(fasta, tx):
+    """
+    Does this start with a start codon?
+    :param fasta: Sequence Dictionary
+    :param tx: GenePredTranscript object
+    :return: boolean
+    """
+    if tx.cds_size == 0:
+        return None
+    return tx.get_cds(fasta)[:3] == 'ATG'
+
+
+def has_stop_codon(fasta, tx):
+    """
+    Does this transcript have a valid stop codon?
+    :param fasta: Sequence Dictionary
+    :param tx: GenePredTranscript object
+    :return: boolean
+    """
+    if tx.cds_size == 0:
+        return None
+    return tx.get_cds(fasta)[-3:] in ['TAA', 'TAG', 'TGA']

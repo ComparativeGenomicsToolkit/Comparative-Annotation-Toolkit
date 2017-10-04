@@ -421,7 +421,10 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'frameshift': str(best_series.Frameshift),
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
          'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport)),
-         'transcript_class': 'ortholog'}
+         'transcript_class': 'ortholog',
+         'valid_start': bool(best_series.ValidStart),
+         'valid_stop': bool(best_series.ValidStop),
+         'proper_orf': bool(best_series.ProperOrf)}
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
@@ -561,7 +564,10 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'exon_annotation_support': ','.join(map(str, s.ExonAnnotSupport)),
                                   'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport)),
                                   'alignment_id': aln_id,
-                                  'source_gene_common_name': s.CommonName}
+                                  'source_gene_common_name': s.CommonName,
+                                  'valid_start': True,
+                                  'valid_stop': True,
+                                  'valid_orf': True}
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
         metrics['Transcript Modes'][tx_mode] += 1
@@ -804,13 +810,12 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs['Parent'] = tx_id
         # exon records
         cds_i = 0  # keep track of position of CDS in case of entirely non-coding exons
-        gtf_coding_interval = tx_obj.get_gtf_coding_interval()  # GTF/GFF3 intervals do not include the stop codon
         for i, (exon, exon_frame) in enumerate(zip(*[tx_obj.exon_intervals, tx_obj.exon_frames])):
             attrs['rna_support'] = find_feature_support(attrs, 'exon_rna_support', i)
             attrs['reference_support'] = find_feature_support(attrs, 'exon_annotation_support', i)
             score, attrs_field = convert_attrs(attrs, 'exon:{}:{}'.format(tx_id, i))
             yield [chrom, 'CAT', 'exon', exon.start + 1, exon.stop, score, exon.strand, '.', attrs_field]
-            cds_interval = exon.intersection(gtf_coding_interval)
+            cds_interval = exon.intersection(tx_obj.coding_interval)
             if cds_interval is not None:
                 #attrs['reference_support'] = find_feature_support(attrs, 'cds_annotation_support', cds_i)
                 score, attrs_field = convert_attrs(attrs, 'CDS:{}:{}'.format(tx_id, cds_i))
@@ -829,12 +834,12 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
         """generate start/stop codon GFF3 records, handling frame appropriately"""
-        if tx_obj.cds_start_stat == 'cmpl':
+        if attrs['valid_start'] is True:
             score, attrs_field = convert_attrs(attrs, 'start_codon:{}'.format(tx_id))
             for interval in tx_obj.get_start_intervals():
                 yield [chrom, 'CAT', 'start_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
                        interval.data, attrs_field]
-        if tx_obj.cds_end_stat == 'cmpl':
+        if attrs['valid_stop'] is True:
             score, attrs_field = convert_attrs(attrs, 'stop_codon:{}'.format(tx_id))
             for interval in tx_obj.get_stop_intervals():
                 yield [chrom, 'CAT', 'stop_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
