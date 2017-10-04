@@ -14,7 +14,7 @@ tbl2asn =  $(ncbibin)/tbl2asn
 # control running using tbl2asn, table2asn, or both
 # tbl2asn is an option because the current version of
 # table2asn will not generate genbank flat files
-useTable2asn = yes
+useTable2asn = no
 useTbl2asn = yes
 
 # overide setting based on the existance of the programs and the
