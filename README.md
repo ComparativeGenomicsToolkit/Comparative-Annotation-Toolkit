@@ -258,7 +258,9 @@ This step performs the preliminary classification of `transMap` transcripts. Thi
 7. TransMapGoodness: A measure of alignment quality that takes into account both coverage and alignment size in the target. Related to Jim Kent's badness score.
 8. TransMapOriginalIntronsPercent: The number of transMap introns within a wiggle distance of a intron in the parent transcript in transcript coordinates.
 9. Synteny: Counts the number of genes in linear order that match up to +/- 5 genes.
-
+10. ValidStart -- start with ATG?
+11. ValidStop -- valid stop codon (in frame)?
+12. ProperOrf -- is the orf a multiple of 3?
    
 This module will populate the folder `--work-dir/transMap`.
 
@@ -332,6 +334,9 @@ These classifiers are per-transcript evaluations based on both the transcript al
 2. AlnCoverage: Alignment coverage in transcript space.
 3. AlnIdentity: Alignment identity in transcript space.
 4. OriginalIntrons. Original introns is a bit vector that evaluates whether the intron junctions in transcript coordinate space are within 5 bases either direction from the original transcript. This is a powerful approach to identifying retroposed pseudogenes or problematic alignments.
+5. ValidStart -- start with ATG?
+6. ValidStop -- valid stop codon (in frame)?
+7. ProperOrf -- is the orf a multiple of 3?
 
 \<alnMode\>\_\<txMode\>\_Evaluation:
 
