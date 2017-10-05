@@ -449,7 +449,7 @@ class ToilTask(PipelineTask):
 
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
-        #job_store = 'file:' + job_store
+        job_store = 'file:' + job_store
         toil_args.jobStore = job_store
         self.job_store = job_store
         return toil_args
@@ -482,6 +482,8 @@ def success(task):
                                                                          stats['jobs']['total_clock'],
                                                                          stats['jobs']['average_clock']])
         engine.commit()
+    #shutil.rmtree(task.job_store)
+    shutil.rmtree(task.job_store.replace('file:', ''))
 
 
 class RebuildableTask(PipelineTask):
