@@ -793,6 +793,8 @@ class Gff3ToAttrs(PipelineTask):
         results = []
         for tx_id, d in df.groupby('transcript_id'):
             d = dict(zip(d.key, d.value))
+            if 'transcript_id' not in d:
+                continue
             if 'gbkey' in d:  # this is a NCBI GFF3
                 if d['gbkey'] == 'mRNA':
                     gene_biotype = tx_biotype = 'protein_coding'
