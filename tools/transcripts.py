@@ -533,9 +533,10 @@ def gene_pred_iterator(gp_file):
     :param gp_file: A genePred file path or handle.
     :return: tuples of (name, GenePredTranscript)
     """
-    for tokens in iter_lines(gp_file):
+    for i, x in enumerate(open(gp_file)):
+        tokens = x.rstrip().split('\t')
         if len(tokens) != 15:
-            raise RuntimeError('GenePred line had {} tokens, not 15. Record: {}'.format(len(tokens), tokens))
+            raise RuntimeError('GenePred line {} had {} tokens, not 15. Record: {}'.format(i + 1, len(tokens), tokens))
         t = GenePredTranscript(tokens)
         yield t
 

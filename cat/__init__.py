@@ -473,7 +473,9 @@ def success(task):
     pipeline_args = task.get_pipeline_args()
     stats_db = pipeline_args.stats_db
     cmd = ['toil', 'stats', '--raw', task.job_store]
-    stats = json.loads(tools.procOps.call_proc(cmd))
+    raw = tools.procOps.call_proc(cmd)
+    parsed = raw[raw.index('{'):raw.rfind('}') + 1]
+    stats = json.loads(parsed)
     with tools.sqlite.ExclusiveSqlConnection(stats_db) as engine:
         c = engine.cursor()
         c.execute('create table if not exists toil_stats '
