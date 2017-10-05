@@ -41,13 +41,13 @@ Either form of `pip` installation will install all of the python dependencies. H
   3. `filterBam`. Also requires the `bamtools` headers.
   4. `bam2wig`. Compiling this program will NOT place it in the `augustus` binary directory, you must do so yourself. This program requires you modify the makefile to explicitly point to your installation of `htslib`, `bcftools`, `samtools`, and `tabix`. `Tabix` is now packaged with `htslib`, and both are included in your `kent` directory at `$kent/src/htslib/`.
   5. `homGeneMapping`. This program must also have its makefile at `$augustus/trunks/auxprogs/homGeneMapping/src/Makefile` modified to turn on the `BOOST = true` and `SQLITE = true` flags. Then run `make clean && make` to recompile.
+  6. There are a series of perl scripts that you need to place on your path from the `$augustus/trunks/scripts` directory: `wig2hints.pl`, `blat2hints.pl`, `transMap2hints.pl`, and `join_mult_hints.pl`.
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 6. [wiggletools](https://github.com/Ensembl/WiggleTools). Used to combine RNA-seq expression in assembly hubs.
-7. [deeptools](https://github.com/fidelram/deepTools). Used to combine RNA-seq expression in assembly hubs by providing the tool `bamCoverage`. **NOT ACTUALLY CURRENTLY USED**
-8. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
+7. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed bamCoverage sambamba`
+`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl`
 
 # Running the pipeline
 
