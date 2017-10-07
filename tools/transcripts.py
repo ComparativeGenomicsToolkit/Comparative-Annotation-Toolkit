@@ -415,14 +415,15 @@ class GenePredTranscript(Transcript):
 
     def _cds_region(self, cds_interval, frame, expected_frame):
         """Compute the next cds region"""
-        cds_intervals = []
+        intervals = []
         if frame != expected_frame:
-            cds_interval = self._adjust_cds_start(cds_interval, expected_frame, frame)
+            cds_interval, gap_interval = self._adjust_cds_start(cds_interval, expected_frame, frame)
+            intervals.append(gap_interval)
 
         if len(cds_interval) != 0:
-            cds_intervals.append(cds_interval)
+            intervals.append(cds_interval)
 
-        return self._frame_incr(expected_frame, len(cds_interval)), cds_intervals
+        return self._frame_incr(expected_frame, len(cds_interval)), intervals
 
     def _frame_incr(self, frame, amt=1):
         """increment frame by positive or negative amount"""
@@ -445,23 +446,41 @@ class GenePredTranscript(Transcript):
         if cds_interval.strand == '+':
             start = min(cds_interval.start + amt, cds_interval.stop)
             stop = cds_interval.stop
+            gap_start = cds_interval.start
+            gap_stop = cds_interval.start + amt
         else:
             start = cds_interval.start
             stop = max(cds_interval.stop - amt, cds_interval.start)
-        return ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand, 'cds')
+            gap_start = cds_interval.stop - amt
+            gap_stop = cds_interval.stop
+        cds_interval = ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
+        gap_interval = ChromosomeInterval(cds_interval.chromosome, gap_start, gap_stop, cds_interval.strand, 'gap')
+        return cds_interval, gap_interval
 
-    def get_cds(self, seq_dict):
+    def _get_codon_intervals(self):
         """
-        Using the frame information, we can ignore indels in the CDS that cause frameshifts, producing proper codons.
+        Returns a list of intervals, extracting gap intervals and tagging them with data='gap'
         """
         expected_frame = 0
         codon_regions = []
         for iexon in self._make_exon_idx_iter():
             cds_interval = self.exon_intervals[iexon].intersection(self.coding_interval)
             if cds_interval is not None:
-                expected_frame, cds_intervals = self._cds_region(cds_interval, self.exon_frames[iexon], expected_frame)
-                codon_regions.extend(cds_intervals)
-        codon_regions = sorted(codon_regions)
+                expected_frame, intervals = self._cds_region(cds_interval, self.exon_frames[iexon], expected_frame)
+                codon_regions.extend(intervals)
+        return codon_regions
+
+    def get_cds(self, seq_dict, ignore_frameshift=False):
+        """
+        Using the frame information, we can ignore indels in the CDS that cause frameshifts, producing proper codons.
+        """
+        codon_regions = self._get_codon_intervals()
+        if ignore_frameshift is True:
+            # sort, remove gap regions
+            codon_regions = sorted((i for i in codon_regions if i.data is None), key=lambda x: x.start)
+        else:
+            codon_regions = sorted(codon_regions, key=lambda x: x.start)
+
         if self.strand == '+':
             cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions])
         else:
@@ -472,60 +491,31 @@ class GenePredTranscript(Transcript):
         """
         Using the frame information, we can ignore indels and iterate codon pairs *along with true genomic coordinates*
         """
-        if self.cds_size > 0:
-            expected_frame = 0
-            regions = []
+        codon_regions = sorted(self._get_codon_intervals(), key=lambda x: x.start)
+        cds = self.get_cds(seq_dict, ignore_frameshift=True)
 
-            for iexon in self._make_exon_idx_iter():
-                cds_interval = self.exon_intervals[iexon].intersection(self.coding_interval)
+        # construct a dumb list mapping positions to cds positions
+        positions = []
+        cds_pos = 0
+        for i in codon_regions:
+            if i.data is None:
+                for p in xrange(i.start, i.stop):
+                    positions.append(p)
+                    cds_pos += 1
 
-                if cds_interval is not None:
-                    expected_frame, cds_intervals = self._cds_region(cds_interval, self.exon_frames[iexon],
-                                                                     expected_frame)
-                    regions.extend(cds_intervals)
+        if self.strand == '-':
+            positions = positions[::-1]
 
-            # convert this into a transcript, which effectively slices out the gaps
-            tx = intervals_to_bed(regions)
-
-            # now we can iterate over codons in the transcript, but with knowledge of what position we came from
-            # note that we can use the mRNA sequence because this transcript is coding-only
-            cds = tx.get_mrna(seq_dict)
-
-            for i, codon in enumerate(grouper(cds, 3), 1):
-                codon_start = tx.mrna_coordinate_to_chromosome((i * 3) - 3)
-                codon_stop = tx.mrna_coordinate_to_chromosome(i * 3)
-
-                # did we go off the edge?
-                if codon_start is None or codon_stop is None:
-                    continue
-
-                # handle truncated codons
-                if len(codon) != 3:
-                    continue
-
-                # invert coordinates for negative strand
-                if self.strand == '-':
-                    codon_start, codon_stop = codon_stop, codon_start
-
-                # if i is 0, then we need to handle the edge case
-                if i == 0:
-                    if self.strand == '+':
-                        codon_start = tx.start
-                    else:
-                        codon_stop = tx.stop
-
-                # make sure we aren't returning the actual stop codon
-                if self.strand == '+' and codon_stop == self.thick_stop:
-                    continue
-                elif self.strand == '-' and codon_start == self.thick_start:
-                    continue
-
-                yield codon_start, codon_stop, ''.join(codon)
+        for i in xrange(0, cds_pos - cds_pos % 3, 3):
+            codon = cds[i:i + 3]
+            if self.strand == '+':
+                yield positions[i], positions[i + 2] + 1, codon
+            else:
+                yield positions[i + 2], positions[i] + 1, codon
 
     def get_protein_sequence(self, seq_dict):
         """
-        Returns the translated protein sequence for this transcript in single
-        character space.
+        Returns the translated protein sequence for this transcript in single character space.
         """
         cds = self.get_cds(seq_dict)
         if len(cds) < 3:
