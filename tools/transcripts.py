@@ -6,8 +6,9 @@ import collections
 from itertools import izip
 from bx.intervals.cluster import ClusterTree
 
+from dataOps import grouper
 from mathOps import find_closest, find_intervals
-from bio import reverse_complement, translate_sequence
+from bio import reverse_complement, complement, translate_sequence
 from fileOps import iter_lines
 from intervals import ChromosomeInterval
 
@@ -405,63 +406,121 @@ class GenePredTranscript(Transcript):
             exon_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand, data={'frame': frame}))
         return exon_intervals
 
+    def _make_exon_idx_iter(self):
+        """make iterator exon indexes in order of transcriptions"""
+        if self.strand == '+':
+            return xrange(0, len(self.exon_intervals))
+        else:
+            return xrange(len(self.exon_intervals) - 1, -1, -1)
+
+    def _cds_region(self, cds_interval, frame, expected_frame):
+        """Compute the next cds region"""
+        cds_intervals = []
+        if frame != expected_frame:
+            cds_interval = self._adjust_cds_start(cds_interval, expected_frame, frame)
+
+        if len(cds_interval) != 0:
+            cds_intervals.append(cds_interval)
+
+        return self._frame_incr(expected_frame, len(cds_interval)), cds_intervals
+
+    def _frame_incr(self, frame, amt=1):
+        """increment frame by positive or negative amount"""
+        if frame >= 0:
+            return (frame + amt) % 3
+        else:
+            amt3 = (-amt) % 3
+            return (frame - (amt - amt3)) % 3
+
+    def _adjust_cds_start(self, cds_interval, expected_frame, frame):
+        """adjust cds_interval to match the expected frame.  It is possible
+        for the cds_interval to become zero"""
+        amt = 0
+        # this could be calculated rather than increment by in a loop,  this is safer
+        # for the feeble minded
+        while frame != expected_frame:
+            frame = self._frame_incr(frame)
+            amt += 1
+        # min/max here avoids going negative, making a zero-length block
+        if cds_interval.strand == '+':
+            start = min(cds_interval.start + amt, cds_interval.stop)
+            stop = cds_interval.stop
+        else:
+            start = cds_interval.start
+            stop = max(cds_interval.stop - amt, cds_interval.start)
+        return ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand, 'cds')
+
     def get_cds(self, seq_dict):
         """
         Using the frame information, we can ignore indels in the CDS that cause frameshifts, producing proper codons.
         """
-        def make_exon_idx_iter():
-            """make iterator exon indexes in order of transcriptions"""
-            if self.strand == '+':
-                return xrange(0, len(self.exon_intervals))
-            else:
-                return xrange(len(self.exon_intervals) - 1, -1, -1)
-
-        def cds_region(cds_interval, frame, expected_frame):
-            """Compute the next cds region"""
-            cds_intervals = []
-            if frame != expected_frame:
-                cds_interval = adjust_cds_start(cds_interval, expected_frame, frame)
-
-            if len(cds_interval) != 0:
-                cds_intervals.append(cds_interval)
-
-            return frame_incr(expected_frame, len(cds_interval)), cds_intervals
-
-        def frame_incr(frame, amt=1):
-            """increment frame by positive or negative amount"""
-            if frame >= 0:
-                return (frame + amt) % 3
-            else:
-                amt3 = (-amt) % 3
-                return (frame - (amt - amt3)) % 3
-
-        def adjust_cds_start(cds_interval, expected_frame, frame):
-            """adjust cds_interval to match the expected frame.  It is possible
-            for the cds_interval to become zero"""
-            amt = 0
-            # this could be calculated rather than increment by in a loop,  this is safer
-            # for the feeble minded
-            while frame != expected_frame:
-                frame = frame_incr(frame)
-                amt += 1
-            # min/max here avoids going negative, making a zero-length block
-            if cds_interval.strand == '+':
-                start = min(cds_interval.start + amt, cds_interval.stop)
-                stop = cds_interval.stop
-            else:
-                start = cds_interval.start
-                stop = max(cds_interval.stop - amt, cds_interval.start)
-            return ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
-
         expected_frame = 0
         codon_regions = []
-        for iexon in make_exon_idx_iter():
+        for iexon in self._make_exon_idx_iter():
             cds_interval = self.exon_intervals[iexon].intersection(self.coding_interval)
             if cds_interval is not None:
-                expected_frame, cds_interval = cds_region(cds_interval, self.exon_frames[iexon], expected_frame)
-                codon_regions.extend(cds_interval)
-        cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions])
+                expected_frame, cds_intervals = self._cds_region(cds_interval, self.exon_frames[iexon], expected_frame)
+                codon_regions.extend(cds_intervals)
+        codon_regions = sorted(codon_regions)
+        if self.strand == '+':
+            cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions])
+        else:
+            cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions[::-1]])
         return cds
+
+    def codon_iterator(self, seq_dict):
+        """
+        Using the frame information, we can ignore indels and iterate codon pairs *along with true genomic coordinates*
+        """
+        if self.cds_size > 0:
+            expected_frame = 0
+            regions = []
+
+            for iexon in self._make_exon_idx_iter():
+                cds_interval = self.exon_intervals[iexon].intersection(self.coding_interval)
+
+                if cds_interval is not None:
+                    expected_frame, cds_intervals = self._cds_region(cds_interval, self.exon_frames[iexon],
+                                                                     expected_frame)
+                    regions.extend(cds_intervals)
+
+            # convert this into a transcript, which effectively slices out the gaps
+            tx = intervals_to_bed(regions)
+
+            # now we can iterate over codons in the transcript, but with knowledge of what position we came from
+            # note that we can use the mRNA sequence because this transcript is coding-only
+            cds = tx.get_mrna(seq_dict)
+
+            for i, codon in enumerate(grouper(cds, 3), 1):
+                codon_start = tx.mrna_coordinate_to_chromosome((i * 3) - 3)
+                codon_stop = tx.mrna_coordinate_to_chromosome(i * 3)
+
+                # did we go off the edge?
+                if codon_start is None or codon_stop is None:
+                    continue
+
+                # handle truncated codons
+                if len(codon) != 3:
+                    continue
+
+                # invert coordinates for negative strand
+                if self.strand == '-':
+                    codon_start, codon_stop = codon_stop, codon_start
+
+                # if i is 0, then we need to handle the edge case
+                if i == 0:
+                    if self.strand == '+':
+                        codon_start = tx.start
+                    else:
+                        codon_stop = tx.stop
+
+                # make sure we aren't returning the actual stop codon
+                if self.strand == '+' and codon_stop == self.thick_stop:
+                    continue
+                elif self.strand == '-' and codon_start == self.thick_start:
+                    continue
+
+                yield codon_start, codon_stop, ''.join(codon)
 
     def get_protein_sequence(self, seq_dict):
         """
