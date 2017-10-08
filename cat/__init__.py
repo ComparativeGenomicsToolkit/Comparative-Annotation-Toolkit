@@ -2540,8 +2540,8 @@ class ConsensusTrack(TrackTask):
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
                        info.paralogy, info.frameshift, info.exon_annotation_support,
-                       info.valid_start, info.valid_stop, info.proper_orf,
-                       info.intron_annotation_support, info.transcript_class, info.transcript_modes]
+                       info.intron_annotation_support, info.transcript_class, info.transcript_modes,
+                       info.valid_start, info.valid_stop, info.proper_orf]
                 if has_rnaseq:
                     row.extend([info.intron_rna_support, info.exon_rna_support])
                 if has_pb:
