@@ -509,9 +509,11 @@ class GenePredTranscript(Transcript):
         for i in xrange(0, cds_pos - cds_pos % 3, 3):
             codon = cds[i:i + 3]
             if self.strand == '+':
-                yield positions[i], positions[i + 2] + 1, codon
+                if positions[i + 2] + 1 != self.thick_stop:
+                    yield positions[i], positions[i + 2] + 1, codon
             else:
-                yield positions[i + 2], positions[i] + 1, codon
+                if positions[i + 2] != self.thick_start:
+                    yield positions[i + 2], positions[i] + 1, codon
 
     def get_protein_sequence(self, seq_dict):
         """
