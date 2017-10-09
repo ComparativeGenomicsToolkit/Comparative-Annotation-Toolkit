@@ -567,7 +567,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'source_gene_common_name': s.CommonName,
                                   'valid_start': True,
                                   'valid_stop': True,
-                                  'valid_orf': True}
+                                  'proper_orf': True}
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
         metrics['Transcript Modes'][tx_mode] += 1

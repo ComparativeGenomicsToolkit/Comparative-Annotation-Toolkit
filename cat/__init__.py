@@ -2536,7 +2536,7 @@ class ConsensusTrack(TrackTask):
                 tx_name = info.source_transcript_name if info.source_transcript_name != 'N/A' else tx.name
                 row = [tx.chromosome, tx.start, tx.stop, tx_name, tx.score, tx.strand,
                        tx.thick_start, tx.thick_stop, find_rgb(info), tx.block_count, block_sizes, block_starts,
-                       info.source_gene_common_name, exon_frames,
+                       info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
                        info.paralogy, info.frameshift, info.exon_annotation_support,
@@ -2555,7 +2555,7 @@ class ConsensusTrack(TrackTask):
 
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
-                   '-type=bed12+20', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
+                   '-type=bed12+21', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
             tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
@@ -2847,6 +2847,8 @@ def construct_consensus_gp_as(has_rna, has_pb):
     int[blockCount] blockSizes; "Comma separated list of block sizes"
     int[blockCount] chromStarts; "Start positions relative to chromStart"
     string name2;       "Gene name"
+    string cdsStartStat; "Status of CDS start annotation"
+    string cdsEndStat;   "Status of CDS end annotation"
     int[blockCount] exonFrames; "Exon frame {0,1,2}, or -1 if no frame for exon"
     string txId; "Transcript ID"
     string type;        "Transcript type"
