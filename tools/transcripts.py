@@ -6,8 +6,9 @@ import collections
 from itertools import izip
 from bx.intervals.cluster import ClusterTree
 
+from dataOps import grouper
 from mathOps import find_closest, find_intervals
-from bio import reverse_complement, translate_sequence
+from bio import reverse_complement, complement, translate_sequence
 from fileOps import iter_lines
 from intervals import ChromosomeInterval
 
@@ -405,30 +406,126 @@ class GenePredTranscript(Transcript):
             exon_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand, data={'frame': frame}))
         return exon_intervals
 
+    def _make_exon_idx_iter(self):
+        """make iterator exon indexes in order of transcriptions"""
+        if self.strand == '+':
+            return xrange(0, len(self.exon_intervals))
+        else:
+            return xrange(len(self.exon_intervals) - 1, -1, -1)
+
+    def _cds_region(self, cds_interval, frame, expected_frame):
+        """Compute the next cds region"""
+        intervals = []
+        if frame != expected_frame:
+            cds_interval, gap_interval = self._adjust_cds_start(cds_interval, expected_frame, frame)
+            intervals.append(gap_interval)
+
+        if len(cds_interval) != 0:
+            intervals.append(cds_interval)
+
+        return self._frame_incr(expected_frame, len(cds_interval)), intervals
+
+    def _frame_incr(self, frame, amt=1):
+        """increment frame by positive or negative amount"""
+        if frame >= 0:
+            return (frame + amt) % 3
+        else:
+            amt3 = (-amt) % 3
+            return (frame - (amt - amt3)) % 3
+
+    def _adjust_cds_start(self, cds_interval, expected_frame, frame):
+        """adjust cds_interval to match the expected frame.  It is possible
+        for the cds_interval to become zero"""
+        amt = 0
+        # this could be calculated rather than increment by in a loop,  this is safer
+        # for the feeble minded
+        while frame != expected_frame:
+            frame = self._frame_incr(frame)
+            amt += 1
+        # min/max here avoids going negative, making a zero-length block
+        if cds_interval.strand == '+':
+            start = min(cds_interval.start + amt, cds_interval.stop)
+            stop = cds_interval.stop
+            gap_start = cds_interval.start
+            gap_stop = cds_interval.start + amt
+        else:
+            start = cds_interval.start
+            stop = max(cds_interval.stop - amt, cds_interval.start)
+            gap_start = cds_interval.stop - amt
+            gap_stop = cds_interval.stop
+        cds_interval = ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
+        gap_interval = ChromosomeInterval(cds_interval.chromosome, gap_start, gap_stop, cds_interval.strand, 'gap')
+        return cds_interval, gap_interval
+
+    def _get_codon_intervals(self):
+        """
+        Returns a list of intervals, extracting gap intervals and tagging them with data='gap'
+        """
+        expected_frame = 0
+        codon_regions = []
+        for iexon in self._make_exon_idx_iter():
+            cds_interval = self.exon_intervals[iexon].intersection(self.coding_interval)
+            if cds_interval is not None:
+                expected_frame, intervals = self._cds_region(cds_interval, self.exon_frames[iexon], expected_frame)
+                codon_regions.extend(intervals)
+        return codon_regions
+
+    def get_cds(self, seq_dict, ignore_frameshift=False):
+        """
+        Using the frame information, we can ignore indels in the CDS that cause frameshifts, producing proper codons.
+        """
+        codon_regions = self._get_codon_intervals()
+        if ignore_frameshift is True:
+            # sort, remove gap regions
+            codon_regions = sorted((i for i in codon_regions if i.data is None), key=lambda x: x.start)
+        else:
+            codon_regions = sorted(codon_regions, key=lambda x: x.start)
+
+        if self.strand == '+':
+            cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions])
+        else:
+            cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions[::-1]])
+        return cds
+
+    def codon_iterator(self, seq_dict):
+        """
+        Using the frame information, we can ignore indels and iterate codon pairs *along with true genomic coordinates*
+        """
+        codon_regions = sorted(self._get_codon_intervals(), key=lambda x: x.start)
+        cds = self.get_cds(seq_dict, ignore_frameshift=True)
+
+        # construct a dumb list mapping positions to cds positions
+        positions = []
+        cds_pos = 0
+        for i in codon_regions:
+            if i.data is None:
+                for p in xrange(i.start, i.stop):
+                    positions.append(p)
+                    cds_pos += 1
+
+        if self.strand == '-':
+            positions = positions[::-1]
+
+        for i in xrange(0, cds_pos - cds_pos % 3, 3):
+            codon = cds[i:i + 3]
+            if self.strand == '+':
+                if positions[i + 2] + 1 != self.thick_stop:
+                    yield positions[i], positions[i + 2] + 1, codon
+            else:
+                if positions[i + 2] != self.thick_start:
+                    yield positions[i + 2], positions[i] + 1, codon
+
     def get_protein_sequence(self, seq_dict):
         """
-        Returns the translated protein sequence for this transcript in single
-        character space.
+        Returns the translated protein sequence for this transcript in single character space.
         """
-        cds = self.get_cds(seq_dict, in_frame=True)
+        cds = self.get_cds(seq_dict)
         if len(cds) < 3:
             return ""
         try:
             return translate_sequence(cds.upper())
         except AssertionError:
             raise RuntimeError('Failed to translate transcript {} with sequence {}'.format(self.name, cds))
-
-    def get_cds(self, seq_dict, in_frame=False):
-        """
-        Returns the CDS sequence. Overrides the parental get_cds function to provide frame-corrected sequence.
-        Note that if a in-frame sequence is requested, it will no longer correspond with internal coordinates.
-        """
-        cds = super(GenePredTranscript, self).get_cds(seq_dict)
-        if in_frame is False:
-            return cds
-        else:
-            offset = self.offset
-            return cds[offset:len(cds) - ((len(cds) - offset) % 3)]
 
     def get_gene_pred(self, name=None, new_start=None, new_stop=None, name2=None, score=None):
         """
@@ -533,9 +630,10 @@ def gene_pred_iterator(gp_file):
     :param gp_file: A genePred file path or handle.
     :return: tuples of (name, GenePredTranscript)
     """
-    for tokens in iter_lines(gp_file):
+    for i, x in enumerate(open(gp_file)):
+        tokens = x.rstrip().split('\t')
         if len(tokens) != 15:
-            raise RuntimeError('GenePred line had {} tokens, not 15. Record: {}'.format(len(tokens), tokens))
+            raise RuntimeError('GenePred line {} had {} tokens, not 15. Record: {}'.format(i + 1, len(tokens), tokens))
         t = GenePredTranscript(tokens)
         yield t
 

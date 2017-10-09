@@ -75,7 +75,6 @@ def setup(job, args, input_file_ids):
     ref_transcript_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     # will hold a mapping of output file paths to lists of Promise objects containing output
     results = collections.defaultdict(list)
-    # start generating chunks of the transMap/Augustus genePreds which we know the 1-1 alignment for
     for tx_mode in ['transMap', 'augTM', 'augTMR']:
         if tx_mode not in args.transcript_modes:
             continue
@@ -107,9 +106,8 @@ def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, 
     for tx_id, tx in transcript_dict.iteritems():
         ref_tx_id = tools.nameConversions.strip_alignment_numbers(tx_id)
         ref_tx = ref_transcript_dict[ref_tx_id]
-        tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta, in_frame=True)
-        ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta,
-                                                                                             in_frame=True)
+        tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta)
+        ref_tx_seq = ref_tx.get_mrna(ref_genome_fasta) if mode == 'mRNA' else ref_tx.get_cds(ref_genome_fasta)
         if len(ref_tx_seq) > 50 and len(tx_seq) > 50:
             yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
 
