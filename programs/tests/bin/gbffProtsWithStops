@@ -1,0 +1,30 @@
+#!/usr/bin/env python
+from __future__ import print_function
+import sys
+import os
+import re
+import argparse
+
+def parseArgs():
+    desc = """get proteins from GBFF"""
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument("gbff",
+                        help="GENBANK flat file to process")
+    parser.add_argument("outFile",
+                        help="outFile")
+    return parser.parse_args()
+
+
+def main(opts):
+    alignId = None
+    outFh = open(opts.outFile, "w")
+    for line in open(opts.gbff):
+        m = re.match(".*CAT alignment id: (.*);", line)
+        if m is not None:
+            alignId = m.group(1)
+        if alignId is not None and line.find('*') >= 0:
+            print(alignId, file=outFh)
+            alignId = None
+        
+
+main(parseArgs())
