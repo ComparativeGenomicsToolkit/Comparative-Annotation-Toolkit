@@ -30,7 +30,7 @@ Either form of `pip` installation will install all of the python dependencies. H
 1. [Kent toolkit](https://github.com/ucscGenomeBrowser/kent). Follow the installation instructions there. Make sure you put the newly created `~/bin/$MACHTYPE` directory on your path.
 2. [bedtools](http://bedtools.readthedocs.io/en/latest/).
 3. [samtools](http://www.htslib.org/) (1.3 or greater).
-4. [Augustus](http://bioinf.uni-greifswald.de/augustus/binaries/). Make sure you are installing `augustus >= 3.2.3`. You need to follow the instructions to compile `augustus` in comparative augustus mode. This requires that you modify a few lines in the `common.mk` file, and also need to have `sqlite3`, `lp-solve`, `bamtools`, and `libboost` installed. If you are using ubuntu, this should work:
+4. [Augustus](http://bioinf.uni-greifswald.de/augustus/binaries/). Make sure you are installing `augustus >= 3.3`. You need to follow the instructions to compile `augustus` in comparative augustus mode. This requires that you modify a few lines in the `common.mk` file, and also need to have `sqlite3`, `lp-solve`, `bamtools`, and `libboost` installed. If you are using ubuntu, this should work:
    `apt-get install libboost-all-dev libboost sqlite3 libsqlite3-0 libsqlite3-dev libgsl0-dev lp-solve liblpsolve55-dev bamtools libbamtools-dev`
    
   After you have the primary `augustus` binaries compiled, add the directory to your path. Note that if you move the `augustus` binaries from their original location, you will need to set the `AUGUSTUS_CONFIG_PATH` global variable to point to the species directory. 
@@ -41,13 +41,13 @@ Either form of `pip` installation will install all of the python dependencies. H
   3. `filterBam`. Also requires the `bamtools` headers.
   4. `bam2wig`. Compiling this program will NOT place it in the `augustus` binary directory, you must do so yourself. This program requires you modify the makefile to explicitly point to your installation of `htslib`, `bcftools`, `samtools`, and `tabix`. `Tabix` is now packaged with `htslib`, and both are included in your `kent` directory at `$kent/src/htslib/`.
   5. `homGeneMapping`. This program must also have its makefile at `$augustus/trunks/auxprogs/homGeneMapping/src/Makefile` modified to turn on the `BOOST = true` and `SQLITE = true` flags. Then run `make clean && make` to recompile.
+  6. There are a series of perl scripts that you need to place on your path from the `$augustus/trunks/scripts` directory: `wig2hints.pl`, `blat2hints.pl`, `transMap2hints.pl`, and `join_mult_hints.pl`.
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 6. [wiggletools](https://github.com/Ensembl/WiggleTools). Used to combine RNA-seq expression in assembly hubs.
-7. [deeptools](https://github.com/fidelram/deepTools). Used to combine RNA-seq expression in assembly hubs by providing the tool `bamCoverage`. **NOT ACTUALLY CURRENTLY USED**
-8. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
+7. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl bla2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed bamCoverage sambamba`
+`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl`
 
 # Running the pipeline
 
@@ -258,7 +258,9 @@ This step performs the preliminary classification of `transMap` transcripts. Thi
 7. TransMapGoodness: A measure of alignment quality that takes into account both coverage and alignment size in the target. Related to Jim Kent's badness score.
 8. TransMapOriginalIntronsPercent: The number of transMap introns within a wiggle distance of a intron in the parent transcript in transcript coordinates.
 9. Synteny: Counts the number of genes in linear order that match up to +/- 5 genes.
-
+10. ValidStart -- start with ATG?
+11. ValidStop -- valid stop codon (in frame)?
+12. ProperOrf -- is the orf a multiple of 3?
    
 This module will populate the folder `--work-dir/transMap`.
 
@@ -332,6 +334,9 @@ These classifiers are per-transcript evaluations based on both the transcript al
 2. AlnCoverage: Alignment coverage in transcript space.
 3. AlnIdentity: Alignment identity in transcript space.
 4. OriginalIntrons. Original introns is a bit vector that evaluates whether the intron junctions in transcript coordinate space are within 5 bases either direction from the original transcript. This is a powerful approach to identifying retroposed pseudogenes or problematic alignments.
+5. ValidStart -- start with ATG?
+6. ValidStop -- valid stop codon (in frame)?
+7. ProperOrf -- is the orf a multiple of 3?
 
 \<alnMode\>\_\<txMode\>\_Evaluation:
 

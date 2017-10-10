@@ -473,7 +473,9 @@ def success(task):
     pipeline_args = task.get_pipeline_args()
     stats_db = pipeline_args.stats_db
     cmd = ['toil', 'stats', '--raw', task.job_store]
-    stats = json.loads(tools.procOps.call_proc(cmd))
+    raw = tools.procOps.call_proc(cmd)
+    parsed = raw[raw.index('{'):raw.rfind('}') + 1]
+    stats = json.loads(parsed)
     with tools.sqlite.ExclusiveSqlConnection(stats_db) as engine:
         c = engine.cursor()
         c.execute('create table if not exists toil_stats '
@@ -793,6 +795,8 @@ class Gff3ToAttrs(PipelineTask):
         results = []
         for tx_id, d in df.groupby('transcript_id'):
             d = dict(zip(d.key, d.value))
+            if 'transcript_id' not in d:
+                continue
             if 'gbkey' in d:  # this is a NCBI GFF3
                 if d['gbkey'] == 'mRNA':
                     gene_biotype = tx_biotype = 'protein_coding'
@@ -2280,7 +2284,9 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_pb.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
-        if self.genome in pipeline_args.annotation_genomes:
+        # TODO: allow non-reference annotations
+        #if self.genome in pipeline_args.annotation_genomes:
+        if self.genome == pipeline_args.ref_genome:
             annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
@@ -2534,7 +2540,8 @@ class ConsensusTrack(TrackTask):
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
                        info.paralogy, info.frameshift, info.exon_annotation_support,
-                       info.intron_annotation_support, info.transcript_class, info.transcript_modes]
+                       info.intron_annotation_support, info.transcript_class, info.transcript_modes,
+                       info.valid_start, info.valid_stop, info.proper_orf]
                 if has_rnaseq:
                     row.extend([info.intron_rna_support, info.exon_rna_support])
                 if has_pb:
@@ -2548,7 +2555,7 @@ class ConsensusTrack(TrackTask):
 
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
-                   '-type=bed12+20', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
+                   '-type=bed12+21', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
             tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
 
         with trackdb.open('w') as outf:
@@ -2857,6 +2864,9 @@ def construct_consensus_gp_as(has_rna, has_pb):
     lstring intronAnnotationSupport;   "Intron support in reference annotation"
     string transcriptClass;    "Transcript class"
     string transcriptModes;    "Transcript mode(s)"
+    string validStart;         "Valid start codon"
+    string validStop;          "Valid stop codon"
+    string properOrf;           "Proper multiple of 3 ORF"
 '''
     if has_rna:
         consensus_gp_as += '    lstring intronRnaSupport;   "RNA intron support"\n'
