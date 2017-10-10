@@ -6,6 +6,7 @@
 #
 
 cat_to_ncbi_submit = ../cat_to_ncbi_submit
+tblToDumbBed = bin/tblToDumbBed
 
 ncbibin = ../../../ncbi/$(shell uname -s)/bin
 table2asn = $(ncbibin)/table2asn
@@ -30,17 +31,35 @@ ifeq ($(wildcard ${tbl2asn}),)
   useTbl2asn = no
 endif
 
+diff = diff -u
 
 test: ncbi_submit_tests
 
 
-ncbi_submit_tests: ncbi_submit_test1  ncbi_submit_test2
+ncbi_submit_tests: ncbi_submit_test1
 
 
+
+##
+# tests on V1 pacbio
+# /hive/groups/recon/projs/primates/susie_the_orangutan/annotation_fix_indels/
+#      genome_files/Clint_Chimp.fa
+#      consensus_gene_set/Clint_Chimp.fixed.gp_info
+#      consensus_gene_set/Clint_Chimp.gp
+#
+# Tests are on sequence 000000F_1_80365438_quiver_pilon, which should be in a file chimp1.fa in tests directory.
+#
+# Ones with in-frame stops even after frame-indel adjustment:
+#    Clint_Chim_T0000047 - pos strand, deletion in first coding exon, should drop as too short
+#    Clint_Chim_T0000217 - pos strand, deletion near stop
+#    Clint_Chim_T0000883 - neg strand, single exon near start
+#    Clint_Chim_T0001227 - neg strand, near stop
+# 
 
 ncbi_submit_test1: mkdirs
 	${cat_to_ncbi_submit} input/chimp1.gp input/chimp1.gp_info fred output/$@.tbl
-	diff expected/$@.tbl output/$@.tbl
+	${diff} expected/$@.tbl output/$@.tbl
+	${tblToDumbBed} output/$@.tbl output/$@.bed
 ifeq (${useTable2asn}, yes)
 	rm -rf output/$@.table2asn
 	mkdir -p  output/$@.table2asn
@@ -53,7 +72,6 @@ ifeq (${useTbl2asn}, yes)
 	mv chimp1.gbf chimp1.val errorsummary.val output/$@.tbl2asn/
 endif
 
-ncbi_submit_test2:
 
 mkdirs:
 	@mkdir -p output
