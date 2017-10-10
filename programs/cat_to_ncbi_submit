@@ -48,13 +48,14 @@ def parse_args():
 # ncRNAs, because they actually produce a transcript that could
 # have non-coding function.
 biotype_map = {
-    '3prime_overlapping_ncrna': 'ncRNA',
+    '3prime_overlapping_ncRNA': 'ncRNA',
     'IG_C_gene': 'mRNA',
     'IG_C_pseudogene': 'mRNA',
     'IG_D_gene': 'mRNA',
     'IG_J_gene': 'mRNA',
     'IG_V_gene': 'mRNA',
     'IG_V_pseudogene': 'mRNA',
+    'IG_pseudogene': 'mRNA',
     'Mt_rRNA': 'rRNA',
     'Mt_tRNA': 'tRNA',
     'TEC': 'mRNA',
@@ -65,7 +66,7 @@ biotype_map = {
     'TR_V_pseudogene': 'ncRNA',
     'antisense': 'ncRNA',
     'antisense_RNA': 'ncRNA',
-    'bidirectional_promoter_lncrna': 'ncRNA',
+    'bidirectional_promoter_lncRNA': 'ncRNA',
     'lincRNA': 'ncRNA',
     'macro_lncRNA': 'ncRNA',
     'miRNA': 'ncRNA',
@@ -83,6 +84,7 @@ biotype_map = {
     'ribozyme': 'ncRNA',
     'sRNA': 'ncRNA',
     'scaRNA': 'ncRNA',
+    'scRNA': 'ncRNA',
     'sense_intronic': 'ncRNA',
     'sense_overlapping': 'ncRNA',
     'snRNA': 'ncRNA',
@@ -91,6 +93,7 @@ biotype_map = {
     'transcribed_unitary_pseudogene': 'ncRNA',
     'transcribed_unprocessed_pseudogene': 'ncRNA',
     'translated_unprocessed_pseudogene': 'ncRNA',
+    'translated_processed_pseudogene': 'ncRNA',
     'unitary_pseudogene': 'mRNA',
     'unknown_likely_coding': 'mRNA',
     'unprocessed_pseudogene': 'ncRNA',
@@ -112,6 +115,7 @@ ncrna_class = {
     'retained_intron': 'other',
     'ribozyme': 'ribozyme',
     'sRNA': 'other',
+    'scRNA': 'other',
     'scaRNA': 'other',
     'sense_intronic': 'other',
     'sense_overlapping': 'other',
@@ -132,12 +136,14 @@ pseudo_map = {
     'IG_V_pseudogene': 'unknown',
     'TR_J_pseudogene': 'unknown',
     'TR_V_pseudogene': 'unknown',
+    'IG_pseudogene': 'unknown',
     'processed_pseudogene': 'processed',
     'pseudogene': 'unknown',
     'transcribed_processed_pseudogene': 'processed',
     'transcribed_unprocessed_pseudogene': 'unprocessed',
     'translated_unprocessed_pseudogene': 'unprocessed',
-    'unprocessed_pseudogene': 'unprocessed'}
+    'unprocessed_pseudogene': 'unprocessed',
+    'translated_processed_pseudogene': 'processed'}
 
 
 class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
