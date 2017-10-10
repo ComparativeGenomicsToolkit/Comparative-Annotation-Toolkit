@@ -64,6 +64,7 @@ biotype_map = {
     'TR_V_gene': 'mRNA',
     'TR_V_pseudogene': 'ncRNA',
     'antisense': 'ncRNA',
+    'antisense_RNA': 'ncRNA',
     'bidirectional_promoter_lncrna': 'ncRNA',
     'lincRNA': 'ncRNA',
     'macro_lncRNA': 'ncRNA',
@@ -154,18 +155,37 @@ def load_annotations(gp_file, gp_info_file):
         
 
 class NcbiTblWriter(object):
-    """class to write NCBI tables"""
+    """class to write NCBI tables.  Due to the need to examine transcripts
+    before genes,  this queues entries to be written.  The push function
+    saves existing entries and starts a new ones.  The pop() function
+    write current entries and removes them from the top of stack."""
 
     def __init__(self, fh):
         self.fh = fh
+        self.recs = []
+        self.saved = []
+
+    def push(self):
+        self.saved.append(self.recs)
+        self.recs = []
+
+    def pop(self):
+        "replace top with pushed"
+        assert len(self.recs) == 0
+        self.recs = self.saved.pop()
+
+    def flush(self):
+        "write to file"
+        for rec in self.recs:
+            print(rec, file=self.fh)
+        self.recs = []
 
     def start_seq(self, seqname):
-        print(">Features", seqname, file=self.fh)
-
+        self.recs.append(">Features {}".format(seqname))
+        
     def __write_feature_region(self, region, strand, feature_key, start_incmpl, end_incmpl):
         "write one region range from list, feature_key should be None for continuations"
-        start, stop = region
-        start += 1
+        start, stop = str(region[0] + 1), str(region[1])
         if strand == '-':
             start, stop = stop, start
         if start_incmpl:
@@ -175,7 +195,7 @@ class NcbiTblWriter(object):
         row = [start, stop]
         if feature_key is not None:
             row.append(feature_key)
-        print(*row, sep='\t', file=self.fh)
+        self.recs.append("\t".join(row))
 
     def write_feature(self, regions, strand, feature_key, start_incmpl=False, end_incmpl=False):
         """Write feature definition rows.  Ranges is a list in the form
@@ -198,22 +218,33 @@ class NcbiTblWriter(object):
         row = ["", "", "", qualifier_key]
         if qualifier_value is not None:
             row += [qualifier_value]
-        print(*row, sep='\t', file=self.fh)
+        self.recs.append("\t".join(row))
 
     def write_note(self, note):
         self.write_qualifier("note", note)
 
+
 class CdsSpec(object):
     """Data collected defining CDS"""
-    def __init__(self):
-        self.regions = []
+    def __init__(self, strand):
+        self.strand = strand
+        self.regions = []     # CDS regions, frame adjusted
+        self.no_stop_regions = []  # CDS regions up to the first in-frame stop
         self.gaps = []
         # start/end completeness (start DNA + strand start)
         self.start_incmpl = self.end_incmpl = None
 
+    @property
+    def cds_len(self):
+        return sum(([e[1]-e[0] for e in self.regions]))
+        
+    @property
+    def no_stop_len(self):
+        return sum(([e[1]-e[0] for e in self.no_stop_regions]))
+
     def is_mult_three(self):
         "is CDS length a multiple of three?"
-        return (sum(([e[1]-e[0] for e in self.regions])) % 3) == 0
+        return (self.cds_len % 3) == 0
         
 def frame_incr(frame, amt=1):
     """increment frame by positive or negative amount"""
@@ -227,8 +258,8 @@ def adjust_cds_start(cds_interval, expected_frame, frame):
     """adjust cds_interval to match the expected frame.  It is possible
     for the cds_interval to become zero"""
     amt = 0
-    # this could be calculated rather than increment by in a loop,  this is safer
-    # for the feeble minded
+    # this could be calculated rather than increment by in a loop, however
+    # this is easier for the feeble minded
     while frame != expected_frame:
         frame = frame_incr(frame)
         amt += 1
@@ -246,11 +277,24 @@ def adjust_cds_start(cds_interval, expected_frame, frame):
         print("  adj", cds_interval, "[{}]".format(len(cds_interval)), "frame", "{}..{}".format(frame, frame_incr(frame, len(cds_interval))), amt, "gap", gap, file=sys.stderr)
     return gap, cds_interval
 
+
+def inframe_stop_cds(cds_interval, ifs_position):
+    """truncate if at or after an in-frame start"""
+    if cds_interval.strand == '+':
+        # don't allow stop to go past ifs_position
+        start = cds_interval.start
+        stop = max(min(cds_interval.stop, ifs_position), cds_interval.start)
+    else:
+        start = min(max(cds_interval.start, ifs_position), cds_interval.stop)
+        stop = cds_interval.stop
+    return ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
+
+
 def get_gene_locus_tag(locus_tag_prefix, txd):
     # remove species identifier from CAT names (Clint_Chim, etc)
     return txd.tx.name2.split('_')[-1]
 
-def get_transcript_base_id(locus_tag_prefix, txd):
+def get_transcript_base_id(txd):
     "remove species identifier from CAT names (Clint_Chim, etc)"
     return txd.tx.name.split('_')[-1]
 
@@ -258,7 +302,7 @@ def get_transcript_base_id(locus_tag_prefix, txd):
 
 def get_transcript_gnl_id(locus_tag_prefix, txd):
     # transcript ID is the gnl|${locus_tag_prefix}|${tx_name} format
-    return 'gnl|{}|{}'.format(locus_tag_prefix, get_transcript_base_id(locus_tag_prefix, txd))
+    return 'gnl|{}|{}'.format(locus_tag_prefix, get_transcript_base_id(txd))
 
 def get_transcript_feature(txd):
     if txd.tx.cds_size > 0:
@@ -270,7 +314,7 @@ def get_transcript_feature(txd):
 def is_non_coding(txd):
     return txd.attrs.transcript_biotype in ncrna_class
     
-def has_cds(txd):
+def trans_has_cds(txd):
     return txd.tx.cds_size > 0
     
 def get_gene_name(txd):
@@ -284,11 +328,11 @@ def get_gene_name(txd):
 def get_transcript_product(locus_tag_prefix, txd, trans_num):
     name = get_gene_name(txd)
     if name is None:
-        name = get_transcript_base_id(locus_tag_prefix, txd)
+        name = get_transcript_base_id(txd)
     return "{}_{}".format(name, trans_num)
 
 def get_transcript_protein_id(locus_tag_prefix, txd, trans_num):
-    return "{}_{}_prot".format(get_transcript_base_id(locus_tag_prefix, txd), trans_num)
+    return "{}_{}_prot".format(get_transcript_base_id(txd), trans_num)
 
 def write_protein_id(locus_tag_prefix, txd, trans_num, tblwr):
     tblwr.write_qualifier('protein_id', get_transcript_protein_id(locus_tag_prefix, txd, trans_num))
@@ -307,24 +351,48 @@ def make_exon_idx_iter(txd):
     else:
         return xrange(len(txd.tx.exon_intervals) - 1, -1, -1)
         
-def add_cds_region(cds_interval, frame, expected_frame, cds_spec):
+def add_cds_region(cds_interval, frame, expected_frame, ifs_position, cds_spec):
     """Add the next CDS region to the lists, adding gaps to if there are indels,
     as NCBI doesn't explicitly support frame shifts. Returns next expected frame"""
     # FIXME: /start_codon could be used rather adjust CDS at start
     if verbose:
         print("  cds", cds_interval, "[{}]".format(len(cds_interval)), "frame", frame, "exframe", expected_frame, file=sys.stderr)
+
+    # adjust for frame
     if frame != expected_frame:
         gap, cds_interval = adjust_cds_start(cds_interval, expected_frame, frame)
         cds_spec.gaps.append(gap)
 
+    if ifs_position is not None:
+        no_stop_cds_interval = inframe_stop_cds(cds_interval, ifs_position)
+    else:
+        no_stop_cds_interval = cds_interval
+
     if len(cds_interval) != 0:
         cds_spec.regions.append((cds_interval.start, cds_interval.stop))
+    if len(no_stop_cds_interval) != 0:
+        cds_spec.no_stop_regions.append((no_stop_cds_interval.start, no_stop_cds_interval.stop))
     
     return frame_incr(expected_frame, len(cds_interval))
 
 def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
+    cds_spec.start_incmpl = cds_spec.end_incmpl = False
+
+    # incompleteness checks based on frame, source gene and start/stop codons in genome
     trans_end_incmpl = not cds_spec.is_mult_three()
-    cds_spec.start_incmpl, cds_spec.end_incmpl = (trans_start_incmpl, trans_end_incmpl) if txd.tx.strand  == '+' else (trans_end_incmpl, trans_start_incmpl)
+
+    if txd.tx.strand  == '+':
+        if trans_start_incmpl or not txd.attrs.valid_start:
+            cds_spec.start_incmpl = True
+        if trans_end_incmpl or not txd.attrs.valid_start:
+            cds_spec.end_incmpl = True
+    else:
+        if trans_start_incmpl or not txd.attrs.valid_start:
+            cds_spec.end_incmpl = True
+        if trans_end_incmpl or not txd.attrs.valid_start:
+            cds_spec.start_incmpl = True
+
+    # completeness based on source
     if txd.tx.cds_start_stat == "incmpl":
         cds_spec.start_incmpl = True
     if txd.tx.cds_end_stat == "incmpl":
@@ -334,7 +402,8 @@ def get_cds_regions(txd):
     """Get list of CDS regions and list of partial codons.  If there is a frame
     shift, adjust the CDS accordingly, inserting a gap.
     """
-    cds_spec = CdsSpec()
+    cds_spec = CdsSpec(txd.tx.strand)
+    ifs_position = None if pd.isnull(txd.attrs["ifs_position"]) else int(txd.attrs["ifs_position"])
     expected_frame = 0
     # traverse in transcription order
     trans_start_incmpl = None
@@ -343,16 +412,25 @@ def get_cds_regions(txd):
         if cds_interval is not None:
             if trans_start_incmpl is None:
                 trans_start_incmpl = (txd.tx.exon_frames[iexon] != 0)
-            expected_frame = add_cds_region(cds_interval, txd.tx.exon_frames[iexon], expected_frame, cds_spec)
+            expected_frame = add_cds_region(cds_interval, txd.tx.exon_frames[iexon], expected_frame, ifs_position, cds_spec)
 
     compute_cds_completeness(txd, trans_start_incmpl, cds_spec)
     return cds_spec
 
 
-def write_cds(locus_tag_prefix, txd, trans_num, cds_spec, tblwr):
+def is_possible_unitary_pseudo(txd, cds_spec):
+    """call as pseudo if reduced in length by > 30bp or 20% or more of
+    the CDS lost."""
+    cds_len = cds_spec.cds_len
+    no_stop_len = cds_spec.no_stop_len
+    assert no_stop_len <= cds_len
+       
+    return (cds_len > 0) and ((cds_len - no_stop_len) > 30) or (no_stop_len <= (0.80 * cds_len))
+
+def write_cds_regions(locus_tag_prefix, txd, trans_num, cds_spec, tblwr):
     tx = txd.tx
     txa = txd.attrs
-    tblwr.write_feature(cds_spec.regions, tx.strand, "CDS",
+    tblwr.write_feature(cds_spec.no_stop_regions, tx.strand, "CDS",
                         cds_spec.start_incmpl, cds_spec.end_incmpl)
 
     # FIXME: codon_start could be set rather than advancing to first codon
@@ -377,20 +455,19 @@ def write_cds_gaps(locus_tag_prefix, txd, cds_spec, tblwr):
         tblwr.write_note("gap added in CDS to maintain frame, possibly due to error in genome")
 
 
-def convert_cds(locus_tag_prefix, txd, trans_num, tblwr):
-    cds_spec = get_cds_regions(txd)
-    if len(cds_spec.regions):
-        write_cds(locus_tag_prefix, txd, trans_num, cds_spec, tblwr)
+def write_cds(locus_tag_prefix, txd, trans_num, cds_spec, tblwr):
+    if len(cds_spec.no_stop_regions):
+        write_cds_regions(locus_tag_prefix, txd, trans_num, cds_spec, tblwr)
     if len(cds_spec.gaps) > 0:
         write_cds_gaps(locus_tag_prefix, txd, cds_spec, tblwr)
 
 def get_transcript_exons(txd):
     return [(e.start, e.stop) for e in txd.tx.exon_intervals]
 
-def write_transcript_features(locus_tag_prefix, txd, trans_num, tblwr):
+def write_transcript_features(locus_tag_prefix, txd, trans_num, cds_spec, unitary_pseudo, tblwr):
     tx = txd.tx
     txa = txd.attrs
-
+    
     # feature with correct type and all exons
     tblwr.write_feature(get_transcript_exons(txd), tx.strand, get_transcript_feature(txd))
     
@@ -400,6 +477,7 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, tblwr):
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
 
+    # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
         tblwr.write_qualifier('exception', 'low-quality sequence region')
 
@@ -407,7 +485,12 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, tblwr):
     write_product(locus_tag_prefix, txd, trans_num, tblwr)
     write_protein_id(locus_tag_prefix, txd, trans_num, tblwr)
 
+    if unitary_pseudo:
+        tblwr.write_qualifier('pseudogene', "unitary")
+        tblwr.write_note("Putative inactivated transcript (unitary pseudogene)")
+
     # record cat pipeline information
+    tblwr.write_note("CAT transcript id: {}".format(get_transcript_base_id(txd)))
     tblwr.write_note("CAT alignment id: {}".format(txa.alignment_id))
     tblwr.write_note("CAT source transcript id: {}".format(txa.source_transcript))
     if txa.transcript_biotype != 'unknown_likely_coding':
@@ -418,11 +501,19 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, tblwr):
 def convert_transcript(locus_tag_prefix, txd, trans_num, tblwr):
     if verbose:
         print("converting", txd.tx.name, file=sys.stderr)
-    write_transcript_features(locus_tag_prefix, txd, trans_num, tblwr)
-    if has_cds(txd):
-        convert_cds(locus_tag_prefix, txd, trans_num, tblwr)
+    if trans_has_cds(txd):
+        cds_spec = get_cds_regions(txd)
+        unitary_pseudo = is_possible_unitary_pseudo(txd, cds_spec)
+    else:
+        cds_spec = None
+        unitary_pseudo = False
+    write_transcript_features(locus_tag_prefix, txd, trans_num, cds_spec, unitary_pseudo, tblwr)
 
-def write_gene_features(locus_tag_prefix, gene_txds, tblwr):
+    if trans_has_cds(txd) and not unitary_pseudo:
+        write_cds(locus_tag_prefix, txd, trans_num, cds_spec, tblwr)
+    return (trans_has_cds(txd), unitary_pseudo)
+
+def write_gene_features(locus_tag_prefix, gene_txds, unitary_pseudo, tblwr):
     txd = gene_txds[0]  # arbitrary transcript
     tx = txd.tx
     txa = txd.attrs
@@ -438,18 +529,35 @@ def write_gene_features(locus_tag_prefix, gene_txds, tblwr):
     # if this is a pseudogene, record the pseudogene tag on the gene-level feature
     if txa.gene_biotype in pseudo_map:
         tblwr.write_qualifier("pseudogene", pseudo_map[txa.gene_biotype])
+    elif unitary_pseudo:
+        tblwr.write_qualifier('pseudogene', "unitary")
     
-def convert_gene(locus_tag_prefix, gene_txds, tblwr):
-    write_gene_features(locus_tag_prefix, gene_txds, tblwr)
+def convert_gene_transcripts(locus_tag_prefix, gene_txds, tblwr):
     trans_num = 1 
+    num_with_cds = 0
+    num_unitary_pseudo = 0
     for txd in gene_txds:
-        convert_transcript(locus_tag_prefix, txd, trans_num, tblwr)
-        trans_num += 1 
+        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, txd, trans_num, tblwr)
+        trans_num += 1
+        if has_cds:
+            num_with_cds += 1
+        if unitary_pseudo:
+            num_unitary_pseudo += 1
+    return num_with_cds, num_unitary_pseudo
+
+def convert_gene(locus_tag_prefix, gene_txds, tblwr):
+    num_with_cds, num_unitary_pseudo = convert_gene_transcripts(locus_tag_prefix, gene_txds, tblwr)
+    tblwr.push()  # save transcripts
+    all_coding_unitary_pseudo = (num_with_cds > 0) and (num_unitary_pseudo == num_with_cds)
+    write_gene_features(locus_tag_prefix, gene_txds, all_coding_unitary_pseudo, tblwr)
+    tblwr.flush()  # write genes
+    tblwr.pop()
+    tblwr.flush()  # write transcripts
 
 def convert_chrom(locus_tag_prefix, chrom, chrom_txds, tblwr):
-
     """write features for a chromosome"""
     tblwr.start_seq(chrom)
+    tblwr.flush()
     for gene_txds in chrom_txds.values():
         convert_gene(locus_tag_prefix, gene_txds, tblwr)
 
