@@ -209,8 +209,8 @@ def parse_hgm_gtf(hgm_out, genome):
         def parse_entry(entry, species_id):
             recs = entry.split(',')
             for x in recs:
-                if x[0] == species_id:
-                    return x[1:]
+                if x.startswith(species_id):
+                    return x[len(species_id):]
             return ''
 
         intron_rna = ','.join(map(str, [parse_entry(x, species_id).count('E') +
