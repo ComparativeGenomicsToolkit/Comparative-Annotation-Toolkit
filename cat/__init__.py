@@ -793,47 +793,52 @@ class Gff3ToAttrs(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         df = pd.read_csv(self.annotation_attrs, sep='\t', names=['transcript_id', 'key', 'value'], header=None)
         results = []
-        for tx_id, d in df.groupby('transcript_id'):
-            d = dict(zip(d.key, d.value))
-            if 'transcript_id' not in d:
-                continue
-            if 'gbkey' in d:  # this is a NCBI GFF3
+        # determine if this is a NCBI GFF3 by checking for the term 'gbkey'
+        if 'gbkey' in set(df.key):
+            for tx_id, d in df.groupby('transcript_id'):
+                d = dict(zip(d.key, d.value))
                 if d['gbkey'] == 'mRNA':
                     gene_biotype = tx_biotype = 'protein_coding'
                 else:
                     gene_biotype = tx_biotype = d['gbkey']
                 if 'gene' in d:
                     gene_name = d['gene']
-                    gene_id = d['Parent']
                 else:
-                    gene_name = gene_id = d['ID']
+                    gene_name = d['Name']
+                gene_id = d['Parent']
                 tx_name = d.get('product', tx_id)
-            else:  # this is either ensembl or gencode
-                if 'biotype' in d:  # Ensembl
-                    gene_biotype = tx_biotype = d['biotype']
-                elif 'gene_type' in d:  # Gencode
-                    gene_biotype = d['gene_type']
-                    tx_biotype = d['transcript_type']
-                else:
-                    raise InvalidInputException('Could not parse biotype for {}. Values: {}'.format(tx_id, d))
-                # Ensembl formats their GFF3 with the format ID=transcript:XXX, while Gencode doesn't have the
-                # extraneous transcript: portion.
-                # Gencode also includes the gene name on the transcript level, so it is carried over.
-                # Ensembl does not do this, but we can infer this via the regular schema Name-Version
-                # However, Ensembl also does not always include a Name tag, so we have to account for this as well
-                if 'transcript' in d['ID']:  # Ensembl
-                    gene_id = d['Parent'].replace('gene:', '')
-                    if 'Name' in d:
-                        gene_name = d['Name'].split('-')[0]
-                        tx_name = d['Name']
-                    else:  # no names here, just use IDs
-                        gene_name = gene_id
-                        tx_name = tx_id
-                else:  # Gencode
-                    gene_name = d['gene_name']
-                    gene_id = d['gene_id']
-                    tx_name = d['transcript_name']
-            results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
+                results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
+        else:
+            for tx_id, d in df.groupby('transcript_id'):
+                d = dict(zip(d.key, d.value))
+                if 'transcript_id' not in d:
+                    continue
+                else:  # this is either ensembl or gencode
+                    if 'biotype' in d:  # Ensembl
+                        gene_biotype = tx_biotype = d['biotype']
+                    elif 'gene_type' in d:  # Gencode
+                        gene_biotype = d['gene_type']
+                        tx_biotype = d['transcript_type']
+                    else:
+                        raise InvalidInputException('Could not parse biotype for {}. Values: {}'.format(tx_id, d))
+                    # Ensembl formats their GFF3 with the format ID=transcript:XXX, while Gencode doesn't have the
+                    # extraneous transcript: portion.
+                    # Gencode also includes the gene name on the transcript level, so it is carried over.
+                    # Ensembl does not do this, but we can infer this via the regular schema Name-Version
+                    # However, Ensembl also does not always include a Name tag, so we have to account for this as well
+                    if 'transcript' in d['ID']:  # Ensembl
+                        gene_id = d['Parent'].replace('gene:', '')
+                        if 'Name' in d:
+                            gene_name = d['Name'].split('-')[0]
+                            tx_name = d['Name']
+                        else:  # no names here, just use IDs
+                            gene_name = gene_id
+                            tx_name = tx_id
+                    else:  # Gencode
+                        gene_name = d['gene_name']
+                        gene_id = d['gene_id']
+                        tx_name = d['transcript_name']
+                results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
         df = pd.DataFrame(results, columns=['GeneId', 'TranscriptId', 'TranscriptName', 'GeneName',
                                             'GeneBiotype', 'TranscriptBiotype'])
         df = df.set_index('TranscriptId')
@@ -843,6 +848,11 @@ class Gff3ToAttrs(PipelineTask):
                                             'AugustusTMR. Please check your GFF3 input.')
             else:
                 logger.critical('No protein_coding annotations found!')
+        # validate number parsed
+        tot_genes = len(open(self.annotation_gp).readlines())
+        if tot_genes != len(df):
+            raise InvalidInputException('The number of genes parsed from the attrs file is not the same number as '
+                                        'in the genePred. This is a parser failure. Contact Ian and make him fix it.')
         database = pipeline_args.dbs[pipeline_args.ref_genome]
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
             df.to_sql(self.table, engine, if_exists='replace')
@@ -1513,11 +1523,14 @@ class FindDenovoParents(PipelineTask):
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
                         for genome in pipeline_args.isoseq_genomes}
             args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in pipeline_args.isoseq_genomes}
+                                    for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in pipeline_args.isoseq_genomes}
+                                      for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in pipeline_args.isoseq_genomes}
+            # add the reference annotation as a pseudo-transMap to assign parents in reference
+            args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
         elif mode == 'augCGP':
             args.tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
             args.gps = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp
