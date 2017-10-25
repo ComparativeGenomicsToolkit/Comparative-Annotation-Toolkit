@@ -767,7 +767,7 @@ def find_subset_match(iso_intervals, enst_intervals):
     return lm and lr
 
 
-def calculate_subset_matches(divided_clusters, fuzz_distance=8):
+def calculate_subset_matches(divided_clusters, fuzz_distance=8, filter_short_intron=30):
     """
     A wrapper for find_subset_match that looks at every cluster of transcripts produced by divide_clusters and finds
     a fuzzy match between any non-reference sequence and a reference sequence.
@@ -777,10 +777,12 @@ def calculate_subset_matches(divided_clusters, fuzz_distance=8):
     for cluster_id, (ensts, isos) in divided_clusters.iteritems():
         enst_intervals = collections.defaultdict(list)
         for tx in ensts:
-            enst_interval = construct_start_stop_intervals(tx.intron_intervals, fuzz_distance)
+            tx_intervals = [x for x in tx.intron_intervals if len(x) >= filter_short_intron]
+            enst_interval = construct_start_stop_intervals(tx_intervals, fuzz_distance)
             enst_intervals[tuple(enst_interval)].append(tx)
         for iso in isos:
-            iso_intervals = construct_start_stop_intervals(iso.intron_intervals, fuzz_distance)
+            iso_intervals = [x for x in iso.intron_intervals if len(x) >= filter_short_intron]
+            iso_intervals = construct_start_stop_intervals(iso_intervals, fuzz_distance)
             for enst_interval, enst_txs in enst_intervals.iteritems():
                 m = find_subset_match(iso_intervals, enst_interval)
                 if m:
