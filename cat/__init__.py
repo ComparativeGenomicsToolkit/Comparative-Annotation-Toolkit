@@ -802,8 +802,10 @@ class Gff3ToAttrs(PipelineTask):
                     gene_biotype = tx_biotype = d['gbkey']
                 if 'gene' in d:
                     gene_name = d['gene']
-                else:
+                elif 'Name' in d:
                     gene_name = d['Name']
+                else:
+                    gene_name = d['Parent']
                 gene_id = d['Parent']
                 tx_name = d.get('product', tx_id)
                 results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
