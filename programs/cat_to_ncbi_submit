@@ -503,6 +503,7 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, 
     # if non-coding, fill ncRNA_class tag
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
+        tblwr.write_qualifier('product', txa.transcript_biotype.replace('_', ' '))
 
     # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
@@ -520,7 +521,7 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, 
     tblwr.write_note("CAT alignment id: {}".format(txa.alignment_id))
     tblwr.write_note("CAT source transcript id: {}".format(txa.source_transcript))
     if txa.transcript_biotype != 'unknown_likely_coding':
-        tblwr.write_note("CAT source GENCODE transcript biotype: {}".format(txa.transcript_biotype))
+        tblwr.write_note("CAT source GENCODE transcript biotype: {}".format(txa.transcript_biotype.replace('_', ' ')))
     else:
         tblwr.write_note('CAT novel prediction: {}'.format(txa.transcript_modes))
 
