@@ -49,6 +49,7 @@ def parse_args():
 # have non-coding function.
 biotype_map = {
     '3prime_overlapping_ncRNA': 'ncRNA',
+    '3prime_overlapping_ncrna': 'ncRNA',
     'IG_C_gene': 'mRNA',
     'IG_C_pseudogene': 'mRNA',
     'IG_D_gene': 'mRNA',
@@ -66,7 +67,7 @@ biotype_map = {
     'TR_V_pseudogene': 'ncRNA',
     'antisense': 'ncRNA',
     'antisense_RNA': 'ncRNA',
-    'bidirectional_promoter_lncRNA': 'ncRNA',
+    'bidirectional_promoter_lncrna': 'ncRNA',
     'lincRNA': 'ncRNA',
     'macro_lncRNA': 'ncRNA',
     'miRNA': 'ncRNA',
