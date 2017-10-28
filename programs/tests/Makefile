@@ -63,12 +63,12 @@ ncbi_submit_test1: mkdirs
 ifeq (${useTable2asn}, yes)
 	rm -rf output/$@.table2asn
 	mkdir -p  output/$@.table2asn
-	${table2asn} -V vbag -M n -J -c - -euk -t input/chimp1.sbt -i chimp1.fa -f output/$@.tbl -o output/$@.table2asn/chimp1.sqn -Z output/$@.table2asn/chimp1.report
+	${table2asn} -V vbag -M n -j "[organism=Pan troglodytes]" -J -c - -euk -t input/chimp1.sbt -i chimp1.fa -f output/$@.tbl -o output/$@.table2asn/chimp1.sqn -Z output/$@.table2asn/chimp1.report
 endif
 ifeq (${useTbl2asn}, yes)
 	rm -rf output/$@.tbl2asn
 	mkdir -p  output/$@.tbl2asn
-	${tbl2asn} -V vb -t input/chimp1.sbt -i chimp1.fa -f output/$@.tbl -o output/$@.tbl2asn/chimp1.sqn -Z output/$@.tbl2asn/chimp1.report
+	${tbl2asn} -V vb -M n -c s -j "[organism=Pan troglodytes]" -t input/chimp1.sbt -i chimp1.fa -f output/$@.tbl -o output/$@.tbl2asn/chimp1.sqn -Z output/$@.tbl2asn/chimp1.report
 	mv chimp1.gbf chimp1.val errorsummary.val output/$@.tbl2asn/
 endif
 

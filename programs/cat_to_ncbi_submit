@@ -67,6 +67,7 @@ biotype_map = {
     'TR_V_pseudogene': 'ncRNA',
     'antisense': 'ncRNA',
     'antisense_RNA': 'ncRNA',
+    'bidirectional_promoter_lncRNA': 'ncRNA',
     'bidirectional_promoter_lncrna': 'ncRNA',
     'lincRNA': 'ncRNA',
     'macro_lncRNA': 'ncRNA',
@@ -103,9 +104,11 @@ biotype_map = {
 
 # for non-coding RNAs, this defines the ncrna_class key/value pair
 ncrna_class = {
+    '3prime_overlapping_ncRNA': 'other',
     '3prime_overlapping_ncrna': 'other',
-    'antisense': 'antisense_RNA',
+    'antisense_RNA': 'antisense',
     'bidirectional_promoter_lncrna': 'lncRNA',
+    'bidirectional_promoter_lncRNA': 'lncRNA',
     'lincRNA': 'lncRNA',
     'macro_lncRNA': 'lncRNA',
     'miRNA': 'miRNA',
@@ -347,16 +350,18 @@ def get_transcript_product(txd, trans_num):
         name = get_transcript_base_id(txd)
     return "{} isoform {}".format(name, trans_num)
 
+def get_ncrna_product(txd):
+    return txd.attrs.transcript_biotype.replace('_', ' ')
 
-def get_transcript_protein_id(txd, trans_num):
-    return "{} isoform {} protein".format(get_transcript_base_id(txd), trans_num)
-
-
-def write_protein_id(txd, trans_num, tblwr):
-    tblwr.write_qualifier('protein_id', get_transcript_protein_id(txd, trans_num))
+def get_transcript_protein_id(locus_tag, txd, trans_num):
+    return "gnl|{}|{}_{}_prot".format(locus_tag, get_transcript_base_id(txd), trans_num)
 
 
-def write_product(txd, trans_num, tblwr):
+def write_protein_id(locus_tag_prefix, txd, trans_num, tblwr):
+    tblwr.write_qualifier('protein_id', get_transcript_protein_id(locus_tag_prefix, txd, trans_num))
+
+
+def write_product(locus_tag_prefix, txd, trans_num, tblwr):
     "write product qualifier as needed"
     # if we have a source gene name, use it
     # product tag must match the gene-level gene tag or the conversion program gets mad
@@ -366,7 +371,7 @@ def write_product(txd, trans_num, tblwr):
         if get_gene_name(txd) is None:  # mark weird accessions
             tblwr.write_qualifier("inference", "similar to DNA sequence {}".format(txd.attrs.source_gene_common_name))
         if trans_has_cds(txd):
-            tblwr.write_qualifier("protein_id", product + " prot")
+            write_protein_id(locus_tag_prefix, txd, trans_num, tblwr)
 
 
 def make_exon_idx_iter(txd):
@@ -465,7 +470,7 @@ def write_cds_regions(locus_tag_prefix, txd, trans_num, cds_spec, tblwr):
     tblwr.write_qualifier('codon_start', "1")
     
     # product and protein id  must be same on mRNA and CDS
-    write_product(txd, trans_num, tblwr)
+    write_product(locus_tag_prefix, txd, trans_num, tblwr)
  
     # coding transcripts must have a protein_id tag -- just use the name with _prot suffix
     tblwr.write_qualifier('transcript_id', get_transcript_gnl_id(locus_tag_prefix, txd))
@@ -504,14 +509,14 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, 
     # if non-coding, fill ncRNA_class tag
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
-        tblwr.write_qualifier('product', txa.transcript_biotype.replace('_', ' '))
+        tblwr.write_qualifier('product', get_ncrna_product(txd))
 
     # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
         tblwr.write_qualifier('exception', 'low-quality sequence region')
 
     # product and protein id  must be same on mRNA and CDS
-    write_product(txd, trans_num, tblwr)
+    write_product(locus_tag_prefix, txd, trans_num, tblwr)
 
     if unitary_pseudo:
         tblwr.write_qualifier('pseudogene', "unitary")
@@ -522,7 +527,7 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, 
     tblwr.write_note("CAT alignment id: {}".format(txa.alignment_id))
     tblwr.write_note("CAT source transcript id: {}".format(txa.source_transcript))
     if txa.transcript_biotype != 'unknown_likely_coding':
-        tblwr.write_note("CAT source GENCODE transcript biotype: {}".format(txa.transcript_biotype.replace('_', ' ')))
+        tblwr.write_note("CAT source GENCODE transcript biotype: {}".format(txa.transcript_biotype))
     else:
         tblwr.write_note('CAT novel prediction: {}'.format(txa.transcript_modes))
 

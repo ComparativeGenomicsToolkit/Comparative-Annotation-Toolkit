@@ -6,8 +6,8 @@
 2231	1950
 1286	1155
 			transcript_id	gnl|fred|T0000001
-			product	ULBP2_1
-			protein_id	T0000001_1_prot
+			product	ULBP2 isoform 1
+			protein_id	gnl|fred|T0000001_1_prot
 			note	CAT transcript id: T0000001
 			note	CAT alignment id: ENST00000367351.3-0
 			note	CAT source transcript id: ENST00000367351.3
@@ -17,8 +17,8 @@
 2231	1950
 1286	1177
 			codon_start	1
-			product	ULBP2_1
-			protein_id	T0000001_1_prot
+			product	ULBP2 isoform 1
+			protein_id	gnl|fred|T0000001_1_prot
 			transcript_id	gnl|fred|T0000001
 14015	11770	gene
 			locus_tag	fred_G0000002
@@ -27,8 +27,9 @@
 11845	11770
 			transcript_id	gnl|fred|T0000002
 			ncRNA_class	other
-			product	T0000002_1
-			protein_id	T0000002_1_prot
+			product	transcribed processed pseudogene
+			product	T0000002 isoform 1
+			inference	similar to DNA sequence AL583835.2
 			note	CAT transcript id: T0000002
 			note	CAT alignment id: ENST00000407271.2-0
 			note	CAT source transcript id: ENST00000407271.2
@@ -37,8 +38,9 @@
 13068	12223
 			transcript_id	gnl|fred|T0000003
 			ncRNA_class	other
-			product	T0000003_2
-			protein_id	T0000003_2_prot
+			product	processed transcript
+			product	T0000003 isoform 2
+			inference	similar to DNA sequence AL583835.2
 			note	CAT transcript id: T0000003
 			note	CAT alignment id: ENST00000421363.2-0
 			note	CAT source transcript id: ENST00000421363.2
@@ -47,8 +49,9 @@
 13162	12916
 			transcript_id	gnl|fred|T0000004
 			ncRNA_class	other
-			product	T0000004_3
-			protein_id	T0000004_3_prot
+			product	processed transcript
+			product	T0000004 isoform 3
+			inference	similar to DNA sequence AL583835.2
 			note	CAT transcript id: T0000004
 			note	CAT alignment id: ENST00000435483.5-0
 			note	CAT source transcript id: ENST00000435483.5
@@ -59,8 +62,8 @@
 28720	28983
 29211	29828
 			transcript_id	gnl|fred|T0000005
-			product	RAET1G_1
-			protein_id	T0000005_1_prot
+			product	RAET1G isoform 1
+			protein_id	gnl|fred|T0000005_1_prot
 			note	CAT transcript id: T0000005
 			note	CAT alignment id: ENST00000479265.1-0
 			note	CAT source transcript id: ENST00000479265.1
@@ -69,8 +72,8 @@
 28720	28983
 29211	29527
 			codon_start	1
-			product	RAET1G_1
-			protein_id	T0000005_1_prot
+			product	RAET1G isoform 1
+			protein_id	gnl|fred|T0000005_1_prot
 			transcript_id	gnl|fred|T0000005
 25448	25600	mRNA
 28720	28983
@@ -78,8 +81,8 @@
 30150	30360
 31463	31659
 			transcript_id	gnl|fred|T0000006
-			product	RAET1G_2
-			protein_id	T0000006_2_prot
+			product	RAET1G isoform 2
+			protein_id	gnl|fred|T0000006_2_prot
 			note	CAT transcript id: T0000006
 			note	CAT alignment id: ENST00000367360.6-0
 			note	CAT source transcript id: ENST00000367360.6
@@ -90,8 +93,8 @@
 30150	30360
 31463	31625
 			codon_start	1
-			product	RAET1G_2
-			protein_id	T0000006_2_prot
+			product	RAET1G isoform 2
+			protein_id	gnl|fred|T0000006_2_prot
 			transcript_id	gnl|fred|T0000006
 25516	25600	mRNA
 28720	28983
@@ -99,8 +102,8 @@
 30250	30360
 31463	31624
 			transcript_id	gnl|fred|T0000007
-			product	RAET1G_3
-			protein_id	T0000007_3_prot
+			product	RAET1G isoform 3
+			protein_id	gnl|fred|T0000007_3_prot
 			note	CAT transcript id: T0000007
 			note	CAT alignment id: ENST00000367361.6-0
 			note	CAT source transcript id: ENST00000367361.6
@@ -110,8 +113,8 @@
 29211	29492
 30250	30260
 			codon_start	1
-			product	RAET1G_3
-			protein_id	T0000007_3_prot
+			product	RAET1G isoform 3
+			protein_id	gnl|fred|T0000007_3_prot
 			transcript_id	gnl|fred|T0000007
 54477	29028	gene
 			locus_tag	fred_G0000004
@@ -119,8 +122,9 @@
 42778	42672
 29348	29028
 			transcript_id	gnl|fred|T0000008
-			product	RAET1E-AS1_1
-			protein_id	T0000008_1_prot
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	RAET1E-AS1 isoform 1
 			note	CAT transcript id: T0000008
 			note	CAT alignment id: ENST00000446954.2-0
 			note	CAT source transcript id: ENST00000446954.2
@@ -129,8 +133,9 @@
 53323	53235
 29348	29030
 			transcript_id	gnl|fred|T0000010
-			product	RAET1E-AS1_2
-			protein_id	T0000010_2_prot
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	RAET1E-AS1 isoform 2
 			note	CAT transcript id: T0000010
 			note	CAT alignment id: ENST00000605899.1-0
 			note	CAT source transcript id: ENST00000605899.1
@@ -140,8 +145,9 @@
 75412	74518	ncRNA
 29348	29029
 			transcript_id	gnl|fred|T0000009
-			product	RAET1E-AS1_1
-			protein_id	T0000009_1_prot
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	RAET1E-AS1 isoform 1
 			note	CAT transcript id: T0000009
 			note	CAT alignment id: ENST00000606915.1-0
 			note	CAT source transcript id: ENST00000606915.1
@@ -157,8 +163,8 @@
 136119	135950
 128590	127786
 			transcript_id	gnl|fred|T0000026
-			product	PCMT1_1
-			protein_id	T0000026_1_prot
+			product	PCMT1 isoform 1
+			protein_id	gnl|fred|T0000026_1_prot
 			note	CAT transcript id: T0000026
 			note	CAT alignment id: ENST00000367384.6-0
 			note	CAT source transcript id: ENST00000367384.6
@@ -172,8 +178,8 @@
 136119	135950
 128590	128578
 			codon_start	1
-			product	PCMT1_1
-			protein_id	T0000026_1_prot
+			product	PCMT1 isoform 1
+			protein_id	gnl|fred|T0000026_1_prot
 			transcript_id	gnl|fred|T0000026
 186011	185750	mRNA
 163315	163284
@@ -183,8 +189,8 @@
 136119	135903
 128590	127786
 			transcript_id	gnl|fred|T0000027
-			product	PCMT1_2
-			protein_id	T0000027_2_prot
+			product	PCMT1 isoform 2
+			protein_id	gnl|fred|T0000027_2_prot
 			note	CAT transcript id: T0000027
 			note	CAT alignment id: ENST00000367380.9-0
 			note	CAT source transcript id: ENST00000367380.9
@@ -196,8 +202,8 @@
 141918	141833
 136119	135940
 			codon_start	1
-			product	PCMT1_2
-			protein_id	T0000027_2_prot
+			product	PCMT1 isoform 2
+			protein_id	gnl|fred|T0000027_2_prot
 			transcript_id	gnl|fred|T0000027
 189136	211672	gene
 			locus_tag	fred_G0000013
@@ -210,8 +216,8 @@
 204237	204359
 208791	211672
 			transcript_id	gnl|fred|T0000039
-			product	NUP43_1
-			protein_id	T0000039_1_prot
+			product	NUP43 isoform 1
+			protein_id	gnl|fred|T0000039_1_prot
 			note	CAT transcript id: T0000039
 			note	CAT alignment id: ENST00000340413.6-0
 			note	CAT source transcript id: ENST00000340413.6
@@ -225,15 +231,14 @@
 204237	204359
 208791	209020
 			codon_start	1
-			product	NUP43_1
-			protein_id	T0000039_1_prot
+			product	NUP43 isoform 1
+			protein_id	gnl|fred|T0000039_1_prot
 			transcript_id	gnl|fred|T0000039
 304031	303919	gene
 			locus_tag	fred_G0000017
 304031	303919	ncRNA
 			transcript_id	gnl|fred|T0000058
-			product	Y_RNA_1
-			protein_id	T0000058_1_prot
+			product	Y_RNA isoform 1
 			note	CAT transcript id: T0000058
 			note	CAT alignment id: ENST00000384562.1-0
 			note	CAT source transcript id: ENST00000384562.1
@@ -243,8 +248,8 @@
 1664063	1663957	ncRNA
 			transcript_id	gnl|fred|T0000117
 			ncRNA_class	snRNA
-			product	RNU6-1222P_1
-			protein_id	T0000117_1_prot
+			product	snRNA
+			product	RNU6-1222P isoform 1
 			note	CAT transcript id: T0000117
 			note	CAT alignment id: ENST00000384615.1-0
 			note	CAT source transcript id: ENST00000384615.1
@@ -256,8 +261,8 @@
 3299169	3298960
 3291718	3291517
 			transcript_id	gnl|fred|T0000159
-			product	ADGB_1
-			protein_id	T0000159_1_prot
+			product	ADGB isoform 1
+			protein_id	gnl|fred|T0000159_1_prot
 			note	CAT transcript id: T0000159
 			note	CAT alignment id: augTM-ENST00000473647.1-0
 			note	CAT source transcript id: ENST00000473647.1
@@ -267,8 +272,8 @@
 3299169	3298960
 3291718	>3291545
 			codon_start	1
-			product	ADGB_1
-			protein_id	T0000159_1_prot
+			product	ADGB isoform 1
+			protein_id	gnl|fred|T0000159_1_prot
 			transcript_id	gnl|fred|T0000159
 3940503	3808450	gene
 			locus_tag	fred_G0000063
@@ -277,8 +282,8 @@
 3808776	3808450
 			transcript_id	gnl|fred|T0000175
 			ncRNA_class	other
-			product	GRM1_1
-			protein_id	T0000175_1_prot
+			product	retained intron
+			product	GRM1 isoform 1
 			note	CAT transcript id: T0000175
 			note	CAT alignment id: ENST00000507005.1-0
 			note	CAT source transcript id: ENST00000507005.1
@@ -316,8 +321,8 @@
 4088705	4088785
 4090028	4091323
 			transcript_id	gnl|fred|T0000181
-			product	SHPRH_1
-			protein_id	T0000181_1_prot
+			product	SHPRH isoform 1
+			protein_id	gnl|fred|T0000181_1_prot
 			note	CAT transcript id: T0000181
 			note	CAT alignment id: ENST00000275233.11-0
 			note	CAT source transcript id: ENST00000275233.11
@@ -352,8 +357,8 @@
 4088705	4088785
 4090028	4090124
 			codon_start	1
-			product	SHPRH_1
-			protein_id	T0000181_1_prot
+			product	SHPRH isoform 1
+			protein_id	gnl|fred|T0000181_1_prot
 			transcript_id	gnl|fred|T0000181
 11071684	11078078	gene
 			locus_tag	fred_G0000148
@@ -363,8 +368,8 @@
 11078057	11078078
 			transcript_id	gnl|fred|T0000452
 			ncRNA_class	other
-			product	REPS1_1
-			protein_id	T0000452_1_prot
+			product	retained intron
+			product	REPS1 isoform 1
 			note	CAT transcript id: T0000452
 			note	CAT alignment id: ENST00000492787.6-0
 			note	CAT source transcript id: ENST00000492787.6
@@ -375,8 +380,8 @@
 16080610	16080513
 16079172	16076778
 			transcript_id	gnl|fred|T0000791
-			product	TCF21_1
-			protein_id	T0000791_1_prot
+			product	TCF21 isoform 1
+			protein_id	gnl|fred|T0000791_1_prot
 			note	CAT transcript id: T0000791
 			note	CAT alignment id: ENST00000237316.3-0
 			note	CAT source transcript id: ENST00000237316.3
@@ -384,8 +389,8 @@
 16082914	16082465	CDS
 16080610	16080521
 			codon_start	1
-			product	TCF21_1
-			protein_id	T0000791_1_prot
+			product	TCF21 isoform 1
+			protein_id	gnl|fred|T0000791_1_prot
 			transcript_id	gnl|fred|T0000791
 217984	251279	gene
 			locus_tag	fred_G0000015
@@ -394,8 +399,8 @@
 243710	243857
 251012	251279
 			transcript_id	gnl|fred|T0000047
-			product	LATS1_1
-			protein_id	T0000047_1_prot
+			product	LATS1 isoform 1
+			protein_id	gnl|fred|T0000047_1_prot
 			pseudogene	unitary
 			note	Putative inactivated transcript (unitary pseudogene)
 			note	CAT transcript id: T0000047
@@ -410,8 +415,8 @@
 4334957	4335198
 4342778	4345164
 			transcript_id	gnl|fred|T0000217
-			product	EPM2A_1
-			protein_id	T0000217_1_prot
+			product	EPM2A isoform 1
+			protein_id	gnl|fred|T0000217_1_prot
 			note	CAT transcript id: T0000217
 			note	CAT alignment id: ENST00000638554.1-0
 			note	CAT source transcript id: ENST00000638554.1
@@ -420,8 +425,8 @@
 4289102	4289276
 4303993	>4304125
 			codon_start	1
-			product	EPM2A_1
-			protein_id	T0000217_1_prot
+			product	EPM2A isoform 1
+			protein_id	gnl|fred|T0000217_1_prot
 			transcript_id	gnl|fred|T0000217
 17406923	17405897	gene
 			locus_tag	fred_G0000273
@@ -430,8 +435,8 @@
 17406174	17405897
 			transcript_id	gnl|fred|T0000883
 			exception	low-quality sequence region
-			product	TAAR8_1
-			protein_id	T0000883_1_prot
+			product	TAAR8 isoform 1
+			protein_id	gnl|fred|T0000883_1_prot
 			pseudogene	unitary
 			note	Putative inactivated transcript (unitary pseudogene)
 			note	CAT transcript id: T0000883
@@ -449,8 +454,8 @@
 24870228	24870114
 24869813	24866336
 			transcript_id	gnl|fred|T0001227
-			product	RNF217_1
-			protein_id	T0001227_1_prot
+			product	RNF217 isoform 1
+			protein_id	gnl|fred|T0001227_1_prot
 			pseudogene	unitary
 			note	Putative inactivated transcript (unitary pseudogene)
 			note	CAT transcript id: T0001227
