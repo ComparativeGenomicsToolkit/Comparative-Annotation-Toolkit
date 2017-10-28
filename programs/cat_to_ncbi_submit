@@ -207,11 +207,22 @@ class NcbiTblWriter(object):
             row.append(feature_key)
         self.recs.append("\t".join(row))
 
+    def __merge_adjacent_features(self, regions):
+        merged = [regions[0]]
+        for region in regions[1:]:
+            if merged[-1][1] == region[0]:
+                merged[-1] = (merged[-1][0], region[0])
+            else:
+                merged.append(region)
+        return merged
     def write_feature(self, regions, strand, feature_key, start_incmpl=False, end_incmpl=False):
         """Write feature definition rows.  Ranges is a list in the form
         ((start1, end1), (start2, end2), ...), for each regions of the feature.
         The range are zero-based, half-open, and coordinates will be swapped on negative strand."""
 
+        if feature_key != "CDS":
+            regions = self.__merge_adjacent_features(regions)
+        
         # correct order for strand
         regions = list(sorted(regions, key=lambda r: r[0] if strand == '+' else -r[1]))
         if strand == '-':

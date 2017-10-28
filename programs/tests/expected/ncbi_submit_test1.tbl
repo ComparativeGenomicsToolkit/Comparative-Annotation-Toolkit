@@ -431,8 +431,7 @@
 17406923	17405897	gene
 			locus_tag	fred_G0000273
 			pseudogene	unitary
-17406923	17406175	mRNA
-17406174	17405897
+17406174	17405897	mRNA
 			transcript_id	gnl|fred|T0000883
 			exception	low-quality sequence region
 			product	TAAR8 isoform 1
