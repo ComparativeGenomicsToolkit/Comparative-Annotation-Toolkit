@@ -363,8 +363,17 @@ def bin_genes(genes):
     "add genes on a chromosome to a RangeFinder binning object to detect overlap"
     rf = RangeFinder()
     for gene in genes:
-        rf.add(gene.bounds.chromosome, gene.bounds.start, gene.bounds.stop, gene, gene.bounds.strand)
+        for txd in gene.txds:
+            for exon in txd.tx.exon_intervals:
+                rf.add(exon.chromosome, exon.start, exon.stop, gene, exon.strand)
     return rf
+
+def get_overlapping_genes(rf, gene):
+    over_genes = set()
+    for txd in gene.txds:
+        for exon in txd.tx.exon_intervals:
+            over_genes |= set(rf.overlapping(exon.chromosome, exon.start, exon.stop, exon.strand))
+    return list(over_genes)
 
 def pick_longest_gene_for_locus(over_genes):
     "pick longest of overlapping genes"
@@ -376,18 +385,19 @@ def pick_longest_gene_for_locus(over_genes):
 
 def pick_gene_for_locus(rf, gene, done):
     "for a given gene, find overlaps and pick one"
-    over_genes = list(rf.overlapping(gene.bounds.chromosome, gene.bounds.start, gene.bounds.stop, gene.bounds.strand))
+    over_genes = get_overlapping_genes(rf, gene)
     if len(over_genes) == 1:
         # fast path
         done.add(gene.gene_id)
         return gene
-    if verbose:
-        print("overlapping:", " ".join([gene.gene_id for gene in over_genes]), file=sys.stderr)
-    picked_gene = pick_longest_gene_for_locus(over_genes)
-    done.add(picked_gene.gene_id)
-    for g in over_genes:
-        done.add(g.gene_id)
-    return picked_gene
+    else:
+        if verbose:
+            print("overlapping:", " ".join([g.gene_id for g in over_genes]), file=sys.stderr)
+        picked_gene = pick_longest_gene_for_locus(over_genes)
+        done.add(picked_gene.gene_id)
+        for g in over_genes:
+            done.add(g.gene_id)
+        return picked_gene
 
 def pick_genes(by_gene_id):
     """Select genes to use on a chromosome.  When there are overlapping genes,

@@ -439,3 +439,567 @@
 			note	CAT alignment id: ENST00000560949.5-0
 			note	CAT source transcript id: ENST00000560949.5
 			note	CAT source GENCODE transcript biotype: protein_coding
+37661217	37549314	gene
+			locus_tag	fred_G0000496
+37661217	37661107	mRNA
+37554294	37554248
+37552118	37552003
+37550215	37550087
+37549804	37549314
+			transcript_id	gnl|fred|T0001544
+			product	T0001544 isoform 1
+			inference	similar to DNA sequence AL365214.3
+			protein_id	gnl|fred|T0001544_1_prot
+			note	CAT transcript id: T0001544
+			note	CAT alignment id: ENST00000587816.2-0
+			note	CAT source transcript id: ENST00000587816.2
+			note	CAT source GENCODE transcript biotype: protein_coding
+<37549699	37549314	CDS
+			codon_start	1
+			product	T0001544 isoform 1
+			inference	similar to DNA sequence AL365214.3
+			protein_id	gnl|fred|T0001544_1_prot
+			transcript_id	gnl|fred|T0001544
+37661217	37661107	mRNA
+37556018	37555638
+37552118	37552003
+37550215	37550087
+37549804	37549490
+			transcript_id	gnl|fred|T0001545
+			product	T0001545 isoform 2
+			inference	similar to DNA sequence AL365214.3
+			protein_id	gnl|fred|T0001545_2_prot
+			note	CAT transcript id: T0001545
+			note	CAT alignment id: ENST00000585611.5-0
+			note	CAT source transcript id: ENST00000585611.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+<37549699	37549490	CDS
+			codon_start	1
+			product	T0001545 isoform 2
+			inference	similar to DNA sequence AL365214.3
+			protein_id	gnl|fred|T0001545_2_prot
+			transcript_id	gnl|fred|T0001545
+37661217	37661107	mRNA
+37552118	37552003
+37550215	37550087
+37549804	37549594
+			transcript_id	gnl|fred|T0001546
+			product	T0001546 isoform 3
+			inference	similar to DNA sequence AL365214.3
+			protein_id	gnl|fred|T0001546_3_prot
+			note	CAT transcript id: T0001546
+			note	CAT alignment id: ENST00000590673.5-0
+			note	CAT source transcript id: ENST00000590673.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+<37549699	37549594	CDS
+			codon_start	1
+			product	T0001546 isoform 3
+			inference	similar to DNA sequence AL365214.3
+			protein_id	gnl|fred|T0001546_3_prot
+			transcript_id	gnl|fred|T0001546
+37661217	37661107	ncRNA
+37556018	37555638
+37554368	37554088
+			transcript_id	gnl|fred|T0001547
+			ncRNA_class	other
+			product	processed transcript
+			product	T0001547 isoform 4
+			inference	similar to DNA sequence AL365214.3
+			note	CAT transcript id: T0001547
+			note	CAT alignment id: ENST00000585504.5-0
+			note	CAT source transcript id: ENST00000585504.5
+			note	CAT source GENCODE transcript biotype: processed_transcript
+77242358	76672842	gene
+			locus_tag	fred_G0000991
+77242069	77241563	mRNA
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76672842
+			transcript_id	gnl|fred|T0002955
+			product	KCNQ5 isoform 1
+			protein_id	gnl|fred|T0002955_1_prot
+			note	CAT transcript id: T0002955
+			note	CAT alignment id: ENST00000370398.5-0
+			note	CAT source transcript id: ENST00000370398.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241563	CDS
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 1
+			protein_id	gnl|fred|T0002955_1_prot
+			transcript_id	gnl|fred|T0002955
+77242358	77241563	mRNA
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76742111	76742055
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76672845
+			transcript_id	gnl|fred|T0002956
+			product	KCNQ5 isoform 2
+			protein_id	gnl|fred|T0002956_2_prot
+			note	CAT transcript id: T0002956
+			note	CAT alignment id: ENST00000342056.6-0
+			note	CAT source transcript id: ENST00000342056.6
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241563	CDS
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76742111	76742055
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 2
+			protein_id	gnl|fred|T0002956_2_prot
+			transcript_id	gnl|fred|T0002956
+77242307	77241569	mRNA
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76672859
+			transcript_id	gnl|fred|T0002957
+			product	KCNQ5 isoform 3
+			protein_id	gnl|fred|T0002957_3_prot
+			note	CAT transcript id: T0002957
+			note	CAT alignment id: ENST00000403813.6-0
+			note	CAT source transcript id: ENST00000403813.6
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241569	CDS
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 3
+			protein_id	gnl|fred|T0002957_3_prot
+			transcript_id	gnl|fred|T0002957
+77242307	77241569	mRNA
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76742111	76742055
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76672859
+			transcript_id	gnl|fred|T0002958
+			product	KCNQ5 isoform 4
+			protein_id	gnl|fred|T0002958_4_prot
+			note	CAT transcript id: T0002958
+			note	CAT alignment id: ENST00000402622.6-0
+			note	CAT source transcript id: ENST00000402622.6
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241569	CDS
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76742111	76742055
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 4
+			protein_id	gnl|fred|T0002958_4_prot
+			transcript_id	gnl|fred|T0002958
+77242307	77241569	mRNA
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76681071	76680940
+76679085	76678959
+76677209	76672859
+			transcript_id	gnl|fred|T0002959
+			product	KCNQ5 isoform 5
+			protein_id	gnl|fred|T0002959_5_prot
+			note	CAT transcript id: T0002959
+			note	CAT alignment id: ENST00000414165.6-0
+			note	CAT source transcript id: ENST00000414165.6
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241569	CDS
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 5
+			protein_id	gnl|fred|T0002959_5_prot
+			transcript_id	gnl|fred|T0002959
+77242307	77241569	mRNA
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76672859
+			transcript_id	gnl|fred|T0002960
+			product	KCNQ5 isoform 6
+			protein_id	gnl|fred|T0002960_6_prot
+			note	CAT transcript id: T0002960
+			note	CAT alignment id: ENST00000355194.8-0
+			note	CAT source transcript id: ENST00000355194.8
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241569	CDS
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 6
+			protein_id	gnl|fred|T0002960_6_prot
+			transcript_id	gnl|fred|T0002960
+77242307	77241569	mRNA
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76742111	76742055
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76672859
+			transcript_id	gnl|fred|T0002961
+			product	KCNQ5 isoform 7
+			protein_id	gnl|fred|T0002961_7_prot
+			note	CAT transcript id: T0002961
+			note	CAT alignment id: ENST00000355635.7-0
+			note	CAT source transcript id: ENST00000355635.7
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241569	CDS
+77058046	77058032
+76867960	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76742111	76742055
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 7
+			protein_id	gnl|fred|T0002961_7_prot
+			transcript_id	gnl|fred|T0002961
+77242307	77241563	mRNA
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76681071	76680940
+76679085	76678959
+76677209	76675535
+			transcript_id	gnl|fred|T0002962
+			product	KCNQ5 isoform 8
+			protein_id	gnl|fred|T0002962_8_prot
+			note	CAT transcript id: T0002962
+			note	CAT alignment id: ENST00000628967.2-0
+			note	CAT source transcript id: ENST00000628967.2
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241563	CDS
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747365
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 8
+			protein_id	gnl|fred|T0002962_8_prot
+			transcript_id	gnl|fred|T0002962
+77241978	77241563	mRNA
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676206
+			transcript_id	gnl|fred|T0002963
+			product	KCNQ5 isoform 9
+			protein_id	gnl|fred|T0002963_9_prot
+			note	CAT transcript id: T0002963
+			note	CAT alignment id: ENST00000629977.2-0
+			note	CAT source transcript id: ENST00000629977.2
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241563	CDS
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 9
+			protein_id	gnl|fred|T0002963_9_prot
+			transcript_id	gnl|fred|T0002963
+76877814	76877759	mRNA
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			transcript_id	gnl|fred|T0002964
+			product	KCNQ5 isoform 10
+			protein_id	gnl|fred|T0002964_10_prot
+			note	CAT transcript id: T0002964
+			note	CAT alignment id: augCGP-10504.t1
+			note	CAT novel prediction: augCGP
+76877814	76877759	CDS
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76738486	76738266
+76701862	76701754
+76681071	76680940
+76679085	76678959
+76677209	76676247
+			codon_start	1
+			product	KCNQ5 isoform 10
+			protein_id	gnl|fred|T0002964_10_prot
+			transcript_id	gnl|fred|T0002964
+76751318	76751298	mRNA
+76738486	76738266
+76737986	76737585
+			transcript_id	gnl|fred|T0002967
+			product	KCNQ5 isoform 11
+			protein_id	gnl|fred|T0002967_11_prot
+			note	CAT transcript id: T0002967
+			note	CAT alignment id: ENST00000427928.1-0
+			note	CAT source transcript id: ENST00000427928.1
+			note	CAT source GENCODE transcript biotype: protein_coding
+<76751317	76751298	CDS
+76738486	76738266
+76737986	>76737937
+			codon_start	1
+			product	KCNQ5 isoform 11
+			protein_id	gnl|fred|T0002967_11_prot
+			transcript_id	gnl|fred|T0002967
+			note	gaps were added to CDS to maintain frame
+76751318	76751318	misc_feature
+			note	gap added in CDS to maintain frame, possibly due to error in genome
+77242044	77241563	mRNA
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747227
+			transcript_id	gnl|fred|T0002968
+			product	KCNQ5 isoform 12
+			protein_id	gnl|fred|T0002968_12_prot
+			note	CAT transcript id: T0002968
+			note	CAT alignment id: ENST00000370392.5-0
+			note	CAT source transcript id: ENST00000370392.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+77241960	77241563	CDS
+76867969	76867879
+76829849	76829723
+76794568	76794393
+76794128	76794003
+76766619	76766509
+76760570	76760475
+76751392	76751298
+76747391	76747328
+			codon_start	1
+			product	KCNQ5 isoform 12
+			protein_id	gnl|fred|T0002968_12_prot
+			transcript_id	gnl|fred|T0002968
+76829849	76829723	mRNA
+76828717	76828524
+			transcript_id	gnl|fred|T0002970
+			product	KCNQ5 isoform 13
+			protein_id	gnl|fred|T0002970_13_prot
+			note	CAT transcript id: T0002970
+			note	CAT alignment id: ENST00000441538.1-0
+			note	CAT source transcript id: ENST00000441538.1
+			note	CAT source GENCODE transcript biotype: protein_coding
+76829849	76829723	CDS
+76828717	>76828572
+			codon_start	1
+			product	KCNQ5 isoform 13
+			protein_id	gnl|fred|T0002970_13_prot
+			transcript_id	gnl|fred|T0002970
+76867881	76867879	mRNA
+76829849	76829598
+			transcript_id	gnl|fred|T0002971
+			product	KCNQ5 isoform 14
+			protein_id	gnl|fred|T0002971_14_prot
+			note	CAT transcript id: T0002971
+			note	CAT alignment id: ENST00000443915.1-0
+			note	CAT source transcript id: ENST00000443915.1
+			note	CAT source GENCODE transcript biotype: protein_coding
+76867881	76867879	CDS
+76829849	>76829646
+			codon_start	1
+			product	KCNQ5 isoform 14
+			protein_id	gnl|fred|T0002971_14_prot
+			transcript_id	gnl|fred|T0002971
+76816753	76815998	gene
+			locus_tag	fred_G0000994
+			pseudogene	processed
+76816753	76815998	pseudo
+			transcript_id	gnl|fred|T0002969
+			ncRNA_class	other
+			product	processed pseudogene
+			product	PGAM1P10 isoform 1
+			note	CAT transcript id: T0002969
+			note	CAT alignment id: ENST00000402426.2-0
+			note	CAT source transcript id: ENST00000402426.2
+			note	CAT source GENCODE transcript biotype: processed_pseudogene
+76879508	76878083	gene
+			locus_tag	fred_G0000995
+			pseudogene	processed
+76879508	76878083	pseudo
+			transcript_id	gnl|fred|T0002972
+			ncRNA_class	other
+			product	processed pseudogene
+			product	KNOP1P4 isoform 1
+			note	CAT transcript id: T0002972
+			note	CAT alignment id: ENST00000445020.1-0
+			note	CAT source transcript id: ENST00000445020.1
+			note	CAT source GENCODE transcript biotype: processed_pseudogene
