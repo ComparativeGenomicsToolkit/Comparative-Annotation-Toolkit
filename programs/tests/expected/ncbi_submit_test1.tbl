@@ -982,7 +982,7 @@
 76816753	76815998	gene
 			locus_tag	fred_G0000994
 			pseudogene	processed
-76816753	76815998	pseudo
+76816753	76815998	ncRNA
 			transcript_id	gnl|fred|T0002969
 			ncRNA_class	other
 			product	processed pseudogene
@@ -994,7 +994,7 @@
 76879508	76878083	gene
 			locus_tag	fred_G0000995
 			pseudogene	processed
-76879508	76878083	pseudo
+76879508	76878083	ncRNA
 			transcript_id	gnl|fred|T0002972
 			ncRNA_class	other
 			product	processed pseudogene

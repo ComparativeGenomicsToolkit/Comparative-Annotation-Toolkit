@@ -50,21 +50,21 @@ def parse_args():
 biotype_map = {
     '3prime_overlapping_ncRNA': 'ncRNA',
     '3prime_overlapping_ncrna': 'ncRNA',
-    'IG_C_gene': 'mRNA',
-    'IG_C_pseudogene': 'pseudo',
-    'IG_D_gene': 'mRNA',
-    'IG_J_gene': 'mRNA',
-    'IG_V_gene': 'mRNA',
-    'IG_V_pseudogene': 'pseudo',
-    'IG_pseudogene': 'pseudo',
+    'IG_C_gene': 'C_segment',
+    'IG_C_pseudogene': 'C_segment',
+    'IG_D_gene': 'D_region',
+    'IG_J_gene': 'J_segment',
+    'IG_V_gene': 'V_region',
+    'IG_V_pseudogene': 'V_region',
+    'IG_pseudogene': 'J_segment',
     'Mt_rRNA': 'rRNA',
     'Mt_tRNA': 'tRNA',
     'TEC': 'mRNA',
-    'TR_C_gene': 'mRNA',
-    'TR_J_gene': 'mRNA',
-    'TR_J_pseudogene': 'pseudo',
-    'TR_V_gene': 'mRNA',
-    'TR_V_pseudogene': 'pseudo',
+    'TR_C_gene': 'C_region',
+    'TR_J_gene': 'J_segment',
+    'TR_J_pseudogene': 'J_segment',
+    'TR_V_gene': 'V_region',
+    'TR_V_pseudogene': 'V_region',
     'antisense': 'ncRNA',
     'antisense_RNA': 'ncRNA',
     'bidirectional_promoter_lncRNA': 'ncRNA',
@@ -77,7 +77,7 @@ biotype_map = {
     'non_stop_decay': 'ncRNA',
     'nonsense_mediated_decay': 'mRNA',
     'polymorphic_pseudogene': 'mRNA',  # coding in some humans
-    'processed_pseudogene': 'pseudo',
+    'processed_pseudogene': 'ncRNA',
     'processed_transcript': 'ncRNA',
     'protein_coding': 'mRNA',
     'pseudogene': 'pseudogene',
@@ -645,7 +645,7 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_ps
 def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
     if verbose:
         print("converting", txd.tx.name, file=sys.stderr)
-    if trans_has_cds(txd):
+    if trans_has_cds(txd) and (txd.attrs.gene_biotype not in pseudo_map):
         cds_spec = get_cds_regions(txd)
         unitary_pseudo = is_possible_unitary_pseudo(cds_spec)
     else:
