@@ -59,7 +59,7 @@ ncbi_submit_tests: ncbi_submit_test1
 ncbi_submit_test1: mkdirs
 	${cat_to_ncbi_submit} input/chimp1.gp input/chimp1.gp_info fred output/$@.tbl
 	${diff} expected/$@.tbl output/$@.tbl
-	${tblToDumbBed} output/$@.tbl output/$@.bed
+
 ifeq (${useTable2asn}, yes)
 	rm -rf output/$@.table2asn
 	mkdir -p  output/$@.table2asn

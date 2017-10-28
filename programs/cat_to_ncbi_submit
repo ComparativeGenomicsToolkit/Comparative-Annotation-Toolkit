@@ -9,8 +9,8 @@ from collections import defaultdict, namedtuple
 my_bin_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
 sys.path.insert(0, os.path.join(my_bin_dir, "../tools"))
 from transcripts import gene_pred_iterator
-from defaultOrderedDict import DefaultOrderedDict
 from intervals import ChromosomeInterval
+from rangeFinder import RangeFinder
 
 verbose = False
 
@@ -51,20 +51,20 @@ biotype_map = {
     '3prime_overlapping_ncRNA': 'ncRNA',
     '3prime_overlapping_ncrna': 'ncRNA',
     'IG_C_gene': 'mRNA',
-    'IG_C_pseudogene': 'mRNA',
+    'IG_C_pseudogene': 'pseudo',
     'IG_D_gene': 'mRNA',
     'IG_J_gene': 'mRNA',
     'IG_V_gene': 'mRNA',
-    'IG_V_pseudogene': 'mRNA',
-    'IG_pseudogene': 'mRNA',
+    'IG_V_pseudogene': 'pseudo',
+    'IG_pseudogene': 'pseudo',
     'Mt_rRNA': 'rRNA',
     'Mt_tRNA': 'tRNA',
     'TEC': 'mRNA',
     'TR_C_gene': 'mRNA',
     'TR_J_gene': 'mRNA',
-    'TR_J_pseudogene': 'mRNA',
+    'TR_J_pseudogene': 'pseudo',
     'TR_V_gene': 'mRNA',
-    'TR_V_pseudogene': 'ncRNA',
+    'TR_V_pseudogene': 'pseudo',
     'antisense': 'ncRNA',
     'antisense_RNA': 'ncRNA',
     'bidirectional_promoter_lncRNA': 'ncRNA',
@@ -76,11 +76,11 @@ biotype_map = {
     'non_coding': 'ncRNA',
     'non_stop_decay': 'ncRNA',
     'nonsense_mediated_decay': 'mRNA',
-    'polymorphic_pseudogene': 'mRNA',
-    'processed_pseudogene': 'ncRNA',
+    'polymorphic_pseudogene': 'mRNA',  # coding in some humans
+    'processed_pseudogene': 'pseudo',
     'processed_transcript': 'ncRNA',
     'protein_coding': 'mRNA',
-    'pseudogene': 'mRNA',
+    'pseudogene': 'pseudogene',
     'rRNA': 'rRNA',
     'retained_intron': 'ncRNA',
     'ribozyme': 'ncRNA',
@@ -92,11 +92,11 @@ biotype_map = {
     'snRNA': 'ncRNA',
     'snoRNA': 'ncRNA',
     'transcribed_processed_pseudogene': 'ncRNA',
-    'transcribed_unitary_pseudogene': 'ncRNA',
+    'transcribed_unitary_pseudogene': 'mRNA',
     'transcribed_unprocessed_pseudogene': 'ncRNA',
     'translated_unprocessed_pseudogene': 'ncRNA',
     'translated_processed_pseudogene': 'ncRNA',
-    'unitary_pseudogene': 'mRNA',
+    'unitary_pseudogene': 'mRNA',   # only in human
     'unknown_likely_coding': 'mRNA',
     'unprocessed_pseudogene': 'ncRNA',
     'vaultRNA': 'ncRNA'}
@@ -128,11 +128,14 @@ ncrna_class = {
     'transcribed_processed_pseudogene': 'other',
     'transcribed_unitary_pseudogene': 'other',
     'transcribed_unprocessed_pseudogene': 'other',
+    'translated_processed_pseudogene': 'other',
     'translated_unprocessed_pseudogene': 'other',
     'unitary_pseudogene': 'other',
     'unprocessed_pseudogene': 'other',
+    'antisense': 'other',
+    'misc_RNA': 'other',
+    'non_coding': 'other',
     'vaultRNA': 'vault_RNA'}
-
 
 # for pseudogenes, this defines the pseudogene key/value pair
 pseudo_map = {
@@ -149,19 +152,62 @@ pseudo_map = {
     'unprocessed_pseudogene': 'unprocessed',
     'translated_processed_pseudogene': 'processed'}
 
+def check_defs():
+    "verify biotype definitions are semi-sane"
+    for biotype in biotype_map.keys():
+        if biotype_map[biotype] == 'ncRNA':
+            assert biotype in ncrna_class, biotype
+        elif biotype_map[biotype] == 'pseudo':
+            assert biotype in pseudo_map, biotype
+
+class GeneData(object):
+    """Annotations for a single gene"""
+    def __init__(self, gene_id):
+        self.gene_id = gene_id
+        self.bounds = None
+        self.txds_by_id = dict()  # TranscriptData by trans_id
+        self.__txds = None  # lazy sort
+
+    @property
+    def txds(self):
+        if self.__txds is None:
+            self.__txds = sorted(self.txds_by_id.values(), key=lambda t:(t.tx.start, t.tx.name))
+        return self.__txds
+        
+    def add(self, txd):
+        if txd.transcript_id in self.txds_by_id:
+            raise Exception("Duplicate transcript id: {} {}".format(self.gene_id, txd.transcript_id))
+        self.txds_by_id[txd.transcript_id] = txd
+        self.__txds = None
+        tx = txd.tx
+        if self.bounds == None:
+            self.bounds = ChromosomeInterval(tx.chromosome, tx.start, tx.stop, tx.strand)
+        else:
+            if tx.strand != self.bounds.strand:
+                # FIXME: make exception
+                print("ERROR!!! inconsistent strand between transcript on gene {}".format(self.gene_id))
+            self.bounds.start = min(self.bounds.start, tx.start)
+            self.bounds.stop = max(self.bounds.stop, tx.stop)
 
 class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
     """transcript annotation and attributes"""
     __slots__ = ()
 
+    @property
+    def transcript_id(self):
+        return self.tx.name
+
 def load_annotations(gp_file, gp_info_file):
     """load all transcript into OrderedDict of (chrom, gene) of TranscriptAttrs"""
-    txd_by_chrom_gene = DefaultOrderedDict(lambda: DefaultOrderedDict(list))
+    by_chrom_gene_id = defaultdict(dict)
     attrs = pd.read_csv(gp_info_file, sep='\t')
     attrs = attrs.set_index(['transcript_id'])
     for tx in gene_pred_iterator(gp_file):
-        txd_by_chrom_gene[tx.chromosome][tx.name2].append(TranscriptData(tx, attrs.ix[tx.name]))
-    return txd_by_chrom_gene
+        gene = by_chrom_gene_id[tx.chromosome].get(tx.name2)
+        if gene is None:
+            gene = by_chrom_gene_id[tx.chromosome][tx.name2] = GeneData(tx.name2)
+        gene.add(TranscriptData(tx, attrs.ix[tx.name]))
+    return by_chrom_gene_id
         
 
 class NcbiTblWriter(object):
@@ -215,6 +261,7 @@ class NcbiTblWriter(object):
             else:
                 merged.append(region)
         return merged
+
     def write_feature(self, regions, strand, feature_key, start_incmpl=False, end_incmpl=False):
         """Write feature definition rows.  Ranges is a list in the form
         ((start1, end1), (start2, end2), ...), for each regions of the feature.
@@ -312,17 +359,57 @@ def inframe_stop_cds(cds_interval, ifs_position):
         stop = cds_interval.stop
     return ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
 
+def bin_genes(genes):
+    "add genes on a chromosome to a RangeFinder binning object to detect overlap"
+    rf = RangeFinder()
+    for gene in genes:
+        rf.add(gene.bounds.chromosome, gene.bounds.start, gene.bounds.stop, gene, gene.bounds.strand)
+    return rf
 
-def get_gene_locus_tag(txd):
+def pick_longest_gene_for_locus(over_genes):
+    "pick longest of overlapping genes"
+    longest_gene = over_genes[0]
+    for over_gene in over_genes[1:]:
+        if len(over_gene.bounds) > len(longest_gene.bounds):
+            longest_gene = over_gene
+    return longest_gene
+
+def pick_gene_for_locus(rf, gene, done):
+    "for a given gene, find overlaps and pick one"
+    over_genes = list(rf.overlapping(gene.bounds.chromosome, gene.bounds.start, gene.bounds.stop, gene.bounds.strand))
+    if len(over_genes) == 1:
+        # fast path
+        done.add(gene.gene_id)
+        return gene
+    if verbose:
+        print("overlapping:", " ".join([gene.gene_id for gene in over_genes]), file=sys.stderr)
+    picked_gene = pick_longest_gene_for_locus(over_genes)
+    done.add(picked_gene.gene_id)
+    for g in over_genes:
+        done.add(g.gene_id)
+    return picked_gene
+
+def pick_genes(by_gene_id):
+    """Select genes to use on a chromosome.  When there are overlapping genes,
+    pick the longest one.  Overlapping genes cause a complex set of errors in
+    tbl2asn.  Each gene as a list of transcripts.
+    """
+    rf = bin_genes(by_gene_id.values())
+    done = set()
+    picked = []
+    for gene in by_gene_id.values():
+        if gene.gene_id not in done:
+            picked.append(pick_gene_for_locus(rf, gene, done))
+    return sorted(picked, key=lambda g: g.bounds.start)
+
+def get_gene_locus_tag(gene):
     # remove species identifier from CAT names (Clint_Chim, etc)
-    return txd.tx.name2.split('_')[-1]
+    return gene.gene_id.split('_')[-1]
 
 
 def get_transcript_base_id(txd):
     "remove species identifier from CAT names (Clint_Chim, etc)"
     return txd.tx.name.split('_')[-1]
-
-    # transcript ID is the gnl|${locus_tag_prefix}|${tx_name} format
 
 
 def get_transcript_gnl_id(locus_tag_prefix, txd):
@@ -346,17 +433,18 @@ def trans_has_cds(txd):
     return txd.tx.cds_size > 0
 
 
-def get_gene_name(txd):
+def get_gene_name(gene):
     # GENCODE uses clone derived names for some genomic annotations, which NCBI doesn't
     # (understandably) like.  Drop these.
+    txd = gene.txds[0]
     if re.match('^[A-Za-z]{1,2}[0-9]+\\.[0-9]$', txd.attrs.source_gene_common_name):
         return None
     else:
         return txd.attrs.source_gene_common_name
 
 
-def get_transcript_product(txd, trans_num):
-    name = get_gene_name(txd)
+def get_transcript_product(gene, txd, trans_num):
+    name = get_gene_name(gene)
     if name is None:
         name = get_transcript_base_id(txd)
     return "{} isoform {}".format(name, trans_num)
@@ -372,14 +460,14 @@ def write_protein_id(locus_tag_prefix, txd, trans_num, tblwr):
     tblwr.write_qualifier('protein_id', get_transcript_protein_id(locus_tag_prefix, txd, trans_num))
 
 
-def write_product(locus_tag_prefix, txd, trans_num, tblwr):
+def write_product(locus_tag_prefix, gene, txd, trans_num, tblwr):
     "write product qualifier as needed"
     # if we have a source gene name, use it
     # product tag must match the gene-level gene tag or the conversion program gets mad
-    if isinstance(txd.attrs.source_gene, str):
-        product = get_transcript_product(txd, trans_num)
+    if not pd.isnull(txd.attrs.source_gene):
+        product = get_transcript_product(gene, txd, trans_num)
         tblwr.write_qualifier("product", product)
-        if get_gene_name(txd) is None:  # mark weird accessions
+        if get_gene_name(gene) is None:  # mark weird accessions
             tblwr.write_qualifier("inference", "similar to DNA sequence {}".format(txd.attrs.source_gene_common_name))
         if trans_has_cds(txd):
             write_protein_id(locus_tag_prefix, txd, trans_num, tblwr)
@@ -472,7 +560,7 @@ def is_possible_unitary_pseudo(cds_spec):
     return (cds_len > 0) and ((cds_len - no_stop_len) > 30) or (no_stop_len <= (0.80 * cds_len))
 
 
-def write_cds_regions(locus_tag_prefix, txd, trans_num, cds_spec, tblwr):
+def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
     tx = txd.tx
     tblwr.write_feature(cds_spec.no_stop_regions, tx.strand, "CDS",
                         cds_spec.start_incmpl, cds_spec.end_incmpl)
@@ -481,7 +569,7 @@ def write_cds_regions(locus_tag_prefix, txd, trans_num, cds_spec, tblwr):
     tblwr.write_qualifier('codon_start', "1")
     
     # product and protein id  must be same on mRNA and CDS
-    write_product(locus_tag_prefix, txd, trans_num, tblwr)
+    write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
  
     # coding transcripts must have a protein_id tag -- just use the name with _prot suffix
     tblwr.write_qualifier('transcript_id', get_transcript_gnl_id(locus_tag_prefix, txd))
@@ -497,9 +585,9 @@ def write_cds_gaps(txd, cds_spec, tblwr):
         tblwr.write_note("gap added in CDS to maintain frame, possibly due to error in genome")
 
 
-def write_cds(locus_tag_prefix, txd, trans_num, cds_spec, tblwr):
+def write_cds(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
     if len(cds_spec.no_stop_regions):
-        write_cds_regions(locus_tag_prefix, txd, trans_num, cds_spec, tblwr)
+        write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr)
     if len(cds_spec.gaps) > 0:
         write_cds_gaps(txd, cds_spec, tblwr)
 
@@ -508,7 +596,7 @@ def get_transcript_exons(txd):
     return [(e.start, e.stop) for e in txd.tx.exon_intervals]
 
 
-def write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, tblwr):
+def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, tblwr):
     tx = txd.tx
     txa = txd.attrs
     
@@ -527,7 +615,7 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, 
         tblwr.write_qualifier('exception', 'low-quality sequence region')
 
     # product and protein id  must be same on mRNA and CDS
-    write_product(locus_tag_prefix, txd, trans_num, tblwr)
+    write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     if unitary_pseudo:
         tblwr.write_qualifier('pseudogene', "unitary")
@@ -536,14 +624,15 @@ def write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, 
     # record cat pipeline information
     tblwr.write_note("CAT transcript id: {}".format(get_transcript_base_id(txd)))
     tblwr.write_note("CAT alignment id: {}".format(txa.alignment_id))
-    tblwr.write_note("CAT source transcript id: {}".format(txa.source_transcript))
+    if not pd.isnull(txa.source_transcript):
+        tblwr.write_note("CAT source transcript id: {}".format(txa.source_transcript))
     if txa.transcript_biotype != 'unknown_likely_coding':
         tblwr.write_note("CAT source GENCODE transcript biotype: {}".format(txa.transcript_biotype))
     else:
         tblwr.write_note('CAT novel prediction: {}'.format(txa.transcript_modes))
 
 
-def convert_transcript(locus_tag_prefix, txd, trans_num, tblwr):
+def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
     if verbose:
         print("converting", txd.tx.name, file=sys.stderr)
     if trans_has_cds(txd):
@@ -552,25 +641,23 @@ def convert_transcript(locus_tag_prefix, txd, trans_num, tblwr):
     else:
         cds_spec = None
         unitary_pseudo = False
-    write_transcript_features(locus_tag_prefix, txd, trans_num, unitary_pseudo, tblwr)
+    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, tblwr)
 
     if trans_has_cds(txd) and not unitary_pseudo:
-        write_cds(locus_tag_prefix, txd, trans_num, cds_spec, tblwr)
+        write_cds(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr)
     return trans_has_cds(txd), unitary_pseudo
 
 
-def write_gene_features(locus_tag_prefix, gene_txds, unitary_pseudo, tblwr):
-    txd = gene_txds[0]  # arbitrary transcript
+def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
+    txd = gene.txds[0]  # arbitrary transcript
     tx = txd.tx
     txa = txd.attrs
 
     # coordinates
-    start = min([txd.tx.start for txd in gene_txds])
-    end = max([txd.tx.stop for txd in gene_txds])
-    tblwr.write_feature([(start, end)], tx.strand, "gene")
+    tblwr.write_feature([(gene.bounds.start, gene.bounds.stop)], gene.bounds.strand, "gene")
 
     # locus tag is ${locus_tag_prefix}_${gene_name}
-    tblwr.write_qualifier("locus_tag", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(txd)))
+    tblwr.write_qualifier("locus_tag", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(gene)))
 
     # if this is a pseudogene, record the pseudogene tag on the gene-level feature
     if txa.gene_biotype in pseudo_map:
@@ -579,11 +666,11 @@ def write_gene_features(locus_tag_prefix, gene_txds, unitary_pseudo, tblwr):
         tblwr.write_qualifier('pseudogene', "unitary")
 
 
-def convert_gene_transcripts(locus_tag_prefix, gene_txds, tblwr):
+def convert_gene_transcripts(locus_tag_prefix, gene, tblwr):
     num_with_cds = 0
     num_unitary_pseudo = 0
-    for trans_num, txd in enumerate(gene_txds, 1):
-        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, txd, trans_num, tblwr)
+    for trans_num, txd in enumerate(gene.txds, 1):
+        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr)
         if has_cds:
             num_with_cds += 1
         if unitary_pseudo:
@@ -591,33 +678,34 @@ def convert_gene_transcripts(locus_tag_prefix, gene_txds, tblwr):
     return num_with_cds, num_unitary_pseudo
 
 
-def convert_gene(locus_tag_prefix, gene_txds, tblwr):
-    num_with_cds, num_unitary_pseudo = convert_gene_transcripts(locus_tag_prefix, gene_txds, tblwr)
+def convert_gene(locus_tag_prefix, gene, tblwr):
+    num_with_cds, num_unitary_pseudo = convert_gene_transcripts(locus_tag_prefix, gene, tblwr)
     tblwr.push()  # save transcripts
     all_coding_unitary_pseudo = (num_with_cds > 0) and (num_unitary_pseudo == num_with_cds)
-    write_gene_features(locus_tag_prefix, gene_txds, all_coding_unitary_pseudo, tblwr)
+    write_gene_features(locus_tag_prefix, gene, all_coding_unitary_pseudo, tblwr)
     tblwr.flush()  # write genes
     tblwr.pop()
     tblwr.flush()  # write transcripts
 
 
-def convert_chrom(locus_tag_prefix, chrom, chrom_txds, tblwr):
+def convert_chrom(locus_tag_prefix, chrom, by_gene_id, tblwr):
     """write features for a chromosome"""
     tblwr.start_seq(chrom)
     tblwr.flush()
-    for gene_txds in chrom_txds.values():
-        convert_gene(locus_tag_prefix, gene_txds, tblwr)
+    for gene in pick_genes(by_gene_id):
+        convert_gene(locus_tag_prefix, gene, tblwr)
 
 
-def cat_to_ncbi_tbl(locus_tag_prefix, txd_by_chrom_gene, tblwr):
-    for chrom in txd_by_chrom_gene.keys():
-        convert_chrom(locus_tag_prefix, chrom, txd_by_chrom_gene[chrom], tblwr)
+def cat_to_ncbi_tbl(locus_tag_prefix, by_chrom_gene_id, tblwr):
+    for chrom in sorted(by_chrom_gene_id.keys()):
+        convert_chrom(locus_tag_prefix, chrom, by_chrom_gene_id[chrom], tblwr)
 
 
 def main(args):
-    txd_by_chrom_gene = load_annotations(args.cat_genepred, args.cat_genepred_info)
+    check_defs()
+    by_chrom_gene_id = load_annotations(args.cat_genepred, args.cat_genepred_info)
     with open(args.ncbi_tbl_file, "w") as tblwr:
-        cat_to_ncbi_tbl(args.locus_tag_prefix, txd_by_chrom_gene, NcbiTblWriter(tblwr))
+        cat_to_ncbi_tbl(args.locus_tag_prefix, by_chrom_gene_id, NcbiTblWriter(tblwr))
 
 
 main(parse_args())
