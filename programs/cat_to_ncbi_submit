@@ -181,7 +181,15 @@ class GeneData(object):
     @property
     def strand(self):
         return self.__txds[0].tx.strand
-        
+
+    @property
+    def start(self):
+        return min([txd.tx.start for txd in self.txds])
+    
+    @property
+    def stop(self):
+        return max([txd.tx.stop for txd in self.txds])
+    
     def add(self, txd):
         if txd.transcript_id in self.txds_by_id:
             raise Exception("Duplicate transcript id: {} {}".format(self.gene_id, txd.transcript_id))
@@ -212,35 +220,6 @@ class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
             exons.add(exon)
         return exons
 
-class GeneCluster(list):
-    "genes that overlap on the same strand"
-    @property
-    def chromosome(self):
-        return self[0].chromosome
-
-    @property
-    def strand(self):
-        return self[0].strand
-
-    @property
-    def start(self):
-        return min([tx.txd.start for txd in self])
-
-    @staticmethod
-    def from_gene(gene):
-        "construct from a single GeneData object"
-        gc = GeneCluster()
-        gc.append(gene)
-        return gc
-    
-    @staticmethod
-    def from_clusters(gene_clusters):
-        "construct by merging a list of GeneCluster objects"
-        gc = GeneCluster()
-        for gene_cluster in gene_clusters:
-            gc.extend(gene_clusters)
-        return gc
-    
 def load_annotations(gp_file, gp_info_file):
     """load all transcript into OrderedDict of (chrom, gene) of TranscriptAttrs"""
     by_chrom_gene_id = defaultdict(dict)
@@ -402,88 +381,6 @@ def inframe_stop_cds(cds_interval, ifs_position):
         start = min(max(cds_interval.start, ifs_position), cds_interval.stop)
         stop = cds_interval.stop
     return ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
-
-def cluster_genes_build_initial_cluster_sets(genes):
-    """Build initial clusters, with one gene per cluster, indexed by (chrom, strand)
-    """
-    cluster_sets = defaultdict(list)
-    for gene in genes:
-        gc = GeneCluster()
-        gc.append(gene)
-        cluster_sets[(gene.chromosome, gene.strand)].append(gc)
-    return cluster_sets
-
-def cluster_genes_build_tree(gene_clusters):
-    """Build ClusterTree objects for existing GeneCluster on a chrom/strand"""
-    cluster_trees = collections.defaultdict(lambda: ClusterTree(0, 1))
-    for gene_cluster in gene_clusters:
-        for exon in gene_cluster.exons:
-            cluster_trees[(gene_cluster.chromosome, gene_cluster.strand)].insert(exon.start, exon.stop, gene_cluster)
-    return cluster_trees
-
-def cluster_genes_merge(cluster_tree):
-    """merge a ClusterTree clusters into new GeneCluster objects, handling the
-    fact that a gene might be in different clusters. This is done in
-    iterations due to cluster on exon overlap, not gene overlap. Return True if any
-    were merged,"""
-    for start, end, clusters in cluster_tree.getregions():
-
-
-            
-    for cluster_tree in cluster_trees.values():
-        for start, end, genes:
-        GeneCluster([gene for s,e,g in cluster_tree.getregions()]
-    
-                
-    for gene in genes:
-        for txd in gene.txds:
-            for exon in txd.tx.exon_intervals:
-                rf.add(exon.chromosome, exon.start, exon.stop, gene, exon.strand)
-    return rf
-
-def get_overlapping_genes(rf, gene):
-    over_genes = set()
-    for txd in gene.txds:
-        for exon in txd.tx.exon_intervals:
-            over_genes |= set(rf.overlapping(exon.chromosome, exon.start, exon.stop, exon.strand))
-    return list(over_genes)
-
-def pick_longest_gene_for_locus(over_genes):
-    "pick longest of overlapping genes"
-    longest_gene = over_genes[0]
-    for over_gene in over_genes[1:]:
-        if len(over_gene.bounds) > len(longest_gene.bounds):
-            longest_gene = over_gene
-    return longest_gene
-
-def pick_gene_for_locus(rf, gene, done):
-    "for a given gene, find overlaps and pick one"
-    over_genes = get_overlapping_genes(rf, gene)
-    if len(over_genes) == 1:
-        # fast path
-        done.add(gene.gene_id)
-        return gene
-    else:
-        if verbose:
-            print("overlapping:", " ".join([g.gene_id for g in over_genes]), file=sys.stderr)
-        picked_gene = pick_longest_gene_for_locus(over_genes)
-        done.add(picked_gene.gene_id)
-        for g in over_genes:
-            done.add(g.gene_id)
-        return picked_gene
-
-def pick_genes(by_gene_id):
-    """Select genes to use on a chromosome.  When there are overlapping genes,
-    pick the longest one.  Overlapping genes cause a complex set of errors in
-    tbl2asn.  Each gene as a list of transcripts.
-    """
-    rf = bin_genes(by_gene_id.values())
-    done = set()
-    picked = []
-    for gene in by_gene_id.values():
-        if gene.gene_id not in done:
-            picked.append(pick_gene_for_locus(rf, gene, done))
-    return sorted(picked, key=lambda g: g.bounds.start)
 
 def get_gene_locus_tag(gene):
     # remove species identifier from CAT names (Clint_Chim, etc)
@@ -737,7 +634,7 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     txa = txd.attrs
 
     # coordinates
-    tblwr.write_feature([(gene.bounds.start, gene.bounds.stop)], gene.bounds.strand, "gene")
+    tblwr.write_feature([(gene.start, gene.stop)], gene.strand, "gene")
 
     # locus tag is ${locus_tag_prefix}_${gene_name}
     tblwr.write_qualifier("locus_tag", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(gene)))
@@ -775,7 +672,7 @@ def convert_chrom(locus_tag_prefix, chrom, by_gene_id, tblwr):
     """write features for a chromosome"""
     tblwr.start_seq(chrom)
     tblwr.flush()
-    for gene in pick_genes(by_gene_id):
+    for gene in sorted(by_gene_id.values(), key=lambda g: (g.start, g.strand)):
         convert_gene(locus_tag_prefix, gene, tblwr)
 
 

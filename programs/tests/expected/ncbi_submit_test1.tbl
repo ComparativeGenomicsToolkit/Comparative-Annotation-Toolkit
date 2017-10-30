@@ -116,6 +116,30 @@
 			product	RAET1G isoform 3
 			protein_id	gnl|fred|T0000007_3_prot
 			transcript_id	gnl|fred|T0000007
+54477	29028	gene
+			locus_tag	fred_G0000004
+48792	48731	ncRNA
+42778	42672
+29348	29028
+			transcript_id	gnl|fred|T0000008
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	RAET1E-AS1 isoform 1
+			note	CAT transcript id: T0000008
+			note	CAT alignment id: ENST00000446954.2-0
+			note	CAT source transcript id: ENST00000446954.2
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+54477	54453	ncRNA
+53323	53235
+29348	29030
+			transcript_id	gnl|fred|T0000010
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	RAET1E-AS1 isoform 2
+			note	CAT transcript id: T0000010
+			note	CAT alignment id: ENST00000605899.1-0
+			note	CAT source transcript id: ENST00000605899.1
+			note	CAT source GENCODE transcript biotype: antisense_RNA
 75412	29029	gene
 			locus_tag	fred_G0000005
 75412	74518	ncRNA
@@ -374,6 +398,117 @@
 			product	EPM2A isoform 1
 			protein_id	gnl|fred|T0000217_1_prot
 			transcript_id	gnl|fred|T0000217
+6126030	6045264	gene
+			locus_tag	fred_G0000090
+6126030	6125904	mRNA
+6125596	6125341
+6122925	6122798
+6099133	6099072
+6097406	6097287
+6096755	6096617
+6084874	6084735
+6080392	6080284
+6046087	6046003
+6045593	6045264
+			transcript_id	gnl|fred|T0000286
+			product	T0000286 isoform 1
+			inference	similar to DNA sequence AL049844.3
+			protein_id	gnl|fred|T0000286_1_prot
+			note	CAT transcript id: T0000286
+			note	CAT alignment id: ENST00000454207.2-0
+			note	CAT source transcript id: ENST00000454207.2
+			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+6125914	6125904	CDS
+6125596	6125341
+6122925	6122798
+6099133	6099106
+			codon_start	1
+			product	T0000286 isoform 1
+			inference	similar to DNA sequence AL049844.3
+			protein_id	gnl|fred|T0000286_1_prot
+			transcript_id	gnl|fred|T0000286
+6118907	6045379	gene
+			locus_tag	fred_G0000091
+6118907	6118776	mRNA
+6099133	6099072
+6097406	6097287
+6096755	6096617
+6084874	6084735
+6080392	6080284
+6046087	6046003
+6045593	6045379
+			transcript_id	gnl|fred|T0000287
+			product	ZC2HC1B isoform 1
+			protein_id	gnl|fred|T0000287_1_prot
+			note	CAT transcript id: T0000287
+			note	CAT alignment id: ENST00000237275.8-0
+			note	CAT source transcript id: ENST00000237275.8
+			note	CAT source GENCODE transcript biotype: protein_coding
+6118803	6118776	CDS
+6099133	6099072
+6097406	6097287
+6096755	6096617
+6084874	6084735
+6080392	6080284
+6046087	6046017
+			codon_start	1
+			product	ZC2HC1B isoform 1
+			protein_id	gnl|fred|T0000287_1_prot
+			transcript_id	gnl|fred|T0000287
+6118907	6118776	ncRNA
+6101654	6101572
+6099133	6099072
+6097406	6097287
+6096755	6096617
+6084874	6084735
+6080392	6080284
+6046087	6046003
+6045593	6045534
+			transcript_id	gnl|fred|T0000288
+			ncRNA_class	other
+			product	processed transcript
+			product	ZC2HC1B isoform 2
+			note	CAT transcript id: T0000288
+			note	CAT alignment id: ENST00000539295.3-0
+			note	CAT source transcript id: ENST00000539295.3
+			note	CAT source GENCODE transcript biotype: processed_transcript
+6140015	6119531	gene
+			locus_tag	fred_G0000092
+6140015	6139879	mRNA
+6138872	6138741
+6137308	6137135
+6133229	6133142
+6126045	6125904
+6125596	6125341
+6122925	6122798
+6121240	6121101
+6120499	6120447
+6120257	6120214
+6120151	6120058
+6119927	6119531
+			transcript_id	gnl|fred|T0000289
+			product	LTV1 isoform 1
+			protein_id	gnl|fred|T0000289_1_prot
+			note	CAT transcript id: T0000289
+			note	CAT alignment id: augTM-ENST00000367576.5-0
+			note	CAT source transcript id: ENST00000367576.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+6139881	6139879	CDS
+6138872	6138741
+6137308	6137135
+6133229	6133142
+6126045	6125904
+6125596	6125341
+6122925	6122798
+6121240	6121101
+6120499	6120447
+6120257	6120214
+6120151	6120058
+6119927	6119817
+			codon_start	1
+			product	LTV1 isoform 1
+			protein_id	gnl|fred|T0000289_1_prot
+			transcript_id	gnl|fred|T0000289
 11071684	11078078	gene
 			locus_tag	fred_G0000148
 11071684	11072174	ncRNA
@@ -439,6 +574,23 @@
 			note	CAT alignment id: ENST00000560949.5-0
 			note	CAT source transcript id: ENST00000560949.5
 			note	CAT source GENCODE transcript biotype: protein_coding
+37552080	37548112	gene
+			locus_tag	fred_G0000495
+37552080	37552003	mRNA
+37550215	37550087
+37549804	37548112
+			transcript_id	gnl|fred|T0001543
+			product	RFPL4B isoform 1
+			protein_id	gnl|fred|T0001543_1_prot
+			note	CAT transcript id: T0001543
+			note	CAT alignment id: ENST00000441065.2-0
+			note	CAT source transcript id: ENST00000441065.2
+			note	CAT source GENCODE transcript biotype: protein_coding
+37549699	37548908	CDS
+			codon_start	1
+			product	RFPL4B isoform 1
+			protein_id	gnl|fred|T0001543_1_prot
+			transcript_id	gnl|fred|T0001543
 37661217	37549314	gene
 			locus_tag	fred_G0000496
 37661217	37661107	mRNA
@@ -509,6 +661,115 @@
 			note	CAT alignment id: ENST00000585504.5-0
 			note	CAT source transcript id: ENST00000585504.5
 			note	CAT source GENCODE transcript biotype: processed_transcript
+37661930	37590990	gene
+			locus_tag	fred_G0000498
+37661930	37661385	ncRNA
+37661244	37661107
+37591671	37590990
+			transcript_id	gnl|fred|T0001549
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001549 isoform 1
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001549
+			note	CAT alignment id: ENST00000433684.6-0
+			note	CAT source transcript id: ENST00000433684.6
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661217	37661107	ncRNA
+37618969	37618852
+37615033	37614920
+37591671	37591317
+			transcript_id	gnl|fred|T0001550
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001550 isoform 2
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001550
+			note	CAT alignment id: ENST00000590584.4-0
+			note	CAT source transcript id: ENST00000590584.4
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661217	37661107	ncRNA
+37615033	37614895
+37591671	37591321
+			transcript_id	gnl|fred|T0001551
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001551 isoform 3
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001551
+			note	CAT alignment id: ENST00000590804.5-0
+			note	CAT source transcript id: ENST00000590804.5
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661217	37661107	ncRNA
+37639692	37639498
+37591671	37591325
+			transcript_id	gnl|fred|T0001552
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001552 isoform 4
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001552
+			note	CAT alignment id: ENST00000629766.2-0
+			note	CAT source transcript id: ENST00000629766.2
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661217	37661107	ncRNA
+37615033	37614895
+37614789	37614560
+37591671	37591429
+			transcript_id	gnl|fred|T0001553
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001553 isoform 5
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001553
+			note	CAT alignment id: ENST00000585450.5-0
+			note	CAT source transcript id: ENST00000585450.5
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661217	37661107	ncRNA
+37605991	37605243
+			transcript_id	gnl|fred|T0001554
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001554 isoform 6
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001554
+			note	CAT alignment id: ENST00000590293.5-0
+			note	CAT source transcript id: ENST00000590293.5
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661217	37661107	ncRNA
+37620912	37620781
+37618969	37618564
+			transcript_id	gnl|fred|T0001555
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001555 isoform 7
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001555
+			note	CAT alignment id: ENST00000588837.5-0
+			note	CAT source transcript id: ENST00000588837.5
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661193	37661107	ncRNA
+37641305	37640716
+			transcript_id	gnl|fred|T0001556
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001556 isoform 8
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001556
+			note	CAT alignment id: ENST00000627025.1-0
+			note	CAT source transcript id: ENST00000627025.1
+			note	CAT source GENCODE transcript biotype: antisense_RNA
+37661193	37661107	ncRNA
+37646747	37646422
+			transcript_id	gnl|fred|T0001570
+			ncRNA_class	antisense
+			product	antisense RNA
+			product	T0001570 isoform 9
+			inference	similar to DNA sequence AL365214.2
+			note	CAT transcript id: T0001570
+			note	CAT alignment id: ENST00000628122.2-0
+			note	CAT source transcript id: ENST00000628122.2
+			note	CAT source GENCODE transcript biotype: antisense_RNA
 77242358	76672842	gene
 			locus_tag	fred_G0000991
 77242069	77241563	mRNA
