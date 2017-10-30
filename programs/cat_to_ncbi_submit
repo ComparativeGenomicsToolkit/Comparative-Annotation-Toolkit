@@ -8,6 +8,7 @@ import pandas as pd
 from collections import defaultdict, namedtuple
 my_bin_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
 sys.path.insert(0, os.path.join(my_bin_dir, "../tools"))
+from bx.intervals.cluster import ClusterTree
 from transcripts import gene_pred_iterator
 from intervals import ChromosomeInterval
 from rangeFinder import RangeFinder
@@ -164,7 +165,6 @@ class GeneData(object):
     """Annotations for a single gene"""
     def __init__(self, gene_id):
         self.gene_id = gene_id
-        self.bounds = None
         self.txds_by_id = dict()  # TranscriptData by trans_id
         self.__txds = None  # lazy sort
 
@@ -173,22 +173,29 @@ class GeneData(object):
         if self.__txds is None:
             self.__txds = sorted(self.txds_by_id.values(), key=lambda t:(t.tx.start, t.tx.name))
         return self.__txds
+
+    @property
+    def chrom(self):
+        return self.__txds[0].tx.chromosome
+        
+    @property
+    def strand(self):
+        return self.__txds[0].tx.strand
         
     def add(self, txd):
         if txd.transcript_id in self.txds_by_id:
             raise Exception("Duplicate transcript id: {} {}".format(self.gene_id, txd.transcript_id))
         self.txds_by_id[txd.transcript_id] = txd
         self.__txds = None
-        tx = txd.tx
-        if self.bounds == None:
-            self.bounds = ChromosomeInterval(tx.chromosome, tx.start, tx.stop, tx.strand)
-        else:
-            if tx.strand != self.bounds.strand:
-                # FIXME: make exception
-                print("ERROR!!! inconsistent strand between transcript on gene {}".format(self.gene_id))
-            self.bounds.start = min(self.bounds.start, tx.start)
-            self.bounds.stop = max(self.bounds.stop, tx.stop)
 
+    @property
+    def exons(self):
+        "get unique exons"
+        exons = set()
+        for txd in gene.txds:
+            exons.update(tdx.exons)
+        return exons
+            
 class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
     """transcript annotation and attributes"""
     __slots__ = ()
@@ -197,6 +204,43 @@ class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
     def transcript_id(self):
         return self.tx.name
 
+    @property
+    def exons(self):
+        "get unique exons"
+        exons = set()
+        for exon in self.tx.exon_intervals:
+            exons.add(exon)
+        return exons
+
+class GeneCluster(list):
+    "genes that overlap on the same strand"
+    @property
+    def chromosome(self):
+        return self[0].chromosome
+
+    @property
+    def strand(self):
+        return self[0].strand
+
+    @property
+    def start(self):
+        return min([tx.txd.start for txd in self])
+
+    @staticmethod
+    def from_gene(gene):
+        "construct from a single GeneData object"
+        gc = GeneCluster()
+        gc.append(gene)
+        return gc
+    
+    @staticmethod
+    def from_clusters(gene_clusters):
+        "construct by merging a list of GeneCluster objects"
+        gc = GeneCluster()
+        for gene_cluster in gene_clusters:
+            gc.extend(gene_clusters)
+        return gc
+    
 def load_annotations(gp_file, gp_info_file):
     """load all transcript into OrderedDict of (chrom, gene) of TranscriptAttrs"""
     by_chrom_gene_id = defaultdict(dict)
@@ -359,9 +403,38 @@ def inframe_stop_cds(cds_interval, ifs_position):
         stop = cds_interval.stop
     return ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
 
-def bin_genes(genes):
-    "add genes on a chromosome to a RangeFinder binning object to detect overlap"
-    rf = RangeFinder()
+def cluster_genes_build_initial_cluster_sets(genes):
+    """Build initial clusters, with one gene per cluster, indexed by (chrom, strand)
+    """
+    cluster_sets = defaultdict(list)
+    for gene in genes:
+        gc = GeneCluster()
+        gc.append(gene)
+        cluster_sets[(gene.chromosome, gene.strand)].append(gc)
+    return cluster_sets
+
+def cluster_genes_build_tree(gene_clusters):
+    """Build ClusterTree objects for existing GeneCluster on a chrom/strand"""
+    cluster_trees = collections.defaultdict(lambda: ClusterTree(0, 1))
+    for gene_cluster in gene_clusters:
+        for exon in gene_cluster.exons:
+            cluster_trees[(gene_cluster.chromosome, gene_cluster.strand)].insert(exon.start, exon.stop, gene_cluster)
+    return cluster_trees
+
+def cluster_genes_merge(cluster_tree):
+    """merge a ClusterTree clusters into new GeneCluster objects, handling the
+    fact that a gene might be in different clusters. This is done in
+    iterations due to cluster on exon overlap, not gene overlap. Return True if any
+    were merged,"""
+    for start, end, clusters in cluster_tree.getregions():
+
+
+            
+    for cluster_tree in cluster_trees.values():
+        for start, end, genes:
+        GeneCluster([gene for s,e,g in cluster_tree.getregions()]
+    
+                
     for gene in genes:
         for txd in gene.txds:
             for exon in txd.tx.exon_intervals:

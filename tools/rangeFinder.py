@@ -140,6 +140,15 @@ class RangeBins(object):
                             if entry.overlaps(start, end):
                                 yield entry.value
 
+    def removeIfExists(self, start, end, value):
+        """Remove an entry with the particular range if it exists, otherwise return false """
+        try:
+            bucket = self.buckets[(Binner.calcBin(start, end))]  # exception if no bucket
+            bucket.remove(Entry(start, end, value))  # exception if no value
+            return True
+        except IndexError, ValueError:
+            return False
+
     def values(self):
         "generator over all values"
         for bin in list(self.bins.values()):
@@ -202,6 +211,40 @@ class RangeFinder(object):
             if bins is not None:
                 for value in bins.overlapping(start, end):
                     yield value
+
+    def __removeIfExists(self, seqId, start, end, value, strand):
+        removed = False
+        bins = self.seqBins.get((seqId, strand))
+        if bins is not None:
+            removed = bins.removeIfExists(start, end, value)
+        return removed
+
+    def __removeSpecificStrand(self, seqId, start, end, value, strand):
+        "remove an entry on specific strand, which might be None"
+        if not self.__removeIfExists(seqId, start, end, value, strand):
+            raise RemoveValueError(start, end)
+            
+    def __removeBothStrands(self, seqId, start, end, value):
+        "remove an entry, checking both strands"
+        removed = self.__removeIfExists(seqId, start, end, value, '+')
+        if not removed:
+            removed = self.__removeIfExists(seqId, start, end, value, '-')
+            if bins is not None:
+                removed = bins.removeIfExists(seqId, start, end, value)
+        if not removed:
+            raise RemoveValueError(start, end)
+        
+    def remove(self, seqId, start, end, value, strand=None):
+        """remove an entry with the particular range and value, value error if not found"""
+        self.__checkStrand(strand)
+        if self.haveStrand and (strand is None):
+            # must check on both strands
+            self.__removeBothStrands(seqId, start, end, value)
+        else:
+            # must only check a specifc strand, or no strand to check
+            if not self.haveStrand:
+                strand = None  # no strand to check
+            self.__removeSpecificStrand(seqId, start, end, value, strand)
 
     def values(self):
         "generator over all values"
