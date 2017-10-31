@@ -43,6 +43,7 @@ def parse_args():
     verbose = args.verbose
     return args
 
+
 # this maps Ensembl/GENCODE biotypes to feature-level identifiers
 # non-transcribed pseudogenes are called mRNAs as they are mostly
 # annotated from protein alignments.  Transcribed pseudogenes are called
@@ -412,8 +413,12 @@ def is_non_coding(txd):
 def trans_has_cds(txd):
     return txd.tx.cds_size > 0
 
+def have_gene_name(gene):
+    "is there anything for the gene name real or generated??"
+    txd = gene.txds[0]
+    return not pd.isnull(txd.attrs.source_gene_common_name)
 
-def get_gene_name(gene):
+def get_real_gene_name(gene):
     # GENCODE uses clone derived names for some genomic annotations, which NCBI doesn't
     # (understandably) like.  Drop these.
     txd = gene.txds[0]
@@ -424,7 +429,7 @@ def get_gene_name(gene):
 
 
 def get_coding_product(gene, txd, trans_num):
-    name = get_gene_name(gene)
+    name = get_real_gene_name(gene)
     if name is None:
         name = get_transcript_base_id(txd)
     return "{} isoform {}".format(name, trans_num)
@@ -455,7 +460,7 @@ def write_product(locus_tag_prefix, gene, txd, trans_num, tblwr):
     # it there is no source gene, it is a CGP annotations
     if not pd.isnull(txd.attrs.source_gene):
         tblwr.write_qualifier("product",  get_product(gene, txd, trans_num))
-    if get_gene_name(gene) is None:
+    if have_gene_name(gene) and (get_real_gene_name(gene) is None):
         # mark gene names from clone accessions, drop `version', since it is not clone version
         tblwr.write_qualifier("inference", "similar to DNA sequence|INSDC|{}".format(txd.attrs.source_gene_common_name.split('.')[0]))
     if trans_has_cds(txd):
