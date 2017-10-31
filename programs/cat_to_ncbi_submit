@@ -423,7 +423,7 @@ def get_gene_name(gene):
         return txd.attrs.source_gene_common_name
 
 
-def get_transcript_product(gene, txd, trans_num):
+def get_coding_product(gene, txd, trans_num):
     name = get_gene_name(gene)
     if name is None:
         name = get_transcript_base_id(txd)
@@ -431,6 +431,14 @@ def get_transcript_product(gene, txd, trans_num):
 
 def get_ncrna_product(txd):
     return txd.attrs.transcript_biotype.replace('_', ' ')
+
+def get_product(gene, txd, trans_num):
+    if is_non_coding(txd):
+        return get_ncrna_product(txd)
+    elif get_transcript_feature(txd) == "tRNA":
+        return "tRNA-Xxx"
+    else:
+        return get_coding_product(gene, txd, trans_num)
 
 def get_transcript_protein_id(locus_tag, txd, trans_num):
     return "gnl|{}|{}_{}_prot".format(locus_tag, get_transcript_base_id(txd), trans_num)
@@ -443,14 +451,14 @@ def write_protein_id(locus_tag_prefix, txd, trans_num, tblwr):
 def write_product(locus_tag_prefix, gene, txd, trans_num, tblwr):
     "write product qualifier as needed"
     # if we have a source gene name, use it
-    # product tag must match the gene-level gene tag or the conversion program gets mad
+    # Product tag must match the gene-level gene tag or the conversion program gets mad
+    # it there is no source gene, it is a CGP annotations
     if not pd.isnull(txd.attrs.source_gene):
-        product = get_transcript_product(gene, txd, trans_num)
-        tblwr.write_qualifier("product", product)
-        if get_gene_name(gene) is None:  # mark weird accessions
-            tblwr.write_qualifier("inference", "similar to DNA sequence {}".format(txd.attrs.source_gene_common_name))
-        if trans_has_cds(txd):
-            write_protein_id(locus_tag_prefix, txd, trans_num, tblwr)
+        tblwr.write_qualifier("product",  get_product(gene, txd, trans_num))
+    if get_gene_name(gene) is None:  # mark gene names from clone accessions
+        tblwr.write_qualifier("inference", "similar to DNA sequence")
+    if trans_has_cds(txd):
+        write_protein_id(locus_tag_prefix, txd, trans_num, tblwr)
 
 
 def make_exon_idx_iter(txd):
@@ -585,17 +593,17 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_ps
     
     tblwr.write_qualifier('transcript_id', get_transcript_gnl_id(locus_tag_prefix, txd))
 
-    # if non-coding, fill ncRNA_class tag
+    # if non-coding, fill in ncRNA_class tag
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
-        tblwr.write_qualifier('product', get_ncrna_product(txd))
+
+    write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
+    
 
     # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
         tblwr.write_qualifier('exception', 'low-quality sequence region')
 
-    # product and protein id  must be same on mRNA and CDS
-    write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     if unitary_pseudo:
         tblwr.write_qualifier('pseudogene', "unitary")
