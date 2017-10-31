@@ -455,8 +455,9 @@ def write_product(locus_tag_prefix, gene, txd, trans_num, tblwr):
     # it there is no source gene, it is a CGP annotations
     if not pd.isnull(txd.attrs.source_gene):
         tblwr.write_qualifier("product",  get_product(gene, txd, trans_num))
-    if get_gene_name(gene) is None:  # mark gene names from clone accessions
-        tblwr.write_qualifier("inference", "similar to DNA sequence")
+    if get_gene_name(gene) is None:
+        # mark gene names from clone accessions, drop `version', since it is not clone version
+        tblwr.write_qualifier("inference", "similar to DNA sequence|INSDC|{}".format(txd.attrs.source_gene_common_name.split('.')[0]))
     if trans_has_cds(txd):
         write_protein_id(locus_tag_prefix, txd, trans_num, tblwr)
 
