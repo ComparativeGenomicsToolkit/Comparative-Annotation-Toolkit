@@ -720,7 +720,9 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
             tx_obj = tx_dict[tx]
             name = id_template.format(genome=genome, tag_type='T', unique_id=tx_count)
             score = int(round(attrs.get('score', 0)))
-            source_gene = attrs.get('source_gene', tx_obj.name2)
+            source_gene = attrs['source_gene']
+            if source_gene is None:
+                source_gene = tx_obj.name2
             if source_gene not in genes_seen[tx_obj.chromosome]:
                 gene_count += 1
                 genes_seen[tx_obj.chromosome][source_gene] = gene_count
