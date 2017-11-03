@@ -811,4 +811,4 @@ def has_stop_codon(fasta, tx):
     """
     if tx.cds_size == 0:
         return None
-    return tx.get_cds(fasta)[-3:] in ['TAA', 'TAG', 'TGA']
+    return tx.get_protein_sequence(fasta)[-1] == '*'
