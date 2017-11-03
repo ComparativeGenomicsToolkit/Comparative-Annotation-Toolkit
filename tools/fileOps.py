@@ -130,7 +130,7 @@ def iter_lines(fspec, skip_lines=0, sep='\t'):
             else:
                 yield line.rstrip()
     finally:
-        if isinstance(fspec, str):
+        if isinstance(fspec, six.string_types):
             fh.close()
 
 
