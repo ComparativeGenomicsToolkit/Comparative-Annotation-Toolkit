@@ -300,7 +300,11 @@ def join_genes(job, gff_chunks):
     cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
            ['sed', ' s/jg/augCGP-/g']]
-    tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    try:
+        tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    except:
+        raise RuntimeError('joingenes failed. gtf_fofn_contents: {} raw_gtf: {}'.format(open(raw_gtf_fofn).readlines(),
+                                                                                        raw_gtf_file))
 
     # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
     cmd = ['gtfToGenePred', '-genePredExt', join_genes_file, join_genes_gp]
