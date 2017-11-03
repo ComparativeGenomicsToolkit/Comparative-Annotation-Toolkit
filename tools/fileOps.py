@@ -14,6 +14,7 @@ import string
 import random
 import tempfile
 import hashlib
+import six
 
 
 class TemporaryFilePath(object):
@@ -112,25 +113,22 @@ def opengz(file, mode="r"):
         return open(file, mode)
 
 
-def iter_lines(fspec, skip_lines=0, sep='\t', skip_comments=True, comment_char='#'):
+def iter_lines(fspec, skip_lines=0, sep='\t'):
     """generator over lines in file, dropping newlines.  If fspec is a string,
     open the file and close at end. Otherwise it is file-like object and will
     not be closed.
     :param fspec: A file path or file handle.
     :param skip_lines: A integer of the number of lines to skip from the start of the file
     :param sep: Character used to separate columns in the file. If set to None, will not split the line.
-    :param skip_comments: Set to True to skip lines that start with comment_char
-    :param comment_char: Starting character used by skip_comments.
     :return: Iterator of lines"""
     fh = _resolve_fspec(fspec, 'r')
     try:
         _ = [fh.next() for _ in range(skip_lines)]
         for line in fh:
-            if skip_comments is True and not line.startswith(comment_char):
-                if sep is not None:
-                    yield line.rstrip().split(sep)
-                else:
-                    yield line.rstrip()
+            if sep is not None:
+                yield line.rstrip().split(sep)
+            else:
+                yield line.rstrip()
     finally:
         if isinstance(fspec, str):
             fh.close()
@@ -238,7 +236,7 @@ def _resolve_fspec(fspec, mode='r'):
     :param fspec: A open file handle or file path
     :return: a open file handle
     """
-    if isinstance(fspec, str):
+    if isinstance(fspec, six.string_types):
         return opengz(fspec, mode)
     else:
         return fspec
