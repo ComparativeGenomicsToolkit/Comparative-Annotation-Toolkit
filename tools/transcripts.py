@@ -799,7 +799,7 @@ def has_start_codon(fasta, tx):
     """
     if tx.cds_size == 0:
         return None
-    return tx.get_cds(fasta)[:3] == 'ATG'
+    return tx.get_protein_sequence(fasta)[0] == 'M'
 
 
 def has_stop_codon(fasta, tx):
