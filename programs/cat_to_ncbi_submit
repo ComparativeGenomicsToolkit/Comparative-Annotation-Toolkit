@@ -15,6 +15,9 @@ from rangeFinder import RangeFinder
 
 verbose = False
 
+# discard CDS with less than this many bases.
+min_cds_size = 90
+
 def parse_args():
     desc = """convert a CAT generated genePred and associated information to an NCBI submission table file
       The following FATAL table2asn errors in the report file can be ignored:
@@ -76,13 +79,13 @@ biotype_map = {
     'miRNA': 'ncRNA',
     'misc_RNA': 'ncRNA',
     'non_coding': 'ncRNA',
-    'non_stop_decay': 'ncRNA',
+    'non_stop_decay': 'mRNA',
     'nonsense_mediated_decay': 'mRNA',
     'polymorphic_pseudogene': 'mRNA',  # coding in some humans
     'processed_pseudogene': 'ncRNA',
     'processed_transcript': 'ncRNA',
     'protein_coding': 'mRNA',
-    'pseudogene': 'pseudogene',
+    'pseudogene': 'ncRNA',
     'rRNA': 'rRNA',
     'retained_intron': 'ncRNA',
     'ribozyme': 'ncRNA',
@@ -94,11 +97,11 @@ biotype_map = {
     'snRNA': 'ncRNA',
     'snoRNA': 'ncRNA',
     'transcribed_processed_pseudogene': 'ncRNA',
-    'transcribed_unitary_pseudogene': 'mRNA',
+    'transcribed_unitary_pseudogene': 'ncRNA',
     'transcribed_unprocessed_pseudogene': 'ncRNA',
     'translated_unprocessed_pseudogene': 'ncRNA',
     'translated_processed_pseudogene': 'ncRNA',
-    'unitary_pseudogene': 'mRNA',   # only in human
+    'unitary_pseudogene': 'ncRNA',   # only in human
     'unknown_likely_coding': 'mRNA',
     'unprocessed_pseudogene': 'ncRNA',
     'vaultRNA': 'ncRNA'}
@@ -290,16 +293,16 @@ class NcbiTblWriter(object):
         """Write feature definition rows.  Ranges is a list in the form
         ((start1, end1), (start2, end2), ...), for each regions of the feature.
         The range are zero-based, half-open, and coordinates will be swapped on negative strand."""
-
         if feature_key != "CDS":
             regions = self.__merge_adjacent_features(regions)
-        
-        # correct order for strand
+
+        # correct order for strand, use start/end incmpl as True only for the appropriate regions
         regions = list(sorted(regions, key=lambda r: r[0] if strand == '+' else -r[1]))
         if strand == '-':
             start_incmpl, end_incmpl = end_incmpl, start_incmpl
         self.__write_feature_region(regions[0], strand, feature_key,
-                                    start_incmpl=start_incmpl, end_incmpl=False)
+                                    start_incmpl=start_incmpl,
+                                    end_incmpl=(end_incmpl and (len(regions) == 1)))
         for region in regions[1:]:
             self.__write_feature_region(region, strand, None,
                                         start_incmpl=None,
@@ -323,9 +326,12 @@ class CdsSpec(object):
         self.regions = []     # CDS regions, frame adjusted
         self.no_stop_regions = []  # CDS regions up to the first in-frame stop
         self.gaps = []
-        # start/end completeness (start DNA + strand start)
+        # start/end completeness (DNA (+) strand)
         self.start_incmpl = self.end_incmpl = None
 
+    def __str__(self):
+        return "CDS: {} regions={}, no_stop_regions={}, gaps={}, incmpl={}/{}".format(self.strand, self.regions, self.no_stop_regions, self.gaps, self.start_incmpl, self.end_incmpl)
+        
     @property
     def cds_len(self):
         return sum(([e[1]-e[0] for e in self.regions]))
@@ -427,7 +433,6 @@ def get_real_gene_name(gene):
     else:
         return txd.attrs.source_gene_common_name
 
-
 def get_coding_product(gene, txd, trans_num):
     name = get_real_gene_name(gene)
     if name is None:
@@ -461,8 +466,8 @@ def write_product(locus_tag_prefix, gene, txd, trans_num, tblwr):
     if not pd.isnull(txd.attrs.source_gene):
         tblwr.write_qualifier("product",  get_product(gene, txd, trans_num))
     if have_gene_name(gene) and (get_real_gene_name(gene) is None):
-        # mark gene names from clone accessions, drop `version', since it is not clone version
-        tblwr.write_qualifier("inference", "similar to DNA sequence|INSDC|{}".format(txd.attrs.source_gene_common_name.split('.')[0]))
+        # generated gene name
+        tblwr.write_note("No associated gene symbol, Ensembl generated symbol was {}".format(txd.attrs.source_gene_common_name))
     if trans_has_cds(txd):
         write_protein_id(locus_tag_prefix, txd, trans_num, tblwr)
 
@@ -478,6 +483,7 @@ def make_exon_idx_iter(txd):
 def add_cds_region(cds_interval, frame, expected_frame, ifs_position, cds_spec):
     """Add the next CDS region to the lists, adding gaps to if there are indels,
     as NCBI doesn't explicitly support frame shifts. Returns next expected frame"""
+    # FIXME: much of this code is now in transcripts.py, switch to using it.
     # FIXME: /start_codon could be used rather adjust CDS at start
     if verbose:
         print("  cds", cds_interval, "[{}]".format(len(cds_interval)), "frame", frame, "exframe", expected_frame, file=sys.stderr)
@@ -501,29 +507,47 @@ def add_cds_region(cds_interval, frame, expected_frame, ifs_position, cds_spec):
 
 
 def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
+    # trans_start_incmpl is in the direction of transcription
+    # but CDS spec is DNA 5'
     cds_spec.start_incmpl = cds_spec.end_incmpl = False
 
     # incompleteness checks based on frame, source gene and start/stop codons in genome
     trans_end_incmpl = not cds_spec.is_mult_three()
-
     if txd.tx.strand  == '+':
-        if trans_start_incmpl or not txd.attrs.valid_start:
+        if trans_start_incmpl:
             cds_spec.start_incmpl = True
-        if trans_end_incmpl or not txd.attrs.valid_start:
+        if trans_end_incmpl or not txd.attrs.valid_stop:
             cds_spec.end_incmpl = True
     else:
-        if trans_start_incmpl or not txd.attrs.valid_start:
+        if trans_start_incmpl:
             cds_spec.end_incmpl = True
-        if trans_end_incmpl or not txd.attrs.valid_start:
+        if trans_end_incmpl or not txd.attrs.valid_stop:
             cds_spec.start_incmpl = True
 
-    # completeness based on source
+    # factor in completeness based on source
     if txd.tx.cds_start_stat == "incmpl":
         cds_spec.start_incmpl = True
     if txd.tx.cds_end_stat == "incmpl":
         cds_spec.end_incmpl = True
 
+    # If there is a not a valid start code, force start incompleteness.  This will
+    # make non-ATG starts incomplete, however unless we add GENCODE non-ATG start
+    # tags, this probably produces the fewest errors.
+    if txd.attrs.valid_stop:
+        if txd.tx.strand  == '+':
+            cds_spec.start_incmpl = True
+        else:
+            cds_spec.end_incmpl = True
 
+        
+    # if there is a valid stop, force end completeness or tbl2asn generates SEQ_FEAT.PartialProblem
+    # this overrides the source gene being incomplete
+    if txd.attrs.valid_stop:
+        if txd.tx.strand  == '+':
+            cds_spec.end_incmpl = False
+        else:
+            cds_spec.start_incmpl = False
+        
 def get_cds_regions(txd):
     """Get list of CDS regions and list of partial codons.  If there is a frame
     shift, adjust the CDS accordingly, inserting a gap.
@@ -556,6 +580,7 @@ def is_possible_unitary_pseudo(cds_spec):
 
 def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
     tx = txd.tx
+
     tblwr.write_feature(cds_spec.no_stop_regions, tx.strand, "CDS",
                         cds_spec.start_incmpl, cds_spec.end_incmpl)
 
@@ -659,17 +684,31 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     elif unitary_pseudo:
         tblwr.write_qualifier('pseudogene', "unitary")
 
+def include_transcript(txd):
+    # don't include too-short CDS transcripts
+    return (not trans_has_cds(txd)) or (txd.tx.cds_size >= min_cds_size)
 
 def convert_gene_transcripts(locus_tag_prefix, gene, tblwr):
     num_with_cds = 0
     num_unitary_pseudo = 0
     for trans_num, txd in enumerate(gene.txds, 1):
-        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr)
-        if has_cds:
-            num_with_cds += 1
-        if unitary_pseudo:
-            num_unitary_pseudo += 1
+        if include_transcript(txd):
+            has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr)
+            if has_cds:
+                num_with_cds += 1
+            if unitary_pseudo:
+                num_unitary_pseudo += 1
     return num_with_cds, num_unitary_pseudo
+
+def include_gene(gene):
+    # only including coding genes that have at least some CDS that are at least the minimum
+    # size
+    coding_txds = [tdx for txd in gene.txds if trans_has_cds(txd)]
+    if len(coding_txds) == 0:
+        return True  # no CDS
+    else:
+        max_cds_len = max([tdx.tx.cds_size for txd in coding_txds])
+    return max_cds_len >= min_cds_size
 
 
 def convert_gene(locus_tag_prefix, gene, tblwr):

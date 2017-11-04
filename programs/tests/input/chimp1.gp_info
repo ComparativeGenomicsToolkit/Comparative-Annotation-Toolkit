@@ -57,4 +57,4 @@ Clint_Chim_T0002969	Clint_Chim_G0000994	ENST00000402426.2-0		1	0			processed_pse
 Clint_Chim_T0002970	Clint_Chim_G0000991	ENST00000441538.1-0		1,1	0,0	False		protein_coding	1	0	False		True	996.0	ENSG00000185760.15	KCNQ5	ENST00000441538.1	KCNQ5-210	protein_coding	ortholog	transMap	False	True	76828703.0
 Clint_Chim_T0002971	Clint_Chim_G0000991	ENST00000443915.1-0		1,1	0,0			protein_coding	1	1	False		True	1000.0	ENSG00000185760.15	KCNQ5	ENST00000443915.1	KCNQ5-211	protein_coding	ortholog	transMap	False	True	
 Clint_Chim_T0002972	Clint_Chim_G0000995	ENST00000445020.1-0		1	0			processed_pseudogene			False		True	952.0	ENSG00000232422.1	KNOP1P4	ENST00000445020.1	KNOP1P4-201	processed_pseudogene	ortholog	transMap	True	True	
-Clint_Chim_T0015037	Clint_Chim_G0004466	ENST00000387461.2-0		1	1			Mt_tRNA			False		True	187.0	ENSG00000210196.2	MT-TP	ENST00000387461.2	MT-TP-201	Mt_tRNA	ortholog	transMap	True	True	
+
