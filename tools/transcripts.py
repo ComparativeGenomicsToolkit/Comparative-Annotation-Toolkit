@@ -466,6 +466,8 @@ class GenePredTranscript(Transcript):
         for iexon in self._make_exon_idx_iter():
             cds_interval = self.exon_intervals[iexon].intersection(self.coding_interval)
             if cds_interval is not None:
+                if cds_interval.data is not None:  # edge case for single-exon
+                    cds_interval.data = None
                 expected_frame, intervals = self._cds_region(cds_interval, self.exon_frames[iexon], expected_frame)
                 codon_regions.extend(intervals)
         return codon_regions
@@ -519,7 +521,7 @@ class GenePredTranscript(Transcript):
         """
         Returns the translated protein sequence for this transcript in single character space.
         """
-        cds = self.get_cds(seq_dict)
+        cds = self.get_cds(seq_dict, ignore_frameshift=True)
         if len(cds) < 3:
             return ""
         try:
@@ -799,7 +801,10 @@ def has_start_codon(fasta, tx):
     """
     if tx.cds_size == 0:
         return None
-    return tx.get_protein_sequence(fasta)[0] == 'M'
+    s = tx.get_protein_sequence(fasta)
+    if len(s) == 0:
+        return False
+    return s[0] == 'M'
 
 
 def has_stop_codon(fasta, tx):
@@ -811,4 +816,7 @@ def has_stop_codon(fasta, tx):
     """
     if tx.cds_size == 0:
         return None
-    return tx.get_protein_sequence(fasta)[-1] == '*'
+    s = tx.get_protein_sequence(fasta)
+    if len(s) == 0:
+        return False
+    return s[-1] == '*'
