@@ -20,15 +20,6 @@ min_cds_size = 90
 
 def parse_args():
     desc = """convert a CAT generated genePred and associated information to an NCBI submission table file
-      The following FATAL table2asn errors in the report file can be ignored:
-         FATAL: JOINED_FEATURES_NO_EXCEPTION'
-         FATAL: CONTAINED_CDS
-         FATAL: BACTERIAL_PARTIAL_NONEXTENDABLE_PROBLEMS
-      The following table2asn report message can be ignored
-         FEATURE_LOCATION_CONFLICT: Coding region location does not match gene location
-         GENE_PARTIAL_CONFLICT: 1 feature locations conflict with partialness of overlapping gene (and similar messages)
-         SHORT_INTRON: 1 intron is shorter than 10 nt
-         SUSPECT_PRODUCT_NAMES: 12 features are all capital letters
     """
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('--verbose', action="store_true", default=False,
@@ -58,7 +49,9 @@ biotype_map = {
     'IG_C_gene': 'C_segment',
     'IG_C_pseudogene': 'C_segment',
     'IG_D_gene': 'D_region',
+    'IG_D_pseudogene': 'D_region',
     'IG_J_gene': 'J_segment',
+    'IG_J_pseudogene': 'J_segment',
     'IG_V_gene': 'V_region',
     'IG_V_pseudogene': 'V_region',
     'IG_pseudogene': 'J_segment',
@@ -66,6 +59,7 @@ biotype_map = {
     'Mt_tRNA': 'tRNA',
     'TEC': 'mRNA',
     'TR_C_gene': 'C_region',
+    'TR_C_pseudogene': 'C_region',
     'TR_J_gene': 'J_segment',
     'TR_J_pseudogene': 'J_segment',
     'TR_V_gene': 'V_region',
@@ -117,7 +111,6 @@ ncrna_class = {
     'lincRNA': 'lncRNA',
     'macro_lncRNA': 'lncRNA',
     'miRNA': 'miRNA',
-    'non_stop_decay': 'other',
     'processed_pseudogene': 'other',
     'processed_transcript': 'other',
     'pseudogene': 'other',
@@ -145,10 +138,13 @@ ncrna_class = {
 # for pseudogenes, this defines the pseudogene key/value pair
 pseudo_map = {
     'IG_C_pseudogene': 'unknown',
+    'IG_D_pseudogene': 'unkown',
+    'IG_J_pseudogene': 'J_segment',
     'IG_V_pseudogene': 'unknown',
+    'IG_pseudogene': 'unknown',
+    'TR_C_pseudogene': 'C_region',
     'TR_J_pseudogene': 'unknown',
     'TR_V_pseudogene': 'unknown',
-    'IG_pseudogene': 'unknown',
     'processed_pseudogene': 'processed',
     'pseudogene': 'unknown',
     'transcribed_processed_pseudogene': 'processed',
@@ -162,6 +158,8 @@ def check_defs():
     for biotype in biotype_map.keys():
         if biotype_map[biotype] == 'ncRNA':
             assert biotype in ncrna_class, biotype
+        elif biotype_map[biotype] != 'ncRNA':
+            assert biotype not in ncrna_class, biotype
         elif biotype_map[biotype] == 'pseudo':
             assert biotype in pseudo_map, biotype
 
@@ -181,7 +179,7 @@ class GeneData(object):
     @property
     def chrom(self):
         return self.__txds[0].tx.chromosome
-        
+
     @property
     def strand(self):
         return self.__txds[0].tx.strand
@@ -189,11 +187,11 @@ class GeneData(object):
     @property
     def start(self):
         return min([txd.tx.start for txd in self.txds])
-    
+
     @property
     def stop(self):
         return max([txd.tx.stop for txd in self.txds])
-    
+
     def add(self, txd):
         if txd.transcript_id in self.txds_by_id:
             raise Exception("Duplicate transcript id: {} {}".format(self.gene_id, txd.transcript_id))
@@ -207,7 +205,7 @@ class GeneData(object):
         for txd in gene.txds:
             exons.update(tdx.exons)
         return exons
-            
+
 class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
     """transcript annotation and attributes"""
     __slots__ = ()
@@ -235,7 +233,7 @@ def load_annotations(gp_file, gp_info_file):
             gene = by_chrom_gene_id[tx.chromosome][tx.name2] = GeneData(tx.name2)
         gene.add(TranscriptData(tx, attrs.ix[tx.name]))
     return by_chrom_gene_id
-        
+
 
 class NcbiTblWriter(object):
     """class to write NCBI tables.  Due to the need to examine transcripts
@@ -265,7 +263,7 @@ class NcbiTblWriter(object):
 
     def start_seq(self, seqname):
         self.recs.append(">Features {}".format(seqname))
-        
+
     def __write_feature_region(self, region, strand, feature_key, start_incmpl, end_incmpl):
         "write one region range from list, feature_key should be None for continuations"
         start, stop = str(region[0] + 1), str(region[1])
@@ -331,11 +329,11 @@ class CdsSpec(object):
 
     def __str__(self):
         return "CDS: {} regions={}, no_stop_regions={}, gaps={}, incmpl={}/{}".format(self.strand, self.regions, self.no_stop_regions, self.gaps, self.start_incmpl, self.end_incmpl)
-        
+
     @property
     def cds_len(self):
         return sum(([e[1]-e[0] for e in self.regions]))
-        
+
     @property
     def no_stop_len(self):
         return sum(([e[1]-e[0] for e in self.no_stop_regions]))
@@ -502,7 +500,7 @@ def add_cds_region(cds_interval, frame, expected_frame, ifs_position, cds_spec):
         cds_spec.regions.append((cds_interval.start, cds_interval.stop))
     if len(no_stop_cds_interval) != 0:
         cds_spec.no_stop_regions.append((no_stop_cds_interval.start, no_stop_cds_interval.stop))
-    
+
     return frame_incr(expected_frame, len(cds_interval))
 
 
@@ -533,13 +531,13 @@ def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
     # If there is a not a valid start code, force start incompleteness.  This will
     # make non-ATG starts incomplete, however unless we add GENCODE non-ATG start
     # tags, this probably produces the fewest errors.
-    if txd.attrs.valid_stop:
+    if not txd.attrs.valid_start:
         if txd.tx.strand  == '+':
             cds_spec.start_incmpl = True
         else:
             cds_spec.end_incmpl = True
 
-        
+
     # if there is a valid stop, force end completeness or tbl2asn generates SEQ_FEAT.PartialProblem
     # this overrides the source gene being incomplete
     if txd.attrs.valid_stop:
@@ -547,7 +545,7 @@ def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
             cds_spec.end_incmpl = False
         else:
             cds_spec.start_incmpl = False
-        
+
 def get_cds_regions(txd):
     """Get list of CDS regions and list of partial codons.  If there is a frame
     shift, adjust the CDS accordingly, inserting a gap.
@@ -574,7 +572,7 @@ def is_possible_unitary_pseudo(cds_spec):
     cds_len = cds_spec.cds_len
     no_stop_len = cds_spec.no_stop_len
     assert no_stop_len <= cds_len
-       
+
     return (cds_len > 0) and ((cds_len - no_stop_len) > 30) or (no_stop_len <= (0.80 * cds_len))
 
 
@@ -586,16 +584,16 @@ def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
 
     # FIXME: codon_start could be set rather than advancing to first codon
     tblwr.write_qualifier('codon_start', "1")
-    
+
     # product and protein id  must be same on mRNA and CDS
     write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
- 
+
     # coding transcripts must have a protein_id tag -- just use the name with _prot suffix
     tblwr.write_qualifier('transcript_id', get_transcript_gnl_id(locus_tag_prefix, txd))
 
     if len(cds_spec.gaps) > 0:
         tblwr.write_note("gaps were added to CDS to maintain frame")
-        
+
 
 def write_cds_gaps(txd, cds_spec, tblwr):
     tx = txd.tx
@@ -618,10 +616,10 @@ def get_transcript_exons(txd):
 def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, tblwr):
     tx = txd.tx
     txa = txd.attrs
-    
+
     # feature with correct type and all exons
     tblwr.write_feature(get_transcript_exons(txd), tx.strand, get_transcript_feature(txd))
-    
+
     tblwr.write_qualifier('transcript_id', get_transcript_gnl_id(locus_tag_prefix, txd))
 
     # if non-coding, fill in ncRNA_class tag
@@ -629,7 +627,7 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_ps
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
 
     write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
-    
+
 
     # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
@@ -662,7 +660,7 @@ def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
         unitary_pseudo = False
     write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, tblwr)
 
-    if trans_has_cds(txd) and not unitary_pseudo:
+    if (cds_spec is not None) and (not unitary_pseudo):
         write_cds(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr)
     return trans_has_cds(txd), unitary_pseudo
 
