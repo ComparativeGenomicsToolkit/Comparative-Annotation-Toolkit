@@ -306,6 +306,10 @@ class NcbiTblWriter(object):
                                         start_incmpl=None,
                                         end_incmpl=(end_incmpl and (region == regions[-1])))
 
+    def write_locus_tag(self, locus_tag_prefix, gene):
+        """write locus tag in the form ${locus_tag_prefix}_${gene_name}"""
+        self.write_qualifier("locus_tag", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(gene)))
+
     def write_qualifier(self, qualifier_key, qualifier_value=None):
         """write a qualifier with optional value"""
         row = ["", "", "", qualifier_key]
@@ -585,6 +589,8 @@ def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
     # FIXME: codon_start could be set rather than advancing to first codon
     tblwr.write_qualifier('codon_start', "1")
 
+    tblwr.write_locus_tag(locus_tag_prefix, gene)
+
     # product and protein id  must be same on mRNA and CDS
     write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
@@ -626,8 +632,9 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_ps
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
 
-    write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
+    tblwr.write_locus_tag(locus_tag_prefix, gene)
 
+    write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
@@ -673,8 +680,7 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     # coordinates
     tblwr.write_feature([(gene.start, gene.stop)], gene.strand, "gene")
 
-    # locus tag is ${locus_tag_prefix}_${gene_name}
-    tblwr.write_qualifier("locus_tag", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(gene)))
+    tblwr.write_locus_tag(locus_tag_prefix, gene)
 
     # if this is a pseudogene, record the pseudogene tag on the gene-level feature
     if txa.gene_biotype in pseudo_map:
