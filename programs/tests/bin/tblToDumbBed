@@ -18,12 +18,12 @@ def parseArgs():
 def loadTbl(tblFh):
     """load into a dict of feature rows, split by tab for sequence"""
     seqFeatures = defaultdict(list)
-    curFeat = None
+    curSeq = None
     for line in map(lambda l: l[0:-1], tblFh):
         if line.startswith(">Features"):
-            curFeat = line.split()[1]
+            curSeq = line.split()[1]
         else:
-            seqFeatures[curFeat].append(line.split('\t'))
+            seqFeatures[curSeq].append(line.split('\t'))
     return seqFeatures
 
 def is_feature_start(feature):
@@ -45,9 +45,8 @@ def pop_annot(features, ifeat):
     if ifeat == len(features):
         return ifeat, None
 
-    # pop (coords, annot)
+    # pop coords
     coords = []
-    annot = []
     while True:
         feature = features[ifeat]
         if is_feature_coord(feature):
@@ -55,15 +54,12 @@ def pop_annot(features, ifeat):
             if len(feature) > 2:
                 c.append(feature[2])
             coords.append(c)
-        else:
-            annot.append(feature)
         ifeat += 1
         if ifeat == len(features) or is_feature_start(features[ifeat]):
             break
+    return ifeat, coords
 
-    return ifeat, (coords, annot)
-
-def process_feature(seqname, coords, annot, bedFh):
+def process_feature(seqname, coords, bedFh):
     strand = '+' if coords[0][0] < coords[0][1] else '-'
     name = coords[0][2]
     for coord in coords:
@@ -76,10 +72,10 @@ def process_feature(seqname, coords, annot, bedFh):
 def process_features(seqname, features, bedFh):
     ifeat = 0
     while ifeat < len(features):
-        ifeat, coords_annot = pop_annot(features, ifeat)
-        if ifeat == len(features):
+        ifeat, coords = pop_annot(features, ifeat)
+        if coords is None:
             break
-        process_feature(seqname, coords_annot[0], coords_annot[1], bedFh)
+        process_feature(seqname, coords, bedFh)
 
 def main(opts):
     with open(opts.tblFile) as tblFh:
@@ -88,6 +84,6 @@ def main(opts):
     with open(opts.bedFile, "w") as bedFh:
         for seqname in sorted(seqFeatures.keys()):
             process_features(seqname, seqFeatures[seqname], bedFh)
-        
+
 
 main(parseArgs())
