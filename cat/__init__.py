@@ -1571,15 +1571,12 @@ class FindDenovoParents(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         denovo_args = FindDenovoParents.get_args(pipeline_args, self.mode)
         for genome in denovo_args.gps:
-            if genome in pipeline_args.target_genomes:
-                yield self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
+            yield self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
 
     def run(self):
         pipeline_args = self.get_pipeline_args()
         denovo_args = FindDenovoParents.get_args(pipeline_args, self.mode)
         for genome, denovo_gp in denovo_args.gps.iteritems():
-            if genome not in pipeline_args.target_genomes:
-                continue
             table_target = self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
             filtered_tm_gp = denovo_args.filtered_tm_gps[genome]
             unfiltered_tm_gp = denovo_args.unfiltered_tm_gps[genome]
@@ -2852,7 +2849,7 @@ def construct_consensus_gp_as(has_rna, has_pb):
     string chrom;       "Reference sequence chromosome or scaffold"
     uint   chromStart;  "Start position in chromosome"
     uint   chromEnd;    "End position in chromosome"
-    string name;        "Name or ID of item, ideally both human readable and unique"
+    string name;        "Name"
     uint score;         "Score (0-1000)"
     char[1] strand;     "+ or - for strand"
     uint thickStart;    "Start of where display should be thick (start codon)"
@@ -2898,7 +2895,7 @@ modified_bgp_as = '''table bigGenePred
     string chrom;       "Reference sequence chromosome or scaffold"
     uint   chromStart;  "Start position in chromosome"
     uint   chromEnd;    "End position in chromosome"
-    string name;        "Name or ID of item, ideally both human readable and unique"
+    string name;        "Name"
     uint score;         "Score (0-1000)"
     char[1] strand;     "+ or - for strand"
     uint thickStart;    "Start of where display should be thick (start codon)"
@@ -2926,7 +2923,7 @@ denovo_as = '''table denovo
     string chrom;       "Reference sequence chromosome or scaffold"
     uint   chromStart;  "Start position in chromosome"
     uint   chromEnd;    "End position in chromosome"
-    string name;        "Name or ID of item, ideally both human readable and unique"
+    string name;        "Name"
     uint score;         "Score (0-1000)"
     char[1] strand;     "+ or - for strand"
     uint thickStart;    "Start of where display should be thick (start codon)"
@@ -2957,7 +2954,7 @@ bigpsl = '''table bigPsl
     string chrom;       "Reference sequence chromosome or scaffold"
     uint   chromStart;  "Start position in chromosome"
     uint   chromEnd;    "End position in chromosome"
-    string name;        "Name or ID of item, ideally both human readable and unique"
+    string name;        "Name"
     uint score;         "Score (0-1000)"
     char[1] strand;     "+ or - indicates whether the query aligns to the + or - strand on the reference"
     uint thickStart;    "Start of where display should be thick (start codon)"
@@ -3076,6 +3073,9 @@ priority 1
 visibility pack
 searchIndex name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId
 bigDataUrl {path}
+labelFields name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId
+defaultLabelFields name
+labelSeperator " "
 
 '''
 
@@ -3091,6 +3091,9 @@ priority 3
 visibility {visibility}
 searchIndex name,name2,geneId,transcriptId
 bigDataUrl {path}
+labelFields name,name2,geneId,transcriptId
+defaultLabelFields name
+labelSeperator " "
 
 '''
 
@@ -3128,6 +3131,10 @@ group cat_tracks
 priority 4
 itemRgb on
 searchIndex assignedGeneId,name,name2
+labelFields assignedGeneId,name,name2
+defaultLabelFields name
+labelSeperator " "
+
 
 '''
 
