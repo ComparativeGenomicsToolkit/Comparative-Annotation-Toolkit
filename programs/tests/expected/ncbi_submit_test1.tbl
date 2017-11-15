@@ -6,8 +6,9 @@
 2231	1950
 1286	1155
 			transcript_id	gnl|fred|T0000001
-			product	ULBP2_1
-			protein_id	T0000001_1_prot
+			locus_tag	fred_G0000001
+			product	ULBP2 isoform 1
+			protein_id	gnl|fred|T0000001_1_prot
 			note	CAT transcript id: T0000001
 			note	CAT alignment id: ENST00000367351.3-0
 			note	CAT source transcript id: ENST00000367351.3
@@ -17,443 +18,1262 @@
 2231	1950
 1286	1177
 			codon_start	1
-			product	ULBP2_1
-			protein_id	T0000001_1_prot
+			locus_tag	fred_G0000001
+			product	ULBP2 isoform 1
+			protein_id	gnl|fred|T0000001_1_prot
 			transcript_id	gnl|fred|T0000001
-14015	11770	gene
-			locus_tag	fred_G0000002
-			pseudogene	processed
-12572	12213	ncRNA
-11845	11770
-			transcript_id	gnl|fred|T0000002
-			ncRNA_class	other
-			product	T0000002_1
-			protein_id	T0000002_1_prot
-			note	CAT transcript id: T0000002
-			note	CAT alignment id: ENST00000407271.2-0
-			note	CAT source transcript id: ENST00000407271.2
-			note	CAT source GENCODE transcript biotype: transcribed_processed_pseudogene
-14015	13763	ncRNA
-13068	12223
-			transcript_id	gnl|fred|T0000003
-			ncRNA_class	other
-			product	T0000003_2
-			protein_id	T0000003_2_prot
-			note	CAT transcript id: T0000003
-			note	CAT alignment id: ENST00000421363.2-0
-			note	CAT source transcript id: ENST00000421363.2
-			note	CAT source GENCODE transcript biotype: processed_transcript
-14015	13763	ncRNA
-13162	12916
-			transcript_id	gnl|fred|T0000004
-			ncRNA_class	other
-			product	T0000004_3
-			protein_id	T0000004_3_prot
-			note	CAT transcript id: T0000004
-			note	CAT alignment id: ENST00000435483.5-0
-			note	CAT source transcript id: ENST00000435483.5
-			note	CAT source GENCODE transcript biotype: processed_transcript
-25420	31659	gene
-			locus_tag	fred_G0000003
-25420	25600	mRNA
-28720	28983
-29211	29828
-			transcript_id	gnl|fred|T0000005
-			product	RAET1G_1
-			protein_id	T0000005_1_prot
-			note	CAT transcript id: T0000005
-			note	CAT alignment id: ENST00000479265.1-0
-			note	CAT source transcript id: ENST00000479265.1
+>Features 000022F_1_24784705_s_1_2785082
+1853771	1832468	gene
+			locus_tag	fred_G0011628
+1853761	1853489	mRNA
+1852897	1852730
+1851848	1851755
+1851110	1850967
+1850542	1850351
+1849788	1849691
+1849312	1849140
+1848412	1848189
+1847849	1847705
+1847406	1847308
+1847017	1846895
+1846538	1846327
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1833883
+1833713	1832468
+			transcript_id	gnl|fred|T0041026
+			locus_tag	fred_G0011628
+			product	ACE isoform 1
+			protein_id	gnl|fred|T0041026_1_prot
+			note	CAT transcript id: T0041026
+			note	CAT alignment id: ENST00000290866.9-0
+			note	CAT source transcript id: ENST00000290866.9
 			note	CAT source GENCODE transcript biotype: protein_coding
-25516	25600	CDS
-28720	28983
-29211	29527
+1853737	1853489	CDS
+1852897	1852730
+1851848	1851755
+1851110	1850967
+1850542	1850351
+1849788	1849691
+1849312	1849140
+1848412	1848189
+1847849	1847705
+1847406	1847308
+1847017	1846895
+1846538	1846327
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1833883
+1833713	1833484
 			codon_start	1
-			product	RAET1G_1
-			protein_id	T0000005_1_prot
-			transcript_id	gnl|fred|T0000005
-25448	25600	mRNA
-28720	28983
-29211	29492
-30150	30360
-31463	31659
-			transcript_id	gnl|fred|T0000006
-			product	RAET1G_2
-			protein_id	T0000006_2_prot
-			note	CAT transcript id: T0000006
-			note	CAT alignment id: ENST00000367360.6-0
-			note	CAT source transcript id: ENST00000367360.6
+			locus_tag	fred_G0011628
+			product	ACE isoform 1
+			protein_id	gnl|fred|T0041026_1_prot
+			transcript_id	gnl|fred|T0041026
+1853771	1853489	mRNA
+1852897	1852730
+1851848	1851755
+1851110	1850967
+1850542	1850351
+1849788	1849691
+1849312	1849140
+1848412	1848189
+1847849	1847705
+1847406	1847308
+1847017	1846895
+1846538	1846327
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1832468
+			transcript_id	gnl|fred|T0041027
+			locus_tag	fred_G0011628
+			product	ACE isoform 2
+			protein_id	gnl|fred|T0041027_2_prot
+			note	CAT transcript id: T0041027
+			note	CAT alignment id: ENST00000428043.5-0
+			note	CAT source transcript id: ENST00000428043.5
 			note	CAT source GENCODE transcript biotype: protein_coding
-25516	25600	CDS
-28720	28983
-29211	29492
-30150	30360
-31463	31625
+1853737	1853489	CDS
+1852897	1852730
+1851848	1851755
+1851110	1850967
+1850542	1850351
+1849788	1849691
+1849312	1849140
+1848412	1848189
+1847849	1847705
+1847406	1847308
+1847017	1846895
+1846538	1846327
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1833845
 			codon_start	1
-			product	RAET1G_2
-			protein_id	T0000006_2_prot
-			transcript_id	gnl|fred|T0000006
-25516	25600	mRNA
-28720	28983
-29211	29492
-30250	30360
-31463	31624
-			transcript_id	gnl|fred|T0000007
-			product	RAET1G_3
-			protein_id	T0000007_3_prot
-			note	CAT transcript id: T0000007
-			note	CAT alignment id: ENST00000367361.6-0
-			note	CAT source transcript id: ENST00000367361.6
+			locus_tag	fred_G0011628
+			product	ACE isoform 2
+			protein_id	gnl|fred|T0041027_2_prot
+			transcript_id	gnl|fred|T0041027
+1846022	1845802	mRNA
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842292	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1833883
+1833713	1833232
+			transcript_id	gnl|fred|T0041028
+			locus_tag	fred_G0011628
+			product	ACE isoform 3
+			protein_id	gnl|fred|T0041028_3_prot
+			note	CAT transcript id: T0041028
+			note	CAT alignment id: ENST00000579314.5-0
+			note	CAT source transcript id: ENST00000579314.5
 			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
-25516	25600	CDS
-28720	28983
-29211	29492
-30250	30260
+1846000	1845802	CDS
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842292	1842249
 			codon_start	1
-			product	RAET1G_3
-			protein_id	T0000007_3_prot
-			transcript_id	gnl|fred|T0000007
-54477	29028	gene
-			locus_tag	fred_G0000004
-48792	48731	ncRNA
-42778	42672
-29348	29028
-			transcript_id	gnl|fred|T0000008
-			product	RAET1E-AS1_1
-			protein_id	T0000008_1_prot
-			note	CAT transcript id: T0000008
-			note	CAT alignment id: ENST00000446954.2-0
-			note	CAT source transcript id: ENST00000446954.2
-			note	CAT source GENCODE transcript biotype: antisense_RNA
-54477	54453	ncRNA
-53323	53235
-29348	29030
-			transcript_id	gnl|fred|T0000010
-			product	RAET1E-AS1_2
-			protein_id	T0000010_2_prot
-			note	CAT transcript id: T0000010
-			note	CAT alignment id: ENST00000605899.1-0
-			note	CAT source transcript id: ENST00000605899.1
-			note	CAT source GENCODE transcript biotype: antisense_RNA
-75412	29029	gene
-			locus_tag	fred_G0000005
-75412	74518	ncRNA
-29348	29029
-			transcript_id	gnl|fred|T0000009
-			product	RAET1E-AS1_1
-			protein_id	T0000009_1_prot
-			note	CAT transcript id: T0000009
-			note	CAT alignment id: ENST00000606915.1-0
-			note	CAT source transcript id: ENST00000606915.1
-			note	CAT source GENCODE transcript biotype: antisense_RNA
-186263	127786	gene
-			locus_tag	fred_G0000011
-186263	185750	mRNA
-165294	165190
-163315	163284
-148384	148280
-144785	144665
-141918	141833
-136119	135950
-128590	127786
-			transcript_id	gnl|fred|T0000026
-			product	PCMT1_1
-			protein_id	T0000026_1_prot
-			note	CAT transcript id: T0000026
-			note	CAT alignment id: ENST00000367384.6-0
-			note	CAT source transcript id: ENST00000367384.6
+			locus_tag	fred_G0011628
+			product	ACE isoform 3
+			protein_id	gnl|fred|T0041028_3_prot
+			transcript_id	gnl|fred|T0041028
+1846028	1845802	mRNA
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1833883
+1833713	1833232
+			transcript_id	gnl|fred|T0041029
+			locus_tag	fred_G0011628
+			product	ACE isoform 4
+			protein_id	gnl|fred|T0041029_4_prot
+			note	CAT transcript id: T0041029
+			note	CAT alignment id: ENST00000290863.10-0
+			note	CAT source transcript id: ENST00000290863.10
 			note	CAT source GENCODE transcript biotype: protein_coding
-185978	185750	CDS
-165294	165190
-163315	163284
-148384	148280
-144785	144665
-141918	141833
-136119	135950
-128590	128578
+1846000	1845802	CDS
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1833883
+1833713	1833484
 			codon_start	1
-			product	PCMT1_1
-			protein_id	T0000026_1_prot
-			transcript_id	gnl|fred|T0000026
-186011	185750	mRNA
-163315	163284
-148384	148280
-144785	144665
-141918	141833
-136119	135903
-128590	127786
-			transcript_id	gnl|fred|T0000027
-			product	PCMT1_2
-			protein_id	T0000027_2_prot
-			note	CAT transcript id: T0000027
-			note	CAT alignment id: ENST00000367380.9-0
-			note	CAT source transcript id: ENST00000367380.9
+			locus_tag	fred_G0011628
+			product	ACE isoform 4
+			protein_id	gnl|fred|T0041029_4_prot
+			transcript_id	gnl|fred|T0041029
+1846022	1845802	mRNA
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834070	1833883
+1833713	1833345
+			transcript_id	gnl|fred|T0041030
+			locus_tag	fred_G0011628
+			product	ACE isoform 5
+			protein_id	gnl|fred|T0041030_5_prot
+			note	CAT transcript id: T0041030
+			note	CAT alignment id: ENST00000413513.7-0
+			note	CAT source transcript id: ENST00000413513.7
 			note	CAT source GENCODE transcript biotype: protein_coding
-185978	185750	CDS
-163315	163284
-148384	148280
-144785	144665
-141918	141833
-136119	135940
+1846000	1845802	CDS
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834070	1833883
+1833713	1833484
 			codon_start	1
-			product	PCMT1_2
-			protein_id	T0000027_2_prot
-			transcript_id	gnl|fred|T0000027
-189136	211672	gene
-			locus_tag	fred_G0000013
-189136	189332	mRNA
-189646	189768
-192005	192082
-193156	193336
-196956	197091
-199326	199477
-204237	204359
-208791	211672
-			transcript_id	gnl|fred|T0000039
-			product	NUP43_1
-			protein_id	T0000039_1_prot
-			note	CAT transcript id: T0000039
-			note	CAT alignment id: ENST00000340413.6-0
-			note	CAT source transcript id: ENST00000340413.6
-			note	CAT source GENCODE transcript biotype: protein_coding
-189213	189332	CDS
-189646	189768
-192005	192082
-193156	193336
-196956	197091
-199326	199477
-204237	204359
-208791	209020
+			locus_tag	fred_G0011628
+			product	ACE isoform 5
+			protein_id	gnl|fred|T0041030_5_prot
+			transcript_id	gnl|fred|T0041030
+1846022	1845899	mRNA
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1839898	1839801
+1839643	1839471
+1837414	1837191
+1836928	1836784
+1836474	1836376
+1834070	1833883
+1833713	1833412
+			transcript_id	gnl|fred|T0041031
+			locus_tag	fred_G0011628
+			product	ACE isoform 6
+			protein_id	gnl|fred|T0041031_6_prot
+			note	CAT transcript id: T0041031
+			note	CAT alignment id: ENST00000578839.5-0
+			note	CAT source transcript id: ENST00000578839.5
+			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+1846000	1845899	CDS
+1845631	1845623
 			codon_start	1
-			product	NUP43_1
-			protein_id	T0000039_1_prot
-			transcript_id	gnl|fred|T0000039
-304031	303919	gene
-			locus_tag	fred_G0000017
-304031	303919	ncRNA
-			transcript_id	gnl|fred|T0000058
-			product	Y_RNA_1
-			protein_id	T0000058_1_prot
-			note	CAT transcript id: T0000058
-			note	CAT alignment id: ENST00000384562.1-0
-			note	CAT source transcript id: ENST00000384562.1
-			note	CAT source GENCODE transcript biotype: misc_RNA
-1664063	1663957	gene
-			locus_tag	fred_G0000044
-1664063	1663957	ncRNA
-			transcript_id	gnl|fred|T0000117
-			ncRNA_class	snRNA
-			product	RNU6-1222P_1
-			protein_id	T0000117_1_prot
-			note	CAT transcript id: T0000117
-			note	CAT alignment id: ENST00000384615.1-0
-			note	CAT source transcript id: ENST00000384615.1
-			note	CAT source GENCODE transcript biotype: snRNA
-3311155	3291517	gene
-			locus_tag	fred_G0000057
-3311155	3311063	mRNA
-3301818	3301747
-3299169	3298960
-3291718	3291517
-			transcript_id	gnl|fred|T0000159
-			product	ADGB_1
-			protein_id	T0000159_1_prot
-			note	CAT transcript id: T0000159
-			note	CAT alignment id: augTM-ENST00000473647.1-0
-			note	CAT source transcript id: ENST00000473647.1
-			note	CAT source GENCODE transcript biotype: protein_coding
-<3311155	3311063	CDS
-3301818	3301747
-3299169	3298960
-3291718	>3291545
-			codon_start	1
-			product	ADGB_1
-			protein_id	T0000159_1_prot
-			transcript_id	gnl|fred|T0000159
-3940503	3808450	gene
-			locus_tag	fred_G0000063
-3940503	3940357	ncRNA
-3938952	3937930
-3808776	3808450
-			transcript_id	gnl|fred|T0000175
+			locus_tag	fred_G0011628
+			product	ACE isoform 6
+			protein_id	gnl|fred|T0041031_6_prot
+			transcript_id	gnl|fred|T0041031
+1840977	1840832	ncRNA
+1836928	1836784
+1836474	1836376
+1834462	1834340
+1834070	1833883
+1833713	1833687
+			transcript_id	gnl|fred|T0041032
 			ncRNA_class	other
-			product	GRM1_1
-			protein_id	T0000175_1_prot
-			note	CAT transcript id: T0000175
-			note	CAT alignment id: ENST00000507005.1-0
-			note	CAT source transcript id: ENST00000507005.1
-			note	CAT source GENCODE transcript biotype: retained_intron
-4010302	4091323	gene
-			locus_tag	fred_G0000067
-4010302	4010668	mRNA
-4019065	4019729
-4021936	4022065
-4023932	4024150
-4026068	4026146
-4026775	4026925
-4028080	4028188
-4028787	4029043
-4032643	4033302
-4034571	4034822
-4035644	4035722
-4040999	4041162
-4041278	4041534
-4043247	4043368
-4049151	4049239
-4050135	4050227
-4051580	4051687
-4052638	4052780
-4053588	4053761
-4054075	4054137
-4055031	4055256
-4056937	4057080
-4058182	4058283
-4062934	4063005
-4065851	4066039
-4081817	4081909
-4082564	4082650
-4083410	4083588
-4088705	4088785
-4090028	4091323
-			transcript_id	gnl|fred|T0000181
-			product	SHPRH_1
-			protein_id	T0000181_1_prot
-			note	CAT transcript id: T0000181
-			note	CAT alignment id: ENST00000275233.11-0
-			note	CAT source transcript id: ENST00000275233.11
+			locus_tag	fred_G0011628
+			product	processed transcript
+			note	CAT transcript id: T0041032
+			note	CAT alignment id: ENST00000577418.5-0
+			note	CAT source transcript id: ENST00000577418.5
+			note	CAT source GENCODE transcript biotype: processed_transcript
+1836440	1836376	mRNA
+1834462	1834340
+1834070	1833697
+			transcript_id	gnl|fred|T0041033
+			locus_tag	fred_G0011628
+			product	ACE isoform 8
+			protein_id	gnl|fred|T0041033_8_prot
+			note	CAT transcript id: T0041033
+			note	CAT alignment id: ENST00000579409.1-0
+			note	CAT source transcript id: ENST00000579409.1
 			note	CAT source GENCODE transcript biotype: protein_coding
-4019097	4019729	CDS
-4021936	4022065
-4023932	4024150
-4026068	4026146
-4026775	4026925
-4028080	4028188
-4028787	4029043
-4032643	4033302
-4034571	4034822
-4035644	4035722
-4040999	4041162
-4041278	4041534
-4043247	4043368
-4049151	4049239
-4050135	4050227
-4051580	4051687
-4052638	4052780
-4053588	4053761
-4054075	4054137
-4055031	4055256
-4056937	4057080
-4058182	4058283
-4062934	4063005
-4065851	4066039
-4081817	4081909
-4082564	4082650
-4083410	4083588
-4088705	4088785
-4090028	4090124
+<1836440	1836376	CDS
+1834462	1834340
+1834070	1833845
 			codon_start	1
-			product	SHPRH_1
-			protein_id	T0000181_1_prot
-			transcript_id	gnl|fred|T0000181
-11071684	11078078	gene
-			locus_tag	fred_G0000148
-11071684	11072174	ncRNA
-11073927	11074112
-11075503	11075598
-11078057	11078078
-			transcript_id	gnl|fred|T0000452
+			locus_tag	fred_G0011628
+			product	ACE isoform 8
+			protein_id	gnl|fred|T0041033_8_prot
+			transcript_id	gnl|fred|T0041033
+			note	a gap was added at 1836441-1836442 so that CDS maintains frame; possibly due to genomic or alignment errors
+1834716	1834340	ncRNA
+1834070	1833883
+			transcript_id	gnl|fred|T0041034
 			ncRNA_class	other
-			product	REPS1_1
-			protein_id	T0000452_1_prot
-			note	CAT transcript id: T0000452
-			note	CAT alignment id: ENST00000492787.6-0
-			note	CAT source transcript id: ENST00000492787.6
+			locus_tag	fred_G0011628
+			product	retained intron
+			note	CAT transcript id: T0041034
+			note	CAT alignment id: ENST00000582244.1-0
+			note	CAT source transcript id: ENST00000582244.1
 			note	CAT source GENCODE transcript biotype: retained_intron
-16082977	16076778	gene
-			locus_tag	fred_G0000240
-16082977	16082465	mRNA
-16080610	16080513
-16079172	16076778
-			transcript_id	gnl|fred|T0000791
-			product	TCF21_1
-			protein_id	T0000791_1_prot
-			note	CAT transcript id: T0000791
-			note	CAT alignment id: ENST00000237316.3-0
-			note	CAT source transcript id: ENST00000237316.3
+1837094	1836784	ncRNA
+1836474	1836379
+			transcript_id	gnl|fred|T0041035
+			ncRNA_class	other
+			locus_tag	fred_G0011628
+			product	retained intron
+			note	CAT transcript id: T0041035
+			note	CAT alignment id: ENST00000578679.1-0
+			note	CAT source transcript id: ENST00000578679.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+1843862	1843790	mRNA
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839484
+1836928	1836784
+1836474	1836441
+			transcript_id	gnl|fred|T0041036
+			locus_tag	fred_G0011628
+			product	ACE isoform 11
+			protein_id	gnl|fred|T0041036_11_prot
+			note	CAT transcript id: T0041036
+			note	CAT alignment id: ENST00000582761.1-0
+			note	CAT source transcript id: ENST00000582761.1
 			note	CAT source GENCODE transcript biotype: protein_coding
-16082914	16082465	CDS
-16080610	16080521
+<1843862	1843790	CDS
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839484
+1836928	1836784
+1836474	>1836441
 			codon_start	1
-			product	TCF21_1
-			protein_id	T0000791_1_prot
-			transcript_id	gnl|fred|T0000791
-217984	251279	gene
-			locus_tag	fred_G0000015
-			pseudogene	unitary
-217984	218169	mRNA
-243710	243857
-251012	251279
-			transcript_id	gnl|fred|T0000047
-			product	LATS1_1
-			protein_id	T0000047_1_prot
+			locus_tag	fred_G0011628
+			product	ACE isoform 11
+			protein_id	gnl|fred|T0041036_11_prot
+			transcript_id	gnl|fred|T0041036
+1844040	1843790	ncRNA
+1842214	1842071
+1841921	1841730
+1839898	1839801
+1839643	1839471
+1837414	1837193
+			transcript_id	gnl|fred|T0041037
+			ncRNA_class	other
+			locus_tag	fred_G0011628
+			product	retained intron
+			note	CAT transcript id: T0041037
+			note	CAT alignment id: ENST00000584865.5-0
+			note	CAT source transcript id: ENST00000584865.5
+			note	CAT source GENCODE transcript biotype: retained_intron
+1840510	1839801	ncRNA
+1839643	1839471
+1837414	1837404
+			transcript_id	gnl|fred|T0041038
+			ncRNA_class	other
+			locus_tag	fred_G0011628
+			product	retained intron
+			note	CAT transcript id: T0041038
+			note	CAT alignment id: ENST00000583645.1-0
+			note	CAT source transcript id: ENST00000583645.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+1846024	1845802	mRNA
+1845631	1845495
+1844571	1844486
+1844300	1844142
+1843877	1843790
+1842214	1842071
+1841921	1841771
+			transcript_id	gnl|fred|T0041039
+			locus_tag	fred_G0011628
 			pseudogene	unitary
 			note	Putative inactivated transcript (unitary pseudogene)
-			note	CAT transcript id: T0000047
-			note	CAT alignment id: ENST00000458696.2-0
-			note	CAT source transcript id: ENST00000458696.2
-			note	CAT source GENCODE transcript biotype: protein_coding
-4240449	4345164	gene
-			locus_tag	fred_G0000073
-4240449	4240527	mRNA
-4289102	4289276
-4303993	4304153
-4334957	4335198
-4342778	4345164
-			transcript_id	gnl|fred|T0000217
-			product	EPM2A_1
-			protein_id	T0000217_1_prot
-			note	CAT transcript id: T0000217
-			note	CAT alignment id: ENST00000638554.1-0
-			note	CAT source transcript id: ENST00000638554.1
+			note	CAT transcript id: T0041039
+			note	CAT alignment id: ENST00000582005.5-0
+			note	CAT source transcript id: ENST00000582005.5
 			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
-<4240449	4240527	CDS
-4289102	4289276
-4303993	>4304125
+1846000	1845802	CDS
+1845631	1845495
+1844571	1844563
 			codon_start	1
-			product	EPM2A_1
-			protein_id	T0000217_1_prot
-			transcript_id	gnl|fred|T0000217
-17406923	17405897	gene
-			locus_tag	fred_G0000273
+			locus_tag	fred_G0011628
+			transcript_id	gnl|fred|T0041039
+1846000	1845899	mRNA
+1845631	1845495
+1844300	1844142
+1843877	1843790
+1842292	1842071
+1841921	1841822
+			transcript_id	gnl|fred|T0041040
+			locus_tag	fred_G0011628
+			product	ACE isoform 15
+			protein_id	gnl|fred|T0041040_15_prot
+			note	CAT transcript id: T0041040
+			note	CAT alignment id: ENST00000579204.1-0
+			note	CAT source transcript id: ENST00000579204.1
+			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+1846000	1845899	CDS
+1845631	1845623
+			codon_start	1
+			locus_tag	fred_G0011628
+			product	ACE isoform 15
+			protein_id	gnl|fred|T0041040_15_prot
+			transcript_id	gnl|fred|T0041040
+1846528	1846327	mRNA
+1845898	1845495
+1844498	1844486
+1844300	1844142
+1843877	1843790
+			transcript_id	gnl|fred|T0041041
+			locus_tag	fred_G0011628
+			product	ACE isoform 16
+			protein_id	gnl|fred|T0041041_16_prot
+			note	CAT transcript id: T0041041
+			note	CAT alignment id: ENST00000579726.5-0
+			note	CAT source transcript id: ENST00000579726.5
+			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+<1846528	1846327	CDS
+1845898	1845744
+			codon_start	1
+			locus_tag	fred_G0011628
+			product	ACE isoform 16
+			protein_id	gnl|fred|T0041041_16_prot
+			transcript_id	gnl|fred|T0041041
+			note	a gap was added at 1846529-1846530 so that CDS maintains frame; possibly due to genomic or alignment errors
+1853771	1853489	mRNA
+1852897	1852730
+1851110	1850967
+1850542	1850351
+1849788	1849691
+1849312	1849140
+1848412	1848189
+1847849	1847705
+1847406	1847308
+1847017	1846895
+1846538	1846327
+1845631	1845095
+			transcript_id	gnl|fred|T0041042
+			locus_tag	fred_G0011628
+			product	ACE isoform 17
+			protein_id	gnl|fred|T0041042_17_prot
+			note	CAT transcript id: T0041042
+			note	CAT alignment id: ENST00000582678.5-0
+			note	CAT source transcript id: ENST00000582678.5
+			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+1853737	1853489	CDS
+1852897	1852730
+1851110	1851021
+			codon_start	1
+			locus_tag	fred_G0011628
+			product	ACE isoform 17
+			protein_id	gnl|fred|T0041042_17_prot
+			transcript_id	gnl|fred|T0041042
+1853771	1853489	ncRNA
+1852897	1852730
+1851848	1851755
+1851110	1850967
+1850542	1850351
+1849788	1849691
+1849312	1849140
+1848412	1848189
+1847406	1847308
+			transcript_id	gnl|fred|T0041043
+			ncRNA_class	other
+			locus_tag	fred_G0011628
+			product	processed transcript
+			note	CAT transcript id: T0041043
+			note	CAT alignment id: ENST00000584529.5-0
+			note	CAT source transcript id: ENST00000584529.5
+			note	CAT source GENCODE transcript biotype: processed_transcript
+1853350	1853042	mRNA
+1852897	1852730
+1851848	1851755
+1851110	1850967
+1850542	1850351
+1849788	1849694
+			transcript_id	gnl|fred|T0041044
+			locus_tag	fred_G0011628
+			product	ACE isoform 19
+			protein_id	gnl|fred|T0041044_19_prot
+			note	CAT transcript id: T0041044
+			note	CAT alignment id: ENST00000582627.1-0
+			note	CAT source transcript id: ENST00000582627.1
+			note	CAT source GENCODE transcript biotype: protein_coding
+1853290	1853042	CDS
+1852897	1852730
+1851848	1851755
+1851110	1850967
+1850542	1850351
+1849788	>1849694
+			codon_start	1
+			locus_tag	fred_G0011628
+			product	ACE isoform 19
+			protein_id	gnl|fred|T0041044_19_prot
+			transcript_id	gnl|fred|T0041044
+1853339	1852730	ncRNA
+1851848	1851755
+1851110	1850967
+1850542	1850454
+			transcript_id	gnl|fred|T0041045
+			ncRNA_class	other
+			locus_tag	fred_G0011628
+			product	retained intron
+			note	CAT transcript id: T0041045
+			note	CAT alignment id: ENST00000580318.1-0
+			note	CAT source transcript id: ENST00000580318.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+1853771	1853489	ncRNA
+1852897	1852730
+1852017	1851954
+			transcript_id	gnl|fred|T0041046
+			ncRNA_class	other
+			locus_tag	fred_G0011628
+			product	processed transcript
+			note	CAT transcript id: T0041046
+			note	CAT alignment id: ENST00000583336.5-0
+			note	CAT source transcript id: ENST00000583336.5
+			note	CAT source GENCODE transcript biotype: processed_transcript
+1853762	1853489	ncRNA
+1852897	1852311
+			transcript_id	gnl|fred|T0041047
+			ncRNA_class	other
+			locus_tag	fred_G0011628
+			product	retained intron
+			note	CAT transcript id: T0041047
+			note	CAT alignment id: ENST00000579462.1-0
+			note	CAT source transcript id: ENST00000579462.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+2318741	1901249	gene
+			locus_tag	fred_G0011634
+2318741	2318671	mRNA
+2255037	2254966
+2229864	2229793
+2135499	2135351
+2128737	2128551
+2091388	2091125
+2061519	2061394
+2014766	2014485
+2010203	2010070
+1989028	1988797
+1977878	1977712
+1974337	1973730
+1949354	1949246
+1940431	1940309
+1939762	1939526
+1933337	1933152
+1930257	1930164
+1923957	1923824
+1922924	1922801
+1917578	1917403
+1917090	1916958
+1915545	1915454
+1913560	1913414
+1910636	1910536
+1908943	1901249
+			transcript_id	gnl|fred|T0041073
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 1
+			protein_id	gnl|fred|T0041073_1_prot
+			note	CAT transcript id: T0041073
+			note	CAT alignment id: ENST00000424789.6-0
+			note	CAT source transcript id: ENST00000424789.6
+			note	CAT source GENCODE transcript biotype: protein_coding
+2318737	2318671	CDS
+2255037	2254966
+2229864	2229793
+2135499	2135351
+2128737	2128551
+2091388	2091125
+2061519	2061394
+2014766	2014485
+2010203	2010070
+1989028	1988797
+1977878	1977712
+1974337	1973730
+1949354	1949246
+1940431	1940309
+1939762	1939526
+1933337	1933152
+1930257	1930164
+1923957	1923824
+1922924	1922801
+1917578	1917403
+1917090	1916958
+1915545	1915454
+1913560	1913414
+1910636	1910536
+1908943	1906987
+			codon_start	1
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 1
+			protein_id	gnl|fred|T0041073_1_prot
+			transcript_id	gnl|fred|T0041073
+2135494	2135351	mRNA
+2128737	2128551
+2091388	2091125
+2061519	2061394
+2014766	2014485
+2010203	2010070
+1989028	1988797
+1977878	1977712
+1974337	1973730
+1949354	1949246
+1940431	1940309
+1939762	1939526
+1933337	1933152
+1930257	1930164
+1923957	1923824
+1922924	1922801
+1917578	1917403
+1917090	1916958
+1915545	1915454
+1913560	1913414
+1908943	1904816
+			transcript_id	gnl|fred|T0041074
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 2
+			protein_id	gnl|fred|T0041074_2_prot
+			note	CAT transcript id: T0041074
+			note	CAT alignment id: ENST00000583356.5-0
+			note	CAT source transcript id: ENST00000583356.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+<2135494	2135351	CDS
+2128737	2128551
+2091388	2091125
+2061519	2061394
+2014766	2014485
+2010203	2010070
+1989028	1988797
+1977878	1977712
+1974337	1973730
+1949354	1949246
+1940431	1940309
+1939762	1939526
+1933337	1933152
+1930257	1930164
+1923957	1923824
+1922924	1922801
+1917578	1917403
+1917090	1916958
+1915545	1915454
+1913560	1913414
+1908943	1908881
+			codon_start	1
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 2
+			protein_id	gnl|fred|T0041074_2_prot
+			transcript_id	gnl|fred|T0041074
+			note	a gap was added at 2135495-2135496 so that CDS maintains frame; possibly due to genomic or alignment errors
+2318737	2318671	mRNA
+2255037	2254966
+2229864	2229793
+2135499	2135351
+2128737	2128551
+2091388	2091125
+2061519	2061394
+2014766	2014485
+2010203	2010070
+1989028	1988797
+1977878	1977712
+1974337	1973730
+1949354	1949246
+1940431	1940309
+1939762	1939526
+1933337	1933152
+1930257	1930164
+1923957	1923824
+1922924	1922801
+1917578	1917403
+1917090	1916958
+1916409	1916380
+1915545	1915454
+1913560	1913414
+1910636	1910536
+1908943	1906586
+			transcript_id	gnl|fred|T0041075
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 3
+			protein_id	gnl|fred|T0041075_3_prot
+			note	CAT transcript id: T0041075
+			note	CAT alignment id: ENST00000389520.8-0
+			note	CAT source transcript id: ENST00000389520.8
+			note	CAT source GENCODE transcript biotype: protein_coding
+2318737	2318671	CDS
+2255037	2254966
+2229864	2229793
+2135499	2135351
+2128737	2128551
+2091388	2091125
+2061519	2061394
+2014766	2014485
+2010203	2010070
+1989028	1988797
+1977878	1977712
+1974337	1973730
+1949354	1949246
+1940431	1940309
+1939762	1939526
+1933337	1933152
+1930257	1930164
+1923957	1923824
+1922924	1922801
+1917578	1917403
+1917090	1916958
+1916409	1916380
+1915545	1915454
+1913560	1913414
+1910636	1910536
+1908943	1906987
+			codon_start	1
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 3
+			protein_id	gnl|fred|T0041075_3_prot
+			transcript_id	gnl|fred|T0041075
+1915918	1915454	ncRNA
+1913560	1913503
+			transcript_id	gnl|fred|T0041076
+			ncRNA_class	other
+			locus_tag	fred_G0011634
+			product	retained intron
+			note	CAT transcript id: T0041076
+			note	CAT alignment id: ENST00000579541.1-0
+			note	CAT source transcript id: ENST00000579541.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+1933337	1933152	mRNA
+1930257	1929792
+			transcript_id	gnl|fred|T0041078
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 5
+			protein_id	gnl|fred|T0041078_5_prot
+			note	CAT transcript id: T0041078
+			note	CAT alignment id: ENST00000583016.1-0
+			note	CAT source transcript id: ENST00000583016.1
+			note	CAT source GENCODE transcript biotype: protein_coding
+<1933337	1933152	CDS
+1930257	1930036
+			codon_start	1
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 5
+			protein_id	gnl|fred|T0041078_5_prot
+			transcript_id	gnl|fred|T0041078
+1940374	1940309	ncRNA
+1939762	1939526
+1933337	1932101
+			transcript_id	gnl|fred|T0041079
+			ncRNA_class	other
+			locus_tag	fred_G0011634
+			product	retained intron
+			note	CAT transcript id: T0041079
+			note	CAT alignment id: ENST00000581143.1-0
+			note	CAT source transcript id: ENST00000581143.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+1974065	1973730	ncRNA
+1949354	1949246
+1940431	1940309
+1939762	1937317
+			transcript_id	gnl|fred|T0041081
+			ncRNA_class	other
+			locus_tag	fred_G0011634
+			product	retained intron
+			note	CAT transcript id: T0041081
+			note	CAT alignment id: ENST00000583545.1-0
+			note	CAT source transcript id: ENST00000583545.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+2255035	2254966	mRNA
+2229864	2229682
+2177892	2177782
+2135499	2135408
+			transcript_id	gnl|fred|T0041086
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 8
+			protein_id	gnl|fred|T0041086_8_prot
+			note	CAT transcript id: T0041086
+			note	CAT alignment id: ENST00000580068.5-0
+			note	CAT source transcript id: ENST00000580068.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+<2255035	2254966	CDS
+2229864	2229682
+2177892	2177782
+2135499	>2135408
+			codon_start	1
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 8
+			protein_id	gnl|fred|T0041086_8_prot
+			transcript_id	gnl|fred|T0041086
+2255020	2254966	mRNA
+2229864	2229682
+2135499	2135408
+			transcript_id	gnl|fred|T0041087
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 9
+			protein_id	gnl|fred|T0041087_9_prot
+			note	CAT transcript id: T0041087
+			note	CAT alignment id: ENST00000580466.1-0
+			note	CAT source transcript id: ENST00000580466.1
+			note	CAT source GENCODE transcript biotype: protein_coding
+<2255020	2254966	CDS
+2229864	2229682
+2135499	>2135408
+			codon_start	1
+			locus_tag	fred_G0011634
+			product	TANC2 isoform 9
+			protein_id	gnl|fred|T0041087_9_prot
+			transcript_id	gnl|fred|T0041087
+			note	a gap was added at 2255021-2255021 so that CDS maintains frame; possibly due to genomic or alignment errors
+2180927	2173940	ncRNA
+			transcript_id	gnl|fred|T0041089
+			ncRNA_class	other
+			locus_tag	fred_G0011634
+			product	retained intron
+			note	CAT transcript id: T0041089
+			note	CAT alignment id: ENST00000581424.1-0
+			note	CAT source transcript id: ENST00000581424.1
+			note	CAT source GENCODE transcript biotype: retained_intron
+>Features 000022F_1_24784705_s_2816088_24808827
+7532649	7220085	gene
+			locus_tag	fred_G0011765
+7532649	7532411	mRNA
+7531932	7531453
+7505696	7505513
+7474235	7474129
+7456833	7456758
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	7384843
+7380107	7379921
+7378981	7378813
+7282988	7282871
+7275859	7275723
+7253778	7253558
+7253298	7253197
+7252790	7252703
+7248572	7248426
+7222084	7220085
+			transcript_id	gnl|fred|T0041456
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 1
+			protein_id	gnl|fred|T0041456_1_prot
+			note	CAT transcript id: T0041456
+			note	CAT alignment id: ENST00000310396.9-0
+			note	CAT source transcript id: ENST00000310396.9
+			note	CAT source GENCODE transcript biotype: protein_coding
+7531701	7531453	CDS
+7505696	7505513
+7474235	7474129
+7456833	7456758
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	7384843
+7380107	7379921
+7378981	7378813
+7282988	7282871
+7275859	7275723
+7253778	7253558
+7253298	7253197
+7252790	7252703
+7248572	7248426
+7222084	7221872
+			codon_start	1
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 1
+			protein_id	gnl|fred|T0041456_1_prot
+			transcript_id	gnl|fred|T0041456
+7458308	7458178	mRNA
+7456833	7456758
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	7384843
+7380107	7379921
+7378981	7378813
+7282988	7282871
+7275859	7275723
+7258375	7258089
+			transcript_id	gnl|fred|T0041457
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 2
+			protein_id	gnl|fred|T0041457_2_prot
+			note	CAT transcript id: T0041457
+			note	CAT alignment id: ENST00000423795.5-0
+			note	CAT source transcript id: ENST00000423795.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+7423313	7423225	CDS
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	7384843
+7380107	7379921
+7378981	7378813
+7282988	7282871
+7275859	7275723
+7258375	7258334
+			codon_start	1
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 2
+			protein_id	gnl|fred|T0041457_2_prot
+			transcript_id	gnl|fred|T0041457
+7371414	7371319	ncRNA
+7282988	7282871
+7275859	7275723
+7258375	7258176
+			transcript_id	gnl|fred|T0041458
+			ncRNA_class	other
+			locus_tag	fred_G0011765
+			product	processed transcript
+			note	CAT transcript id: T0041458
+			note	CAT alignment id: ENST00000466055.1-0
+			note	CAT source transcript id: ENST00000466055.1
+			note	CAT source GENCODE transcript biotype: processed_transcript
+7531724	7531453	mRNA
+7505696	7505513
+7474235	7474129
+7456833	7456758
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	7384843
+7380107	7379921
+7378981	7378813
+7282988	7282871
+7275859	7275723
+7258375	7258208
+			transcript_id	gnl|fred|T0041459
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 4
+			protein_id	gnl|fred|T0041459_4_prot
+			note	CAT transcript id: T0041459
+			note	CAT alignment id: ENST00000450913.6-0
+			note	CAT source transcript id: ENST00000450913.6
+			note	CAT source GENCODE transcript biotype: protein_coding
+7531701	7531453	CDS
+7505696	7505513
+7474235	7474129
+7456833	7456758
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	7384843
+7380107	7379921
+7378981	7378813
+7282988	7282871
+7275859	7275723
+7258375	7258334
+			codon_start	1
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 4
+			protein_id	gnl|fred|T0041459_4_prot
+			transcript_id	gnl|fred|T0041459
+7444508	7444438	mRNA
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	7384879
+			transcript_id	gnl|fred|T0041461
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 5
+			protein_id	gnl|fred|T0041461_5_prot
+			note	CAT transcript id: T0041461
+			note	CAT alignment id: ENST00000443817.1-0
+			note	CAT source transcript id: ENST00000443817.1
+			note	CAT source GENCODE transcript biotype: protein_coding
+7423313	7423225	CDS
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+7384893	>7384879
+			codon_start	1
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 5
+			protein_id	gnl|fred|T0041461_5_prot
+			transcript_id	gnl|fred|T0041461
+7532272	7531453	mRNA
+7505696	7505513
+7474235	7474129
+7456833	7456758
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	7387035
+			transcript_id	gnl|fred|T0041462
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 6
+			protein_id	gnl|fred|T0041462_6_prot
+			note	CAT transcript id: T0041462
+			note	CAT alignment id: ENST00000428526.5-0
+			note	CAT source transcript id: ENST00000428526.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+7531701	7531453	CDS
+7505696	7505513
+7474235	7474129
+7456833	7456758
+7423357	7423225
+7421199	7421031
+7396579	7396437
+7395092	7395020
+7393823	7393656
+7392502	7392398
+7390795	7390626
+7387105	>7387035
+			codon_start	1
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 6
+			protein_id	gnl|fred|T0041462_6_prot
+			transcript_id	gnl|fred|T0041462
+7531524	7531453	mRNA
+7527424	7527244
+7474235	7474129
+7456833	7456758
+7423357	7423241
+			transcript_id	gnl|fred|T0041463
+			locus_tag	fred_G0011765
 			pseudogene	unitary
-17406923	17406175	mRNA
-17406174	17405897
-			transcript_id	gnl|fred|T0000883
+			note	Putative inactivated transcript (unitary pseudogene)
+			note	CAT transcript id: T0041463
+			note	CAT alignment id: ENST00000520801.5-0
+			note	CAT source transcript id: ENST00000520801.5
+			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+<7531524	7531453	CDS
+7527424	7527398
+			codon_start	1
+			locus_tag	fred_G0011765
+			transcript_id	gnl|fred|T0041463
+7532148	7531453	ncRNA
+7505696	7505513
+7474235	7474129
+7470299	7469087
+			transcript_id	gnl|fred|T0041465
+			ncRNA_class	other
+			locus_tag	fred_G0011765
+			product	processed transcript
+			note	CAT transcript id: T0041465
+			note	CAT alignment id: ENST00000495036.5-0
+			note	CAT source transcript id: ENST00000495036.5
+			note	CAT source GENCODE transcript biotype: processed_transcript
+7532629	7532411	mRNA
+7531932	7531453
+7505696	7505513
+7474235	7474129
+7470302	7470234
+			transcript_id	gnl|fred|T0041467
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 9
+			protein_id	gnl|fred|T0041467_9_prot
+			note	CAT transcript id: T0041467
+			note	CAT alignment id: ENST00000340646.9-0
+			note	CAT source transcript id: ENST00000340646.9
+			note	CAT source GENCODE transcript biotype: protein_coding
+7531701	7531453	CDS
+7505696	7505513
+7474235	7474129
+7470302	7470234
+			codon_start	1
+			locus_tag	fred_G0011765
+			product	CPED1 isoform 9
+			protein_id	gnl|fred|T0041467_9_prot
+			transcript_id	gnl|fred|T0041467
+7505617	7505513	ncRNA
+7474235	7474129
+7470713	7470662
+			transcript_id	gnl|fred|T0041468
+			ncRNA_class	other
+			locus_tag	fred_G0011765
+			product	processed transcript
+			note	CAT transcript id: T0041468
+			note	CAT alignment id: ENST00000521774.1-0
+			note	CAT source transcript id: ENST00000521774.1
+			note	CAT source GENCODE transcript biotype: processed_transcript
+>Features 000045F_1_17749923_s_6396488_17768690
+9420984	9465915	gene
+			locus_tag	fred_G0019255
+9420984	9421084	mRNA
+9422023	9422058
+9462973	9463065
+9463222	9463263
+9463390	9463396
+9463400	9463430
+9463491	9463690
+9463754	9463793
+9463797	9463832
+9463893	9463926
+9463993	9464015
+9464017	9464019
+9464022	9464043
+9464107	9464130
+9464254	9464293
+9464420	9464663
+9465809	9465915
+			transcript_id	gnl|fred|T0066330
+			locus_tag	fred_G0019255
+			product	PRB1 isoform 1
+			protein_id	gnl|fred|T0066330_1_prot
 			exception	low-quality sequence region
-			product	TAAR8_1
-			protein_id	T0000883_1_prot
-			pseudogene	unitary
-			note	Putative inactivated transcript (unitary pseudogene)
-			note	CAT transcript id: T0000883
-			note	CAT alignment id: ENST00000275200.1-0
-			note	CAT source transcript id: ENST00000275200.1
+			note	CAT transcript id: T0066330
+			note	CAT alignment id: ENST00000546254.3-0
+			note	CAT source transcript id: ENST00000546254.3
 			note	CAT source GENCODE transcript biotype: protein_coding
-24995458	24866336	gene
-			locus_tag	fred_G0000368
-			pseudogene	unitary
-24995458	24994578	mRNA
-24907320	24907087
-24894710	24894546
-24876025	24875824
-24871244	24871173
-24870228	24870114
-24869813	24866336
-			transcript_id	gnl|fred|T0001227
-			product	RNF217_1
-			protein_id	T0001227_1_prot
-			pseudogene	unitary
-			note	Putative inactivated transcript (unitary pseudogene)
-			note	CAT transcript id: T0001227
-			note	CAT alignment id: ENST00000560949.5-0
-			note	CAT source transcript id: ENST00000560949.5
+9421021	9421084	CDS
+9422023	9422058
+9462973	9463065
+9463222	9463263
+9463390	9463396
+9463400	9463430
+9463491	9463690
+9463754	9463793
+9463797	9463832
+9463893	9463926
+9463993	9464015
+9464017	9464019
+9464022	9464043
+9464107	9464130
+9464254	9464293
+9464420	9464630
+			codon_start	1
+			locus_tag	fred_G0019255
+			product	PRB1 isoform 1
+			protein_id	gnl|fred|T0066330_1_prot
+			transcript_id	gnl|fred|T0066330
+			note	a gap was added at 9463220-9463221 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463397-9463398 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463399-9463399 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463794-9463795 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463796-9463796 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463991-9463992 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9464020-9464021 so that CDS maintains frame; possibly due to genomic or alignment errors
+>Features 000196F_1_4064470_s_1_1997668
+1358438	1259915	gene
+			locus_tag	fred_G0040755
+1358438	1358369	mRNA
+1281067	1281051
+1281049	1281044
+1280714	1280391
+1280294	1280069
+1279984	1279836
+1279832	1279482
+1279412	1279353
+1279351	1279342
+1279339	1279286
+1279204	1278026
+1278019	1276743
+1276738	1276737
+1276734	1276103
+1276101	1276093
+1276090	1273244
+1272294	1272193
+1270131	1270004
+1269670	1269606
+1266470	1266319
+1265947	1265876
+1265786	1265624
+1264842	1264681
+1263165	1263089
+1261207	1261119
+1260258	1259915
+			transcript_id	gnl|fred|T0143125
+			locus_tag	fred_G0040755
+			product	MUC12 isoform 1
+			protein_id	gnl|fred|T0143125_1_prot
+			exception	low-quality sequence region
+			note	CAT transcript id: T0143125
+			note	CAT alignment id: ENST00000536621.5-0
+			note	CAT source transcript id: ENST00000536621.5
 			note	CAT source GENCODE transcript biotype: protein_coding
+1358438	1358369	CDS
+1281067	1281051
+1281049	1281044
+1280714	1280391
+1280294	1280069
+1279984	1279836
+1279832	1279482
+1279412	1279353
+1279351	1279342
+1279339	1279286
+1279204	1278026
+1278019	1276743
+1276738	1276737
+1276734	1276103
+1276101	1276093
+1276090	1273244
+1272294	1272193
+1270131	1270004
+1269670	1269606
+1266470	1266319
+1265947	1265876
+1265786	1265624
+1264842	1264681
+1263165	1263089
+1261207	1261119
+1260258	1260217
+			codon_start	1
+			locus_tag	fred_G0040755
+			product	MUC12 isoform 1
+			protein_id	gnl|fred|T0143125_1_prot
+			transcript_id	gnl|fred|T0143125
+			note	a gap was added at 1276735-1276736 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1276741-1276742 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1278024-1278025 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1279413-1279413 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1279833-1279833 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1279834-1279835 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1280295-1280296 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1281050-1281050 so that CDS maintains frame; possibly due to genomic or alignment errors
