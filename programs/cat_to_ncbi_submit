@@ -184,6 +184,7 @@ class GeneData(object):
     def __init__(self, gene_id):
         self.gene_id = gene_id
         self.txds_by_id = dict()  # TranscriptData by trans_id
+        self.__region = None # lazy
         self.__txds = None  # lazy sort
 
     @property
@@ -207,6 +208,12 @@ class GeneData(object):
     @property
     def stop(self):
         return max([txd.tx.stop for txd in self.txds])
+
+    @property
+    def region(self):
+        if self.__region is None:
+            self.__region = ChromosomeInterval(self.chrom, self.start, self.stop, self.strand)
+        return self.__region
 
     def add(self, txd):
         if txd.transcript_id in self.txds_by_id:
@@ -280,10 +287,10 @@ class NcbiTblWriter(object):
     def start_seq(self, seqname):
         self.recs.append(">Features {}".format(seqname))
 
-    def __write_feature_region(self, region, strand, feature_key, start_incmpl, end_incmpl):
+    def __write_feature_region(self, region, feature_key, start_incmpl, end_incmpl):
         "write one region range from list, feature_key should be None for continuations"
-        start, stop = str(region[0] + 1), str(region[1])
-        if strand == '-':
+        start, stop = str(region.start + 1), str(region.stop)
+        if region.strand == '-':
             start, stop = stop, start
         if start_incmpl:
             start = "<{}".format(start)
@@ -297,28 +304,29 @@ class NcbiTblWriter(object):
     def __merge_adjacent_features(self, regions):
         merged = [regions[0]]
         for region in regions[1:]:
-            if merged[-1][1] == region[0]:
-                merged[-1] = (merged[-1][0], region[0])
+            if merged[-1].stop == region.start:
+                merged[-1] = ChromosomeInterval(region.chromosome, merged[-1].start, region.stop, region.strand)
             else:
                 merged.append(region)
         return merged
 
-    def write_feature(self, regions, strand, feature_key, start_incmpl=False, end_incmpl=False):
+    def write_feature(self, regions, feature_key, start_incmpl=False, end_incmpl=False):
         """Write feature definition rows.  Ranges is a list in the form
         ((start1, end1), (start2, end2), ...), for each regions of the feature.
         The range are zero-based, half-open, and coordinates will be swapped on negative strand."""
+        strand = regions[0].strand
         if feature_key != "CDS":
             regions = self.__merge_adjacent_features(regions)
 
         # correct order for strand, use start/end incmpl as True only for the appropriate regions
-        regions = list(sorted(regions, key=lambda r: r[0] if strand == '+' else -r[1]))
+        regions = list(sorted(regions, key=lambda r: r.start if strand == '+' else -r.stop))
         if strand == '-':
             start_incmpl, end_incmpl = end_incmpl, start_incmpl
-        self.__write_feature_region(regions[0], strand, feature_key,
+        self.__write_feature_region(regions[0], feature_key,
                                     start_incmpl=start_incmpl,
                                     end_incmpl=(end_incmpl and (len(regions) == 1)))
         for region in regions[1:]:
-            self.__write_feature_region(region, strand, None,
+            self.__write_feature_region(region, None,
                                         start_incmpl=None,
                                         end_incmpl=(end_incmpl and (region == regions[-1])))
 
@@ -351,7 +359,7 @@ class CdsSpec(object):
 
     @property
     def cds_len(self):
-        return sum(([e[1]-e[0] for e in self.regions]))
+        return sum([len(e) for e in self.regions])
 
     def is_mult_three(self):
         "is CDS length a multiple of three?"
@@ -377,11 +385,11 @@ def adjust_cds_start(cds_interval, expected_frame, frame):
         amt += 1
     # min/max here avoids going negative, making a zero-length block
     if cds_interval.strand == '+':
-        gap = (cds_interval.start, cds_interval.start + amt)
+        gap = ChromosomeInterval(cds_interval.chromosome, cds_interval.start, cds_interval.start + amt, cds_interval.strand)
         start = min(cds_interval.start + amt, cds_interval.stop)
         stop = cds_interval.stop
     else:
-        gap = (cds_interval.stop - amt, cds_interval.stop)
+        gap = ChromosomeInterval(cds_interval.chromosome, cds_interval.stop - amt, cds_interval.stop, cds_interval.strand)
         start = cds_interval.start
         stop = max(cds_interval.stop - amt, cds_interval.start)
     cds_interval = ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
@@ -495,7 +503,7 @@ def add_cds_region(cds_interval, frame, expected_frame, cds_spec):
         cds_spec.gaps.append(gap)
 
     if len(cds_interval) != 0:
-        cds_spec.regions.append((cds_interval.start, cds_interval.stop))
+        cds_spec.regions.append(cds_interval)
 
     return frame_incr(expected_frame, len(cds_interval))
 
@@ -562,6 +570,9 @@ def get_cds_regions(txd):
             expected_frame = add_cds_region(cds_interval, txd.tx.exon_frames[iexon], expected_frame, cds_spec)
 
     compute_cds_completeness(txd, trans_start_incmpl, cds_spec)
+    # put into genomic order (required by exon splitting)
+    cds_spec.regions= sorted(cds_spec.regions, key=lambda g:g.start)
+    cds_spec.gaps= sorted(cds_spec.gaps, key=lambda g:g.start)
     return cds_spec
 
 
@@ -578,8 +589,7 @@ def is_possible_unitary_pseudo(txd, cds_spec):
 def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr):
     tx = txd.tx
 
-    tblwr.write_feature(cds_spec.regions, tx.strand, "CDS",
-                        cds_spec.start_incmpl, cds_spec.end_incmpl)
+    tblwr.write_feature(cds_spec.regions, "CDS", cds_spec.start_incmpl, cds_spec.end_incmpl)
 
     # FIXME: codon_start could be set rather than advancing to first codon
     tblwr.write_qualifier('codon_start', "1")
@@ -594,7 +604,7 @@ def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cd
     tblwr.write_qualifier('transcript_id', get_transcript_gnl_id(locus_tag_prefix, txd))
 
     for gap in cds_spec.gaps:
-        tblwr.write_note("a gap was added at {}-{} so that CDS maintains frame; possibly due to genomic or alignment errors".format(gap[0]+1, gap[1]))
+        tblwr.write_note("a gap was added at {}-{} so that CDS maintains frame; possibly due to genomic or alignment errors".format(gap.start+1, gap.stop))
 
 
 def write_cds(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr):
@@ -603,18 +613,49 @@ def write_cds(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, 
     elif verbose:
         print("  cds-dropped", txd.tx.name, file=sys.stderr)
 
-
 def get_transcript_exons(txd):
-    return [(e.start, e.stop) for e in txd.tx.exon_intervals]
+    return txd.tx.exon_intervals
 
+def split_exon_at_gap(remains, gap, cds_spec):
+    """possibly split exon at a gap.  Return split part and remains of exon"""
+    inter = remains.intersection(gap)
+    if inter is None:
+        return None, remains  # not this exon's gap
+    # if gap is at start or end of CDS, just let exon parts become UTR.
+    if (gap.start == cds_spec.regions[0].start) or (gap.stop == cds_spec.regions[-1].stop):
+        return None, remains  # gap becomes UTR
 
-def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, tblwr):
+    split = ChromosomeInterval(gap.chromosome, remains.start, inter.start, gap.strand)
+    new_remains = ChromosomeInterval(gap.chromosome, inter.stop, remains.stop, gap.strand)
+    return split, new_remains
+
+def add_gaps_to_exon(exon, cds_spec):
+    """add gaps to one exon"""
+    new_exon = []
+    remains = exon
+    # CDS and gaps in genomic order
+    for gap in cds_spec.gaps:
+        split, remains = split_exon_at_gap(remains, gap, cds_spec)
+        if (split is not None) and (len(split) > 0):
+            new_exon.append(split)
+    if len(remains) > 0:
+        new_exon.append(remains)
+    return new_exon
+
+def add_gaps_to_exons(exons, cds_spec):
+    """edit exons so they are gapped where we added CDS gaps"""
+    new_exons = []
+    for exon in exons:
+        new_exons.extend(add_gaps_to_exon(exon, cds_spec))
+    return new_exons
+
+def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr):
     tx = txd.tx
     txa = txd.attrs
     feat = get_transcript_feature(txd)
 
     # feature with correct type and all exons
-    tblwr.write_feature(get_transcript_exons(txd), tx.strand, feat)
+    tblwr.write_feature(exons, feat)
 
     # don't include transcript_id on immuno region features
     if feat not in immuno_features:
@@ -663,7 +704,12 @@ def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
 
     if not include_transcript(cds_spec):
         return False, False  # CDS truncated too much
-    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, tblwr)
+
+    exons = get_transcript_exons(txd)
+    if (cds_spec is not None) and (len(cds_spec.regions) > 0) and (len(cds_spec.regions) > 0):
+        exons = add_gaps_to_exons(exons, cds_spec)
+
+    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr)
     if cds_spec is not None:
         write_cds(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr)
     return trans_has_cds(txd), unitary_pseudo
@@ -674,7 +720,7 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     txa = txd.attrs
 
     # coordinates
-    tblwr.write_feature([(gene.start, gene.stop)], gene.strand, "gene")
+    tblwr.write_feature([gene.region], "gene")
 
     tblwr.write_locus_tag(locus_tag_prefix, gene)
 

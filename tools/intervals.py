@@ -18,7 +18,7 @@ class ChromosomeInterval(object):
         self.chromosome = str(chromosome)
         self.start = int(start)    # 0 based
         self.stop = int(stop)      # exclusive
-        assert self.start <= self.stop
+        assert self.start <= self.stop, "start > stop {}:{}-{} ({})".format(chromosome, start, stop, strand)
         self.strand = strand       # + or -
         self.data = data
 

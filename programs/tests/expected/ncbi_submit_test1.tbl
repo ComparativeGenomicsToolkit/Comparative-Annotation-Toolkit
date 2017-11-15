@@ -302,7 +302,7 @@
 			note	CAT alignment id: ENST00000577418.5-0
 			note	CAT source transcript id: ENST00000577418.5
 			note	CAT source GENCODE transcript biotype: processed_transcript
-1836442	1836376	mRNA
+1836440	1836376	mRNA
 1834462	1834340
 1834070	1833697
 			transcript_id	gnl|fred|T0041033
@@ -436,7 +436,7 @@
 			product	ACE isoform 15
 			protein_id	gnl|fred|T0041040_15_prot
 			transcript_id	gnl|fred|T0041040
-1846530	1846327	mRNA
+1846528	1846327	mRNA
 1845898	1845495
 1844498	1844486
 1844300	1844142
@@ -625,7 +625,7 @@
 			product	TANC2 isoform 1
 			protein_id	gnl|fred|T0041073_1_prot
 			transcript_id	gnl|fred|T0041073
-2135496	2135351	mRNA
+2135494	2135351	mRNA
 2128737	2128551
 2091388	2091125
 2061519	2061394
@@ -817,7 +817,7 @@
 			product	TANC2 isoform 8
 			protein_id	gnl|fred|T0041086_8_prot
 			transcript_id	gnl|fred|T0041086
-2255021	2254966	mRNA
+2255020	2254966	mRNA
 2229864	2229682
 2135499	2135408
 			transcript_id	gnl|fred|T0041087
@@ -1143,3 +1143,137 @@
 			note	CAT alignment id: ENST00000521774.1-0
 			note	CAT source transcript id: ENST00000521774.1
 			note	CAT source GENCODE transcript biotype: processed_transcript
+>Features 000045F_1_17749923_s_6396488_17768690
+9420984	9465915	gene
+			locus_tag	fred_G0019255
+9420984	9421084	mRNA
+9422023	9422058
+9462973	9463065
+9463222	9463263
+9463390	9463396
+9463400	9463430
+9463491	9463690
+9463754	9463793
+9463797	9463832
+9463893	9463926
+9463993	9464015
+9464017	9464019
+9464022	9464043
+9464107	9464130
+9464254	9464293
+9464420	9464663
+9465809	9465915
+			transcript_id	gnl|fred|T0066330
+			locus_tag	fred_G0019255
+			product	PRB1 isoform 1
+			protein_id	gnl|fred|T0066330_1_prot
+			exception	low-quality sequence region
+			note	CAT transcript id: T0066330
+			note	CAT alignment id: ENST00000546254.3-0
+			note	CAT source transcript id: ENST00000546254.3
+			note	CAT source GENCODE transcript biotype: protein_coding
+9421021	9421084	CDS
+9422023	9422058
+9462973	9463065
+9463222	9463263
+9463390	9463396
+9463400	9463430
+9463491	9463690
+9463754	9463793
+9463797	9463832
+9463893	9463926
+9463993	9464015
+9464017	9464019
+9464022	9464043
+9464107	9464130
+9464254	9464293
+9464420	9464630
+			codon_start	1
+			locus_tag	fred_G0019255
+			product	PRB1 isoform 1
+			protein_id	gnl|fred|T0066330_1_prot
+			transcript_id	gnl|fred|T0066330
+			note	a gap was added at 9463220-9463221 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463397-9463398 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463399-9463399 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463794-9463795 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463796-9463796 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9463991-9463992 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 9464020-9464021 so that CDS maintains frame; possibly due to genomic or alignment errors
+>Features 000196F_1_4064470_s_1_1997668
+1358438	1259915	gene
+			locus_tag	fred_G0040755
+1358438	1358369	mRNA
+1281067	1281051
+1281049	1281044
+1280714	1280391
+1280294	1280069
+1279984	1279836
+1279832	1279482
+1279412	1279353
+1279351	1279342
+1279339	1279286
+1279204	1278026
+1278019	1276743
+1276738	1276737
+1276734	1276103
+1276101	1276093
+1276090	1273244
+1272294	1272193
+1270131	1270004
+1269670	1269606
+1266470	1266319
+1265947	1265876
+1265786	1265624
+1264842	1264681
+1263165	1263089
+1261207	1261119
+1260258	1259915
+			transcript_id	gnl|fred|T0143125
+			locus_tag	fred_G0040755
+			product	MUC12 isoform 1
+			protein_id	gnl|fred|T0143125_1_prot
+			exception	low-quality sequence region
+			note	CAT transcript id: T0143125
+			note	CAT alignment id: ENST00000536621.5-0
+			note	CAT source transcript id: ENST00000536621.5
+			note	CAT source GENCODE transcript biotype: protein_coding
+1358438	1358369	CDS
+1281067	1281051
+1281049	1281044
+1280714	1280391
+1280294	1280069
+1279984	1279836
+1279832	1279482
+1279412	1279353
+1279351	1279342
+1279339	1279286
+1279204	1278026
+1278019	1276743
+1276738	1276737
+1276734	1276103
+1276101	1276093
+1276090	1273244
+1272294	1272193
+1270131	1270004
+1269670	1269606
+1266470	1266319
+1265947	1265876
+1265786	1265624
+1264842	1264681
+1263165	1263089
+1261207	1261119
+1260258	1260217
+			codon_start	1
+			locus_tag	fred_G0040755
+			product	MUC12 isoform 1
+			protein_id	gnl|fred|T0143125_1_prot
+			transcript_id	gnl|fred|T0143125
+			note	a gap was added at 1276735-1276736 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1276741-1276742 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1278024-1278025 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1279413-1279413 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1279833-1279833 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1279834-1279835 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1280295-1280296 so that CDS maintains frame; possibly due to genomic or alignment errors
+			note	a gap was added at 1281050-1281050 so that CDS maintains frame; possibly due to genomic or alignment errors
