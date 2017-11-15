@@ -147,10 +147,10 @@ ncrna_class = {
 pseudo_map = {
     'IG_C_pseudogene': 'unknown',
     'IG_D_pseudogene': 'unkown',
-    'IG_J_pseudogene': 'J_segment',
+    'IG_J_pseudogene': 'unkown',
     'IG_V_pseudogene': 'unknown',
     'IG_pseudogene': 'unknown',
-    'TR_C_pseudogene': 'C_region',
+    'TR_C_pseudogene': 'unknown',
     'TR_J_pseudogene': 'unknown',
     'TR_V_pseudogene': 'unknown',
     'processed_pseudogene': 'processed',
