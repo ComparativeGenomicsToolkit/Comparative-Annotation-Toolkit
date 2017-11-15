@@ -535,11 +535,14 @@ def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
 
 
     # if there is a valid stop, force end completeness or tbl2asn generates SEQ_FEAT.PartialProblem
-    # this overrides the source gene being incomplete
-    if txd.attrs.valid_stop:
-        if txd.tx.strand  == '+':
+    # this overrides the source gene being incomplete.  If CDS has been shortened at the 3' end,
+    # then that is done because we found a valid stop.
+    #
+    if txd.tx.strand  == '+':
+        if txd.attrs.valid_stop or (txd.attrs.adj_stop < txd.tx.thick_stop):
             cds_spec.end_incmpl = False
-        else:
+    else:
+        if txd.attrs.valid_stop or (txd.attrs.adj_start > txd.tx.thick_start):
             cds_spec.start_incmpl = False
 
 def get_cds_regions(txd):

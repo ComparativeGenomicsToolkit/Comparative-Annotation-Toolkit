@@ -321,7 +321,7 @@
 			product	ACE isoform 8
 			protein_id	gnl|fred|T0041033_8_prot
 			transcript_id	gnl|fred|T0041033
-			note	gaps where added at 1836441-1836442 so that CDS maintains frame
+			note	a gap was added at 1836441-1836442 so that CDS maintains frame; possibly due to genomic or alignment errors
 1834716	1834340	ncRNA
 1834070	1833883
 			transcript_id	gnl|fred|T0041034
@@ -403,14 +403,18 @@
 1841921	1841771
 			transcript_id	gnl|fred|T0041039
 			locus_tag	fred_G0011628
-			product	ACE isoform 14
-			protein_id	gnl|fred|T0041039_14_prot
 			pseudogene	unitary
 			note	Putative inactivated transcript (unitary pseudogene)
 			note	CAT transcript id: T0041039
 			note	CAT alignment id: ENST00000582005.5-0
 			note	CAT source transcript id: ENST00000582005.5
 			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+1846000	1845802	CDS
+1845631	1845495
+1844571	1844563
+			codon_start	1
+			locus_tag	fred_G0011628
+			transcript_id	gnl|fred|T0041039
 1846000	1845899	mRNA
 1845631	1845495
 1844300	1844142
@@ -452,7 +456,7 @@
 			product	ACE isoform 16
 			protein_id	gnl|fred|T0041041_16_prot
 			transcript_id	gnl|fred|T0041041
-			note	gaps where added at 1846529-1846530 so that CDS maintains frame
+			note	a gap was added at 1846529-1846530 so that CDS maintains frame; possibly due to genomic or alignment errors
 1853771	1853489	mRNA
 1852897	1852730
 1851110	1850967
@@ -676,7 +680,7 @@
 			product	TANC2 isoform 2
 			protein_id	gnl|fred|T0041074_2_prot
 			transcript_id	gnl|fred|T0041074
-			note	gaps where added at 2135495-2135496 so that CDS maintains frame
+			note	a gap was added at 2135495-2135496 so that CDS maintains frame; possibly due to genomic or alignment errors
 2318737	2318671	mRNA
 2255037	2254966
 2229864	2229793
@@ -832,7 +836,7 @@
 			product	TANC2 isoform 9
 			protein_id	gnl|fred|T0041087_9_prot
 			transcript_id	gnl|fred|T0041087
-			note	gaps where added at 2255021-2255021 so that CDS maintains frame
+			note	a gap was added at 2255021-2255021 so that CDS maintains frame; possibly due to genomic or alignment errors
 2180927	2173940	ncRNA
 			transcript_id	gnl|fred|T0041089
 			ncRNA_class	other
@@ -1083,14 +1087,17 @@
 7423357	7423241
 			transcript_id	gnl|fred|T0041463
 			locus_tag	fred_G0011765
-			product	CPED1 isoform 7
-			protein_id	gnl|fred|T0041463_7_prot
 			pseudogene	unitary
 			note	Putative inactivated transcript (unitary pseudogene)
 			note	CAT transcript id: T0041463
 			note	CAT alignment id: ENST00000520801.5-0
 			note	CAT source transcript id: ENST00000520801.5
 			note	CAT source GENCODE transcript biotype: nonsense_mediated_decay
+<7531524	7531453	CDS
+7527424	7527398
+			codon_start	1
+			locus_tag	fred_G0011765
+			transcript_id	gnl|fred|T0041463
 7532148	7531453	ncRNA
 7505696	7505513
 7474235	7474129
