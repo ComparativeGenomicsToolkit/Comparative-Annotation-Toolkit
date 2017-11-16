@@ -21,11 +21,6 @@ from rangeFinder import RangeFinder
 #    a one base negative strand.  So we just turned these into comments.
 
 
-verbose = False
-
-# discard CDS with less than this many bases.
-min_cds_size = 90
-
 def parse_args():
     desc = """convert a CAT generated genePred and associated information to an NCBI submission table file
     """
@@ -40,9 +35,12 @@ def parse_args():
                         help="locus tag prefix to use")
     parser.add_argument("ncbi_tbl_file",
                         help="output NCBI table file")
+    parser.add_argument('--min-cds-size', default=90, type=int, help='discard CDS with less than this many bases.')
     args = parser.parse_args()
     global verbose
     verbose = args.verbose
+    global min_cds_size
+    min_cds_size = args.min_cds_size
     return args
 
 
@@ -179,6 +177,7 @@ def check_defs():
         elif biotype_map[biotype] == 'pseudo':
             assert biotype in pseudo_map, biotype
 
+
 class GeneData(object):
     """Annotations for a single gene"""
     def __init__(self, gene_id):
@@ -221,13 +220,6 @@ class GeneData(object):
         self.txds_by_id[txd.transcript_id] = txd
         self.__txds = None
 
-    @property
-    def exons(self):
-        "get unique exons"
-        exons = set()
-        for txd in gene.txds:
-            exons.update(tdx.exons)
-        return exons
 
 class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
     """transcript annotation and attributes"""
@@ -244,6 +236,7 @@ class TranscriptData(namedtuple("TranscriptData", ("tx", "attrs"))):
         for exon in self.tx.exon_intervals:
             exons.add(exon)
         return exons
+
 
 def load_annotations(gp_file, gp_info_file):
     """load all transcript into OrderedDict of (chrom, gene) of TranscriptAttrs"""
@@ -374,6 +367,7 @@ def frame_incr(frame, amt=1):
         amt3 = (-amt) % 3
         return (frame - (amt - amt3)) % 3
 
+
 def adjust_cds_start(cds_interval, expected_frame, frame):
     """adjust cds_interval to match the expected frame.  It is possible
     for the cds_interval to become zero"""
@@ -428,10 +422,12 @@ def is_non_coding(txd):
 def trans_has_cds(txd):
     return txd.tx.cds_size > 0
 
+
 def have_gene_name(gene):
     "is there anything for the gene name real or generated??"
     txd = gene.txds[0]
     return not pd.isnull(txd.attrs.source_gene_common_name)
+
 
 def get_real_gene_name(gene):
     # GENCODE uses clone derived names for some genomic annotations, which NCBI doesn't
@@ -442,14 +438,17 @@ def get_real_gene_name(gene):
     else:
         return txd.attrs.source_gene_common_name
 
+
 def get_coding_product(gene, txd, trans_num):
     name = get_real_gene_name(gene)
     if name is None:
         name = get_transcript_base_id(txd)
     return "{} isoform {}".format(name, trans_num)
 
+
 def get_ncrna_product(txd):
     return txd.attrs.transcript_biotype.replace('_', ' ')
+
 
 def get_product(gene, txd, trans_num):
     if is_non_coding(txd):
@@ -458,6 +457,7 @@ def get_product(gene, txd, trans_num):
         return "tRNA-Xxx"
     else:
         return get_coding_product(gene, txd, trans_num)
+
 
 def get_transcript_protein_id(locus_tag, txd, trans_num):
     return "gnl|{}|{}_{}_prot".format(locus_tag, get_transcript_base_id(txd), trans_num)
@@ -541,7 +541,6 @@ def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
         else:
             cds_spec.end_incmpl = True
 
-
     # if there is a valid stop, force end completeness or tbl2asn generates SEQ_FEAT.PartialProblem
     # this overrides the source gene being incomplete.  If CDS has been shortened at the 3' end,
     # then that is done because we found a valid stop.
@@ -553,9 +552,10 @@ def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
         if txd.attrs.valid_stop or (txd.attrs.adj_start > txd.tx.thick_start):
             cds_spec.start_incmpl = False
 
-def get_cds_regions(txd):
+
+def get_cds_regions(txd, seen_cds_intervals):
     """Get list of CDS regions and list of partial codons.  If there is a frame
-    shift, adjust the CDS accordingly, inserting a gap.
+    shift, adjust the CDS accordingly, inserting a gap. If this CDS interval set has been seen before, ignore it
     """
     cds_spec = CdsSpec(txd.tx.strand)
     coding_interval = ChromosomeInterval(txd.tx.coding_interval.chromosome, int(txd.attrs["adj_start"]), int(txd.attrs["adj_stop"]), txd.tx.strand)
@@ -571,8 +571,17 @@ def get_cds_regions(txd):
 
     compute_cds_completeness(txd, trans_start_incmpl, cds_spec)
     # put into genomic order (required by exon splitting)
-    cds_spec.regions= sorted(cds_spec.regions, key=lambda g:g.start)
-    cds_spec.gaps= sorted(cds_spec.gaps, key=lambda g:g.start)
+
+    # if this is a previously seen interval, remove it
+    intervals = frozenset(cds_spec.regions)
+    if intervals in seen_cds_intervals:
+        if verbose:
+            print('Removing CDS of {} due to duplicate CDS intervals'.format(txd.tx.name))
+        return None
+    seen_cds_intervals.add(intervals)
+
+    cds_spec.regions = sorted(cds_spec.regions, key=lambda g:g.start)
+    cds_spec.gaps = sorted(cds_spec.gaps, key=lambda g:g.start)
     return cds_spec
 
 
@@ -587,8 +596,6 @@ def is_possible_unitary_pseudo(txd, cds_spec):
 
 
 def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr):
-    tx = txd.tx
-
     tblwr.write_feature(cds_spec.regions, "CDS", cds_spec.start_incmpl, cds_spec.end_incmpl)
 
     # FIXME: codon_start could be set rather than advancing to first codon
@@ -613,8 +620,10 @@ def write_cds(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, 
     elif verbose:
         print("  cds-dropped", txd.tx.name, file=sys.stderr)
 
+
 def get_transcript_exons(txd):
     return txd.tx.exon_intervals
+
 
 def split_exon_at_gap(remains, gap, cds_spec):
     """possibly split exon at a gap.  Return split part and remains of exon"""
@@ -629,6 +638,7 @@ def split_exon_at_gap(remains, gap, cds_spec):
     new_remains = ChromosomeInterval(gap.chromosome, inter.stop, remains.stop, gap.strand)
     return split, new_remains
 
+
 def add_gaps_to_exon(exon, cds_spec):
     """add gaps to one exon"""
     new_exon = []
@@ -642,6 +652,7 @@ def add_gaps_to_exon(exon, cds_spec):
         new_exon.append(remains)
     return new_exon
 
+
 def add_gaps_to_exons(exons, cds_spec):
     """edit exons so they are gapped where we added CDS gaps"""
     new_exons = []
@@ -649,10 +660,12 @@ def add_gaps_to_exons(exons, cds_spec):
         new_exons.extend(add_gaps_to_exon(exon, cds_spec))
     return new_exons
 
-def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr):
-    tx = txd.tx
+
+def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, removed_cds, tblwr):
     txa = txd.attrs
     feat = get_transcript_feature(txd)
+    if removed_cds:
+        feat = 'ncRNA'  # force into ncRNA for unitary duplicate case
 
     # feature with correct type and all exons
     tblwr.write_feature(exons, feat)
@@ -665,19 +678,24 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, uni
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
 
+    if removed_cds:
+        tblwr.write_qualifier('ncRNA_class', 'other')
+
     tblwr.write_locus_tag(locus_tag_prefix, gene)
 
-    if not unitary_pseudo:
+    if not unitary_pseudo and not removed_cds:
         write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
         tblwr.write_qualifier('exception', 'low-quality sequence region')
 
-
-    if unitary_pseudo:
+    if unitary_pseudo or removed_cds:
         tblwr.write_qualifier('pseudogene', "unitary")
         tblwr.write_note("Putative inactivated transcript (unitary pseudogene)")
+
+    if removed_cds:
+        tblwr.write_note('Removed CDS due to duplication (putative unitary pseudogene or NMD isoform)')
 
     # record cat pipeline information
     tblwr.write_note("CAT transcript id: {}".format(get_transcript_base_id(txd)))
@@ -689,18 +707,24 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, uni
     else:
         tblwr.write_note('CAT novel prediction: {}'.format(txa.transcript_modes))
 
+
 def include_transcript(cds_spec):
     # don't include too-short CDS transcripts
     return (cds_spec is None) or (cds_spec.cds_len >= min_cds_size)
 
-def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
+
+def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr, seen_cds_intervals):
     if verbose:
         print("converting", txd.tx.name, file=sys.stderr)
     cds_spec = None
     unitary_pseudo = False
+    removed_cds = False
     if trans_has_cds(txd) and (txd.attrs.gene_biotype not in pseudo_map):
-        cds_spec = get_cds_regions(txd)
-        unitary_pseudo = is_possible_unitary_pseudo(txd, cds_spec)
+        cds_spec = get_cds_regions(txd, seen_cds_intervals)
+        if cds_spec is not None:
+            unitary_pseudo = is_possible_unitary_pseudo(txd, cds_spec)
+        else:
+            removed_cds = True
 
     if not include_transcript(cds_spec):
         return False, False  # CDS truncated too much
@@ -709,14 +733,14 @@ def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
     if (cds_spec is not None) and (len(cds_spec.regions) > 0) and (len(cds_spec.regions) > 0):
         exons = add_gaps_to_exons(exons, cds_spec)
 
-    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr)
+    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, removed_cds, tblwr)
     if cds_spec is not None:
         write_cds(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr)
     return trans_has_cds(txd), unitary_pseudo
 
+
 def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     txd = gene.txds[0]  # arbitrary transcript
-    tx = txd.tx
     txa = txd.attrs
 
     # coordinates
@@ -730,27 +754,18 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     elif unitary_pseudo:
         tblwr.write_qualifier('pseudogene', "unitary")
 
+
 def convert_gene_transcripts(locus_tag_prefix, gene, tblwr):
     num_with_cds = 0
     num_unitary_pseudo = 0
+    seen_cds_intervals = set()  # frozensets of intervals seen to prevent duplicates
     for trans_num, txd in enumerate(gene.txds, 1):
-        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr)
+        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr, seen_cds_intervals)
         if has_cds:
             num_with_cds += 1
         if unitary_pseudo:
             num_unitary_pseudo += 1
     return num_with_cds, num_unitary_pseudo
-
-def include_gene(gene):
-    # FIXME: not used
-    # only including coding genes that have at least some CDS that are at least the minimum
-    # size
-    coding_txds = [txd for txd in gene.txds if trans_has_cds(txd)]
-    if len(coding_txds) == 0:
-        return True  # no CDS
-    else:
-        max_cds_len = max([txd.tx.cds_size for txd in coding_txds])
-    return max_cds_len >= min_cds_size
 
 
 def convert_gene(locus_tag_prefix, gene, tblwr):
