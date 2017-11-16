@@ -146,8 +146,8 @@ ncrna_class = {
 # for pseudogenes, this defines the pseudogene key/value pair
 pseudo_map = {
     'IG_C_pseudogene': 'unknown',
-    'IG_D_pseudogene': 'unkown',
-    'IG_J_pseudogene': 'unkown',
+    'IG_D_pseudogene': 'unknown',
+    'IG_J_pseudogene': 'unknown',
     'IG_V_pseudogene': 'unknown',
     'IG_pseudogene': 'unknown',
     'TR_C_pseudogene': 'unknown',
