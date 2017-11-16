@@ -553,7 +553,7 @@ def compute_cds_completeness(txd, trans_start_incmpl, cds_spec):
             cds_spec.start_incmpl = False
 
 
-def get_cds_regions(txd, seen_cds_intervals):
+def get_cds_regions(txd):
     """Get list of CDS regions and list of partial codons.  If there is a frame
     shift, adjust the CDS accordingly, inserting a gap. If this CDS interval set has been seen before, ignore it
     """
@@ -571,15 +571,6 @@ def get_cds_regions(txd, seen_cds_intervals):
 
     compute_cds_completeness(txd, trans_start_incmpl, cds_spec)
     # put into genomic order (required by exon splitting)
-
-    # if this is a previously seen interval, remove it
-    intervals = frozenset(cds_spec.regions)
-    if intervals in seen_cds_intervals:
-        if verbose:
-            print('Removing CDS of {} due to duplicate CDS intervals'.format(txd.tx.name))
-        return None
-    seen_cds_intervals.add(intervals)
-
     cds_spec.regions = sorted(cds_spec.regions, key=lambda g:g.start)
     cds_spec.gaps = sorted(cds_spec.gaps, key=lambda g:g.start)
     return cds_spec
@@ -709,13 +700,13 @@ def include_transcript(cds_spec):
     return (cds_spec is None) or (cds_spec.cds_len >= min_cds_size)
 
 
-def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr, seen_cds_intervals):
+def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
     if verbose:
         print("converting", txd.tx.name, file=sys.stderr)
     cds_spec = None
     unitary_pseudo = False
     if trans_has_cds(txd) and (txd.attrs.gene_biotype not in pseudo_map):
-        cds_spec = get_cds_regions(txd, seen_cds_intervals)
+        cds_spec = get_cds_regions(txd)
         if cds_spec is not None:
             unitary_pseudo = is_possible_unitary_pseudo(txd, cds_spec)
 
@@ -751,9 +742,8 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
 def convert_gene_transcripts(locus_tag_prefix, gene, tblwr):
     num_with_cds = 0
     num_unitary_pseudo = 0
-    seen_cds_intervals = set()  # frozensets of intervals seen to prevent duplicates
     for trans_num, txd in enumerate(gene.txds, 1):
-        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr, seen_cds_intervals)
+        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr)
         if has_cds:
             num_with_cds += 1
         if unitary_pseudo:
