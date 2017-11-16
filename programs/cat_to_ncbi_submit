@@ -595,7 +595,7 @@ def is_possible_unitary_pseudo(txd, cds_spec):
     return (mapped_cds_len > 0) and ((mapped_cds_len - src_cds_len) > 30) or (mapped_cds_len <= (0.80 * src_cds_len))
 
 
-def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr):
+def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
     tblwr.write_feature(cds_spec.regions, "CDS", cds_spec.start_incmpl, cds_spec.end_incmpl)
 
     # FIXME: codon_start could be set rather than advancing to first codon
@@ -603,9 +603,8 @@ def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cd
 
     tblwr.write_locus_tag(locus_tag_prefix, gene)
 
-    if not unitary_pseudo:
-        # product and protein id  must be same on mRNA and CDS
-        write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
+    # product and protein id  must be same on mRNA and CDS
+    write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     # coding transcripts must have a protein_id tag -- just use the name with _prot suffix
     tblwr.write_qualifier('transcript_id', get_transcript_gnl_id(locus_tag_prefix, txd))
@@ -614,9 +613,9 @@ def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cd
         tblwr.write_note("a gap was added at {}-{} so that CDS maintains frame; possibly due to genomic or alignment errors".format(gap.start+1, gap.stop))
 
 
-def write_cds(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr):
+def write_cds(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
     if len(cds_spec.regions):
-        write_cds_regions(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr)
+        write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr)
     elif verbose:
         print("  cds-dropped", txd.tx.name, file=sys.stderr)
 
@@ -661,10 +660,10 @@ def add_gaps_to_exons(exons, cds_spec):
     return new_exons
 
 
-def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, removed_cds, tblwr):
+def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr):
     txa = txd.attrs
     feat = get_transcript_feature(txd)
-    if removed_cds:
+    if unitary_pseudo:
         feat = 'ncRNA'  # force into ncRNA for unitary duplicate case
 
     # feature with correct type and all exons
@@ -678,24 +677,21 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, uni
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
 
-    if removed_cds:
+    if unitary_pseudo:
         tblwr.write_qualifier('ncRNA_class', 'other')
 
     tblwr.write_locus_tag(locus_tag_prefix, gene)
 
-    if not unitary_pseudo and not removed_cds:
+    if not unitary_pseudo:
         write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     # check for gaps
     if any(len(x) <= 50 for x in txd.tx.intron_intervals):
         tblwr.write_qualifier('exception', 'low-quality sequence region')
 
-    if unitary_pseudo or removed_cds:
+    if unitary_pseudo:
         tblwr.write_qualifier('pseudogene', "unitary")
         tblwr.write_note("Putative inactivated transcript (unitary pseudogene)")
-
-    if removed_cds:
-        tblwr.write_note('Removed CDS due to duplication (putative unitary pseudogene or NMD isoform)')
 
     # record cat pipeline information
     tblwr.write_note("CAT transcript id: {}".format(get_transcript_base_id(txd)))
@@ -718,13 +714,10 @@ def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr, seen_cds_i
         print("converting", txd.tx.name, file=sys.stderr)
     cds_spec = None
     unitary_pseudo = False
-    removed_cds = False
     if trans_has_cds(txd) and (txd.attrs.gene_biotype not in pseudo_map):
         cds_spec = get_cds_regions(txd, seen_cds_intervals)
         if cds_spec is not None:
             unitary_pseudo = is_possible_unitary_pseudo(txd, cds_spec)
-        else:
-            removed_cds = True
 
     if not include_transcript(cds_spec):
         return False, False  # CDS truncated too much
@@ -733,9 +726,9 @@ def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr, seen_cds_i
     if (cds_spec is not None) and (len(cds_spec.regions) > 0) and (len(cds_spec.regions) > 0):
         exons = add_gaps_to_exons(exons, cds_spec)
 
-    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, removed_cds, tblwr)
-    if cds_spec is not None:
-        write_cds(locus_tag_prefix, gene, txd, trans_num, unitary_pseudo, cds_spec, tblwr)
+    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr)
+    if cds_spec is not None and unitary_pseudo is False:
+        write_cds(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr)
     return trans_has_cds(txd), unitary_pseudo
 
 
