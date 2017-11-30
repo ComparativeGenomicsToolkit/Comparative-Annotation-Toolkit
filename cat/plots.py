@@ -50,7 +50,6 @@ def generate_plots(args):
         pass
 
     tx_modes_plot(consensus_data, args.ordered_genomes, args.tx_modes)
-    tm_filter_plots(tm_data, args.ordered_genomes, args.transmap_filtering)
     tm_metrics_plot(tm_metrics, args.ordered_genomes, biotypes, transcript_biotype_map, args.tm_coverage,
                     args.tm_identity)
     tm_para_plot(tm_data, args.ordered_genomes, biotypes, args.paralogy)
@@ -100,29 +99,13 @@ def load_tm_metrics(dbs):
 ###
 
 
-def tm_filter_plots(tm_data, ordered_genomes, tgt):
-    """Plots for the transMap filtering process."""
-    data = []
-    for genome in ordered_genomes:
-        for filter_mode, val in tm_data[genome]['Orthology'].iteritems():
-            data.append([genome, filter_mode, val])
-    df = pd.DataFrame(data, columns=['genome', 'Filter Mode', 'value'])
-    df['genome'] = pd.Categorical(df.genome, ordered_genomes, ordered=True)
-    with tgt.open('w') as outf, PdfPages(outf) as pdf:
-        g = sns.factorplot(data=df, x='genome', y='value', col='Filter Mode', kind='bar', col_wrap=2)
-        g.fig.suptitle('transMap filtering outcomes')
-        g.fig.subplots_adjust(top=0.9)
-        g.set_xticklabels(rotation=90)
-        multipage_close(pdf, tight_layout=False)
-
-
 def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_map, tm_coverage_tgt, tm_identity_tgt):
     """plots for transMap coverage, identity"""
     tm_iter = zip(*[['transMap Coverage', 'transMap Identity'],
                     [tm_coverage_tgt, tm_identity_tgt]])
     for mode, tgt in tm_iter:
         df = dict_to_df_with_biotype(tm_metrics[mode], transcript_biotype_map)
-        df = pd.melt(df, id_vars='biotype', value_vars=ordered_genomes)
+        df = pd.melt(df, id_vars='biotype', value_vars=ordered_genomes).dropna()
         df.columns = ['biotype', 'genome', mode]
         cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome')
 

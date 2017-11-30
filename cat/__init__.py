@@ -97,8 +97,7 @@ class PipelineTask(luigi.Task):
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
     # Paralogy detection options
-    local_near_best = luigi.FloatParameter(default=0.15, significant=False)
-    minimum_paralog_coverage = luigi.FloatParameter(25, significant=False)
+    global_near_best = luigi.FloatParameter(default=0.15, significant=False)
     # consensus options
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
@@ -159,8 +158,7 @@ class PipelineTask(luigi.Task):
         args.set('hgm_cpu', self.hgm_cpu, False)
 
         # user flags for paralog resolution
-        args.set('local_near_best', self.local_near_best, True)
-        args.set('minimum_paralog_coverage', self.minimum_paralog_coverage, True)
+        args.set('global_near_best', self.global_near_best, True)
         
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
@@ -1106,8 +1104,7 @@ class TransMap(PipelineWrapperTask):
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'filter_tm_metrics.json')
         args.ref_db_path = pipeline_args.dbs[pipeline_args.ref_genome]
         args.db_path = pipeline_args.dbs[genome]
-        args.minimum_paralog_coverage = pipeline_args.minimum_paralog_coverage
-        args.local_near_best = pipeline_args.local_near_best
+        args.global_near_best = pipeline_args.global_near_best
         return args
 
     def validate(self):
@@ -1183,9 +1180,8 @@ class FilterTransMap(PipelineTask):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         logger.info('Filtering transMap PSL for {}.'.format(self.genome))
         table_target, psl_target, json_target, gp_target = self.output()
-        resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp, self.genome,
-                                      tm_args.ref_db_path, psl_target, tm_args.minimum_paralog_coverage,
-                                      tm_args.local_near_best, json_target)
+        resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp,
+                                      tm_args.ref_db_path, psl_target, tm_args.global_near_best, json_target)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
@@ -2074,7 +2070,6 @@ class Plots(RebuildableTask):
         args.tm_identity = luigi.LocalTarget(os.path.join(base_dir, 'transmap_identity.pdf'))
         # plots derived from transMap filtering
         args.paralogy = luigi.LocalTarget(os.path.join(base_dir, 'paralogy.pdf'))
-        args.transmap_filtering = luigi.LocalTarget(os.path.join(base_dir, 'transmap_filtering.pdf'))
         # plots derived from transcript alignment / consensus finding
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
         args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))

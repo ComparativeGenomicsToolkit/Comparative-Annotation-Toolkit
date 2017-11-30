@@ -432,6 +432,12 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
         d['paralogy'] = best_series.Paralogy
     if best_series.GeneAlternateLoci is not None:
         d['gene_alternate_contigs'] = best_series.GeneAlternateLoci
+    if best_series.CollapsedGeneIds is not None:
+        d['collapsed_gene_ids'] = best_series.CollapsedGeneIds
+    if best_series.CollapsedGeneNames is not None:
+        d['collapsed_gene_names'] = best_series.CollapsedGeneNames
+    if best_series.PossibleSplitGeneLocations is not None:
+        d['possible_split_gene_locations'] = best_series.PossibleSplitGeneLocations
     if best_series.GeneName is not None:
         d['source_gene_common_name'] = best_series.GeneName
 

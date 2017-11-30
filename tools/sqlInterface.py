@@ -99,6 +99,9 @@ class TmFilterEval(MetricsColumns, Base):
     TranscriptId = Column(Text, primary_key=True)
     AlignmentId = Column(Text, primary_key=True)
     GeneAlternateContigs = Column(Text)
+    GeneAlternateLoci = Column(Text)
+    CollapsedGeneNames = Column(Text)
+    CollapsedGeneIds = Column(Text)
     Paralogy = Column(Text)
 
 
