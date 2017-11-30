@@ -94,6 +94,7 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, s
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         original_intron_vector = calculate_original_intron_vector(ref_tx, tx, psl, aln_mode)
+        adj_start, adj_stop = find_adj_start_stop(tx, seq_dict)
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', 100 * psl.target_coverage])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', 100 * psl.identity])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnGoodness', 100 * (1 - psl.badness)])
@@ -102,6 +103,8 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, s
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'ValidStart', tools.transcripts.has_start_codon(seq_dict, tx)])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'ValidStop', tools.transcripts.has_stop_codon(seq_dict, tx)])
         r.append([ref_tx.name2, ref_tx.name, tx.name, 'ProperOrf', tx.cds_size % 3 == 0])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AdjStart', adj_start])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AdjStop', adj_stop])
     columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
     df = pd.DataFrame(r, columns=columns)
     df = df.sort_values(columns)
@@ -181,23 +184,42 @@ def calculate_original_intron_vector(ref_tx, tx, psl, aln_mode):
     return ','.join(map(str, intron_vector))
 
 
-###
-# Alignment Evaluation Classifiers
-###
-
-
 def in_frame_stop(tx, fasta):
     """
     Finds the first in frame stop of this transcript, if there are any
 
     :param tx: Target GenePredTranscript object
     :param fasta: pyfasta Fasta object mapping the genome fasta for this analysis
-    :return: A ChromosomeInterval object if an in frame stop was found otherwise None
+    :return: A BED string if an in frame stop was found otherwise None
     """
     for start_pos, stop_pos, codon in tx.codon_iterator(fasta):
         if tools.bio.translate_sequence(codon) == '*':
             bed = tx.get_bed(new_start=start_pos, new_stop=stop_pos, rgb='135,78,191', name='InFrameStop')
             return [tx.name] + bed
+
+
+###
+# Alignment Evaluation Classifiers
+###
+
+
+def find_adj_start_stop(tx, fasta):
+    """
+    Finds the adjusted start/stop positions that define the ORF of this transcript, dealing with in-frame stops
+    :param tx: Target GenePredTranscript object
+    :param fasta: pyfasta Fasta object mapping the genome fasta for this analysis
+    :return: two integers for start/stop in genomic coordinates
+    """
+    for start_pos, stop_pos, codon in tx.codon_iterator(fasta):
+        if tools.bio.translate_sequence(codon) == '*':
+            if tx.strand == '-':
+                start = start_pos
+                stop = tx.thick_stop
+            else:
+                stop = stop_pos
+                start = tx.thick_start
+            return start, stop
+    return tx.thick_start, tx.thick_stop
 
 
 def find_indels(tx, psl, aln_mode):
