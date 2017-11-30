@@ -180,7 +180,7 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt):
             counts = dict(zip(genome_df['Paralogy'], genome_df['count']))
             r.append([biotype, genome, counts.get(1, 0), counts.get(2, 0), counts.get(3, 0), high_para])
     df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', u'\u2265 4'])
-    sum_df = df.groupby('genome').aggregate(sum).T
+    sum_df = df.groupby('genome', sort=False).aggregate(sum).T
 
     plot_fn = generic_unstacked_barplot if len(df.columns) <= 5 else generic_stacked_barplot
     box_label = 'Number of\nalignments'
