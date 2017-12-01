@@ -425,8 +425,8 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'valid_start': bool(best_series.ValidStart),
          'valid_stop': bool(best_series.ValidStop),
          'proper_orf': bool(best_series.ProperOrf),
-         'adj_start': int(best_series.AdjStart_mRNA),
-         'adj_stop': int(best_series.AdjStop_mRNA)}
+         'adj_start': best_series.AdjStart_mRNA,
+         'adj_stop': best_series.AdjStop_mRNA}
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
