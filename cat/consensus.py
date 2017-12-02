@@ -24,6 +24,7 @@ import collections
 import luigi
 import logging
 import pandas as pd
+import numpy as np
 
 import tools.intervals
 import tools.misc
@@ -424,9 +425,9 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'transcript_class': 'ortholog',
          'valid_start': bool(best_series.ValidStart),
          'valid_stop': bool(best_series.ValidStop),
-         'proper_orf': bool(best_series.ProperOrf),
          'adj_start': best_series.AdjStart_mRNA,
-         'adj_stop': best_series.AdjStop_mRNA}
+         'adj_stop': best_series.AdjStop_mRNA,
+         'proper_orf': bool(best_series.ProperOrf)}
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
@@ -442,6 +443,14 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
         d['possible_split_gene_locations'] = best_series.PossibleSplitGeneLocations
     if best_series.GeneName is not None:
         d['source_gene_common_name'] = best_series.GeneName
+    if not np.isnan(best_series.AdjStart_mRNA):
+        d['adj_start'] = int(best_series.AdjStart_mRNA)
+    else:
+        d['adj_start'] = None
+    if not np.isnan(best_series.AdjStop_mRNA):
+        d['adj_stop'] = int(best_series.AdjStop_mRNA)
+    else:
+        d['adj_stop'] = None
 
     # add information to the overall metrics
     if best_series.TranscriptBiotype == 'protein_coding':
