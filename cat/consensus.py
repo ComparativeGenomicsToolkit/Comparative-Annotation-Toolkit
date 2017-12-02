@@ -443,15 +443,6 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
         d['possible_split_gene_locations'] = best_series.PossibleSplitGeneLocations
     if best_series.GeneName is not None:
         d['source_gene_common_name'] = best_series.GeneName
-    if not np.isnan(best_series.AdjStart_mRNA):
-        d['adj_start'] = int(best_series.AdjStart_mRNA)
-    else:
-        d['adj_start'] = None
-    if not np.isnan(best_series.AdjStop_mRNA):
-        d['adj_stop'] = int(best_series.AdjStop_mRNA)
-    else:
-        d['adj_stop'] = None
-
     # add information to the overall metrics
     if best_series.TranscriptBiotype == 'protein_coding':
         metrics['Transcript Modes'][transcript_modes] += 1
