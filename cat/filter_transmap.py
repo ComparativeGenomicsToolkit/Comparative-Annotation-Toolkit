@@ -1,10 +1,28 @@
 """
-Filtering transMap.
+Filtering transMap. This process has 6 steps:
+
+1) Filter out all projections whose genomic span is more than 5 times the original transcript. This is a hard coded
+filter to deal with the possibility of rearrangements leading to massive transMap projections. This is required also
+to allow the minSpan filter in pslCDnaFilter to work properly -- minSpan is an effective filter against retroposed
+pseudogenes.
+2) Run pslCDnaFilter using the globalNearBest algorithm to identify the best set of alignments. Turning this value
+to a smaller number increases the number of alignments filtered out, which decreases the paralogous alignment call rate.
+3) Separate coding and non-coding genes and run both through clusterGenes with or without the -cds flag.
+4) For each gene ID in #2, see if it hits more than one cluster. Pick the highest scoring cluster. This resolves
+paralogy to ostensible 1-1 orthologs. This populates the GeneAlternateLoci tag.
+5) For each cluster ID in #2 that remains after #3, see if it hits more than one gene. If so, then we have a putative
+gene family collapse. Pick the highest average scoring gene and discard the other genes, populating the CollapsedGeneIds
+and CollapsedGeneNames tags.
+6) Perform a rescue step where transMaps that were filtered out by paralog resolution but overlap a valid cluster
+are re-added to the set despite not being globalNearBest.
+
+After these steps, the transcripts are evaluated for split genes. This process takes the max span filtered set and
+looks at each transcript separately, seeing if there exists projections on either the same contig or different contigs
+that are disjoint in original transcript coordinates. This implies that there was a split or a rearrangement.
 
 """
 import os
 import json
-import logging
 import collections
 import pandas as pd
 import tools.nameConversions
@@ -17,7 +35,6 @@ import tools.intervals
 import tools.sqlInterface
 
 pd.options.mode.chained_assignment = None
-logger = logging.getLogger(__name__)
 
 
 def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, json_tgt):
@@ -46,8 +63,9 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     # get transcript -> gene map
     transcript_gene_map = tools.sqlInterface.get_transcript_gene_map(db_path)
-    # get transcript -> biotype map for metrics
+    # get transcript -> biotype and gene -> biotype maps for metrics
     transcript_biotype_map = tools.sqlInterface.get_transcript_biotype_map(db_path)
+    gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(db_path)
     # get annotation information for common names
     annotation_df = tools.sqlInterface.load_annotation(db_path)
     gene_name_map = dict(zip(annotation_df.GeneId, annotation_df.GeneName))
@@ -84,7 +102,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     paralogy_df = []
     for tx_id, alns in grouped.iteritems():
         biotype = transcript_biotype_map[tx_id]
-        paralogy_df.append([tx_id, ','.join(sorted([x.q_name for x in alns]))])
+        paralogy_df.append([tx_id, ','.join(sorted([x.q_name for x in alns if x.q_name != tx_id]))])
         metrics['Paralogy'][biotype][len(alns)] += 1
 
     paralogy_df = pd.DataFrame(paralogy_df, columns=['TranscriptId', 'Paralogy'])
@@ -119,10 +137,11 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
         coding_clustered = pd.read_csv(coding_tmp, sep='\t')
         noncoding_clustered = pd.read_csv(noncoding_tmp, sep='\t')
 
+    metrics['Gene Family Collapse'] = collections.defaultdict(lambda: collections.Counter())
     coding_merged_df, coding_collapse_filtered = filter_clusters(coding_clustered, transcript_gene_map,
-                                                                 gene_name_map, scores)
+                                                                 gene_name_map, scores, metrics, gene_biotype_map)
     noncoding_merged_df, noncoding_collapse_filtered = filter_clusters(noncoding_clustered, transcript_gene_map,
-                                                                       gene_name_map, scores)
+                                                                       gene_name_map, scores, metrics, gene_biotype_map)
 
     merged_collapse_filtered = pd.concat([coding_collapse_filtered, noncoding_collapse_filtered])
     merged_df = pd.concat([coding_merged_df, noncoding_merged_df])
@@ -270,7 +289,7 @@ def construct_alt_loci(group, best_cluster):
     return ','.join('{}:{}-{}'.format(x.chromosome, x.start, x.stop) for x in merged_intervals)
 
 
-def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores):
+def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metrics, gene_biotype_map):
     """
     Wrapper for taking the output of clusterGenes and filtering it
     """
@@ -298,8 +317,10 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores):
         if len(set(group['gene_id'])) > 1:
             best_gene = find_best_group(group, 'gene_id')
             collapsed_gene_ids = set(group.gene_id) - {best_gene}
+            gene_biotype = gene_biotype_map[best_gene]
+            metrics['Gene Family Collapse'][gene_biotype][len(collapsed_gene_ids)] += 1
             collapsed_gene_names = {gene_name_map[x] for x in collapsed_gene_ids}
-            to_remove.update(collapsed_gene_ids)
+            genes_to_remove.update(collapsed_gene_ids)
             collapsed_genes.append([best_gene, ','.join(collapsed_gene_ids), ','.join(collapsed_gene_names)])
     collapse_filtered = paralog_filtered[~paralog_filtered['gene_id'].isin(genes_to_remove)]
     collapsed_df = pd.DataFrame(collapsed_genes, columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])

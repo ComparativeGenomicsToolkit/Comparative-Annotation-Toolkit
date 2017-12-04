@@ -53,6 +53,7 @@ def generate_plots(args):
     tm_metrics_plot(tm_metrics, args.ordered_genomes, biotypes, transcript_biotype_map, args.tm_coverage,
                     args.tm_identity)
     tm_para_plot(tm_data, args.ordered_genomes, biotypes, args.paralogy)
+    tm_gene_family_plot(tm_data, args.ordered_genomes, biotypes, args.gene_collapse)
     consensus_metrics_plot(consensus_data, args.ordered_genomes, biotypes, args.coverage, args.identity)
     missing_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.missing)
     consensus_support_plot(consensus_data, args.ordered_genomes, biotypes,
@@ -193,6 +194,33 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt):
                 title_string = biotype_title_string.format(biotype)
                 plot_fn(biotype_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes,
                         box_label)
+
+
+def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
+    """transMap gene family collapse plots."""
+    df = json_biotype_nested_counter_to_df(tm_data, 'Gene Family Collapse')
+    df['Gene Family Collapse'] = pd.to_numeric(df['Gene Family Collapse'])
+    tot_df = df[['Gene Family Collapse', 'genome', 'count']].\
+        groupby(['genome', 'Gene Family Collapse']).aggregate(sum).reset_index()
+    tot_df = tot_df.sort_values('Gene Family Collapse')
+    with gene_family_tgt.open('w') as outf, PdfPages(outf) as pdf:
+        g = sns.factorplot(y='count', col='genome', x='Gene Family Collapse', data=tot_df, kind='bar',
+                           col_order=ordered_genomes, col_wrap=4)
+        g.fig.suptitle('Number of genes collapsed during gene family collapse')
+        g.set_xlabels('Number of genes collapsed to one locus')
+        g.set_ylabels('Number of genes')
+        multipage_close(pdf)
+        for biotype in biotypes:
+            biotype_df = biotype_filter(df, biotype)
+            if biotype_df is None:
+                continue
+            biotype_df = biotype_df.sort_values('Gene Family Collapse')
+            g = sns.factorplot(y='count', col='genome', x='Gene Family Collapse', data=biotype_df, kind='bar',
+                               col_order=ordered_genomes, col_wrap=4)
+            g.fig.suptitle('Number of genes collapsed during gene family collapse for {}'.format(biotype))
+            g.set_xlabels('Number of genes collapsed to one locus')
+            g.set_ylabels('Number of genes')
+            multipage_close(pdf)
 
 
 def missing_rate_plot(consensus_data, ordered_genomes, biotypes, missing_plot_tgt):

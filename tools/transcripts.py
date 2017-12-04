@@ -5,10 +5,8 @@ chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 import collections
 from itertools import izip
 from bx.intervals.cluster import ClusterTree
-
-from dataOps import grouper
 from mathOps import find_closest, find_intervals
-from bio import reverse_complement, complement, translate_sequence
+from bio import reverse_complement, translate_sequence
 from fileOps import iter_lines
 from intervals import ChromosomeInterval
 
@@ -711,7 +709,7 @@ def intervals_to_bed(intervals, name=None, score=0, rgb=0, thick_start=0, thick_
 
 
 def cluster_txs(txs):
-    """Uses a ClusterTree to cluster to cluster transcript objects"""
+    """Uses a ClusterTree to cluster to cluster transcript objects. TODO: use clusterGenes instead"""
     cluster_trees = collections.defaultdict(lambda: ClusterTree(0, 1))
     for i, tx in enumerate(txs):
         cluster_trees[tx.chromosome].insert(tx.start, tx.stop, i)

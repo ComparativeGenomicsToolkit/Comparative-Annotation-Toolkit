@@ -1108,7 +1108,7 @@ class TransMap(PipelineWrapperTask):
         return args
 
     def validate(self):
-        for tool in ['pslMap', 'pslRecalcMatch', 'pslMapPostChain', 'pslCDnaFilter']:
+        for tool in ['pslMap', 'pslRecalcMatch', 'pslMapPostChain', 'pslCDnaFilter', 'clusterGenes']:
             if not tools.misc.is_exec(tool):
                     raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
@@ -2070,6 +2070,7 @@ class Plots(RebuildableTask):
         args.tm_identity = luigi.LocalTarget(os.path.join(base_dir, 'transmap_identity.pdf'))
         # plots derived from transMap filtering
         args.paralogy = luigi.LocalTarget(os.path.join(base_dir, 'paralogy.pdf'))
+        args.gene_collapse = luigi.LocalTarget(os.path.join(base_dir, 'gene_family_collapse.pdf'))
         # plots derived from transcript alignment / consensus finding
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
         args.identity = luigi.LocalTarget(os.path.join(base_dir, 'identity.pdf'))
