@@ -2248,14 +2248,14 @@ class CreateDirectoryStructure(PipelineTask):
                 outf.write(genome_str.format(genome=genome, default_pos=find_default_pos(sizes_local_path)))
 
         # link the hal
-        os.link(pipeline_args.hal, args.hal)
+        shutil.copy(pipeline_args.hal, args.hal)
 
         # construct a directory for each genome
         for genome, (sizes_local_path, sizes_hub_path) in args.sizes.iteritems():
             tools.fileOps.ensure_file_dir(sizes_hub_path)
-            os.link(sizes_local_path, sizes_hub_path)
+            shutil.copy(sizes_local_path, sizes_hub_path)
             twobit_local_path, twobit_hub_path = args.twobits[genome]
-            os.link(twobit_local_path, twobit_hub_path)
+            shutil.copy(twobit_local_path, twobit_hub_path)
 
 
 class CreateTracks(PipelineWrapperTask):
@@ -2730,8 +2730,8 @@ class IsoSeqBamTrack(RebuildableTask):
         with trackdb.open('w') as outf:
             outf.write(bam_composite_template.format(genome=self.genome))
             for bam, new_bam in self.isoseq_bams:
-                os.link(bam, new_bam)
-                os.link(bam + '.bai', new_bam + '.bai')
+                shutil.copy(bam, new_bam)
+                shutil.copy(bam + '.bai', new_bam + '.bai')
                 name = os.path.splitext(os.path.basename(bam))[0].split('_', 1)[0]
                 outf.write(bam_template.format(bam=os.path.basename(new_bam), name=name, genome=self.genome))
 
