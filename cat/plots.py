@@ -198,7 +198,12 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt):
 
 def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
     """transMap gene family collapse plots."""
-    df = json_biotype_nested_counter_to_df(tm_data, 'Gene Family Collapse')
+    try:
+        df = json_biotype_nested_counter_to_df(tm_data, 'Gene Family Collapse')
+    except ValueError:  # no gene family collapse. probably the test set.
+        with gene_family_tgt.open('w') as outf:
+            pass
+        return
     df['Gene Family Collapse'] = pd.to_numeric(df['Gene Family Collapse'])
     tot_df = df[['Gene Family Collapse', 'genome', 'count']].\
         groupby(['genome', 'Gene Family Collapse']).aggregate(sum).reset_index()

@@ -698,7 +698,7 @@ def resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx
         if len(set(group['gene_id'])) > 1:
             if 'unknown_likely_coding' in set(group['gene_biotype']):  # pick longest ORF
                 orfs = {tx_id: tx_dict[tx_id].cds_size for tx_id in group['transcript_id']}
-                best_tx = sorted(orfs, key=lambda x: x[1])[-1][0]
+                best_tx = sorted(orfs.iteritems(), key=lambda x: x[1])[-1][0]
                 tx_df = group[group.transcript_id == best_tx].iloc[0]
                 best_gene = tx_df.gene_id
             else:  # pick highest average score
