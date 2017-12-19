@@ -795,6 +795,12 @@ class Gff3ToAttrs(PipelineTask):
             for tx_id, d in df.groupby('transcript_id'):
                 d = dict(zip(d.key, d.value))
                 if d['gbkey'] == 'mRNA':
+                    # hacky check because of lack of biotype features on transcript-level features
+                    if 'pseudo' in d and d['pseudo'] == 'true':
+                        gene_biotype = tx_biotype = 'pseudogene'
+                    else:
+                        gene_biotype = tx_biotype = 'protein_coding'
+                elif d['gbkey'] == 'CDS':  # this is a transcript missing a transcript-level feature
                     gene_biotype = tx_biotype = 'protein_coding'
                 else:
                     gene_biotype = tx_biotype = d['gbkey']
