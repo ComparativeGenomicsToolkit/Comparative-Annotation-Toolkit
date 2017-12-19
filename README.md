@@ -47,7 +47,7 @@ Either form of `pip` installation will install all of the python dependencies. H
 7. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl`
+`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl gff3ToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl`
 
 # Running the pipeline
 
@@ -85,9 +85,7 @@ As described above, the primary method to executing the pipeline is to follow th
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with the balance of this value and the `--maxCores` parameter.
 
 ## transMap options
-`--local-near-best`: Adjusts the `localNearBest` parameter passed to `pslCDnaFilter`. This algorithm attempts to resolve paralogous alignments for a given source transcript, allowing for distinct portions of the transcript to align to different locations. The default value is 0.15, which is a fairly lenient setting. Decreasing this value increases the number of alignments called as paralogous. If your assembly is fragmented, keep this value higher. Note that this parameter does not affect paralog resolution, just the calling of paralogous alignments (populates the Paralogy tag in the output).
-
-`--minimum-paralog-coverage`: After the `localNearBest` algorithm is used to filter out paralogous alignments, the filtered alignments are evaluated for having at least this much coverage of the whole transcript before being considered a paralog. Default value is 25. Increasing this value restricts paralog calls.
+`--global-near-best`: Adjusts the `globalNearBest` parameter passed to `pslCDnaFilter`. Defaults to 0.15. The `globalNearBest` algorithm determines which set of alignments are within a certain distance of the highest scoring alignment for a given source transcript. Making this value smaller will increase the number of alignments filtered out, decreasing the apparent paralogous alignment rate. Alignments which survive this filter are putatively paralogous. 
 
 ## AugustusTM(R) options
 
@@ -199,7 +197,7 @@ If you are using IsoSeq data, it is recommended that you doing your mapping with
 
 CAT relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for transMap filtering and consensus finding to work properly.
 
-If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR $gff > $gff.fixed`
+If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`
 
 # Execution modes
 
@@ -266,11 +264,28 @@ This module will populate the folder `--work-dir/transMap`.
 
 ## FilterTransMap
 
-This module runs the program `PslCDnaFilter` in a few different parameterizations. First, it runs the program with `-globalNearBest=0 -minSpan=0.2 -minCover=0.1`, which filters out alignments with coverage <10% and whose target genome span is less than 20% of the largest alignment, then uses the alignment score to pick the best single alignment. The output of this process is then split-gene resolved. This process involves identifying source genes that map to multiple contigs or disjoint on a single contig, identifying the highest scoring locus, then selecting alignments for transcripts in that locus that were filtered out by `globalNearBest`. The result is a single discrete locus for each source transcript. The plot `transmap_filtering.pdf` in the plots output gets populated by this, reporting on the number of alignments removed by span distance, coverage, and paralogy.
+This module relies on the `globalNearBest` algorithm in `pslCDnaFilter` to resolve paralogies followed by using `clusterGenes` to resolve gene family collapse and overlapping loci.
 
-This module also runs `PslCDnaFilter` again, this time to discover paralogs. In this run, instead of `-globalNearBest` being set, `-localNearBest` is set to the user determined value (default is 0.15). This algorithm allows for multiple alignments from a given source to pass through if they are on different parts of the source transcript. In practice, this generally means filtering out truly paralogous alignments while retaining alignments of transcripts split across contigs. The alignments that are filtered out by this process are used to populate the `Paralogy` field in the final output, as well as the diagnostic plots.
+This process has 4 steps:
 
-The final step of this module is to resolve split genes. If transcripts for a given gene end up on different contigs or on disjoint intervals on the same contig, the locus with the highest average score is chosen and lower scoring alignments for the transcripts present in the other locus are rescued, if possible. This result populates the `Filter Mode = Rescued` part of transmap_filtering.pdf.
+1. Filter out all projections whose genomic span is more than 5 times the original transcript. This is a hard coded
+filter to deal with the possibility of rearrangements leading to massive transMap projections. This is required also
+to allow the minSpan filter in `pslCDnaFilter` to work properly, as `--minSpan` is an effective filter against retroposed
+pseudogenes.
+2. Run `pslCDnaFilter` using the `globalNearBest` algorithm to identify the best set of alignments. Turning this value
+to a smaller number increases the number of alignments filtered out, which decreases the paralogous alignment call rate.
+3. Separate coding and non-coding genes and run both through clusterGenes with or without the `-cds` flag.
+4. For each gene ID in #2, see if it hits more than one cluster. Pick the highest scoring cluster. This resolves
+paralogy to ostensible 1-1 orthologs. This populates the `GeneAlternateLoci` tag.
+5. For each cluster ID in #2 that remains after #3, see if it hits more than one gene. If so, then we have a putative
+gene family collapse. Pick the highest average scoring gene and discard the other genes, populating the `CollapsedGeneIds`
+and `CollapsedGeneNames` tags.
+6. Perform a rescue step where transMaps that were filtered out by paralog resolution but overlap a valid cluster
+are re-added to the set despite not being `globalNearBest`.
+
+After these steps, the transcripts are evaluated for split genes. This process takes the max span filtered set and
+looks at each transcript separately, seeing if there exists projections on either the same contig or different contigs
+that are disjoint in original transcript coordinates. This implies that there was a split or a rearrangement.
 
 This module will further populate the folder `--work-dir/transMap`.
 
@@ -337,6 +352,8 @@ These classifiers are per-transcript evaluations based on both the transcript al
 5. ValidStart -- start with ATG?
 6. ValidStop -- valid stop codon (in frame)?
 7. ProperOrf -- is the orf a multiple of 3?
+8. AdjStart -- the position of the new thickStart taking frame-shifts into account (genomic coordinates, + strand).
+9. AdjStop -- the position of the new thickStop taking frame-shifts into account (genomic coordinates, + strand).
 
 \<alnMode\>\_\<txMode\>\_Evaluation:
 
@@ -365,7 +382,7 @@ To evaluate `transMap`, `AugustusTM` and `AugustusTMR` transcripts a consensus s
     
 If one of the de-novo `augustus` modes is run, then the those transcripts are evaluated for providing novel information. If a prediction did not overlap any transMap projections, then it is tagged as putative novel and incorporated into the gene set. If a prediction overlaps a `transMap` projection that was filtered out during paralog resolution, then it is tagged as a possible paralog as well as with the names of overlapping transcripts and incorporated into the gene set. If a prediction overlaps a transMap projection and contains a splice junction not seen in the reference annotation, then it is tagged as a novel isoform and incorporated into the gene set as a member of the gene it overlapped with.
 
-After consensus finding is complete, a final filtering process is performed. This filtering process deduplicates the transcript set. Duplicates most often occur when the `augustus` execution modes create an identical transcript model from different input isoforms. In this case, the duplicates are removed and the remaining transcript tagged with the names of alternative source transcripts. Finally, strand resolution throws out transcripts that are on opposite strands. The correct strand is chosen by looking at which contains the most high quality transcripts.
+After consensus finding is complete, a final filtering process is performed. This filtering process deduplicates the transcript set. Duplicates most often occur when the `augustus` execution modes create an identical transcript model from different input isoforms. In this case, the duplicates are removed and the remaining transcript tagged with the names of alternative source transcripts. Strand resolution throws out transcripts that are on opposite strands. The correct strand is chosen by looking at which contains the most high quality transcripts. Finally, the transcripts are again clustered using `clusterGenes` on CDS intervals to resolve the case where incorporating novel predictions lead to different gene IDs sharing CDS bases.
 
 After consensus finding, a final output gene set is produced in both `GFF3` and `genePred` format. The `genePred` annotations also have a additional `.gp_info` file that has the additional fields described below.
 
@@ -382,14 +399,15 @@ A large range of plots are produced in `--output-dir/plots`. These include:
 6. `coverage.pdf`: A violinplot that shows the overall transcript coverage in the *consensus* set. Provides a overall plot and a per-biotype plot.
 7. `identity.pdf`: A violinplot that shows the overall transcript identity in the *consensus* set. Provides a overall plot and a per-biotype plot.
 8. `transmap_coverage.pdf`: A violinplot that shows the overall transcript coverage in the filtered transMap output. Provides a overall plot and a per-biotype plot.
-9.  `transmap_ identity.pdf`: A violinplot that shows the overall transcript identity in the filtered transMap output. Provides a overall plot and a per-biotype plot.
-10. `missing_genes-transcripts.pdf`: Similar to `completeness.pdf`, this plot reports the number of genes and transcripts in the original annotation set not found on the target genomes.
+9.  `transmap_identity.pdf`: A violinplot that shows the overall transcript identity in the filtered transMap output. Provides a overall plot and a per-biotype plot.
+10. `missing_genes_transcripts.pdf`: Similar to `completeness.pdf`, this plot reports the number of genes and transcripts in the original annotation set not found on the target genomes.
 11. `paralogy.pdf`: Stacked bar charts of the number of alignments a given source transcript had in each target.
-12. `split_genes.pdf`: The number of genes split within and between contigs.
+12. `split_genes.pdf`: The number of transMap genes split within and between contigs.
 13. `transcript_modes.pdf`: The number of modes that supported a given comparative annotation. Applies only to protein coding transcripts derived from `transMap`, because `AugustusTMR` is not ran on non-coding inputs.
 14. `augustus_improvement.pdf`: A scatterplot + density plot reporting the improvement of primary consensus metrics when an `augustus` transcript was chosen over a transMap transcript. The density plot may fail in some cases.
 16. `coding_indels.pdf`: The rate of insertions, deletions and indels that are a multiple of 3 are reported from the final consensus set based on the pairwise alignments. Preference is given to the CDS space alignment, if it worked.
 17. `IsoSeq_isoform_validation.pdf`: The number of transcripts in the consensus set whose intron structure is exactly validated by at least one IsoSeq read.
+18. `gene_family_collapse.pdf`: The X-axis for each plot is the number of genes in the source transcript set that were collapsed into one locus, and the Y-axis is the number of this this occurred. So, for example, if X=1 and Y=200 that means there were 200 instances of 2 genes being collapsed into 1.
 
 
 ### GFF3 tags:
@@ -412,7 +430,10 @@ A large range of plots are produced in `--output-dir/plots`. These include:
 16. `transcript_modes`: Comma separated list of transcript modes. The same information as the transcript_modes.pdf plot.
 17. `pacbio_isoform_supported`: Was this isoform supported by at least one IsoSeq read?
 18. `paralogy`: Comma separated list of alignments identified as possible paralogs for this transcript.
-19. `gene_alternate_contigs`: If this gene was split across multiple contigs, this will have a comma separated list of alternative locations.
+19. `possible_split_gene_locations`: If this gene was split across multiple contigs, this will have a comma separated list of alternative locations.
+20. `collapsed_gene_names`: If this gene was a part of a gene family collapse, this field reports the common names of genes collapsed together here.
+21. `collapsed_gene_ids`: Same as above, but with unique identifiers.
+22. `gene_alternate_loci`: If this gene was identified to have paralogous mappings that were filtered out, these intervals are where the paralogs were found.
 
 For `GFF3` output, the alignment goodness is in the score field. For `.gp_info`, it is a column. For `.gp_info`, the support features are collapsed into comma separated vectors instead of being on their respective features.
 

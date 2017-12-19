@@ -32,6 +32,7 @@ import tools.fileOps
 import tools.sqlInterface
 import tools.transcripts
 import tools.nameConversions
+import tools.procOps
 from tools.defaultOrderedDict import DefaultOrderedDict
 
 logger = logging.getLogger(__name__)
@@ -134,8 +135,10 @@ def generate_consensus(args):
                                                                          args.db_path, tx_dict, metrics,
                                                                          args.require_pacbio_support)
 
+    gene_resolved_consensus = resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx_dict)
+
     # sort by genomic interval for prettily increasing numbers
-    final_consensus = sorted(deduplicated_strand_resolved_consensus,
+    final_consensus = sorted(gene_resolved_consensus,
                              key=lambda (tx, attrs): (tx_dict[tx].chromosome, tx_dict[tx].start))
 
     # calculate final gene set completeness
@@ -424,6 +427,8 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'transcript_class': 'ortholog',
          'valid_start': bool(best_series.ValidStart),
          'valid_stop': bool(best_series.ValidStop),
+         'adj_start': best_series.AdjStart_mRNA,
+         'adj_stop': best_series.AdjStop_mRNA,
          'proper_orf': bool(best_series.ProperOrf)}
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
@@ -432,9 +437,14 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
         d['paralogy'] = best_series.Paralogy
     if best_series.GeneAlternateLoci is not None:
         d['gene_alternate_contigs'] = best_series.GeneAlternateLoci
+    if best_series.CollapsedGeneIds is not None:
+        d['collapsed_gene_ids'] = best_series.CollapsedGeneIds
+    if best_series.CollapsedGeneNames is not None:
+        d['collapsed_gene_names'] = best_series.CollapsedGeneNames
+    if best_series.PossibleSplitGeneLocations is not None:
+        d['possible_split_gene_locations'] = best_series.PossibleSplitGeneLocations
     if best_series.GeneName is not None:
         d['source_gene_common_name'] = best_series.GeneName
-
     # add information to the overall metrics
     if best_series.TranscriptBiotype == 'protein_coding':
         metrics['Transcript Modes'][transcript_modes] += 1
@@ -544,8 +554,9 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     denovo_df['TranscriptClass'] = denovo_df.apply(is_novel, axis=1)
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
-    # filter out non-novel
+    # filter out non-novel as we as fusions
     filtered_denovo_df = denovo_df[~denovo_df.TranscriptClass.isnull()]
+    filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
 
@@ -650,6 +661,59 @@ def resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics):
     return deduplicated_strand_resolved_consensus
 
 
+###
+# This section involves final filtering for overlapping genes caused by incorporating predictions
+###
+
+
+def cluster_genes(gp):
+    tmp = tools.fileOps.get_tmp_file()
+    cmd = ['clusterGenes', tmp, 'no', gp, '-cds']
+    tools.procOps.run_proc(cmd)
+    return tmp
+
+
+def resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx_dict):
+    """
+    Resolves overlapping genes that are the result of integrating gene predictions
+    """
+    # first, write genePred
+    attr_df = []
+    with tools.fileOps.TemporaryFilePath() as tmp_gp, tools.fileOps.TemporaryFilePath() as tmp_clustered:
+        with open(tmp_gp, 'w') as outf:
+            for tx_id, attrs in deduplicated_strand_resolved_consensus:
+                tx_obj = tx_dict[tx_id]
+                tools.fileOps.print_row(outf, tx_obj.get_gene_pred())
+                attr_df.append([tx_id, attrs['transcript_class'], attrs['gene_biotype'],
+                                attrs.get('source_gene', tx_obj.name2), attrs.get('score', None)])
+        # cluster
+        cmd = ['clusterGenes', tmp_clustered, 'no', tmp_gp, '-cds']
+        tools.procOps.run_proc(cmd)
+        cluster_df = pd.read_csv(tmp_clustered, sep='\t')
+    attr_df = pd.DataFrame(attr_df, columns=['transcript_id', 'transcript_class', 'gene_biotype', 'gene_id', 'score'])
+    m = attr_df.merge(cluster_df, left_on='transcript_id', right_on='gene')  # gene is transcript ID
+
+    to_remove = set()  # list of transcript IDs to remove
+    for cluster_id, group in m.groupby('#cluster'):
+        if len(set(group['gene_id'])) > 1:
+            if 'unknown_likely_coding' in set(group['gene_biotype']):  # pick longest ORF
+                orfs = {tx_id: tx_dict[tx_id].cds_size for tx_id in group['transcript_id']}
+                best_tx = sorted(orfs.iteritems(), key=lambda x: x[1])[-1][0]
+                tx_df = group[group.transcript_id == best_tx].iloc[0]
+                best_gene = tx_df.gene_id
+            else:  # pick highest average score
+                avg_scores = group[['gene_id', 'score']].groupby('gene_id', as_index=False).mean()
+                best_gene = avg_scores.sort_values('score', ascending=False).iloc[0]['gene_id']
+            to_remove.update(set(group[group.gene_id != best_gene].transcript_id))
+
+    return [[tx_id, attrs] for tx_id, attrs in deduplicated_strand_resolved_consensus if tx_id not in to_remove]
+
+
+###
+# Metrics calculations on final set
+###
+
+
 def calculate_completeness(final_consensus, metrics):
     """calculates final completeness to make arithmetic easier"""
     genes = collections.defaultdict(set)
@@ -703,6 +767,11 @@ def calculate_indel_metrics(final_consensus, eval_df, metrics):
     metrics['Consensus Indels'] = consensus_vals.to_dict()
 
 
+###
+# Writing output genePred and GFF3
+###
+
+
 def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dict, genome):
     """
     Write the resulting gp + gp_info, generating genome-specific unique identifiers
@@ -710,7 +779,6 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
     # keeps track of gene # -> ID mappings
     genes_seen = collections.defaultdict(dict)
     gene_count = 0
-    # if the --resolve-split-genes flag is not set, we may have the same parent on multiple chromosomes
     consensus_gene_dict = DefaultOrderedDict(lambda: DefaultOrderedDict(list))  # used to make gff3 next
     gp_infos = []
     consensus_gp_target = luigi.LocalTarget(consensus_gp)

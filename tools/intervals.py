@@ -239,6 +239,44 @@ def gap_merge_intervals(intervals, gap):
     return new_intervals
 
 
+def union_of_intervals(intervals):
+    """
+    Takes an interable of intervals and finds the union of them. Will fail if they are not on the same chromosome
+    :param intervals: Iterable of ChromosomeIntervals
+    :return: List of new ChromosomeIntervals
+    """
+    new_intervals = []
+    for interval in sorted(intervals):
+        if not new_intervals:
+            new_intervals.append(interval)
+            continue
+        u = new_intervals[-1].union(interval)
+        if u is not None:
+            new_intervals[-1] = u
+        else:
+            new_intervals.append(interval)
+    return new_intervals
+
+
+def hull_of_intervals(intervals):
+    """
+    Takes an interable of intervals and finds the hull of them. Will fail if they are not on the same chromosome
+    :param intervals: Iterable of ChromosomeIntervals
+    :return: List of new ChromosomeIntervals
+    """
+    new_intervals = []
+    for interval in sorted(intervals):
+        if not new_intervals:
+            new_intervals.append(interval)
+            continue
+        u = new_intervals[-1].hull(interval)
+        if u is not None:
+            new_intervals[-1] = u
+        else:
+            new_intervals.append(interval)
+    return new_intervals
+
+
 def interval_not_intersect_intervals(intervals, interval):
     """
     Determines if one intervals does not overlap an iterable of intervals
