@@ -433,7 +433,7 @@ def get_real_gene_name(gene):
     # GENCODE uses clone derived names for some genomic annotations, which NCBI doesn't
     # (understandably) like.  Drop these.
     txd = gene.txds[0]
-    if re.match('^[A-Za-z]{1,2}[0-9]+\\.[0-9]$', txd.attrs.source_gene_common_name):
+    if re.match('^[A-Za-z]+[0-9]+\\.[0-9]+$', txd.attrs.source_gene_common_name):
         return None
     else:
         return txd.attrs.source_gene_common_name
@@ -450,11 +450,23 @@ def get_ncrna_product(txd):
     return txd.attrs.transcript_biotype.replace('_', ' ')
 
 
+def get_rrna_product(name):
+    """Lookup table for translating rRNA names"""
+    if name == '5S_rRNA':
+        return '5S rRNA'
+    elif name == '5_8S_rRNA' or name == 'RNA5-8SN5':
+        return '5.8S rRNA'
+    else:
+        return name
+
+
 def get_product(gene, txd, trans_num):
     if is_non_coding(txd):
         return get_ncrna_product(txd)
     elif get_transcript_feature(txd) == "tRNA":
         return "tRNA-Xxx"
+    elif get_transcript_feature(txd) == 'rRNA':
+        return get_rrna_product(get_real_gene_name(gene))
     else:
         return get_coding_product(gene, txd, trans_num)
 
@@ -654,8 +666,10 @@ def add_gaps_to_exons(exons, cds_spec):
 def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr):
     txa = txd.attrs
     feat = get_transcript_feature(txd)
-    if unitary_pseudo:
-        feat = 'ncRNA'  # force into ncRNA for unitary duplicate case
+
+    is_rrna_pseudo = txa.transcript_biotype in ['Mt_rRNA', 'rRNA'] and txa.source_gene_common_name not in ['5S_rRNA', '5_8S_rRNA']
+    if unitary_pseudo or is_rrna_pseudo:
+        feat = 'ncRNA'  # force into ncRNA for unitary duplicate case or rRNA pseudogene case
 
     # feature with correct type and all exons
     tblwr.write_feature(exons, feat)
@@ -668,12 +682,12 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, uni
     if is_non_coding(txd):
         tblwr.write_qualifier('ncRNA_class', ncrna_class[txa.transcript_biotype])
 
-    if unitary_pseudo:
+    if unitary_pseudo or is_rrna_pseudo:
         tblwr.write_qualifier('ncRNA_class', 'other')
 
     tblwr.write_locus_tag(locus_tag_prefix, gene)
 
-    if not unitary_pseudo:
+    if not unitary_pseudo and not is_rrna_pseudo:
         write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     # check for gaps
@@ -683,6 +697,12 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, uni
     if unitary_pseudo:
         tblwr.write_qualifier('pseudogene', "unitary")
         tblwr.write_note("Putative inactivated transcript (unitary pseudogene)")
+
+    if is_rrna_pseudo:
+        tblwr.write_qualifier('pseudogene', 'unknown')
+        tblwr.write_note('rRNA pseudogene {}'.format(txa.source_gene_common_name))
+    elif txa.transcript_biotype == 'rRNA':
+        tblwr.write_note('rRNA {} in GENCODE annotation'.format(txa.source_gene_common_name))
 
     # record cat pipeline information
     tblwr.write_note("CAT transcript id: {}".format(get_transcript_base_id(txd)))
@@ -731,6 +751,9 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     tblwr.write_feature([gene.region], "gene")
 
     tblwr.write_locus_tag(locus_tag_prefix, gene)
+
+    if txa.gene_biotype == 'rRNA' and txa.source_transcript_name.startswith('RNA5SP'):
+        tblwr.write_qualifier('pseudogene', 'unknown')
 
     # if this is a pseudogene, record the pseudogene tag on the gene-level feature
     if txa.gene_biotype in pseudo_map:
