@@ -96,6 +96,7 @@ class PipelineTask(luigi.Task):
     hgm_cpu = luigi.IntParameter(default=4, significant=False)
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
+    hub_email = luigi.Parameter(default='NoEmail', significant=False)
     # Paralogy detection options
     global_near_best = luigi.FloatParameter(default=0.15, significant=False)
     # consensus options
@@ -178,6 +179,7 @@ class PipelineTask(luigi.Task):
 
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
+        args.set('hub_email', self.hub_email, False)
 
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
@@ -2184,7 +2186,7 @@ class AssemblyHub(PipelineWrapperTask):
         yield self.clone(CreateTracks)
 
 
-class CreateDirectoryStructure(PipelineTask):
+class CreateDirectoryStructure(RebuildableTask):
     """
     Constructs the directory structure. Creates symlinks for all relevant files.
     """
@@ -2238,7 +2240,8 @@ class CreateDirectoryStructure(PipelineTask):
 
         # write the hub.txt file
         with luigi.LocalTarget(args.hub_txt).open('w') as outf:
-            outf.write(hub_str.format(hal=os.path.splitext(os.path.basename(pipeline_args.hal))[0]))
+            outf.write(hub_str.format(hal=os.path.splitext(os.path.basename(pipeline_args.hal))[0],
+                                      email=pipeline_args.hub_email))
 
         # write the groups.txt file
         with luigi.LocalTarget(args.groups_txt).open('w') as outf:
@@ -2992,7 +2995,7 @@ hub_str = '''hub {hal}
 shortLabel {hal}
 longLabel {hal}
 genomesFile genomes.txt
-email NoEmail
+email {email}
 
 '''
 
@@ -3029,7 +3032,7 @@ defaultIsClosed 0
 snake_composite = '''track hubCentral
 compositeTrack on
 shortLabel Cactus
-longLabel my hub
+longLabel Cactus Alignment Tracks
 group cat_tracks
 subGroup1 view Track_Type Snake=Alignments
 subGroup2 orgs Organisms {org_str}

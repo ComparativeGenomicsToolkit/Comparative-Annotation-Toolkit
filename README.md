@@ -139,6 +139,12 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--rebuild-consensus`: A convenience flag to allow you to adjust the flags above. When set, will force the pipeline to re-run consensus finding and will also re-build the downstream plots and assembly hub.
 
+## Assembly hub
+
+`--assembly-hub`: Build an assembly hub? Default is false. Assembly hubs allow you to view your alignments and annotation on the UCSC browser.
+
+`--hub-email`: Optionally, add an email to your assembly hub. Useful if you are planning on publishing the hub.
+
 See below for `toil` options shared with the hints database pipeline.
 
 ## Toil
