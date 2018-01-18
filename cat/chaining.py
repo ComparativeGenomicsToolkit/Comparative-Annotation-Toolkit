@@ -106,8 +106,8 @@ def merge(job, chain_files, genome):
     job.fileStore.logToMaster('Merging chains for {}'.format(genome), level=logging.INFO)
     fofn = tools.fileOps.get_tmp_toil_file()
     with open(fofn, 'w') as outf:
-        for file_id in chain_files:
-            local_path = job.fileStore.readGlobalFile(file_id)
+        for i, file_id in enumerate(chain_files):
+            local_path = job.fileStore.readGlobalFile(file_id, userPath='{}.chain'.format(i))
             outf.write(local_path + '\n')
     cmd = ['chainMergeSort', '-inputList={}'.format(fofn), '-tempDir={}/'.format(job.fileStore.getLocalTempDir())]
     tmp_chain_file = tools.fileOps.get_tmp_toil_file()
