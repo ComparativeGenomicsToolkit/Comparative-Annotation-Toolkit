@@ -109,7 +109,7 @@ def merge(job, chain_files, genome):
         for i, file_id in enumerate(chain_files):
             local_path = job.fileStore.readGlobalFile(file_id, userPath='{}.chain'.format(i))
             outf.write(local_path + '\n')
-    cmd = ['chainMergeSort', '-inputList={}'.format(fofn), '-tempDir={}/'.format(job.fileStore.getLocalTempDir())]
+    cmd = ['chainMergeSort', '-inputList={}'.format(fofn)]
     tmp_chain_file = tools.fileOps.get_tmp_toil_file()
     tools.procOps.run_proc(cmd, stdout=tmp_chain_file)
     tmp_chain_file_id = job.fileStore.writeGlobalFile(tmp_chain_file)
