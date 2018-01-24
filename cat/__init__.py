@@ -223,6 +223,12 @@ class PipelineTask(luigi.Task):
         [PROTEIN_FASTA]
         genome1 = /path/to/fasta/or/fofn
 
+        [EXTERNAL_PREDICTIONS]
+        genome1 = /path/to/genePred
+
+        [EXTERNAL_ANNOTATIONS]
+        genome1 = /path/to/genePred
+
         The annotation field must be populated for the reference genome.
 
         The protein fasta field should be populated for every genome you wish to perform protein alignment to.
@@ -238,19 +244,19 @@ class PipelineTask(luigi.Task):
                       '[INTRONBAM]', '__many__ = list',
                       '[BAM]', '__many__ = list',
                       '[ISO_SEQ_BAM]', '__many__ = list',
-                      '[PROTEIN_FASTA]', '__many__ = list']
+                      '[PROTEIN_FASTA]', '__many__ = list',
+                      '[EXTERNAL_PREDICTIONS]', '__many__ = list',
+                      '[EXTERNAL_ANNOTATIONS]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
 
         # convert the config into a new dict, parsing the fofns
         cfg = collections.defaultdict(dict)
-        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA', 'EXTERNAL_PREDICTIONS', 'EXTERNAL_ANNOTATIONS']:
             if dtype not in parser:
                 cfg[dtype] = {}
             else:
                 for genome, annot in parser[dtype].iteritems():
                     annot = os.path.abspath(annot)
-                    if not os.path.exists(annot):
-                        raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
                     cfg[dtype][genome] = annot
 
         # if a given genome only has one BAM, it is a string. Fix this. Extract all paths from fofn files.
@@ -297,7 +303,7 @@ class PipelineTask(luigi.Task):
                     if not os.path.exists(bam + '.bai'):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
 
-        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA', 'EXTERNAL_PREDICTIONS', 'EXTERNAL_ANNOTATIONS']:
             for genome, annot in args.cfg[dtype].iteritems():
                 if not os.path.exists(annot):
                     raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
