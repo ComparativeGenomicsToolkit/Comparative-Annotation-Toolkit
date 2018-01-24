@@ -81,6 +81,7 @@ def setup(job, args, input_file_ids):
     Gene predictions on alignment chunks are subsequently merged into one gff for each species.
     For merging of the gene sets, the auxiliary tool 'joingenes' from the Augustus tool package is used.
     """
+    job.fileStore.logToMaster('beginning setup phase')
     # create a file with the phylogenetic tree in NEWICK format
     tree = write_tree(job, input_file_ids)
 
@@ -118,12 +119,15 @@ def cgp_training_wrapper(job, maf_chunks, tree, args, input_file_ids):
     :param input_file_ids: input file IDs
     :return: output of merge_results()
     """
+    job.fileStore.logToMaster('beginning training module')
     hints_db = job.fileStore.readGlobalFile(input_file_ids.hints_db)
 
     # load hints database and seqnr information
     speciesnames, seqnames, hints, featuretypes, session = tools.hintsDatabaseInterface.reflect_hints_db(hints_db)
     speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=args.ref_genome)
     seqs = {x.seqname: x.seqnr for x in session.query(seqnames).filter_by(speciesid=speciesid)}
+
+    job.fileStore.logToMaster('training module loaded seqs')
 
     # begin selecting random intervals
     selected_intervals = []
@@ -158,6 +162,7 @@ def train_cgp(job, maf_chunks, tree, args, input_file_ids, training_gffs):
     :param training_gffs: List of fileIDs of chunks of CGP training
     :return: output of merge_results()
     """
+    job.fileStore.logToMaster('beginning training phase')
     training_gff_files = [job.fileStore.readGlobalFile(x) for x in training_gffs]
     cmd = ['cat'] + training_gff_files
     combined = tools.fileOps.get_tmp_toil_file()
@@ -186,6 +191,7 @@ def cgp_wrapper(job, maf_chunks, tree, args, input_file_ids):
     :param input_file_ids: input file IDs
     :return: output of merge_results()
     """
+    job.fileStore.logToMaster('beginning CGP wrapper')
     # results holds Promise objects
     # each Promise object will resolve to a tuple of gff_chunk_dict, stdout_file_id
     # cgp_job.rv():  key: genome, value: file handle to gff
@@ -210,6 +216,7 @@ def hal2maf(job, input_file_ids, genomes, ref_genome, annotate_ancestors, chrom,
     """
     exports hal to maf on a genomic region specified by (genome, seq, start, len)
     """
+    job.fileStore.logToMaster('running hal2maf on {}:{}'.format(chrom, start))
     hal = job.fileStore.readGlobalFile(input_file_ids.hal)
     maf_chunk = tools.fileOps.get_tmp_toil_file()
     genomes = ','.join(genomes)
@@ -225,6 +232,7 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
     """
     core function that runs AugustusCGP on one alignment chunk
     """
+    job.fileStore.logToMaster('running CGP')
     genome_fofn = write_genome_fofn(job, input_file_ids.fasta)
     cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
     stdout = tools.fileOps.get_tmp_toil_file()
@@ -262,6 +270,7 @@ def merge_results(job, results, input_file_ids):
     gff_chunk is a dict of {genome: gff_file_id}
     Merges the results using joinGenes.
     """
+    job.fileStore.logToMaster('beginning merge phase')
     # reshape results into a dict of dicts:
     # {genome: (chrom, start, chunksize): gff_file_id
     gff_chunks_by_genome = collections.defaultdict(dict)
@@ -285,6 +294,7 @@ def join_genes(job, gff_chunks):
     - fixes truncated Txs at alignment boundaries,
       e.g. by merging them with other Txs (non trivial, introduces new Txs)
     """
+    job.fileStore.logToMaster('beginning joingenes phase')
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
