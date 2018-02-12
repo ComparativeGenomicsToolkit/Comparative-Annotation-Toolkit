@@ -2639,10 +2639,10 @@ class TransMapTrack(TrackTask):
         tm_args = TransMap.get_args(pipeline_args, self.genome)
 
         # we have to construct a reference CDS file as well as rename the reference fasta to the new names
-        mrna = luigi.LocalTarget(is_tmp=True)
-        cds = luigi.LocalTarget(is_tmp=True)
-        tmp = luigi.LocalTarget(is_tmp=True)
-        as_file = luigi.LocalTarget(is_tmp=True)
+        #mrna = luigi.LocalTarget(is_tmp=True)
+        #cds = luigi.LocalTarget(is_tmp=True)
+        #tmp = luigi.LocalTarget(is_tmp=True)
+        #as_file = luigi.LocalTarget(is_tmp=True)
         seq_dict = tools.bio.get_sequence_dict(fasta)
         ref_tx_dict = tools.transcripts.get_gene_pred_dict(ReferenceFiles.get_args(pipeline_args).annotation_gp)
         with cds.open('w') as cds_handle, mrna.open('w') as mrna_handle:
@@ -2656,10 +2656,15 @@ class TransMapTrack(TrackTask):
                     stop = start + ref_tx.cds_size - ((ref_tx.cds_size - ref_tx.offset) % 3)
                 cds_handle.write('{}\t{}..{}\n'.format(tx.name, start + 1, stop))
 
+        mrna = os.path.join(pipeline_args.work_dir, 'transMap', '{}.mrna.txt'.format(self.genome))
+        cds = os.path.join(pipeline_args.work_dir, 'transMap', '{}.cds.txt'.format(self.genome))
+        tmp = os.path.join(pipeline_args.work_dir, 'transMap', '{}.tmp.txt'.format(self.genome))
+        as_file = os.path.join(pipeline_args.work_dir, 'transMap', '{}.as'.format(self.genome))
+
         with tmp.open('w') as outf:
             cmd = [['pslToBigPsl', '-cds={}'.format(cds.path), '-fa={}'.format(mrna.path), tm_args.tm_psl, 'stdout'],
                    ['bedSort', '/dev/stdin', '/dev/stdout']]
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)
 
         with as_file.open('w') as outf:
             outf.write(bigpsl)
@@ -2667,7 +2672,7 @@ class TransMapTrack(TrackTask):
         with track.open('w') as outf:
             cmd = ['bedToBigBed', '-type=bed12+13', '-tab', '-extraIndex=name',
                    '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+            tools.procOps.run_proc(cmd, stdout=outf)
 
         with trackdb.open('w') as outf:
             outf.write(bigpsl_template.format(name='transmap_{}'.format(self.genome), short_label='transMap',
