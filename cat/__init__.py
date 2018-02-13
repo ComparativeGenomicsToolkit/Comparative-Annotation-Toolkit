@@ -2644,10 +2644,10 @@ class TransMapTrack(TrackTask):
         #tmp = luigi.LocalTarget(is_tmp=True)
         #as_file = luigi.LocalTarget(is_tmp=True)
 
-        mrna = os.path.join(pipeline_args.work_dir, 'transMap', '{}.mrna.txt'.format(self.genome))
-        cds = os.path.join(pipeline_args.work_dir, 'transMap', '{}.cds.txt'.format(self.genome))
-        tmp = os.path.join(pipeline_args.work_dir, 'transMap', '{}.tmp.txt'.format(self.genome))
-        as_file = os.path.join(pipeline_args.work_dir, 'transMap', '{}.as'.format(self.genome))
+        mrna = luigi.LocalTarget(os.path.join(pipeline_args.work_dir, 'transMap', '{}.mrna.txt'.format(self.genome)))
+        cds = luigi.LocalTarget(os.path.join(pipeline_args.work_dir, 'transMap', '{}.cds.txt'.format(self.genome)))
+        tmp = luigi.LocalTarget(os.path.join(pipeline_args.work_dir, 'transMap', '{}.tmp.txt'.format(self.genome)))
+        as_file = luigi.LocalTarget(os.path.join(pipeline_args.work_dir, 'transMap', '{}.as'.format(self.genome)))
 
         seq_dict = tools.bio.get_sequence_dict(fasta)
         ref_tx_dict = tools.transcripts.get_gene_pred_dict(ReferenceFiles.get_args(pipeline_args).annotation_gp)
