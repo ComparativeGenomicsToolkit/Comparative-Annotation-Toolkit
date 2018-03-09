@@ -214,18 +214,20 @@ def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
         g.fig.suptitle('Number of genes collapsed during gene family collapse')
         g.set_xlabels('Number of genes collapsed to one locus')
         g.set_ylabels('Number of genes')
-        multipage_close(pdf)
+        g.fig.subplots_adjust(top=0.9)
+        multipage_close(pdf, tight_layout=False)
         for biotype in biotypes:
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is None:
                 continue
             biotype_df = biotype_df.sort_values('Gene Family Collapse')
             g = sns.factorplot(y='count', col='genome', x='Gene Family Collapse', data=biotype_df, kind='bar',
-                               col_order=ordered_genomes, col_wrap=4)
+                               col_order=[x for x in ordered_genomes if x in set(biotype_df.genome)], col_wrap=4)
             g.fig.suptitle('Number of genes collapsed during gene family collapse for {}'.format(biotype))
             g.set_xlabels('Number of genes collapsed to one locus')
             g.set_ylabels('Number of genes')
-            multipage_close(pdf)
+            g.fig.subplots_adjust(top=0.9)
+            multipage_close(pdf, tight_layout=False)
 
 
 def missing_rate_plot(consensus_data, ordered_genomes, biotypes, missing_plot_tgt):
