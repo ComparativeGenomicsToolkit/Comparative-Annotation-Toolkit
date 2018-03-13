@@ -72,7 +72,14 @@ def hgm(args):
                '--outdir={}'.format(args.gtf_out_dir),
                '--tmpdir={}'.format(temp_dir),
                '--cpu={}'.format(args.hgm_cpu)]
+
+        if 'homologs' in args:
+            tmp_homologs = tools.fileOps.get_tmp_file()
+            cmd.append('--printHomologs={}'.format(tmp_homologs))
         tools.procOps.run_proc(cmd, stdout='/dev/null')
+
+        if 'homologs' in args:
+            tools.fileOps.atomic_install(tmp_homologs, args.homologs)
 
     # cleanup
     for gff in supplementary_gffs:
@@ -182,7 +189,7 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     return hints
 
 
-def parse_hgm_gtf(hgm_out, genome):
+def parse_hgm_gtf(hgm_out, genome, num_genomes):
     """
     parses the hgm output gtfs and creates for each transcript a string with the intron support counts
     For now, we just count for each of the introns in the transcript, the number of species
@@ -225,14 +232,16 @@ def parse_hgm_gtf(hgm_out, genome):
     species_map = {}
     seen_lines = set()  # filter out duplicate lines. Happens in CGP/PB.
     with open(hgm_out) as infile:
-        for line in infile:
+        for i, line in enumerate(infile):
             if line in seen_lines:
                 continue
             seen_lines.add(line)
-            if line.startswith('#') and line != '###\n':
+            if i <= num_genomes:
                 _, species_id, species = line.split()
                 species_map[species] = species_id
-            if '\tintron\t' in line:
+            elif line.startswith('#'):
+                continue
+            elif '\tintron\t' in line:
                 intron_lines.append(line.rstrip().split('\t')[-1])
             elif '\tCDS\t' in line:
                 cds_lines.append(line.rstrip().split('\t')[-1])
@@ -270,3 +279,23 @@ def parse_hgm_gtf(hgm_out, genome):
                   'IntronAnnotSupport', 'CdsAnnotSupport', 'ExonAnnotSupport']
     df = df.set_index(['GeneId', 'TranscriptId', 'AlignmentId'])
     return df
+
+
+def parse_homologs(homologs_file):
+    """
+    If the user passed the --printHomologs flag, parse the results.
+    """
+    species_map = {}
+    lines = []
+    i = 0
+    for line in open(homologs_file):
+        if line.startswith('#'):
+            _, species_id, species = line.split()
+            species_map[species_id] = species
+        else:
+            recs = [x.replace('(', '').replace(')', '').split(',') for x in line.split()]
+            for species_id, transcript in recs:
+                lines.append([species_map[species_id], i, transcript])
+            i += 1
+    df = pd.DataFrame(lines, columns=['Genome', 'GeneNumber', 'TranscriptId'])
+    return df.set_index('TranscriptId')

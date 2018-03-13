@@ -41,7 +41,7 @@ from chaining import chaining
 from classify import classify
 from consensus import generate_consensus, load_alt_names, load_hgm_vectors
 from filter_transmap import filter_transmap
-from hgm import hgm, parse_hgm_gtf
+from hgm import hgm, parse_hgm_gtf, parse_homologs
 from transmap_classify import transmap_classify
 from plots import generate_plots
 from hints_db import hints_db
@@ -94,6 +94,7 @@ class PipelineTask(luigi.Task):
     pb_cfg = luigi.Parameter(default='augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg', significant=False)
     # Hgm parameters
     hgm_cpu = luigi.IntParameter(default=4, significant=False)
+    print_homologs = luigi.BoolParameter(default=False)
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
     hub_email = luigi.Parameter(default='NoEmail', significant=False)
@@ -158,6 +159,7 @@ class PipelineTask(luigi.Task):
             args.set('cgp_param', None, True)
         args.set('cgp_train_num_exons', self.cgp_train_num_exons, True)
         args.set('hgm_cpu', self.hgm_cpu, False)
+        args.set('print_homologs', self.print_homologs, True)
 
         # user flags for paralog resolution
         args.set('global_near_best', self.global_near_best, True)
@@ -797,6 +799,8 @@ class Gff3ToAttrs(PipelineTask):
         if 'gbkey' in set(df.key):
             for tx_id, d in df.groupby('transcript_id'):
                 d = dict(zip(d.key, d.value))
+                if d['gbkey'] == 'Gene':
+                    continue
                 if d['gbkey'] == 'mRNA':
                     # hacky check because of lack of biotype features on transcript-level features
                     if 'pseudo' in d and d['pseudo'] == 'true':
@@ -812,8 +816,8 @@ class Gff3ToAttrs(PipelineTask):
                 elif 'Name' in d:
                     gene_name = d['Name']
                 else:
-                    gene_name = d['Parent']
-                gene_id = d['Parent']
+                    gene_name = d.get('Parent', d['ID'])
+                gene_id = d.get('Parent', d['ID'])
                 tx_name = d.get('product', tx_id)
                 results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
         else:  # this is not a NCBI GFF3
@@ -1656,6 +1660,8 @@ class Hgm(PipelineWrapperTask):
         args.annotation_gtf = ReferenceFiles.get_args(pipeline_args).annotation_gtf
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.hgm_cpu = pipeline_args.hgm_cpu
+        if pipeline_args.print_homologs:
+            args.homologs = os.path.join(base_dir, 'homologs.txt')
         return args
 
     def validate(self):
@@ -1696,6 +1702,13 @@ class HgmDriverTask(PipelineTask):
                                                       update_id='_'.join([tablename, str(hash(pipeline_args))]))
         for f in hgm_args.gtf_out_files.itervalues():
             yield luigi.LocalTarget(f)
+        if pipeline_args.print_homologs:
+            db = pipeline_args.dbs[pipeline_args.ref_genome]
+            conn_str = 'sqlite:///{}'.format(db)
+            tablename = tools.sqlInterface.tables['hgmHomologs'][self.mode].__tablename__
+            yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
+                                                      target_table=tablename,
+                                                      update_id='_'.join([tablename, str(hash(pipeline_args))]))
 
     def requires(self):
         if self.mode == 'augCGP':
@@ -1722,11 +1735,19 @@ class HgmDriverTask(PipelineTask):
         databases = self.__class__.get_databases(pipeline_args)
         tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
         for genome, sqla_target in itertools.izip(*[hgm_args.genomes, self.output()]):
-            df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome)
+            df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome, len(hgm_args.genomes))
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
                 df.to_sql(tablename, engine, if_exists='replace')
             sqla_target.touch()
             logger.info('Loaded table: {}.{}'.format(genome, tablename))
+        if pipeline_args.print_homologs:
+            df = parse_homologs(hgm_args.homologs)
+            with tools.sqlite.ExclusiveSqlConnection(databases[pipeline_args.ref_genome]) as engine:
+                tablename = tools.sqlInterface.tables['hgmHomologs'][self.mode].__tablename__
+                df.to_sql(tablename, engine, if_exists='replace')
+                logger.info('Loaded table: {}'.format(tablename))
+                sqla_target = list(self.output())[-1]  # ugly, relies on ordering of output()
+                sqla_target.touch()
 
 
 class IsoSeqTranscripts(PipelineWrapperTask):
@@ -2010,6 +2031,7 @@ class Consensus(PipelineWrapperTask):
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')
         args.consensus_gff3 = os.path.join(base_dir, genome + '.gff3')
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
+        args.homologs = pipeline_args.print_homologs
         # user configurable options on how consensus finding should work
         args.intron_rnaseq_support = pipeline_args.intron_rnaseq_support
         args.exon_rnaseq_support = pipeline_args.exon_rnaseq_support
