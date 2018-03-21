@@ -189,7 +189,7 @@ def extract_exon_hints(hints_db, in_gtf, genome):
     return hints
 
 
-def parse_hgm_gtf(hgm_out, genome, num_genomes):
+def parse_hgm_gtf(hgm_out, genome):
     """
     parses the hgm output gtfs and creates for each transcript a string with the intron support counts
     For now, we just count for each of the introns in the transcript, the number of species
@@ -232,16 +232,18 @@ def parse_hgm_gtf(hgm_out, genome, num_genomes):
     species_map = {}
     seen_lines = set()  # filter out duplicate lines. Happens in CGP/PB.
     with open(hgm_out) as infile:
-        for i, line in enumerate(infile):
-            if line in seen_lines:
+        # iterate over header
+        for line in infile:
+            if line == '###\n':
+                break
+            _, species_id, species = line.split()
+            species_map[species] = species_id
+        # iterate over remainder
+        for line in infile:
+            if line in seen_lines or line.startswith('#'):
                 continue
             seen_lines.add(line)
-            if i < num_genomes:
-                _, species_id, species = line.split()
-                species_map[species] = species_id
-            elif line.startswith('#'):
-                continue
-            elif '\tintron\t' in line:
+            if '\tintron\t' in line:
                 intron_lines.append(line.rstrip().split('\t')[-1])
             elif '\tCDS\t' in line:
                 cds_lines.append(line.rstrip().split('\t')[-1])

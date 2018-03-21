@@ -1735,7 +1735,7 @@ class HgmDriverTask(PipelineTask):
         databases = self.__class__.get_databases(pipeline_args)
         tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
         for genome, sqla_target in itertools.izip(*[hgm_args.genomes, self.output()]):
-            df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome, len(hgm_args.genomes))
+            df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome)
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
                 df.to_sql(tablename, engine, if_exists='replace')
             sqla_target.touch()
