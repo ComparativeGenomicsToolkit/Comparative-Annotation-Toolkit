@@ -236,7 +236,7 @@ def parse_hgm_gtf(hgm_out, genome, num_genomes):
             if line in seen_lines:
                 continue
             seen_lines.add(line)
-            if i <= num_genomes:
+            if i < num_genomes:
                 _, species_id, species = line.split()
                 species_map[species] = species_id
             elif line.startswith('#'):
