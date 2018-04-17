@@ -18,7 +18,8 @@ GFF3 tags generated in this process:
 8. transcript_biotype: transcript biotype
 10. alternative_source_transcripts: Other possible transcripts, if this was collapsed as the result of deduplication
 11. gene_alternate_contigs: contigs that this gene was also found on are comma separated in this tag.
-12: transcript_modes: The mode(s) that generated this transcript
+12. transcript_modes: The mode(s) that generated this transcript
+13. homologs: Comma separated list of gene IDs in another species predicted to be homologous. Format is species:gene,
 """
 import collections
 import luigi
@@ -195,6 +196,19 @@ def load_hgm_vectors(db_path, tx_mode):
         hgm_df[col] = [list(map(int, x)) if len(x[0]) > 0 else [] for x in hgm_df[col].str.split(',').tolist()]
         hgm_df[col + 'Percent'] = hgm_df[col].apply(calculate_vector_support, resolve_nan=1)
     return hgm_df
+
+
+def load_homologs(ref_db_path, genome, ref_df, tx_modes):
+    """Load homologs if run"""
+    df = tools.sqlInterface.load_homologs(ref_db_path, tx_modes)
+    df = df.groupby(['GeneNumber']).filter(lambda s: genome in set(s.Genome))
+    df['TranscriptId'] = [tools.nameConversions.strip_alignment_numbers(x) for x in df['AlignmentId']]
+    tx_gene_map = dict(zip(ref_df.TranscriptId, ref_df.GeneId))
+    df['GeneId'] = [tx_gene_map[x] for x in df['TranscriptId']]
+    # now we need to parse this into a set of homologs based on this genome
+    r = []
+    for _, s in df.groupby('GeneNumber'):
+        assert False
 
 
 def load_metrics_from_db(db_path, tx_mode, aln_mode):

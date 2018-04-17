@@ -179,6 +179,38 @@ class AugPbIntronSupport(HgmColumns, Base):
     __tablename__ = 'augPB_Hgm'
 
 
+class HgmHomologs(object):
+    """Base for the homologs table. Only exists in ref_genome"""
+    Genome = Column(Text)
+    GeneNumber = Column(Integer)
+    AlignmentId = Column(Text, primary_key=True)
+
+
+class TransMapHgmHomologs(HgmHomologs, Base):
+    """Table for transMap homolog analysis"""
+    __tablename__ = 'TransMap_HgmHomologs'
+
+
+class AugTmHgmHomologs(HgmHomologs, Base):
+    """Table for transMap homolog analysis"""
+    __tablename__ = 'AugTm_HgmHomologs'
+
+
+class AugTmrHgmHomologs(HgmHomologs, Base):
+    """Table for transMap homolog analysis"""
+    __tablename__ = 'AugTmr_HgmHomologs'
+
+
+class AugCgpHgmHomologs(HgmHomologs, Base):
+    """Table for transMap homolog analysis"""
+    __tablename__ = 'AugCgp_HgmHomologs'
+
+
+class AugPbHgmHomologs(HgmHomologs, Base):
+    """Table for transMap homolog analysis"""
+    __tablename__ = 'AugPb_HgmHomologs'
+
+
 class AlternativeGeneIdColumns(object):
     """mixin class for AlternativeGenes"""
     TranscriptId = Column(Text, primary_key=True)
@@ -223,6 +255,9 @@ def start_session(db_path):
 tables = {'hgm': {'augCGP': AugCgpIntronSupport, 'augTM': AugTmIntronSupport,
                   'augTMR': AugTmrIntronSupport, 'transMap': TmIntronSupport,
                   'augPB': AugPbIntronSupport},
+          'hgmHomologs': {'augCGP': AugCgpHgmHomologs, 'augTM': AugTmHgmHomologs,
+                          'augTMR': AugTmrHgmHomologs, 'transMap': TransMapHgmHomologs,
+                          'augPB': AugPbHgmHomologs},
           'CDS': {'augTM': {'metrics': CdsAugTmMetrics, 'evaluation': CdsAugTmEval},
                   'augTMR': {'metrics': CdsAugTmrMetrics, 'evaluation': CdsAugTmrEval},
                   'transMap': {'metrics': CdsTmMetrics, 'evaluation': CdsTmEval}},
@@ -423,6 +458,18 @@ def load_alternatives(table, session):
     assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
+
+
+def load_homologs(db_path, tx_modes):
+    """Load the homolog calls from homGeneMapping"""
+    session = tools.sqlInterface.start_session(db_path)
+    r = []
+    for tx_mode in tx_modes:
+        table = tables['hgmHomologs'][tx_mode]
+        query = session.query(table)
+        r.append(pd.read_sql(query.statement, session.bind))
+    df = pd.concat(r)
+    return df
 
 
 ###
