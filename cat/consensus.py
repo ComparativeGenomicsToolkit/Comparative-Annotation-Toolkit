@@ -827,6 +827,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             attrs['Name'] = attrs['source_gene_common_name']
         # don't include the support vectors in the string, they will be placed in their respective places
         attrs_str = ['='.join([key, str(val)]) for key, val in sorted(attrs.iteritems()) if 'support' not in key]
+        # explicitly escape any semicolons that may exist in the input strings
+        attrs_str = [x.replace(';', '%3B') for x in attrs_str]
         return score, ';'.join(attrs_str)
 
     def find_feature_support(attrs, feature, i):
