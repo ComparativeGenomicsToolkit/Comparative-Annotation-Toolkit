@@ -166,7 +166,7 @@ def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, mode, utr):
     cmd = ['augustus', tmp_fasta, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
            '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR={}'.format(int(utr)),
            '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
-           '--protein=0', '--softmasking=1']
+           '--protein=0', '--softmasking=1', '--/augustus/verbosity=0']
     aug_output = tools.procOps.call_proc_lines(cmd)
     transcript = munge_augustus_output(aug_output, mode, tm_tx)
     return transcript
@@ -207,7 +207,7 @@ def munge_augustus_output(aug_output, mode, tm_tx):
         return None
     valid_tx = valid_txs[0]
     tx_id = 'aug{}-{}'.format(mode, tm_tx.name)
-    tx_lines = [x.split('\t') for x in aug_output if valid_tx in x]
+    tx_lines = [x.split('\t') for x in aug_output if valid_tx in x and not x.startswith('#')]
     features = {"exon", "CDS", "start_codon", "stop_codon", "tts", "tss"}
     gtf = []
     for chrom, source, feature, start, stop, score, strand, frame, attributes in tx_lines:
