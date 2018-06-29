@@ -4,7 +4,7 @@ RUN apt-get install wget -y
 RUN apt-get install git -y
 
 # Kent
-RUN for i in faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf bedtools blat pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed ; do wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/$i -O /bin/$i ; chmod +x /bin/$i ; done
+RUN for i in wigToBigWig faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf bedtools blat pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed ; do wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/$i -O /bin/$i ; chmod +x /bin/$i ; done
 
 # bedtools
 RUN apt-get install bedtools -y
@@ -37,15 +37,14 @@ RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.3.1.tar.gz
 RUN tar -xzf augustus-3.3.1.tar.gz
 RUN echo 'COMGENEPRED = true' >> augustus-3.3.1/common.mk
 RUN cd augustus-3.3.1 && make
-#### Unsure pathing ####
-# RUN PATH=$PATH:~/augustus/bin:~/augustus/scripts
-# RUN export AUGUSTUS_CONFIG_PATH=/my_path_to_AUGUSTUS/augustus/config/
 RUN cd augustus-3.3.1/src && make clean all
+RUN cd augustus-3.3.1/auxprogs/homGeneMapping/src && sed 's/# BOOST = true/BOOST = true/g' -i Makefile && sed 's/# SQLITE = true/SQLITE = true/g' -i Makefile
+RUN cd augustus-3.3.1/auxprogs && make clean && make
 
 # HDF5
 RUN wget http://www.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.1/src/hdf5-1.10.1.tar.gz
 RUN tar xzf hdf5-1.10.1.tar.gz
-RUN cd hdf5-1.10.1 && ./configure --prefix=/usr
+RUN cd hdf5-1.10.1 && ./configure --enable-cxx --prefix=/usr 
 RUN cd hdf5-1.10.1 && make && make install
 # sonLib
 RUN git clone git://github.com/benedictpaten/sonLib.git
@@ -53,8 +52,6 @@ RUN git clone git://github.com/benedictpaten/sonLib.git
 RUN git clone git://github.com/glennhickey/hal.git
 RUN /bin/bash -c "pushd sonLib && make && popd"
 RUN cd hal && make
-#### Unsure pathing ####
-# RUN export PATH=hal/bin:${PATH} 
 
 # LibBigWig
 RUN git clone https://github.com/dpryan79/libBigWig.git
@@ -71,3 +68,13 @@ RUN cd WiggleTools && make
 # sambamba
 RUN wget https://github.com/biod/sambamba/releases/download/v0.6.7/sambamba_v0.6.7_linux.tar.bz2
 RUN tar xvjf sambamba_v0.6.7_linux.tar.bz2
+
+RUN apt-get install python-pip -y
+# toil
+RUN pip install bd2k-python-lib 
+
+RUN pip install pyfasta 
+
+ENV PATH=$PATH:/augustus-3.3.1/bin:/augustus-3.3.1/scripts:/hal/bin:/WiggleTools/bin:/
+ENV AUGUSTUS_CONFIG_PATH=/augustus-3.3.1/scripts
+ENV LD_LIBRARY_PATH=/libBigWig:$LD_LIBRARY_PATH
