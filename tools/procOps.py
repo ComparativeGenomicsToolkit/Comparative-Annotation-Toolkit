@@ -91,31 +91,62 @@ def mrca_path(path1, path2):
             path2 = os.path.dirname(path2)
     raise RuntimeError('something weird happened: the two paths %s and %s had no common prefix.' % (path1, path2))
 
+def add_to_work_dirs(dirname, work_dirs):
+    """
+    >>> work_dirs = []
+    >>> add_to_work_dirs('/tmp', work_dirs)
+    >>> work_dirs
+    ['/tmp']
+    >>> add_to_work_dirs('/foo/bar/baz', work_dirs)
+    >>> work_dirs
+    ['/tmp', '/foo/bar/baz']
+    >>> add_to_work_dirs('/foo/baz', work_dirs)
+    >>> work_dirs
+    ['/tmp', '/foo']
+    """
+    if not work_dirs:
+        # Empty list
+        work_dirs.append(dirname)
+    else:
+        # Go through all existing work_dirs and see if there's one
+        # that can be added without traversing back to the root. (We
+        # don't want to bind-mount the root dir, because that will
+        # override the existing filesystem within the container.)
+        for i, work_dir in enumerate(work_dirs):
+            mrca = mrca_path(dirname, work_dir)
+            if mrca == '/':
+                # Avoid bind-mounting the root dir.
+                if i == len(work_dirs) - 1:
+                    # No mergeable directories.
+                    work_dirs.append(dirname)
+            else:
+                # Mergable. Replace this entry with the MRCA.
+                work_dirs[i] = mrca
 
 def getDockerCommand(image, cmd):
     """
     Takes in a command (as a list of arguments like ['halStats',
     'file']) and outputs another list of arguments that will run it in
-    the given Docker container, relativizing paths and binding
-    directories when necessary.
+    the given Docker container, binding directories when necessary.
 
     image: the Docker image to use, e.g. 'quay.io/comparative-genomics-toolkit/cactus:latest'
     cmd: list of arguments
     """
     dockerPreamble = ['docker', 'run', '-i', '--rm']
-    # Find work_dir (MRCA of all provided files)
-    work_dir = None
+    work_dirs = []
     for i, arg in enumerate(cmd):
-        if os.path.isfile(arg):
+        if arg.startswith('-') and '=' in arg:
+            # We assume this is -option=value syntax. Special-case
+            # this to check if the value is a path.
+            arg = arg.split('=')[1]
+        dirname = os.path.dirname(arg)
+        if os.path.exists(dirname):
+            # The dirname exists, so we will try to mount it.
             arg = os.path.abspath(arg)
-            cmd[i] = arg
-            if not arg.startswith('/dev'):
-                if work_dir is None:
-                    work_dir = os.path.dirname(arg)
-                else:
-                    work_dir = mrca_path(os.path.dirname(arg), work_dir)
-    # Relativize all paths.
-    if work_dir is not None:
+            if arg.startswith('/dev'):
+                continue
+            add_to_work_dirs(dirname, work_dirs)
+    for work_dir in work_dirs:
         work_dir = os.path.abspath(work_dir)
         dockerPreamble += ['-v', work_dir + ':' + work_dir]
     return dockerPreamble + [image] + cmd
