@@ -2,8 +2,9 @@
 """
 Wrapper for pipeline.py. Provides a simple interface for compli'cat'ed unix-style process pipes.
 """
-import sys
+import os
 import pipeline
+import sys
 import subprocess
 
 
@@ -58,7 +59,7 @@ def popen_catch(command, stdin=None):
     """
     Runs a command and return standard out. TODO: use Mark's tools. I don't think he has this functionality.
     """
-    command = getDockerCommand('cat',cmd)
+    command = getDockerCommand('cat', command)
     if stdin is not None:
         process = subprocess.Popen(command,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
@@ -71,95 +72,62 @@ def popen_catch(command, stdin=None):
         raise RuntimeError("Command: %s with stdin string '%s' exited with non-zero status %i" % (command, stdin, sts))
     return output
 
-import os
-
-
 
 def mrca_path(path1, path2):
-
     """
-
     Gives the Most Recent Common Ancestor directory that contains both paths.
-
     
-
     >>> mrca_path('/usr/lib/python2.7', '/usr/bin/python')
-
-    '/usr/'
-
-    >> mrca_path('/usr/', '/usr/')
-
-    '/usr/'
-
+    '/usr'
+    >>> mrca_path('/usr/', '/usr/')
+    '/usr'
     """
-
     while True:
-
         if path1 == path2:
-
-            return path1 + os.path.sep
-
+            return os.path.normpath(path1)
         elif len(path1) > len(path2):
-
             path1 = os.path.dirname(path1)
-
         else:
-
             path2 = os.path.dirname(path2)
-
     raise RuntimeError('something weird happened: the two paths %s and %s had no common prefix.' % (path1, path2))
 
 
+def replace_path_prefix(src_path, prefix_to_replace, replacement):
+    """
+    Replaces a given prefix of `src_path` with `replacement`.
+
+    >>> replace_path_prefix('/path/to/my/stuff/test/foo/', '/path/to/my/stuff', '/data/')
+    '/data/test/foo'
+    >>> replace_path_prefix('/usr/local/bin/gcc', '/', '/data')
+    '/data/usr/local/bin/gcc'
+    """
+    relative_path = os.path.relpath(src_path, prefix_to_replace)
+    return os.path.normpath(os.path.join(replacement, relative_path))
 
 def getDockerCommand(image, cmd):
-
     """
-
     Takes in a command (as a list of arguments like ['halStats',
-
     'file']) and outputs another list of arguments that will run it in
-
     the given Docker container, relativizing paths and binding
-
     directories when necessary.
 
-
-
     image: the Docker image to use, e.g. 'quay.io/comparative-genomics-toolkit/cactus:latest'
-
     cmd: list of arguments
-
     """
-
     dockerPreamble = ['docker', 'run', '-i', '--rm']
-
     # Find work_dir (MRCA of all provided files)
-
     work_dir = None
-
     for i, arg in enumerate(cmd):
-
         if os.path.isfile(arg):
             arg = os.path.abspath(arg)
             cmd[i] = arg
             if work_dir is None:
-
                 work_dir = os.path.dirname(arg)
-
             else:
-
                 work_dir = mrca_path(os.path.dirname(arg), work_dir)
-
     # Relativize all paths.
-
     if work_dir is not None:
         work_dir = os.path.abspath(work_dir)
-
-        cmd = [arg.replace(work_dir, '/data/') for arg in cmd]
-
+        cmd = [replace_path_prefix(arg, work_dir, '/data') for arg in cmd]
         dockerPreamble += ['-v', work_dir + ':/data']
-
     return dockerPreamble + [image] + cmd
-
-
-
