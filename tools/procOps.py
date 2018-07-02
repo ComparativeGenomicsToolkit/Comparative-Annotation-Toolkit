@@ -92,18 +92,6 @@ def mrca_path(path1, path2):
     raise RuntimeError('something weird happened: the two paths %s and %s had no common prefix.' % (path1, path2))
 
 
-def replace_path_prefix(src_path, prefix_to_replace, replacement):
-    """
-    Replaces a given prefix of `src_path` with `replacement`.
-
-    >>> replace_path_prefix('/path/to/my/stuff/test/foo/', '/path/to/my/stuff', '/data/')
-    '/data/test/foo'
-    >>> replace_path_prefix('/usr/local/bin/gcc', '/', '/data')
-    '/data/usr/local/bin/gcc'
-    """
-    relative_path = os.path.relpath(src_path, prefix_to_replace)
-    return os.path.normpath(os.path.join(replacement, relative_path))
-
 def getDockerCommand(image, cmd):
     """
     Takes in a command (as a list of arguments like ['halStats',
@@ -121,13 +109,13 @@ def getDockerCommand(image, cmd):
         if os.path.isfile(arg):
             arg = os.path.abspath(arg)
             cmd[i] = arg
-            if work_dir is None:
-                work_dir = os.path.dirname(arg)
-            else:
-                work_dir = mrca_path(os.path.dirname(arg), work_dir)
+            if not arg.startswith('/dev'):
+                if work_dir is None:
+                    work_dir = os.path.dirname(arg)
+                else:
+                    work_dir = mrca_path(os.path.dirname(arg), work_dir)
     # Relativize all paths.
     if work_dir is not None:
         work_dir = os.path.abspath(work_dir)
-        cmd = [replace_path_prefix(arg, work_dir, '/data') for arg in cmd]
-        dockerPreamble += ['-v', work_dir + ':/data']
+        dockerPreamble += ['-v', work_dir + ':' + work_dir]
     return dockerPreamble + [image] + cmd
