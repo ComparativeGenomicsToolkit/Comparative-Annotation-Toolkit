@@ -7,14 +7,25 @@ import pipeline
 import sys
 import subprocess
 
+def cmdLists(cmd):
+    """creates dockers commands from lists or a list of lists
+    """
+    if isinstance(cmd[0],list):
+        docList = []
+        for e in cmd:
+            docList.append(getDockerCommand('cat',e))
+        return docList
+    else:
+        return getDockerCommand('cat',cmd)
+
 
 def call_proc(cmd, keepLastNewLine=False):
     """call a process and return stdout, exception with stderr in message.
     The  cmd is either a list of command and arguments, or pipeline, specified by
     a list of lists of commands and arguments."""
     stdout = pipeline.DataReader()
-    cmd = getDockerCommand('cat',cmd)
-    pl = pipeline.Procline(cmd, stdin="/dev/null", stdout=stdout, stderr='/dev/stderr')
+    cmd = cmdLists(cmd)
+    pl = pipeline.Procline(cmd, stdin="/dev/null", stdout=stdout)
     pl.wait()
     out = stdout.get()
     if (not keepLastNewLine) and (len(out) > 0) and (out[-1] == "\n"):
@@ -34,7 +45,7 @@ def call_proc_lines(cmd):
 def run_proc(cmd, stdin="/dev/null", stdout=None, stderr=None):
     """run a process, with I/O redirection to specified file paths or open
     file objects. None specifies inheriting open file."""
-    cmd = getDockerCommand('cat',cmd)
+    cmd = cmdLists(cmd)
     pl = pipeline.Procline(cmd, stdin=stdin, stdout=stdout, stderr=stderr)
     pl.wait()
 
@@ -44,7 +55,7 @@ def run_proc_code(cmd, stdin="/dev/null", stdout=None, stderr=None):
     file objects. None specifies inheriting open file.  Return exit code rather
     than raising exception"""
     try:
-        cmd = getDockerCommand('cat',cmd)
+        cmd = cmdLists(cmd)
         pl = pipeline.Procline(cmd, stdin=stdin, stdout=stdout, stderr=stderr)
         pl.wait()
     except pipeline.ProcException as ex:
@@ -59,7 +70,7 @@ def popen_catch(command, stdin=None):
     """
     Runs a command and return standard out. TODO: use Mark's tools. I don't think he has this functionality.
     """
-    command = getDockerCommand('cat', command)
+    command = cmdLists(command)
     if stdin is not None:
         process = subprocess.Popen(command,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
