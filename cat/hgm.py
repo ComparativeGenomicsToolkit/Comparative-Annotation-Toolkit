@@ -83,10 +83,10 @@ def hgm(args):
             raise Exception('error {} seen when running {}'.format(e, ' '.join(cmd)))
 
     # cleanup
-    for gff in supplementary_gffs:
-        os.remove(gff)
-    if dummy_gtf is not None:
-        os.remove(dummy_gtf)
+    #for gff in supplementary_gffs:
+    #    os.remove(gff)
+    #if dummy_gtf is not None:
+    #    os.remove(dummy_gtf)
 
 
 def create_supplementary_gff(hints_db, in_gtf, genome, tmp_dir, annotation_gp=None):
