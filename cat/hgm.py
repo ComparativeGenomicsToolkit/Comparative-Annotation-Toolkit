@@ -46,25 +46,33 @@ def hgm(args):
     # keep track of the GTFs we are generating to remove later
     supplementary_gffs = []
 
-    with tools.fileOps.TemporaryFilePath() as gtf_fofn, tools.fileOps.TemporaryDirectoryPath() as temp_dir:
-        with open(gtf_fofn, 'w') as outf:
-            for genome, gtf in args.in_gtf.iteritems():
-                if genome != args.ref_genome:
-                    supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
-                else:
-                    supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
-                tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
-                supplementary_gffs.append(supplementary_gff)
-            if args.ref_genome not in args.in_gtf:  # we are not running CGP, and so have no GTF for the reference
-                dummy_gtf = tools.fileOps.get_tmp_file()
-                tools.fileOps.touch(dummy_gtf)
-                supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
-                                                             args.annotation_gp)
-                tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
-                supplementary_gffs.append(supplementary_gff)
+    #with tools.fileOps.TemporaryFilePath(prefix='fofn') as gtf_fofn:
+    gtf_fofn = os.path.join(args.gtf_out_dir, 'fofn')
+    with open(gtf_fofn, 'w') as outf:
+        for genome, gtf in args.in_gtf.iteritems():
+            if genome != args.ref_genome:
+                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
             else:
-                dummy_gtf = None
+                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
+            tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
+            supplementary_gffs.append(supplementary_gff)
+        if args.ref_genome not in args.in_gtf:  # we are not running CGP, and so have no GTF for the reference
+            dummy_gtf = tools.fileOps.get_tmp_file()
+            tools.fileOps.touch(dummy_gtf)
+            supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
+                                                         args.annotation_gp)
+            tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
+            supplementary_gffs.append(supplementary_gff)
+        else:
+            dummy_gtf = None
 
+    with open(gtf_fofn) as f:
+        for l in f:
+            g, gtf, gff = l.split()
+            assert os.path.exists(gtf), 'missing supplementary GTF for {}'.format(g)
+            assert os.path.exists(gff), 'missing supplementary GFF for {}'.format(g)
+
+    with tools.fileOps.TemporaryDirectoryPath(prefix='work_dir') as temp_dir:
         cmd = ['homGeneMapping',
                '--halfile={}'.format(args.hal),
                '--dbaccess={}'.format(args.hints_db),
@@ -72,8 +80,10 @@ def hgm(args):
                '--outdir={}'.format(args.gtf_out_dir),
                '--tmpdir={}'.format(temp_dir),
                '--cpu={}'.format(args.hgm_cpu)]
-        assert False, ' '.join(cmd)
-        tools.procOps.run_proc(cmd, stdout='/dev/null')
+        try:
+            tools.procOps.run_proc(cmd, stdout='/dev/null')
+        except Exception, e:
+            raise Exception('error {} seen when running {}'.format(e, ' '.join(cmd)))
 
     # cleanup
     for gff in supplementary_gffs:
