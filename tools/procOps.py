@@ -10,13 +10,16 @@ import subprocess
 def cmdLists(cmd):
     """creates dockers commands from lists or a list of lists
     """
-    if isinstance(cmd[0],list):
-        docList = []
-        for e in cmd:
-            docList.append(getDockerCommand('cat',e))
-        return docList
+    if os.environ.get('BINARY_MODE') is 'docker':
+        if isinstance(cmd[0],list):
+            docList = []
+            for e in cmd:
+                docList.append(getDockerCommand('cat',e))
+            return docList
+        else:
+            return getDockerCommand('cat',cmd)
     else:
-        return getDockerCommand('cat',cmd)
+        return cmd
 
 
 def call_proc(cmd, keepLastNewLine=False):
