@@ -51,9 +51,10 @@ def hgm(args):
     with open(gtf_fofn, 'w') as outf:
         for genome, gtf in args.in_gtf.iteritems():
             if genome != args.ref_genome:
-                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
+                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.gtf_out_dir)
             else:
-                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
+                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.gtf_out_dir,
+                                                             args.annotation_gp)
                 assert os.path.exists(supplementary_gff)
             tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
             supplementary_gffs.append(supplementary_gff)
@@ -61,7 +62,7 @@ def hgm(args):
             dummy_gtf = tools.fileOps.get_tmp_file()
             tools.fileOps.touch(dummy_gtf)
             supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
-                                                         args.annotation_gp)
+                                                         args.gtf_out_dir, args.annotation_gp)
             assert os.path.exists(dummy_gtf) and os.path.exists(supplementary_gff)
             tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
             supplementary_gffs.append(supplementary_gff)
