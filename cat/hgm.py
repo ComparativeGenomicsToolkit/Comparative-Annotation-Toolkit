@@ -54,6 +54,7 @@ def hgm(args):
                 supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
             else:
                 supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
+                assert os.path.exists(supplementary_gff)
             tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
             supplementary_gffs.append(supplementary_gff)
         if args.ref_genome not in args.in_gtf:  # we are not running CGP, and so have no GTF for the reference
@@ -61,16 +62,11 @@ def hgm(args):
             tools.fileOps.touch(dummy_gtf)
             supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
                                                          args.annotation_gp)
+            assert os.path.exists(dummy_gtf) and os.path.exists(supplementary_gff)
             tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
             supplementary_gffs.append(supplementary_gff)
         else:
             dummy_gtf = None
-
-    with open(gtf_fofn) as f:
-        for l in f:
-            g, gtf, gff = l.split()
-            assert os.path.exists(gtf), 'missing supplementary GTF for {}'.format(g)
-            assert os.path.exists(gff), 'missing supplementary GFF for {}'.format(g)
 
     with tools.fileOps.TemporaryDirectoryPath(prefix='work_dir') as temp_dir:
         cmd = ['homGeneMapping',
@@ -92,7 +88,7 @@ def hgm(args):
         os.remove(dummy_gtf)
 
 
-def create_supplementary_gff(hints_db, in_gtf, genome, annotation_gp=None):
+def create_supplementary_gff(hints_db, in_gtf, genome, tmp_dir, annotation_gp=None):
     """
     Creates the supplementary GFF which contains exon hints derived from the database as well as non-coding introns
     and all exons if annotation_gp is passed.
@@ -115,7 +111,7 @@ def create_supplementary_gff(hints_db, in_gtf, genome, annotation_gp=None):
            ['sort', '-s', '-k3,3'],
            ['sort', '-s', '-k1,1'],
            ['join_mult_hints.pl']]
-    supplementary_gff_path = tools.fileOps.get_tmp_file(suffix='gff')
+    supplementary_gff_path = tools.fileOps.get_tmp_file(suffix='gff', tmp_dir=tmp_dir)
     tools.procOps.run_proc(cmd, stdout=supplementary_gff_path)
     os.remove(tmp_path)
     return supplementary_gff_path
