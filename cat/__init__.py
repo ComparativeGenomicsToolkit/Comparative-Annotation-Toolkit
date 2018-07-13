@@ -74,8 +74,8 @@ class PipelineTask(luigi.Task):
     work_dir = luigi.Parameter(default='./cat_work')
     target_genomes = luigi.TupleParameter(default=None)
     annotate_ancestors = luigi.BoolParameter(default=False)
-    binary = luigi.Parameter(default='docker')
-    os.environ['BINARY_MODE'] = binary
+    binary_mode = luigi.ChoiceParameter(choices=["docker", "local"], default='docker',
+                                        significant=False)
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human', significant=False)
@@ -201,6 +201,11 @@ class PipelineTask(luigi.Task):
         args.set('annotation_genomes', frozenset(args.cfg['ANNOTATION'].keys()), True)
         args.set('modes', self.get_modes(args), True)
         args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
+
+        # We use this environment variable as a bit of global state,
+        # to avoid threading this through in each of the hundreds of
+        # command invocations.
+        os.environ['CAT_BINARY_MODE'] = self.binary
         if self.__class__.__name__ in ['RunCat', 'Augustus', 'AugustusCgp', 'AugustusPb']:
             self.validate_cfg(args)
 

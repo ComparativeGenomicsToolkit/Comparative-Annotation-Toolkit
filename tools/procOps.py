@@ -10,7 +10,7 @@ import subprocess
 def cmdLists(cmd):
     """creates dockers commands from lists or a list of lists
     """
-    if os.environ.get('BINARY_MODE') is 'docker':
+    if os.environ.get('CAT_BINARY_MODE') == 'docker':
         if isinstance(cmd[0],list):
             docList = []
             for e in cmd:
