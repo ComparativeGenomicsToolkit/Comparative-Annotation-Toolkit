@@ -19,10 +19,10 @@ def cmdLists(cmd):
         if isinstance(cmd[0],list):
             docList = []
             for e in cmd:
-                docList.append(getDockerCommand('cat',e))
+                docList.append(getDockerCommand('quay.io/ucsc_cgl/cat',e))
             return docList
         else:
-            return getDockerCommand('cat',cmd)
+            return getDockerCommand('quay.io/ucsc_cgl/cat',cmd)
     else:
         return cmd
 
