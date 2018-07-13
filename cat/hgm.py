@@ -75,8 +75,9 @@ def hgm(args):
                '--dbaccess={}'.format(args.hints_db),
                '--gtfs={}'.format(gtf_fofn),
                '--outdir={}'.format(args.gtf_out_dir),
-               '--tmpdir={}'.format(temp_dir),
+               '--tmpdir={}'.format(args.gtf_out_dir),
                '--cpu={}'.format(args.hgm_cpu)]
+        assert False, ' '.join(cmd)
         try:
             tools.procOps.run_proc(cmd, stdout='/dev/null')
         except Exception, e:
