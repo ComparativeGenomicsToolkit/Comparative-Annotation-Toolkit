@@ -63,6 +63,11 @@ def convert_gp_gtf(gtf_target, gp_target, source='CAT'):
 
 def is_exec(program): 
     """checks if a program is in the global path and executable"""
+    if os.environ.get("CAT_BINARY_MODE") != "local":
+        # We assume containerized versions don't need to check if the
+        # tools are installed--they definitely are, and calling docker
+        # just to run "which" can be surprisingly expensive.
+        return True
     cmd = ['which', program]
     try:
         return procOps.call_proc_lines(cmd)[0].endswith(program)

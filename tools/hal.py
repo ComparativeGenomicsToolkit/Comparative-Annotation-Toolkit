@@ -3,19 +3,22 @@ Functions for working with HAL files.
 """
 import ete3
 from procOps import call_proc_lines
+from bd2k.util import memoize
 
-
+@memoize
 def get_tree(hal):
     """
     Extracts a Tree object from a HAL
     :param hal: HAL file.
     :return: Tree object
     """
+    import sys, traceback
+    traceback.print_stack()
     cmd = ['halStats', '--tree', hal]
     newick = call_proc_lines(cmd)[0]
     return ete3.Tree(newick, format=1)
 
-
+@memoize
 def build_genome_order(hal, ref_genome, genome_subset=None, include_ancestors=False):
     """
     Constructs an ordered vector of genomes based on genetic distance from a source genome.
@@ -38,7 +41,7 @@ def build_genome_order(hal, ref_genome, genome_subset=None, include_ancestors=Fa
     distances, ordered_names = zip(*ordered)
     return ordered_names
 
-
+@memoize
 def extract_genomes(hal, include_ancestors=False, target_genomes=None):
     """
     Constructs a set of genomes present in this alignment

@@ -4,8 +4,13 @@ Wrapper for pipeline.py. Provides a simple interface for compli'cat'ed unix-styl
 """
 import os
 import pipeline
+import pipes
 import sys
 import subprocess
+import logging
+import time
+
+logger = logging.getLogger(__name__)
 
 def cmdLists(cmd):
     """creates dockers commands from lists or a list of lists
@@ -21,15 +26,17 @@ def cmdLists(cmd):
     else:
         return cmd
 
-
 def call_proc(cmd, keepLastNewLine=False):
     """call a process and return stdout, exception with stderr in message.
     The  cmd is either a list of command and arguments, or pipeline, specified by
     a list of lists of commands and arguments."""
     stdout = pipeline.DataReader()
     cmd = cmdLists(cmd)
+    logger.debug('About to run command: %s' % cmd)
+    now = time.time()
     pl = pipeline.Procline(cmd, stdin="/dev/null", stdout=stdout)
     pl.wait()
+    logger.debug('Command %s took %s seconds.' % (cmd, time.time() - now))
     out = stdout.get()
     if (not keepLastNewLine) and (len(out) > 0) and (out[-1] == "\n"):
         out = out[0:-1]
