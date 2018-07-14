@@ -134,6 +134,11 @@ class PipelineTask(luigi.Task):
 
     def get_pipeline_args(self):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
+        # We use this environment variable as a bit of global state,
+        # to avoid threading this through in each of the hundreds of
+        # command invocations.
+        os.environ['CAT_BINARY_MODE'] = self.binary_mode
+
         args = tools.misc.PipelineNamespace()
         args.set('hal', os.path.abspath(self.hal), True)
         args.set('ref_genome', self.ref_genome, True)
@@ -202,10 +207,6 @@ class PipelineTask(luigi.Task):
         args.set('modes', self.get_modes(args), True)
         args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
 
-        # We use this environment variable as a bit of global state,
-        # to avoid threading this through in each of the hundreds of
-        # command invocations.
-        os.environ['CAT_BINARY_MODE'] = self.binary
         if self.__class__.__name__ in ['RunCat', 'Augustus', 'AugustusCgp', 'AugustusPb']:
             self.validate_cfg(args)
 
