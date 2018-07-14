@@ -64,7 +64,7 @@ def convert_gp_gtf(gtf_target, gp_target, source='CAT'):
 
 def is_exec(program): 
     """checks if a program is in the global path and executable"""
-    if os.environ.get("CAT_BINARY_MODE") != "local":
+    if running_in_container():
         # We assume containerized versions don't need to check if the
         # tools are installed--they definitely are, and calling docker
         # just to run "which" can be surprisingly expensive.
@@ -136,3 +136,9 @@ def slice_df(df, ix):
             return r
     except KeyError:
         return pd.DataFrame()
+
+def running_in_container():
+    """
+    Is CAT trying to run tools inside containers?
+    """
+    return os.environ.get("CAT_BINARY_MODE") != "local"

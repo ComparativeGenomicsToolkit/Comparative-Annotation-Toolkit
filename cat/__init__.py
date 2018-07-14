@@ -449,6 +449,11 @@ class ToilTask(PipelineTask):
             except IOError:
                 shutil.rmtree(job_store)
 
+        if tools.misc.running_in_container():
+            # Caching doesn't work in containers, because the
+            # container filesystems are transient overlays that don't
+            # support hardlinking.
+            toil_args.disableCaching = True
         if toil_args.batchSystem == 'parasol' and toil_args.disableCaching is False:
             raise RuntimeError('Running parasol without disabled caching is a very bad idea.')
         if toil_args.batchSystem == 'parasol' and toil_args.workDir is None:
@@ -2087,8 +2092,8 @@ class Plots(RebuildableTask):
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
         ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
-                                                       genome_subset=pipeline_args.target_genomes,
-                                                       include_ancestors=pipeline_args.annotate_ancestors)
+                                                       pipeline_args.target_genomes,
+                                                       pipeline_args.annotate_ancestors)
         args = tools.misc.HashableNamespace()
         args.ordered_genomes = ordered_genomes
         # plots derived from transMap results
