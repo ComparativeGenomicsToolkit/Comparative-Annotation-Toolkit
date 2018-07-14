@@ -191,8 +191,8 @@ class PipelineTask(luigi.Task):
 
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
-        args.set('hal_genomes', tools.hal.extract_genomes(self.hal, self.annotate_ancestors), True)
-        target_genomes = tools.hal.extract_genomes(self.hal, self.annotate_ancestors, self.target_genomes)
+        args.set('hal_genomes', tools.hal.extract_genomes(args.hal, self.annotate_ancestors), True)
+        target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
         target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
         args.set('target_genomes', target_genomes, True)
 
@@ -644,7 +644,7 @@ class GenomeFasta(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['hal2fasta', self.hal, self.genome]
+        cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
         self.run_cmd(cmd)
 
 
@@ -677,7 +677,7 @@ class GenomeSizes(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting chromosome sizes for {}.'.format(self.genome))
-        cmd = ['halStats', '--chromSizes', self.genome, self.hal]
+        cmd = ['halStats', '--chromSizes', self.genome, os.path.abspath(self.hal)]
         self.run_cmd(cmd)
 
 

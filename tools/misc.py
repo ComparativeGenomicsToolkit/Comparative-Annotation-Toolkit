@@ -6,6 +6,7 @@ import itertools
 import argparse
 import pysam
 import pandas as pd
+import os
 
 import procOps
 from pipeline import ProcException
