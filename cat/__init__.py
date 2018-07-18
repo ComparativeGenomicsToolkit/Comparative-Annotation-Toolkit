@@ -1,6 +1,8 @@
 """
 Comparative Annotation Toolkit.
 """
+import string
+import random
 import datetime
 import collections
 import itertools
@@ -122,6 +124,12 @@ class PipelineTask(luigi.Task):
     workDir = luigi.Parameter(default=None, significant=False)
     defaultDisk = luigi.Parameter(default='8G', significant=False)
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)
+    provisioner = luigi.Parameter(default=None, significant=False)
+    nodeTypes = luigi.Parameter(default=None, significant=False)
+    maxNodes = luigi.Parameter(default=None, significant=False)
+    minNode = luigi.Parameter(default=None, significant=False)
+    metrices = luigi.Parameter(default=None, significant=False)
+    zone = luigi.Parameter(default=None, significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -430,24 +438,27 @@ class ToilTask(PipelineTask):
         to fill in the workDir class variable.
         :return: Namespace
         """
-        job_store = os.path.join(work_dir, 'jobStore')
-        tools.fileOps.ensure_file_dir(job_store)
         toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.stats = True
+        if zone is not None:
+            job_store = provisioner + ':' + zone + ':' + ''.join(random.choice(string.ascii_letters) for m in range(7))
+        else:
+            job_store = os.path.join(work_dir, 'jobStore')
+            tools.fileOps.ensure_file_dir(job_store)
 
-        # this logic tries to determine if we should try and restart an existing jobStore
-        if os.path.exists(job_store):
-            try:
-                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
-                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
-                    shutil.rmtree(job_store)
-                else:
+            # this logic tries to determine if we should try and restart an existing jobStore
+            if os.path.exists(job_store):
+                try:
+                    root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
+                    if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
+                        shutil.rmtree(job_store)
+                    else:
+                        toil_args.restart = True
+                except OSError:
                     toil_args.restart = True
-            except OSError:
-                toil_args.restart = True
-            except IOError:
-                shutil.rmtree(job_store)
+                except IOError:
+                    shutil.rmtree(job_store)
 
         if tools.misc.running_in_container():
             # Caching doesn't work in containers, because the
@@ -459,7 +470,7 @@ class ToilTask(PipelineTask):
         if toil_args.batchSystem == 'parasol' and toil_args.workDir is None:
             raise RuntimeError('Running parasol without setting a shared work directory will not work. Please specify '
                                '--workDir.')
-
+        toil_args.zone
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
         #job_store = 'file:' + job_store
