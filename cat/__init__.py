@@ -441,8 +441,8 @@ class ToilTask(PipelineTask):
         toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.stats = True
-        if zone is not None:
-            job_store = provisioner + ':' + zone + ':' + ''.join(random.choice(string.ascii_letters) for m in range(7))
+        if self.zone is not None:
+            job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
         else:
             job_store = os.path.join(work_dir, 'jobStore')
             tools.fileOps.ensure_file_dir(job_store)
@@ -470,7 +470,6 @@ class ToilTask(PipelineTask):
         if toil_args.batchSystem == 'parasol' and toil_args.workDir is None:
             raise RuntimeError('Running parasol without setting a shared work directory will not work. Please specify '
                                '--workDir.')
-        toil_args.zone
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
         #job_store = 'file:' + job_store
