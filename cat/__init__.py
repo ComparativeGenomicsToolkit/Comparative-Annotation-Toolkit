@@ -495,7 +495,10 @@ def success(task):
     """
     pipeline_args = task.get_pipeline_args()
     stats_db = pipeline_args.stats_db
-    cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
+    if task.zone is not None:
+        cmd = ['toil', 'stats', '--raw', task.job_store]
+    else: 
+        cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
     raw = tools.procOps.call_proc(cmd)
     parsed = raw[raw.index('{'):raw.rfind('}') + 1]
     stats = json.loads(parsed)
