@@ -12,8 +12,6 @@ def get_tree(hal):
     :param hal: HAL file.
     :return: Tree object
     """
-    import sys, traceback
-    traceback.print_stack()
     cmd = ['halStats', '--tree', hal]
     newick = call_proc_lines(cmd)[0]
     return ete3.Tree(newick, format=1)
