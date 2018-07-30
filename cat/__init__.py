@@ -2491,9 +2491,11 @@ class DenovoTrack(TrackTask):
                 tools.fileOps.print_row(outf, row)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        cmd = ['bedToBigBed', '-extraIndex=assignedGeneId,name,name2',
-               '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, track.path]
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-extraIndex=assignedGeneId,name,name2',
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         label = 'AugustusCGP' if self.mode == 'augCGP' else 'AugustusPB'
         description = 'Comparative Augustus' if self.mode == 'augCGP' else 'PacBio Augustus'
@@ -2546,9 +2548,12 @@ class BgpTrack(TrackTask):
                 tools.fileOps.print_row(outf, row)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
-               '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, track.path]
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
+
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='{}_{}'.format(self.label.replace(' ', '_'), self.genome),
@@ -2603,10 +2608,11 @@ class ConsensusTrack(TrackTask):
             as_str = construct_consensus_gp_as(has_rnaseq, has_pb)
             outf.write(as_str)
         tools.procOps.run_proc(['bedSort', tmp_gp.path, tmp_gp.path])
-
-        cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
-               '-type=bed12+21', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, track.path]
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
+                   '-type=bed12+21', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(consensus_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2653,8 +2659,11 @@ class EvaluationTrack(TrackTask):
         with tmp.open('w') as tmp_handle:
             tools.fileOps.print_rows(tmp_handle, rows)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
-        cmd = ['bedToBigBed', '-type=bed12', '-tab', tmp.path, chrom_sizes, track.path]
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-type=bed12', '-tab', tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
+
 
         with trackdb.open('w') as outf:
             outf.write(error_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2695,9 +2704,11 @@ class TransMapTrack(TrackTask):
         with as_file.open('w') as outf:
             outf.write(bigpsl)
 
-        cmd = ['bedToBigBed', '-type=bed12+13', '-tab', '-extraIndex=name',
-               '-as={}'.format(as_file.path), tmp.path, chrom_sizes, track.path]
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-type=bed12+13', '-tab', '-extraIndex=name',
+                   '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(bigpsl_template.format(name='transmap_{}'.format(self.genome), short_label='transMap',
@@ -2737,9 +2748,12 @@ class AugustusTrack(TrackTask):
                                tx.name, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
                         tools.fileOps.print_row(outf, row)
             tools.procOps.run_proc(['bedSort', tmp, tmp])
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, track.path]
-            tools.procOps.run_proc(cmd, stderr='/dev/null')
+
+            with tools.fileOps.TemporaryFilePath() as out_path:
+                cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
+                       '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, out_path]
+                tools.procOps.run_proc(cmd, stderr='/dev/null')
+                tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='augustus_{}'.format(self.genome), label='AugustusTM(R)',
@@ -2809,8 +2823,10 @@ class SpliceTrack(TrackTask):
 
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, track.path]
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(splice_template.format(genome=self.genome, path=os.path.basename(track.path)))

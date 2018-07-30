@@ -153,7 +153,7 @@ def getDockerCommand(image, cmd):
     image: the Docker image to use, e.g. 'quay.io/comparative-genomics-toolkit/cactus:latest'
     cmd: list of arguments
     """
-    dockerPreamble = ['docker', 'run', '-i', '--rm']
+    dockerPreamble = ['docker', 'run', '-i', '--rm', '-u', "%s:%s" % (os.getuid(), os.getgid())]
     work_dirs = []
     for i, arg in enumerate(cmd):
         if arg.startswith('-') and '=' in arg:
