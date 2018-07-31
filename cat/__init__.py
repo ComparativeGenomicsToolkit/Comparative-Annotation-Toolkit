@@ -2203,11 +2203,16 @@ class ReportStats(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
-        toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
-        core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
-        toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
-        total = core_time + toil_core_time
-        logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
+        
+        try:
+            toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
+        except ValueError:
+            logger.warning('Toil task already ran, therefore no stats')
+        else:
+            core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
+            toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
+            total = core_time + toil_core_time
+            logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
                     'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
         self.output().touch()
 
