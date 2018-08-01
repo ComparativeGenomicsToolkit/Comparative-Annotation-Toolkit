@@ -9,7 +9,7 @@ import pandas as pd
 import os
 
 import procOps
-from pipeline import ProcException
+from pipeline import ProcException, Procline
 from cat.exceptions import ToolMissingException
 from distutils.version import StrictVersion
 
@@ -67,8 +67,15 @@ def is_exec(program):
     if running_in_container():
         # We assume containerized versions don't need to check if the
         # tools are installed--they definitely are, and calling docker
-        # just to run "which" can be surprisingly expensive.
-        return True
+        # just to run "which" can be surprisingly expensive. But we do
+        # check for the presence of Docker, since that should take
+        # only a few ms.
+        cmd = ['which', 'docker']
+        pl = Procline(cmd, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null')
+        try:
+            pl.wait()
+        except ProcException:
+            raise ToolMissingException("Docker not found. Either install Docker, or install CAT's dependencies and use --binary-mode local.")
     cmd = ['which', program]
     try:
         return procOps.call_proc_lines(cmd)[0].endswith(program)

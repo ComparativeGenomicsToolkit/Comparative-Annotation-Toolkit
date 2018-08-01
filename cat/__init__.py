@@ -191,6 +191,11 @@ class PipelineTask(luigi.Task):
 
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
+
+        # halStats is run below, before any validate() methods are called.
+        if not tools.misc.is_exec('halStats'):
+            raise ToolMissingException('halStats from the HAL tools package not in global path')
+
         args.set('hal_genomes', tools.hal.extract_genomes(args.hal, self.annotate_ancestors), True)
         target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
         target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
