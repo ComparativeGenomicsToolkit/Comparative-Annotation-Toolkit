@@ -66,6 +66,7 @@ def generate_consensus(args):
     cds_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'CDS') for tx_mode in tx_modes])
     eval_df = pd.concat([load_evaluations_from_db(args.db_path, tx_mode) for tx_mode in tx_modes]).reset_index()
     import cPickle as pickle
+    import os
     data = [tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df, eval_df]
     with open(os.path.join(args.base_dir, 'test.pickle'), 'w') as outf:
         pickle.dump(data, outf)
