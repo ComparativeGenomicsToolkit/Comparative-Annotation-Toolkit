@@ -2000,6 +2000,7 @@ class Consensus(PipelineWrapperTask):
             args.denovo_tx_modes.append('augPB')
         args.gp_list = gp_list
         args.genome = genome
+        args.base_dir = base_dir
         args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
         args.augustus_cgp = pipeline_args.augustus_cgp
         args.db_path = pipeline_args.dbs[genome]
