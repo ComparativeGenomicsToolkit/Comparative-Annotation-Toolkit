@@ -68,7 +68,9 @@ def generate_consensus(args):
     import cPickle as pickle
     import os
     data = [tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df, ref_df, eval_df]
-    with open(os.path.join(args.base_dir, 'test.pickle'), 'w') as outf:
+    path = os.path.join(args.base_dir, '{}.pickle'.format(args.genome))
+    tools.fileOps.ensure_file_dir(path)
+    with open(path, 'w') as outf:
         pickle.dump(data, outf)
     coding_df, non_coding_df = combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_eval_df,
                                                       ref_df, eval_df, args.intron_rnaseq_support,
