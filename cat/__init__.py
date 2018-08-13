@@ -441,8 +441,21 @@ class ToilTask(PipelineTask):
         toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.stats = True
+        toil_args.defaultPreemptable = True
         if self.zone is not None:
-            job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
+            #job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
+
+            job_dir = os.path.join(work_dir, 'jobStore') # Directory where the AWS directory file is
+            if os.path.exists(job_dir):
+                for i in os.listdir(job_dir):
+                    if os.path.isfile(os.path.join(job_dir,i)) and self.provisioner in i:
+                        job_store = i
+                toil_args.restart = True
+                os.remove(os.path.join(job_dir,job_store))
+            else:
+                job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
+                open(job_dir,job_store).close() # Creates empty file with the title as the AWS jobstore
+
         else:
             job_store = os.path.join(work_dir, 'jobStore')
             tools.fileOps.ensure_file_dir(job_store)
