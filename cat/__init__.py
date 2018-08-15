@@ -836,23 +836,20 @@ class Gff3ToAttrs(PipelineTask):
         if 'gbkey' in set(df.key):
             for tx_id, d in df.groupby('transcript_id'):
                 d = dict(zip(d.key, d.value))
-                if d['gbkey'] == 'mRNA':
+                if d['gbkey'] == 'Gene':
+                    continue
+                elif d['gbkey'] in ['tRNA', 'rRNA']:
+                    gene_biotype = tx_biotype = d['gbkey']
+                elif d['gbkey'] == 'mRNA':
                     # hacky check because of lack of biotype features on transcript-level features
                     if 'pseudo' in d and d['pseudo'] == 'true':
                         gene_biotype = tx_biotype = 'pseudogene'
                     else:
                         gene_biotype = tx_biotype = 'protein_coding'
-                elif d['gbkey'] == 'CDS':  # this is a transcript missing a transcript-level feature
-                    gene_biotype = tx_biotype = 'protein_coding'
                 else:
                     gene_biotype = tx_biotype = d['gbkey']
-                if 'gene' in d:
-                    gene_name = d['gene']
-                elif 'Name' in d:
-                    gene_name = d['Name']
-                else:
-                    gene_name = d['Parent']
-                gene_id = d['Parent']
+                gene_name = d.get('gene', 'Name')
+                gene_id = d.get('ID', 'Name')
                 tx_name = d.get('product', tx_id)
                 results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
         else:  # this is not a NCBI GFF3
