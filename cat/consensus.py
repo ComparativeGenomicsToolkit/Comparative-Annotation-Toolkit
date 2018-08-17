@@ -421,7 +421,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'gene_biotype': best_series.GeneBiotype,
          'transcript_biotype': best_series.TranscriptBiotype,
          'alignment_id': str(best_series.AlignmentId),
-         'frameshift': str(best_series.Frameshift),
+         'frameshift': str(best_series.get('Frameshift', None)),
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
          'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport)),
          'transcript_class': 'ortholog',
