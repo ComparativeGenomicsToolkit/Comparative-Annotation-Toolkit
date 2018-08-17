@@ -449,12 +449,16 @@ class ToilTask(PipelineTask):
             if os.path.exists(job_dir):
                 for i in os.listdir(job_dir):
                     if os.path.isfile(os.path.join(job_dir,i)) and self.provisioner in i:
-                        job_store = i
-                toil_args.restart = True
-                os.remove(os.path.join(job_dir,job_store))
-            else:
+		        job_store = i
+                        toil_args.restart = True
+                        break
+            if toil_args.restart is not True:
                 job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
-                open(job_dir,job_store).close() # Creates empty file with the title as the AWS jobstore
+                try:
+                    os.makedirs(job_dir)
+                except OSError:
+                    pass
+                open(os.path.join(job_dir,job_store),'w+').close() # Creates empty file with the title as the AWS jobstore
 
         else:
             job_store = os.path.join(work_dir, 'jobStore')
@@ -510,6 +514,10 @@ def success(task):
     stats_db = pipeline_args.stats_db
     if task.zone is not None:
         cmd = ['toil', 'stats', '--raw', task.job_store]
+        try:
+            os.remove(os.path.abspath(task.job_store))
+        except OSError:
+            pass
     else: 
         cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
     raw = tools.procOps.call_proc(cmd)
