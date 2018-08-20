@@ -438,7 +438,10 @@ def indel_plot(consensus_data, ordered_genomes, indel_plot_tgt):
     with indel_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
         tm_df = pd.concat([pd.DataFrame.from_dict(consensus_data[genome]['transMap Indels'], orient='index').T
                            for genome in ordered_genomes])
-        tm_df['genome'] = ordered_genomes
+        try:  # this is a hack to deal with weird small input datasets
+            tm_df['genome'] = ordered_genomes
+        except:
+            return
         tm_df['transcript set'] = ['transMap'] * len(tm_df)
         consensus_df = pd.concat([pd.DataFrame.from_dict(consensus_data[genome]['Consensus Indels'], orient='index').T
                                   for genome in ordered_genomes])

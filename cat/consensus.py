@@ -421,7 +421,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'gene_biotype': best_series.GeneBiotype,
          'transcript_biotype': best_series.TranscriptBiotype,
          'alignment_id': str(best_series.AlignmentId),
-         'frameshift': str(best_series.Frameshift),
+         'frameshift': str(best_series.get('Frameshift', None)),
          'exon_annotation_support': ','.join(map(str, best_series.ExonAnnotSupport)),
          'intron_annotation_support': ','.join(map(str, best_series.IntronAnnotSupport)),
          'transcript_class': 'ortholog',
@@ -757,6 +757,10 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
 
 def calculate_indel_metrics(final_consensus, eval_df, metrics):
     """How many transcripts in the final consensus have indels? How many did we have in transMap?"""
+    if len(eval_df) == 0:  # edge case where no transcripts hit indel filters
+        metrics['transMap Indels'] = {}
+        metrics ['Consensus Indels'] = {}
+        return
     eval_df_transmap = eval_df[eval_df['AlignmentId'].apply(tools.nameConversions.aln_id_is_transmap)]
     tm_vals = eval_df_transmap.set_index('AlignmentId').sum(axis=0)
     tm_vals = 100.0 * tm_vals / len(set(eval_df_transmap.index))
