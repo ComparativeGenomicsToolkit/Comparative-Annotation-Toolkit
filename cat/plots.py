@@ -400,12 +400,9 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                             'transMap alignment goodness',
                             'Alignment goodness']
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2)
-            for ax in [ax1, ax2, ax3]:  # goodness plots are allowed to auto-set scale
+            for ax in [ax1, ax2, ax3, ax4]:  # goodness plots are allowed to auto-set scale
                 ax.set_xlim(0, 100)
                 ax.set_ylim(0, 100)
-            goodness_min = 0 #min(data['Alignment goodness'])
-            ax4.set_xlim(goodness_min, 100)
-            ax4.set_ylim(goodness_min, 100)
             
             do_kdeplot(data['transMap original introns'], data['Original introns'], ax1, n_levels=25, bw=2)
             sns.regplot(x=data['transMap original introns'], y=data['Original introns'], ax=ax1,
@@ -419,8 +416,6 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
             
             do_kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax4, n_levels=20, bw=1)
-            #df = data[['transMap alignment goodness','Alignment goodness']]
-            #df.to_csv('/var/lib/docker/regplot',sep='\t',index=False)
             sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
             

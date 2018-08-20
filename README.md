@@ -160,7 +160,7 @@ The remaining options are passed directly along to `toil`:
 
 ## Autoscale
 
-To use the autoscale functionality
+To use the autoscale functionality, change the resources to `toil = 1` in `luigi.cfg`
 
 `--zone`: AWS region to run on.
 
