@@ -400,7 +400,7 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                             'transMap alignment goodness',
                             'Alignment goodness']
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2)
-            for ax in [ax1, ax2, ax3, ax4]:  # goodness plots are allowed to auto-set scale
+            for ax in [ax1, ax2, ax3, ax4]: 
                 ax.set_xlim(0, 100)
                 ax.set_ylim(0, 100)
             
