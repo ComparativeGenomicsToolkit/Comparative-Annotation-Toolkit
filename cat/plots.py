@@ -285,7 +285,11 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
 
 def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
     with denovo_tgt.open('w') as outf, PdfPages(outf) as pdf:
-        df = json_biotype_nested_counter_to_df(consensus_data, 'denovo')
+        try:
+            df = json_biotype_nested_counter_to_df(consensus_data, 'denovo')
+        except ValueError:
+            # No de novo results. Probably the test set.
+            return
         # fix column names because json_biotype_nested_counter_to_df makes assumptions
         df.columns = ['Result', 'Number of transcripts', 'Augustus mode', 'genome']
         has_pb = len(set(df['Augustus mode'])) == 2
@@ -326,6 +330,9 @@ def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt)
     with pb_support_tgt.open('w') as outf, PdfPages(outf) as pdf:
         pb_genomes = [x for x in ordered_genomes if x in pb_genomes]  # fix order
         df = json_biotype_counter_to_df(consensus_data, 'IsoSeq Transcript Validation')
+        if len(df) == 0:
+            # no support information
+            return
         df.columns = ['IsoSeq Transcript Validation', 'Number of transcripts', 'genome']
         ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', hue='IsoSeq Transcript Validation',
                             kind='bar', row_order=pb_genomes)
