@@ -158,6 +158,17 @@ The remaining options are passed directly along to `toil`:
 
 `--maxCores`: The number of cores each `toil` module will use. If submitting to a batch system, this limits the number of concurrent submissions.
 
+## Autoscale
+
+To use the autoscale functionality, change the resources to `toil = 1` in `luigi.cfg`
+
+`--zone`: AWS region to run on.
+
+`--nodeTypes`: AWS instance type for the worker nodes.
+
+`--provisioner`: The provisioner of the cloud system. For AWS it's just `aws`.
+
+`--maxNodes`: Maximum number of nodes running at once. 
 
 # Config file
 

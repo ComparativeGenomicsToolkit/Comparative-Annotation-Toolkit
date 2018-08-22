@@ -400,27 +400,29 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                             'transMap alignment goodness',
                             'Alignment goodness']
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(ncols=2, nrows=2)
-            for ax in [ax1, ax2, ax3]:  # goodness plots are allowed to auto-set scale
+            for ax in [ax1, ax2, ax3, ax4]: 
                 ax.set_xlim(0, 100)
                 ax.set_ylim(0, 100)
-            goodness_min = min(data['Alignment goodness'])
-            ax4.set_xlim(goodness_min, 100)
-            ax4.set_ylim(goodness_min, 100)
+            
             do_kdeplot(data['transMap original introns'], data['Original introns'], ax1, n_levels=25, bw=2)
             sns.regplot(x=data['transMap original introns'], y=data['Original introns'], ax=ax1,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
             do_kdeplot(data['transMap intron annotation support'], data['Intron annotation support'], ax2,
                        n_levels=25, bw=2)
             sns.regplot(x=data['transMap intron annotation support'], y=data['Intron annotation support'], ax=ax2,
-                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
+                        color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)          
             do_kdeplot(data['transMap intron RNA support'], data['Intron RNA support'], ax3, n_levels=25, bw=2)
             sns.regplot(x=data['transMap intron RNA support'], y=data['Intron RNA support'], ax=ax3,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
+            
             do_kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax4, n_levels=20, bw=1)
             sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
+            
+
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}.\n'
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
+            
             for ax in [ax1, ax2, ax3, ax4]:
                 ax.set(adjustable='box-forced', aspect='equal')
             fig.subplots_adjust(hspace=0.3)

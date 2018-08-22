@@ -77,6 +77,6 @@ RUN mkdir -p /augustus
 COPY --from=builder /augustus/config /augustus/config
 
 # Python deps
-RUN pip install bd2k-python-lib toil pyfasta numpy
+RUN pip install bd2k-python-lib toil[all] pyfasta numpy
 
 ENV AUGUSTUS_CONFIG_PATH=/augustus/config/

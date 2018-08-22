@@ -1,6 +1,8 @@
 """
 Comparative Annotation Toolkit.
 """
+import string
+import random
 import datetime
 import collections
 import itertools
@@ -122,6 +124,12 @@ class PipelineTask(luigi.Task):
     workDir = luigi.Parameter(default=None, significant=False)
     defaultDisk = luigi.Parameter(default='8G', significant=False)
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)
+    provisioner = luigi.Parameter(default=None, significant=False)
+    nodeTypes = luigi.Parameter(default=None, significant=False)
+    maxNodes = luigi.Parameter(default=None, significant=False)
+    minNode = luigi.Parameter(default=None, significant=False)
+    metrices = luigi.Parameter(default=None, significant=False)
+    zone = luigi.Parameter(default=None, significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -435,24 +443,44 @@ class ToilTask(PipelineTask):
         to fill in the workDir class variable.
         :return: Namespace
         """
-        job_store = os.path.join(work_dir, 'jobStore')
-        tools.fileOps.ensure_file_dir(job_store)
         toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.stats = True
+        toil_args.defaultPreemptable = True
+        if self.zone is not None:
+            #job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
 
-        # this logic tries to determine if we should try and restart an existing jobStore
-        if os.path.exists(job_store):
-            try:
-                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
-                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
-                    shutil.rmtree(job_store)
-                else:
+            job_dir = os.path.join(work_dir, 'jobStore') # Directory where the AWS directory file is
+            if os.path.exists(job_dir):
+                for i in os.listdir(job_dir):
+                    if os.path.isfile(os.path.join(job_dir,i)) and self.provisioner in i:
+		        job_store = i
+                        toil_args.restart = True
+                        break
+            if toil_args.restart is not True:
+                job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
+                try:
+                    os.makedirs(job_dir)
+                except OSError:
+                    pass
+                open(os.path.join(job_dir,job_store),'w+').close() # Creates empty file with the title as the AWS jobstore
+
+        else:
+            job_store = os.path.join(work_dir, 'jobStore')
+            tools.fileOps.ensure_file_dir(job_store)
+
+            # this logic tries to determine if we should try and restart an existing jobStore
+            if os.path.exists(job_store):
+                try:
+                    root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
+                    if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
+                        shutil.rmtree(job_store)
+                    else:
+                        toil_args.restart = True
+                except OSError:
                     toil_args.restart = True
-            except OSError:
-                toil_args.restart = True
-            except IOError:
-                shutil.rmtree(job_store)
+                except IOError:
+                    shutil.rmtree(job_store)
 
         if tools.misc.running_in_container():
             # Caching doesn't work in containers, because the
@@ -464,7 +492,6 @@ class ToilTask(PipelineTask):
         if toil_args.batchSystem == 'parasol' and toil_args.workDir is None:
             raise RuntimeError('Running parasol without setting a shared work directory will not work. Please specify '
                                '--workDir.')
-
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
         #job_store = 'file:' + job_store
@@ -490,7 +517,14 @@ def success(task):
     """
     pipeline_args = task.get_pipeline_args()
     stats_db = pipeline_args.stats_db
-    cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
+    if task.zone is not None:
+        cmd = ['toil', 'stats', '--raw', task.job_store]
+        try:
+            os.remove(os.path.abspath(task.job_store))
+        except OSError:
+            pass
+    else: 
+        cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
     raw = tools.procOps.call_proc(cmd)
     parsed = raw[raw.index('{'):raw.rfind('}') + 1]
     stats = json.loads(parsed)
@@ -2192,11 +2226,16 @@ class ReportStats(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
-        toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
-        core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
-        toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
-        total = core_time + toil_core_time
-        logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
+        
+        try:
+            toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
+        except ValueError:
+            logger.warning('Toil task already ran, therefore no stats')
+        else:
+            core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
+            toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
+            total = core_time + toil_core_time
+            logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
                     'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
         self.output().touch()
 
