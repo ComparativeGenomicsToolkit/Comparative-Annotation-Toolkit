@@ -798,7 +798,7 @@ class Gff3ToAttrs(PipelineTask):
         logger.info('Extracting gff3 attributes to sqlite database.')
         pipeline_args = self.get_pipeline_args()
         attrs_dict = parse_attrs(self.annotation_attrs)
-        tx_dict = tools.transcripts.get_gene_pred_dict(args.annotation_gp)
+        tx_dict = tools.transcripts.get_gene_pred_dict(self.annotation_gp)
         tx_name_map = {x: y.name2 for x, y in tx_dict.iteritems()}
         results = []
         for tx_id, gene_id in tx_name_map.iteritems():
