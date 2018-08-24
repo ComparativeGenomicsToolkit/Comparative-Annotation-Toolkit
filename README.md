@@ -162,6 +162,8 @@ The remaining options are passed directly along to `toil`:
 
 To use the autoscale functionality, change the resources to `toil = 1` in `luigi.cfg`
 
+Follow these [instructions](https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/) to setup credentials for AWS and the toil leader node for the cluster.
+
 `--zone`: AWS region to run on.
 
 `--nodeTypes`: AWS instance type for the worker nodes.
