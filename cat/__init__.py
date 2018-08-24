@@ -820,6 +820,7 @@ class Gff3ToAttrs(PipelineTask):
                     gene_name = d['Name']
                 else:
                     gene_name = d.get('Parent', 'ID')
+                tx_name = d.get('product', tx_id)
             else:
                 if 'biotype' in d:  # possibly Ensembl
                     gene_biotype = tx_biotype = d['biotype']
