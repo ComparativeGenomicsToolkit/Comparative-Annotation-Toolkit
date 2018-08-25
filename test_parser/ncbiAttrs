@@ -1,0 +1,24 @@
+rna77792	ID	rna77792
+rna77792	gbkey	tRNA
+rna77792	product	tRNA-Pro
+rna77791	ID	rna77791
+rna77791	gbkey	tRNA
+rna77791	product	tRNA-Thr
+gene33145	ID	gene33145
+gene33145	Dbxref	GeneID:807847
+gene33145	Name	CYTB
+gene33145	gbkey	Gene
+gene33145	gene	CYTB
+gene33145	gene_biotype	protein_coding
+cds61176	ID	cds61176
+cds61176	Parent	gene33145
+cds61176	Dbxref	UniProtKB/Swiss-Prot:P48665,Genbank:NP_007172.1,GeneID:807847
+cds61176	Name	NP_007172.1
+cds61176	gbkey	CDS
+cds61176	gene	CYTB
+cds61176	product	cytochrome b
+cds61176	protein_id	NP_007172.1
+cds61176	transl_table	2
+rna77790	ID	rna77790
+rna77790	gbkey	tRNA
+rna77790	product	tRNA-Glu

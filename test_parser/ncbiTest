@@ -1,0 +1,5 @@
+TranscriptId	GeneId	TranscriptName	GeneName	GeneBiotype	TranscriptBiotype
+cds61176	gene33145	cytochrome b	CYTB	CDS	CDS
+rna77790	rna77790	tRNA-Glu	Name	tRNA	tRNA
+rna77791	rna77791	tRNA-Thr	Name	tRNA	tRNA
+rna77792	rna77792	tRNA-Pro	Name	tRNA	tRNA
