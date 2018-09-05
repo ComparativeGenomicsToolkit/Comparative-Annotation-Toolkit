@@ -219,7 +219,9 @@ If you are using IsoSeq data, it is recommended that you doing your mapping with
 
 CAT relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for transMap filtering and consensus finding to work properly.
 
-If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`
+If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`.
+
+To ensure that your GFF3 is valid and won't cause any problems, there is a script in the `programs` folder that will parse and validate your GFF3. Please run this script before running the pipeline!
 
 # Execution modes
 
