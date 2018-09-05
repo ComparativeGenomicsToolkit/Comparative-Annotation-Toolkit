@@ -1,6 +1,8 @@
 """
 Comparative Annotation Toolkit.
 """
+import string
+import random
 import datetime
 import collections
 import itertools
@@ -75,6 +77,8 @@ class PipelineTask(luigi.Task):
     work_dir = luigi.Parameter(default='./cat_work')
     target_genomes = luigi.TupleParameter(default=None)
     annotate_ancestors = luigi.BoolParameter(default=False)
+    binary_mode = luigi.ChoiceParameter(choices=["docker", "local"], default='docker',
+                                        significant=False)
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human', significant=False)
@@ -121,6 +125,12 @@ class PipelineTask(luigi.Task):
     workDir = luigi.Parameter(default=None, significant=False)
     defaultDisk = luigi.Parameter(default='8G', significant=False)
     cleanWorkDir = luigi.Parameter(default='onSuccess', significant=False)
+    provisioner = luigi.Parameter(default=None, significant=False)
+    nodeTypes = luigi.Parameter(default=None, significant=False)
+    maxNodes = luigi.Parameter(default=None, significant=False)
+    minNode = luigi.Parameter(default=None, significant=False)
+    metrices = luigi.Parameter(default=None, significant=False)
+    zone = luigi.Parameter(default=None, significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -133,6 +143,11 @@ class PipelineTask(luigi.Task):
 
     def get_pipeline_args(self):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
+        # We use this environment variable as a bit of global state,
+        # to avoid threading this through in each of the hundreds of
+        # command invocations.
+        os.environ['CAT_BINARY_MODE'] = self.binary_mode
+
         args = tools.misc.PipelineNamespace()
         args.set('hal', os.path.abspath(self.hal), True)
         args.set('ref_genome', self.ref_genome, True)
@@ -185,8 +200,13 @@ class PipelineTask(luigi.Task):
 
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
-        args.set('hal_genomes', tools.hal.extract_genomes(self.hal, self.annotate_ancestors), True)
-        target_genomes = tools.hal.extract_genomes(self.hal, self.annotate_ancestors, self.target_genomes)
+
+        # halStats is run below, before any validate() methods are called.
+        if not tools.misc.is_exec('halStats'):
+            raise ToolMissingException('halStats from the HAL tools package not in global path')
+
+        args.set('hal_genomes', tools.hal.extract_genomes(args.hal, self.annotate_ancestors), True)
+        target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
         target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
         args.set('target_genomes', target_genomes, True)
 
@@ -200,6 +220,7 @@ class PipelineTask(luigi.Task):
         args.set('annotation_genomes', frozenset(args.cfg['ANNOTATION'].keys()), True)
         args.set('modes', self.get_modes(args), True)
         args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
+
         if self.__class__.__name__ in ['RunCat', 'Augustus', 'AugustusCgp', 'AugustusPb']:
             self.validate_cfg(args)
 
@@ -423,31 +444,55 @@ class ToilTask(PipelineTask):
         to fill in the workDir class variable.
         :return: Namespace
         """
-        job_store = os.path.join(work_dir, 'jobStore')
-        tools.fileOps.ensure_file_dir(job_store)
         toil_args = self.get_toil_defaults()
         toil_args.__dict__.update(vars(self))
         toil_args.stats = True
+        toil_args.defaultPreemptable = True
+        if self.zone is not None:
+            #job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
 
-        # this logic tries to determine if we should try and restart an existing jobStore
-        if os.path.exists(job_store):
-            try:
-                root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
-                if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
-                    shutil.rmtree(job_store)
-                else:
+            job_dir = os.path.join(work_dir, 'jobStore') # Directory where the AWS directory file is
+            if os.path.exists(job_dir):
+                for i in os.listdir(job_dir):
+                    if os.path.isfile(os.path.join(job_dir,i)) and self.provisioner in i:
+		        job_store = i
+                        toil_args.restart = True
+                        break
+            if toil_args.restart is not True:
+                job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
+                try:
+                    os.makedirs(job_dir)
+                except OSError:
+                    pass
+                open(os.path.join(job_dir,job_store),'w+').close() # Creates empty file with the title as the AWS jobstore
+
+        else:
+            job_store = os.path.join(work_dir, 'jobStore')
+            tools.fileOps.ensure_file_dir(job_store)
+
+            # this logic tries to determine if we should try and restart an existing jobStore
+            if os.path.exists(job_store):
+                try:
+                    root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
+                    if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
+                        shutil.rmtree(job_store)
+                    else:
+                        toil_args.restart = True
+                except OSError:
                     toil_args.restart = True
-            except OSError:
-                toil_args.restart = True
-            except IOError:
-                shutil.rmtree(job_store)
+                except IOError:
+                    shutil.rmtree(job_store)
 
+        if tools.misc.running_in_container():
+            # Caching doesn't work in containers, because the
+            # container filesystems are transient overlays that don't
+            # support hardlinking.
+            toil_args.disableCaching = True
         if toil_args.batchSystem == 'parasol' and toil_args.disableCaching is False:
             raise RuntimeError('Running parasol without disabled caching is a very bad idea.')
         if toil_args.batchSystem == 'parasol' and toil_args.workDir is None:
             raise RuntimeError('Running parasol without setting a shared work directory will not work. Please specify '
                                '--workDir.')
-
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
         #job_store = 'file:' + job_store
@@ -473,7 +518,14 @@ def success(task):
     """
     pipeline_args = task.get_pipeline_args()
     stats_db = pipeline_args.stats_db
-    cmd = ['toil', 'stats', '--raw', task.job_store]
+    if task.zone is not None:
+        cmd = ['toil', 'stats', '--raw', task.job_store]
+        try:
+            os.remove(os.path.abspath(task.job_store))
+        except OSError:
+            pass
+    else: 
+        cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
     raw = tools.procOps.call_proc(cmd)
     parsed = raw[raw.index('{'):raw.rfind('}') + 1]
     stats = json.loads(parsed)
@@ -637,7 +689,7 @@ class GenomeFasta(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['hal2fasta', self.hal, self.genome]
+        cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
         self.run_cmd(cmd)
 
 
@@ -670,7 +722,7 @@ class GenomeSizes(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting chromosome sizes for {}.'.format(self.genome))
-        cmd = ['halStats', '--chromSizes', self.genome, self.hal]
+        cmd = ['halStats', '--chromSizes', self.genome, os.path.abspath(self.hal)]
         self.run_cmd(cmd)
 
 
@@ -2012,8 +2064,8 @@ class Plots(RebuildableTask):
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
         ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
-                                                       genome_subset=pipeline_args.target_genomes,
-                                                       include_ancestors=pipeline_args.annotate_ancestors)
+                                                       pipeline_args.target_genomes,
+                                                       pipeline_args.annotate_ancestors)
         args = tools.misc.HashableNamespace()
         args.ordered_genomes = ordered_genomes
         # plots derived from transMap results
@@ -2110,11 +2162,16 @@ class ReportStats(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
-        toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
-        core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
-        toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
-        total = core_time + toil_core_time
-        logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
+        
+        try:
+            toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
+        except ValueError:
+            logger.warning('Toil task already ran, therefore no stats')
+        else:
+            core_time = round(sum(luigi_stats.ProcessingTime) / 3600, 1)
+            toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
+            total = core_time + toil_core_time
+            logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
                     'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
         self.output().touch()
 
@@ -2398,10 +2455,11 @@ class DenovoTrack(TrackTask):
                 tools.fileOps.print_row(outf, row)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        with track.open('w') as outf:
+        with tools.fileOps.TemporaryFilePath() as out_path:
             cmd = ['bedToBigBed', '-extraIndex=assignedGeneId,name,name2',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         label = 'AugustusCGP' if self.mode == 'augCGP' else 'AugustusPB'
         description = 'Comparative Augustus' if self.mode == 'augCGP' else 'PacBio Augustus'
@@ -2454,10 +2512,12 @@ class BgpTrack(TrackTask):
                 tools.fileOps.print_row(outf, row)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        with track.open('w') as outf:
+        with tools.fileOps.TemporaryFilePath() as out_path:
             cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
+
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='{}_{}'.format(self.label.replace(' ', '_'), self.genome),
@@ -2512,11 +2572,11 @@ class ConsensusTrack(TrackTask):
             as_str = construct_consensus_gp_as(has_rnaseq, has_pb)
             outf.write(as_str)
         tools.procOps.run_proc(['bedSort', tmp_gp.path, tmp_gp.path])
-
-        with track.open('w') as outf:
+        with tools.fileOps.TemporaryFilePath() as out_path:
             cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
-                   '-type=bed12+21', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+                   '-type=bed12+21', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(consensus_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2563,9 +2623,11 @@ class EvaluationTrack(TrackTask):
         with tmp.open('w') as tmp_handle:
             tools.fileOps.print_rows(tmp_handle, rows)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
-        with track.open('w') as outf:
-            cmd = ['bedToBigBed', '-type=bed12', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-type=bed12', '-tab', tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
+
 
         with trackdb.open('w') as outf:
             outf.write(error_template.format(genome=self.genome, path=os.path.basename(track.path)))
@@ -2606,10 +2668,11 @@ class TransMapTrack(TrackTask):
         with as_file.open('w') as outf:
             outf.write(bigpsl)
 
-        with track.open('w') as outf:
+        with tools.fileOps.TemporaryFilePath() as out_path:
             cmd = ['bedToBigBed', '-type=bed12+13', '-tab', '-extraIndex=name',
-                   '-as={}'.format(as_file.path), tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+                   '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(bigpsl_template.format(name='transmap_{}'.format(self.genome), short_label='transMap',
@@ -2649,10 +2712,12 @@ class AugustusTrack(TrackTask):
                                tx.name, s.GeneId, s.TranscriptBiotype, s.GeneBiotype]
                         tools.fileOps.print_row(outf, row)
             tools.procOps.run_proc(['bedSort', tmp, tmp])
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, '/dev/stdout']
-            with track.open('w') as outf:
-                tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+
+            with tools.fileOps.TemporaryFilePath() as out_path:
+                cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
+                       '-type=bed12+8', '-tab', '-as={}'.format(as_file), tmp, chrom_sizes, out_path]
+                tools.procOps.run_proc(cmd, stderr='/dev/null')
+                tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(bgp_template.format(name='augustus_{}'.format(self.genome), label='AugustusTM(R)',
@@ -2722,9 +2787,10 @@ class SpliceTrack(TrackTask):
 
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        with track.open('w') as outf:
-            cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, '/dev/stdout']
-            tools.procOps.run_proc(cmd, stdout=outf, stderr='/dev/null')
+        with tools.fileOps.TemporaryFilePath() as out_path:
+            cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, out_path]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+            tools.fileOps.atomic_install(out_path, track.path)
 
         with trackdb.open('w') as outf:
             outf.write(splice_template.format(genome=self.genome, path=os.path.basename(track.path)))
