@@ -32,6 +32,7 @@ import tools.sqlInterface
 import tools.sqlite
 import tools.hintsDatabaseInterface
 import tools.transcripts
+import tools.gff3
 from tools.luigiAddons import multiple_requires, IndexTarget
 from align_transcripts import align_transcripts
 from augustus import augustus
@@ -760,8 +761,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         logger.info('Converting annotation gff3 to genePred.')
-        cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
-               '-attrsOut={}'.format(self.annotation_attrs), pipeline_args.annotation, '/dev/stdout']
+        cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, pipeline_args.annotation)
         self.run_cmd(cmd)
         self.validate()
 
@@ -789,74 +789,9 @@ class Gff3ToAttrs(PipelineTask):
         return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args).annotation_gp)
 
     def run(self):
-        def parse_attrs(attrs):
-            r = collections.defaultdict(dict)
-            for tx_id, key, value in tools.fileOps.iter_lines(attrs):
-                r[tx_id][key] = value
-            return r
-
         logger.info('Extracting gff3 attributes to sqlite database.')
         pipeline_args = self.get_pipeline_args()
-        attrs_dict = parse_attrs(self.annotation_attrs)
-        tx_dict = tools.transcripts.get_gene_pred_dict(self.annotation_gp)
-        tx_name_map = {x: y.name2 for x, y in tx_dict.iteritems()}
-        results = []
-        for tx_id, gene_id in tx_name_map.iteritems():
-            d = attrs_dict[tx_id]
-            if 'gbkey' in d:  # NCBI
-                if d['gbkey'] == 'mRNA':
-                    # hacky check because of lack of biotype features on transcript-level features
-                    if 'pseudo' in d and d['pseudo'] == 'true':
-                        gene_biotype = tx_biotype = 'pseudogene'
-                    else:
-                        gene_biotype = tx_biotype = 'protein_coding'
-                elif d['gbkey'] == 'CDS':  # this is a transcript missing a transcript-level feature
-                    gene_biotype = tx_biotype = 'protein_coding'
-                else:
-                    gene_biotype = tx_biotype = d['gbkey']
-                if 'gene' in d:
-                    gene_name = d['gene']
-                elif 'Name' in d:
-                    gene_name = d['Name']
-                else:
-                    gene_name = d.get('Parent', 'ID')
-                tx_name = d.get('product', tx_id)
-            else:
-                if 'biotype' in d:  # possibly Ensembl
-                    gene_biotype = tx_biotype = d['biotype']
-                elif 'gene_type' in d:  # probably Gencode
-                    gene_biotype = d['gene_type']
-                    tx_biotype = d['transcript_type']
-                else:
-                    raise InvalidInputException('Could not parse biotype for {}. Values: {}'.format(tx_id, d))
-                # Ensembl formats their GFF3 with the format ID=transcript:XXX, while Gencode doesn't have the
-                # extraneous transcript: portion.
-                # Gencode also includes the gene name on the transcript level, so it is carried over.
-                # Ensembl does not do this, but we can infer this via the regular schema Name-Version
-                # However, Ensembl also does not always include a Name tag, so we have to account for this as well
-                if 'transcript' in d['ID']:  # probably Ensembl
-                    gene_id = d['Parent'].replace('gene:', '')
-                    if 'Name' in d:
-                        gene_name = d['Name'].split('-')[0]
-                        tx_name = d['Name']
-                    else:  # no names here, just use IDs
-                        gene_name = gene_id
-                        tx_name = tx_id
-                elif 'gene_name' in d and 'gene_id' in d and 'transcript_name' in d:  # Gencode
-                    gene_name = d['gene_name']
-                    tx_name = d['transcript_name']
-                else:  # ambiguous type, hope for the best here
-                    if 'gene' in d:
-                        gene_name = d['gene']
-                    elif 'Name' in d:
-                        gene_name = d['Name']
-                    else:
-                        gene_name = d['Parent']
-                    tx_name = d.get('product', tx_id)
-            results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
-        df = pd.DataFrame(results, columns=['GeneId', 'TranscriptId', 'TranscriptName', 'GeneName',
-                                            'GeneBiotype', 'TranscriptBiotype'])
-        df = df.set_index('TranscriptId')
+        df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp)
         if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
             if pipeline_args.augustus:
                 raise InvalidInputException('No protein_coding annotations found. This will cause problems for '
