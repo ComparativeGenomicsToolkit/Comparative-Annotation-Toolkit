@@ -244,12 +244,12 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
            '--/CompPred/outdir={}'.format(os.getcwd())]
     if training is False:
         cmd.append('--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param)))
+    assert False, cmd
     tools.procOps.run_proc(cmd, stdout=stdout)
     if training is True:
         cmd = ['cat', os.path.abspath('{}.sampled_GFs.gff'.format(args.ref_genome)),
                os.path.abspath('exonCands.{}.gff3'.format(args.ref_genome)),
                os.path.abspath('orthoExons.{}.gff3'.format(args.ref_genome))]
-        assert False, ('LOOKHERE', os.listdir('.'), stdout)
         combined_file = tools.fileOps.get_tmp_toil_file()
         tools.procOps.run_proc(cmd, stdout=combined_file)
         return job.fileStore.writeGlobalFile(combined_file)
