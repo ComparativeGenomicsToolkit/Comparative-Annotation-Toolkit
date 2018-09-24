@@ -249,8 +249,7 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
         cmd = ['cat', os.path.abspath('{}.sampled_GFs.gff'.format(args.ref_genome)),
                os.path.abspath('exonCands.{}.gff3'.format(args.ref_genome)),
                os.path.abspath('orthoExons.{}.gff3'.format(args.ref_genome))]
-        for path in cmd[1:]:
-            assert os.path.exists(path), stdout
+        assert False, ('LOOKHERE', os.listdir('.'), stdout)
         combined_file = tools.fileOps.get_tmp_toil_file()
         tools.procOps.run_proc(cmd, stdout=combined_file)
         return job.fileStore.writeGlobalFile(combined_file)
