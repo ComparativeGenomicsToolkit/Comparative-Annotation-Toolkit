@@ -229,34 +229,41 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
     cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
     stdout = tools.fileOps.get_tmp_toil_file()
 
-    cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
-           '--extrinsicCfgFile={}'.format(cgp_cfg),
-           '--species={}'.format(args.species),
-           '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
-           '--alnfile={}'.format(job.fileStore.readGlobalFile(maf_chunk)),
-           '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
-           '--speciesfilenames={}'.format(genome_fofn),
-           '--softmasking=1',
-           '--exoncands={}'.format(1 if training else 0),
-           '--alternatives-from-evidence=0',
-           '--/CompPred/logreg=on',
-           '--printOEs={}'.format(1 if training else 0),
-           '--/CompPred/outdir={}'.format(os.getcwd())]
-    if training is False:
-        cmd.append('--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param)))
-    out_dir = args.workDir
+#    cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
+#           '--extrinsicCfgFile={}'.format(cgp_cfg),
+#           '--species={}'.format(args.species),
+#           '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
+#           '--alnfile={}'.format(job.fileStore.readGlobalFile(maf_chunk)),
+#           '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
+#           '--speciesfilenames={}'.format(genome_fofn),
+#           '--softmasking=1',
+#           '--exoncands={}'.format(1 if training else 0),
+#           '--alternatives-from-evidence=0',
+#           '--/CompPred/logreg=on',
+#           '--printOEs={}'.format(1 if training else 0),
+#           '--/CompPred/outdir={}'.format(os.getcwd())]
+#    if training is False:
+#        cmd.append('--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param)))
+    out_dir = args.out_dir
+    tools.fileOps.ensure_dir(out_dir)
     import shutil
     treefile = os.path.join(out_dir, 'tree.nwk')
-    maf_chunk = os.path.join(out_dir, 'maf_chunk.maf')
+    maf = os.path.join(out_dir, 'maf_chunk.maf')
     fofn = os.path.join(out_dir, 'genome.fofn')
     shutil.copy(job.fileStore.readGlobalFile(tree), treefile)
-    shutil.copy(job.fileStore.readGlobalFile(maf_chunk), maf_chunk)
-    shutil.copy(genome_fofn, fofn)
+    shutil.copy(job.fileStore.readGlobalFile(maf_chunk), maf)
+    #shutil.copy(genome_fofn, fofn)
+    with open(fofn, 'w') as outf:
+        for genome, file_id in input_file_ids.fasta.iteritems():
+            local_path = job.fileStore.readGlobalFile(file_id)
+            tmp = os.path.join(out_dir, genome + ".fa")
+            shutil.copy(local_path, tmp)
+            tools.fileOps.print_row(outf, [genome, tmp])
     cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
-           '--extrinsicCfgFile={}'.format(args.cgp_param),
+           '--extrinsicCfgFile={}'.format(args.cgp_cfg),
            '--species={}'.format(args.species),
            '--treefile={}'.format(treefile),
-           '--alnfile={}'.format(job.fileStore.readGlobalFile(maf_chunk)),
+           '--alnfile={}'.format(maf),
            '--dbaccess={}'.format(args.hints_db),
            '--speciesfilenames={}'.format(fofn),
            '--softmasking=1',
@@ -265,7 +272,7 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
            '--/CompPred/logreg=on',
            '--printOEs={}'.format(1 if training else 0),
            '--/CompPred/outdir={}'.format(out_dir)]
-    assert False, cmd
+    assert False, ' '.join(cmd)
     tools.procOps.run_proc(cmd, stdout=stdout)
     if training is True:
         cmd = ['cat', os.path.abspath('{}.sampled_GFs.gff'.format(args.ref_genome)),

@@ -1373,6 +1373,7 @@ class AugustusCgp(ToilTask):
         output_gtf_files = {genome: os.path.join(base_dir, genome + '.augCGP.gtf') for genome in genomes}
         raw_output_gtf_files = {genome: os.path.join(base_dir, genome + '.raw.augCGP.gtf') for genome in genomes}
         args = tools.misc.HashableNamespace()
+        args.out_dir = base_dir
         args.genomes = genomes
         args.annotate_ancestors = pipeline_args.annotate_ancestors
         args.fasta_files = fasta_files
