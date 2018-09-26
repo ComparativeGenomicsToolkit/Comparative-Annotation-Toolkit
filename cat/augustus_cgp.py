@@ -244,6 +244,27 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
            '--/CompPred/outdir={}'.format(os.getcwd())]
     if training is False:
         cmd.append('--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param)))
+    out_dir = args.workDir
+    import shutil
+    treefile = os.path.join(out_dir, 'tree.nwk')
+    maf_chunk = os.path.join(out_dir, 'maf_chunk.maf')
+    fofn = os.path.join(out_dir, 'genome.fofn')
+    shutil.copy(job.fileStore.readGlobalFile(tree), treefile)
+    shutil.copy(job.fileStore.readGlobalFile(maf_chunk), maf_chunk)
+    shutil.copy(genome_fofn, fofn)
+    cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
+           '--extrinsicCfgFile={}'.format(args.cgp_param),
+           '--species={}'.format(args.species),
+           '--treefile={}'.format(treefile),
+           '--alnfile={}'.format(job.fileStore.readGlobalFile(maf_chunk)),
+           '--dbaccess={}'.format(args.hints_db),
+           '--speciesfilenames={}'.format(fofn),
+           '--softmasking=1',
+           '--exoncands={}'.format(1 if training else 0),
+           '--alternatives-from-evidence=0',
+           '--/CompPred/logreg=on',
+           '--printOEs={}'.format(1 if training else 0),
+           '--/CompPred/outdir={}'.format(out_dir)]
     assert False, cmd
     tools.procOps.run_proc(cmd, stdout=stdout)
     if training is True:
