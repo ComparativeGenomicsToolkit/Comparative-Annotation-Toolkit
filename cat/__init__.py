@@ -13,6 +13,7 @@ import json
 from collections import OrderedDict
 from frozendict import frozendict
 from configobj import ConfigObj
+from subprocess import check_call
 
 import luigi
 import luigi.contrib.sqla
@@ -149,6 +150,7 @@ class PipelineTask(luigi.Task):
         os.environ['CAT_BINARY_MODE'] = self.binary_mode
 
         args = tools.misc.PipelineNamespace()
+        args.set('binary_mode', self.binary_mode, False)
         args.set('hal', os.path.abspath(self.hal), True)
         args.set('ref_genome', self.ref_genome, True)
         args.set('out_dir', os.path.abspath(self.out_dir), True)
@@ -581,6 +583,9 @@ class RunCat(PipelineWrapperTask):
     """
     def validate(self, pipeline_args):
         """General input validation"""
+        if pipeline_args.binary_mode == 'docker':
+            # Update docker container
+            check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
         if not os.path.exists(pipeline_args.hal):
             raise InputMissingException('HAL file not found at {}.'.format(pipeline_args.hal))
         for d in [pipeline_args.out_dir, pipeline_args.work_dir]:
