@@ -1,5 +1,5 @@
 FROM ubuntu:18.04 AS builder
-ARG AUGUSTUS_COMMIT=e2dff65
+ARG AUGUSTUS_COMMIT=36ae43d
 RUN apt-get update
 RUN apt-get install -y build-essential libssl-dev libncurses5-dev libcurl4-openssl-dev liblzma-dev libbz2-dev libboost-all-dev sqlite3 libsqlite3-0 libsqlite3-dev libgsl0-dev lp-solve liblpsolve55-dev libbamtools-dev wget git
 
