@@ -297,7 +297,7 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
     clustered['gene_id'] = [transcript_gene_map[tools.nameConversions.strip_alignment_numbers(x)] for x in clustered.gene]
     clustered['scores'] = [scores[x] for x in clustered.gene]
 
-    to_remove = set()  # set of cluster IDs to remove
+    to_keep = []
     alt_loci = []  # will become a DataFrame of alt loci to populate that field
     # any gene IDs with multiple clusters need to be resolved to resolve paralogies
     for gene_id, group in clustered.groupby('gene_id'):
@@ -306,8 +306,10 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
             best_cluster = find_best_group(group, '#cluster')
             best_cluster = int(best_cluster)
             alt_loci.append([gene_id, construct_alt_loci(group, best_cluster)])
-            to_remove.update(set(group['#cluster']) - {best_cluster})
-    paralog_filtered = clustered[~clustered['#cluster'].isin(to_remove)]
+            to_keep.append(group[group['#cluster'] == best_cluster])
+        else:
+            to_keep.append(group)
+    paralog_filtered = pd.concat(to_keep)
     paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
 
     # group by cluster ID to identify gene family collapse
