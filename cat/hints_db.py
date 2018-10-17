@@ -45,7 +45,7 @@ def hints_db(hints_args, toil_options):
                 if hints_args.genome not in hints_args.cfg[dtype]:
                     continue
                 for bam_path in hints_args.cfg[dtype][hints_args.genome]:
-                    bam_file_ids[dtype][os.path.basename(bam_path)] = validate_import_bam(t, bam_path,
+                    bam_file_ids[dtype][bam_path] = validate_import_bam(t, bam_path,
                                                                                           fasta_sequences,
                                                                                           hints_args.genome)
 
@@ -106,7 +106,7 @@ def setup_hints(job, input_file_ids):
         for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
             for reference_subset in grouped_references:
                 j = job.addChildJobFn(namesort_bam, bam_file_id, bai_file_id, reference_subset, disk_usage,
-                                      disk=disk_usage, cores=4, memory='16G')
+                                      original_path, disk=disk_usage, cores=4, memory='16G')
                 filtered_bam_file_ids[dtype][reference_subset].append(j.rv())
 
     # IsoSeq hints
@@ -138,7 +138,7 @@ def setup_hints(job, input_file_ids):
                                 iso_seq_hints_file_ids, protein_hints_file_id).rv()
 
 
-def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, num_reads=50 ** 6):
+def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, original_bam_path, num_reads=50 ** 6):
     """
     Slices out the reference subset from a BAM, name sorts that subset, then chunks the resulting reads up for
     processing by filterBam.
@@ -158,7 +158,12 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
     name_sorted = tools.fileOps.get_tmp_toil_file(suffix='name_sorted.bam')
     cmd = [['samtools', 'view', '-b', bam_path] + list(reference_subset),
            ['sambamba', 'sort', '-t', '4', '-m', '15G', '-o', '/dev/stdout', '-n', '/dev/stdin']]
-    tools.procOps.run_proc(cmd, stdout=name_sorted)
+    try:
+        tools.procOps.run_proc(cmd, stdout=name_sorted)
+    except Exception as e:
+        new_cmd = ' | '.join([' '.join(['samtools', 'view', '-b', original_bam_path] + list(reference_subset)),
+           ' '.join(['sambamba', 'sort', '-t', '4', '-m', '15G', '-o', '/dev/stdout', '-n', '/dev/stdin'])])
+        raise Exception, "Sambamba error: {}. Try this command: {}".format(e, new_cmd)
     ns_handle = pysam.Samfile(name_sorted)
     # this group may come up empty -- check to see if we have at least one mapped read
     try:
