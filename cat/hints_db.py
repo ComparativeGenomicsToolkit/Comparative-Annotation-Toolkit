@@ -77,7 +77,7 @@ def hints_db(hints_args, toil_options):
                 logger.info('All BAMs validated for {}. Beginning Toil hints pipeline'.format(hints_args.genome))
 
             disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids)
-            job = Job.wrapJobFn(setup_hints, input_file_ids, disk='1M')
+            job = Job.wrapJobFn(setup_hints, input_file_ids, disk=disk_usage)
             combined_hints = t.start(job)
         else:
             logger.info('Restarting Toil hints pipeline for {}.'.format(hints_args.genome))
@@ -106,7 +106,7 @@ def setup_hints(job, input_file_ids):
         for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
             for reference_subset in grouped_references:
                 j = job.addChildJobFn(namesort_bam, bam_file_id, bai_file_id, reference_subset, disk_usage,
-                                      disk='1M', cores=4, memory='16G')
+                                      disk=disk_usage, cores=4, memory='16G')
                 filtered_bam_file_ids[dtype][reference_subset].append(j.rv())
 
     # IsoSeq hints
@@ -115,14 +115,14 @@ def setup_hints(job, input_file_ids):
     if len(iso_seq_file_ids) > 0:
         for bam_file_id, bai_file_id in iso_seq_file_ids:
             disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id])
-            j = job.addChildJobFn(generate_iso_seq_hints, bam_file_id, bai_file_id, disk='1M')
+            j = job.addChildJobFn(generate_iso_seq_hints, bam_file_id, bai_file_id, disk=disk_usage)
             iso_seq_hints_file_ids.append(j.rv())
 
     # protein hints
     if input_file_ids['protein_fasta'] is not None:
         disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids['protein_fasta'])
         j = job.addChildJobFn(generate_protein_hints, input_file_ids['protein_fasta'], input_file_ids['genome_fasta'],
-                              disk='1M')
+                              disk=disk_usage)
         protein_hints_file_id = j.rv()
     else:
         protein_hints_file_id = None
@@ -130,7 +130,7 @@ def setup_hints(job, input_file_ids):
     # annotation hints
     if input_file_ids['annotation'] is not None:
         disk_usage = tools.toilInterface.find_total_disk_usage(input_file_ids['annotation'])
-        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'], disk='1M')
+        j = job.addChildJobFn(generate_annotation_hints, input_file_ids['annotation'], disk=disk_usage)
         annotation_hints_file_id = j.rv()
     else:
         annotation_hints_file_id = None
@@ -181,7 +181,7 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
         file_id = write_bam(r, ns_handle)
         j = job.addChildJobFn(filter_bam, file_id, is_paired, disk='4G', memory='2G')
         filtered_file_ids.append(j.rv())
-    return job.addFollowOnJobFn(merge_filtered_bams, filtered_file_ids, disk='1M', memory='16G').rv()
+    return job.addFollowOnJobFn(merge_filtered_bams, filtered_file_ids, disk=disk_usage, memory='16G').rv()
 
 
 def filter_bam(job, file_id, is_paired):
@@ -233,7 +233,7 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
             file_ids = [x for x in file_ids if x is not None]  # some groups will end up empty
             if len(file_ids) > 0:
                 disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
-                merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk='1M',
+                merged_bam_file_ids[dtype][ref_group] = job.addChildJobFn(cat_sort_bams, file_ids, disk=disk_usage,
                                                                           memory='16G', cores=4).rv()
     return job.addFollowOnJobFn(build_hints, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hints_file_ids,
                                 protein_hints_file_id).rv()
@@ -282,7 +282,7 @@ def generate_protein_hints(job, protein_fasta_file_id, genome_fasta_file_id):
     # group up proteins for sub-jobs
     results = []
     for chunk in tools.dataOps.grouper(protein_handle.iteritems(), 100):
-        j = job.addChildJobFn(run_protein_blat, chunk, genome_fasta_file_id, disk='1M', memory='8G')
+        j = job.addChildJobFn(run_protein_blat, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
         results.append(j.rv())
     # return merged results
     return job.addFollowOnJobFn(convert_blat_results_to_hints, results, memory='8G').rv()
@@ -346,7 +346,7 @@ def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hint
                                                                                           [annotation_hints_file_id,
                                                                                            protein_hints_file_id]]))
     return job.addFollowOnJobFn(cat_hints, intron_hints_file_ids, exon_hints_file_ids, annotation_hints_file_id,
-                                iso_seq_hints_file_ids, protein_hints_file_id, disk='1M').rv()
+                                iso_seq_hints_file_ids, protein_hints_file_id, disk=disk_usage).rv()
 
 
 def build_intron_hints(job, merged_bam_file_id):
