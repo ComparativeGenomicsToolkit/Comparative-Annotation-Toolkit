@@ -2517,11 +2517,13 @@ class BgpTrack(TrackTask):
                 tools.fileOps.print_row(outf, row)
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        with tools.fileOps.TemporaryFilePath() as out_path:
-            cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
-                   '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
-            tools.procOps.run_proc(cmd, stderr='/dev/null')
-            tools.fileOps.atomic_install(out_path, track.path)
+        out_path = tools.fileOps.get_tmp_file()
+        #with tools.fileOps.TemporaryFilePath() as out_path:
+        cmd = ['bedToBigBed', '-extraIndex=name,name2,geneId,transcriptId',
+               '-type=bed12+8', '-tab', '-as={}'.format(as_file.path), tmp.path, chrom_sizes, out_path]
+        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        tools.fileOps.atomic_install(out_path, track.path)
+        os.remove(out_path)
 
 
         with trackdb.open('w') as outf:
@@ -2792,10 +2794,12 @@ class SpliceTrack(TrackTask):
 
         tools.procOps.run_proc(['bedSort', tmp.path, tmp.path])
 
-        with tools.fileOps.TemporaryFilePath() as out_path:
-            cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, out_path]
-            tools.procOps.run_proc(cmd, stderr='/dev/null')
-            tools.fileOps.atomic_install(out_path, track.path)
+        out_path = tools.fileOps.get_tmp_file()
+        #with tools.fileOps.TemporaryFilePath() as out_path:
+        cmd = ['bedToBigBed', '-tab', tmp.path, chrom_sizes, out_path]
+        tools.procOps.run_proc(cmd, stderr='/dev/null')
+        tools.fileOps.atomic_install(out_path, track.path)
+        os.remove(out_path)
 
         with trackdb.open('w') as outf:
             outf.write(splice_template.format(genome=self.genome, path=os.path.basename(track.path)))
