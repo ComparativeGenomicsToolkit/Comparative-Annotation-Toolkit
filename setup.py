@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='cat',
     version='0.1',
-    py_modules=['cat', 'tools'],
+    packages=['cat', 'tools'],
     install_requires=[
         'pyfasta>=0.5.2',
         'toil>=3.5',
