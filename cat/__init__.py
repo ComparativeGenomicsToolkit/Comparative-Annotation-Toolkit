@@ -2525,7 +2525,8 @@ class BgpTrack(TrackTask):
 
 
         with trackdb.open('w') as outf:
-            outf.write(bgp_template.format(name='{}_{}'.format(self.label.replace(' ', '_'), self.genome),
+            sanitized_label = self.label.replace(' ', '_').replace('.', '_')
+            outf.write(bgp_template.format(name='{}_{}'.format(sanitized_label, self.genome),
                                            label=self.label, visibility=self.visibility,
                                            path=os.path.basename(track.path)))
 
