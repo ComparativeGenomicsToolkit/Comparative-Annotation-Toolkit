@@ -17,7 +17,7 @@ The pipeline can be installed by a simple `pip` install:
 However, at this time, direct pip installation will mean that the `luigi.cfg`, `logging.cfg`, and test files will be buried in your python directory. I am still trying to figure out how to approach this problem. In the meantime, you may be better off instead cloning the directory and installing from your clone:
 
 ~~~
-git clone git+https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit.git
+git clone https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit.git
 pip install -e Comparative-Annotation-Toolkit
 ~~~
 
