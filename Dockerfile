@@ -49,6 +49,8 @@ RUN cd libBigWig && make install
 
 # WiggleTools
 RUN git clone https://github.com/Ensembl/WiggleTools.git
+# Their makefile now hardcodes /bin/cc as compiler :(
+RUN ln -s /usr/bin/cc /bin/cc
 RUN cd WiggleTools && make
 
 # sambamba
