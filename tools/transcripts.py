@@ -482,9 +482,9 @@ class GenePredTranscript(Transcript):
             codon_regions = sorted(codon_regions, key=lambda x: x.start)
 
         if self.strand == '+':
-            cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions])
+            cds = ''.join([str(x.get_sequence(seq_dict)) for x in codon_regions])
         else:
-            cds = ''.join([x.get_sequence(seq_dict) for x in codon_regions[::-1]])
+            cds = ''.join([str(x.get_sequence(seq_dict)) for x in codon_regions[::-1]])
         return cds
 
     def codon_iterator(self, seq_dict):
