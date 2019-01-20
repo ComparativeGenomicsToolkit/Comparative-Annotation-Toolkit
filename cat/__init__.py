@@ -51,6 +51,7 @@ from plots import generate_plots
 from hints_db import hints_db
 from parent_gene_assignment import assign_parents
 from exceptions import *
+from pyfasta import Fasta
 
 logger = logging.getLogger('cat')
 
@@ -632,6 +633,7 @@ class RunCat(PipelineWrapperTask):
         if self.assembly_hub is True:
             yield self.clone(AssemblyHub)
         yield self.clone(ReportStats)
+        yield self.clone(Proteins)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -2000,6 +2002,7 @@ class Consensus(PipelineWrapperTask):
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')
         args.consensus_gff3 = os.path.join(base_dir, genome + '.gff3')
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
+        args.protein = os.path.join(base_dir, genome + '.fasta')
         # user configurable options on how consensus finding should work
         args.intron_rnaseq_support = pipeline_args.intron_rnaseq_support
         args.exon_rnaseq_support = pipeline_args.exon_rnaseq_support
@@ -2035,6 +2038,16 @@ class ConsensusDriverTask(RebuildableTask):
         yield luigi.LocalTarget(consensus_args.consensus_gp_info)
         yield luigi.LocalTarget(consensus_args.metrics_json)
         yield luigi.LocalTarget(consensus_args.consensus_gff3)
+        out = luigi.LocalTarget(consensus_args.protein)
+        gp = tools.transcripts.get_gene_pred_dict(consensus_args.consensus_gp)
+        seq_dict = Fasta(GenomeFiles.get_args(pipeline_args, genome).fasta)
+        with out.open('w+') as f:
+            for gene in gp:
+                protein = gp.get(gene).get_protein_sequence(seq_dict)
+                if protein:
+                    f.write('>'+gene)
+                    f.write(protein)
+
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
