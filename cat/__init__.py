@@ -633,7 +633,6 @@ class RunCat(PipelineWrapperTask):
         if self.assembly_hub is True:
             yield self.clone(AssemblyHub)
         yield self.clone(ReportStats)
-        yield self.clone(Proteins)
 
 
 class PrepareFiles(PipelineWrapperTask):
@@ -2038,15 +2037,6 @@ class ConsensusDriverTask(RebuildableTask):
         yield luigi.LocalTarget(consensus_args.consensus_gp_info)
         yield luigi.LocalTarget(consensus_args.metrics_json)
         yield luigi.LocalTarget(consensus_args.consensus_gff3)
-        out = luigi.LocalTarget(consensus_args.protein)
-        gp = tools.transcripts.get_gene_pred_dict(consensus_args.consensus_gp)
-        seq_dict = Fasta(GenomeFiles.get_args(pipeline_args, genome).fasta)
-        with out.open('w+') as f:
-            for gene in gp:
-                protein = gp.get(gene).get_protein_sequence(seq_dict)
-                if protein:
-                    f.write('>'+gene)
-                    f.write(protein)
 
 
     def requires(self):
@@ -2072,6 +2062,15 @@ class ConsensusDriverTask(RebuildableTask):
         consensus_gp, consensus_gp_info, metrics_json, consensus_gff3 = self.output()
         metrics_dict = generate_consensus(consensus_args)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
+        out = luigi.LocalTarget(consensus_args.protein)
+        gp = tools.transcripts.get_gene_pred_dict(consensus_args.consensus_gp)
+        seq_dict = Fasta(GenomeFiles.get_args(pipeline_args, genome).fasta)
+        with out.open('w') as f:
+            for gene in gp:
+                protein = gp.get(gene).get_protein_sequence(seq_dict)
+                if protein:
+                    f.write('>'+gene)
+                    f.write(protein)
 
 
 class Plots(RebuildableTask):
