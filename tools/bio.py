@@ -141,7 +141,7 @@ def codon_to_amino_acid(c):
         return None
     if c in _codon_table:
         return _codon_table[c]
-    return '?'
+    return 'X'
 
 
 def translate_sequence(sequence):
@@ -156,7 +156,7 @@ def translate_sequence(sequence):
         result.append(codon_to_amino_acid(sequence[i: i + 3]))
     if len(sequence) % 3 == 2:
         c = codon_to_amino_acid(sequence[i + 3:] + 'N')
-        if c != '?':
+        if c != 'X':
             result.append(c)
     return ''.join(result)
 
