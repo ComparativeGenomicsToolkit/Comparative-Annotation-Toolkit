@@ -452,8 +452,6 @@ class ToilTask(PipelineTask):
         toil_args.stats = True
         toil_args.defaultPreemptable = True
         if self.zone is not None:
-            #job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
-
             job_dir = os.path.join(work_dir, 'jobStore') # Directory where the AWS directory file is
             if os.path.exists(job_dir):
                 for i in os.listdir(job_dir):
@@ -2069,8 +2067,8 @@ class ConsensusDriverTask(RebuildableTask):
             for gene in gp:
                 protein = gp.get(gene).get_protein_sequence(seq_dict)
                 if protein:
-                    f.write('>'+gene)
-                    f.write(protein)
+                    f.write('>'+gene+'\n')
+                    f.write(protein+'\n')
 
 
 class Plots(RebuildableTask):
