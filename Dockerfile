@@ -79,6 +79,6 @@ RUN mkdir -p /augustus
 COPY --from=builder /augustus/config /augustus/config
 
 # Python deps
-RUN pip install bd2k-python-lib toil[all] pyfasta numpy
+RUN pip install bd2k-python-lib toil[all] pyfasta numpy matplotlib==2.0.2
 
 ENV AUGUSTUS_CONFIG_PATH=/augustus/config/
