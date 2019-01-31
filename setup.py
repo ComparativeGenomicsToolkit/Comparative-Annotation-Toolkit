@@ -4,6 +4,7 @@ setup(
     name='cat',
     version='0.1',
     packages=['cat', 'tools'],
+    python_requires='<3.0.0',
     install_requires=[
         'pyfasta>=0.5.2',
         'toil>=3.5',
