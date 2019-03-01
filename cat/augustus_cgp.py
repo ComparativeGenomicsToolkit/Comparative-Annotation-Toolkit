@@ -298,6 +298,12 @@ def join_genes(job, gff_chunks):
             for line in open(local_path):
                 raw_handle.write(line)
 
+    import shutil
+    shutil.copy(raw_gtf_file, '/rds/project/shm37/rds-shm37-helixmbodyw/TetramoriumProject/Comparative-Annotation-Toolkit/raw.gtf')
+    shutil.copy(raw_gtf_fofn,
+                '/rds/project/shm37/rds-shm37-helixmbodyw/TetramoriumProject/Comparative-Annotation-Toolkit/gtf.fofn')
+    assert False, i
+
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
     cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],

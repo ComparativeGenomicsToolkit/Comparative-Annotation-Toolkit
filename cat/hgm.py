@@ -196,8 +196,8 @@ def parse_hgm_gtf(hgm_out, genome):
         intron_annot = ','.join(map(str, [x.count('M') + x.count('N') for x in intron_info]))
         cds_annot = ','.join(map(str, [x.count('M') for x in cds_info]))
         exon_annot = ','.join(map(str, [x.count('M') for x in exon_info]))
-        assert len(intron_annot) + 2 == len(exon_annot) or len(intron_annot) == 0 and len(exon_annot) == 1, \
-            (len(intron_annot), len(exon_annot), aln_id)
+        #assert len(intron_annot) + 2 == len(exon_annot) or len(intron_annot) == 0 and len(exon_annot) == 1, \
+        #    (len(intron_annot), len(exon_annot), aln_id)
         return [intron_annot, cds_annot, exon_annot]
 
     def calculate_all_species(intron_info, exon_info):
