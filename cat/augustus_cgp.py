@@ -290,13 +290,22 @@ def join_genes(job, gff_chunks):
     """
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
+    useful_lines = 0
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
         for (chrom, start, chunksize), chunk in gff_chunks.iteritems():
             local_path = job.fileStore.readGlobalFile(chunk)
             fofn_handle.write(local_path + '\n')
             raw_handle.write('## BEGIN CHUNK chrom: {} start: {} chunksize: {}\n'.format(chrom, start, chunksize))
             for line in open(local_path):
+                if not line.startswith('#'):
+                    useful_lines += 1
                 raw_handle.write(line)
+
+    # make sure CGP didn't fail entirely
+    if useful_lines == 0:
+        raise Exception('After running AugustusCGP, no gene predictions were made. Did you set `--augustus-species` '
+                        'to a species with a trained model similar to your reference species? Please consult the '
+                        'AUGUSTUS manual for more about the species flag.')
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
