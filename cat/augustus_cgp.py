@@ -14,6 +14,7 @@ import argparse
 import sqlalchemy
 import os
 import collections
+import shutil
 import random
 
 from toil.fileStore import FileID
@@ -31,6 +32,8 @@ import tools.transcripts
 import tools.hintsDatabaseInterface
 
 
+
+base_dir = '/rds/project/shm37/rds-shm37-helixmbodyw/TetramoriumProject/Comparative-Annotation-Toolkit/debug_augustus_cgp'
 def augustus_cgp(args, toil_options):
     """
     Main entry function for AugustusCGP toil pipeline
@@ -174,6 +177,26 @@ def train_cgp(job, maf_chunks, tree, args, input_file_ids, training_gffs):
            '--param_outfile={}'.format(params)]
     tools.procOps.run_proc(cmd)
     input_file_ids.cgp_param = job.fileStore.writeGlobalFile(params)
+
+    o = os.path.join(base_dir, 'training')
+    tools.fileOps.ensure_dir(o)
+
+    path = job.fileStore.readGlobalFile(tree)
+    tree_path = os.path.join(o, 'tree.nwk')
+    shutil.copy(path, tree_path)
+
+    train_gff_out = os.path.join(o, 'training.gffs')
+    shutil.copy(combined, train_gff_out)
+
+    with open(os.path.join(o, 'cmd.sh'), 'w') as outf:
+        cmd = ['augustus',
+               '--species={}'.format(args.species),
+               '--treefile={}'.format(tree_path),
+               '--refSpecies={}'.format(args.ref_genome),
+               '--referenceFile={}'.format(args.gtf),
+               '--trainFeatureFile={}'.format(train_gff_out),
+               '--param_outfile={}'.format('params.txt')]
+        outf.write(' '.join(cmd) + '\n')
     return job.addFollowOnJobFn(cgp_wrapper, maf_chunks, tree, args, input_file_ids).rv()
 
 
@@ -229,12 +252,15 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
     cgp_cfg = job.fileStore.readGlobalFile(input_file_ids.cgp_cfg)
     stdout = tools.fileOps.get_tmp_toil_file()
 
+    tree = job.fileStore.readGlobalFile(tree)
+    maf_chunk = job.fileStore.readGlobalFile(maf_chunk)
+    hints_db = job.fileStore.readGlobalFile(input_file_ids.hints_db)
     cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
            '--extrinsicCfgFile={}'.format(cgp_cfg),
            '--species={}'.format(args.species),
-           '--treefile={}'.format(job.fileStore.readGlobalFile(tree)),
-           '--alnfile={}'.format(job.fileStore.readGlobalFile(maf_chunk)),
-           '--dbaccess={}'.format(job.fileStore.readGlobalFile(input_file_ids.hints_db)),
+           '--treefile={}'.format(tree),
+           '--alnfile={}'.format(maf_chunk),
+           '--dbaccess={}'.format(hints_db),
            '--speciesfilenames={}'.format(genome_fofn),
            '--softmasking=1',
            '--exoncands={}'.format(1 if training else 0),
@@ -243,16 +269,51 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
            '--printOEs={}'.format(1 if training else 0),
            '--/CompPred/outdir={}'.format(os.getcwd())]
     if training is False:
-        cmd.append('--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param)))
+        params = job.fileStore.readGlobalFile(input_file_ids.cgp_param)
+        cmd.append('--optCfgFile={}'.format(params))
     else:
         cmd.append('--printSampled=true')
     tools.procOps.run_proc(cmd, stdout=stdout)
+
+    useme = False
+    if random.random <= 0.05:
+        useme = True
+        p = 'cgp' if training is False else 'cgp_training'
+        o = os.path.join(base_dir, p, ''.join([random.choice(string.digits) for _ in xrange(10)]))
+        tools.fileOps.ensure_dir(o)
+        shutil.copy(tree, os.path.join(o, 'tree.nwk'))
+        shutil.copy(maf_chunk, os.path.join(o, 'maf_chunk.maf'))
+        cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
+               '--extrinsicCfgFile={}'.format(cgp_cfg),
+               '--species={}'.format(args.species),
+               '--treefile={}'.format(os.path.join(o, 'tree.nwk')),
+               '--alnfile={}'.format(os.path.join(o, 'maf_chunk.maf')),
+               '--dbaccess={}'.format(args.hints_db),
+               '--speciesfilenames={}'.format(genome_fofn),
+               '--softmasking=1',
+               '--exoncands={}'.format(1 if training else 0),
+               '--alternatives-from-evidence=0',
+               '--/CompPred/logreg=on',
+               '--printOEs={}'.format(1 if training else 0),
+               '--/CompPred/outdir={}'.format(os.getcwd())]
+        if training is False:
+            shutil.copy(params, os.path.join(o, 'params'))
+            cmd.append('--optCfgFile={}'.format(os.path.join(o, 'params')))
+        else:
+            cmd.append('--printSampled=true')
+        with open(os.path.join(o, 'cmd.sh'), 'w') as outf:
+            outf.write(' '.join(cmd) + '\n')
+
+
     if training is True:
         cmd = ['cat', os.path.abspath('{}.sampled_GFs.gff'.format(args.ref_genome)),
                os.path.abspath('exonCands.{}.gff3'.format(args.ref_genome)),
                os.path.abspath('orthoExons.{}.gff3'.format(args.ref_genome))]
         combined_file = tools.fileOps.get_tmp_toil_file()
         tools.procOps.run_proc(cmd, stdout=combined_file)
+        if useme is True:
+            with open(os.path.join(o, 'cmd.sh'), 'a') as outf:
+                outf.write(' '.join(cmd) + ' > combined_training.gff\n')
         return job.fileStore.writeGlobalFile(combined_file)
     else:
         stdout_file_id = job.fileStore.writeGlobalFile(stdout)
