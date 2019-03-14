@@ -215,7 +215,7 @@ def cgp_wrapper(job, maf_chunks, tree, args, input_file_ids):
     results = []
     cgp_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.fasta, input_file_ids.hints_db], buffer='4G')
 
-    for chrom, start, chunksize, maf_chunk in maf_chunks:
+    for chrom, start, chunksize, maf_chunk in random.sample(maf_chunks, 20):
         # run AugustusCGP on alignment chunk
         cgp_job = job.addChildJobFn(cgp, tree, maf_chunk, args, input_file_ids, memory='8G', disk=cgp_usage)
         results.append([chrom, start, chunksize, cgp_job.rv()])
