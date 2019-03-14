@@ -275,35 +275,31 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
         cmd.append('--printSampled=true')
     tools.procOps.run_proc(cmd, stdout=stdout)
 
-    useme = False
-    if random.random <= 0.05:
-        useme = True
-        p = 'cgp' if training is False else 'cgp_training'
-        o = os.path.join(base_dir, p, ''.join([random.choice(string.digits) for _ in xrange(10)]))
-        tools.fileOps.ensure_dir(o)
-        shutil.copy(tree, os.path.join(o, 'tree.nwk'))
-        shutil.copy(maf_chunk, os.path.join(o, 'maf_chunk.maf'))
-        cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
-               '--extrinsicCfgFile={}'.format(cgp_cfg),
-               '--species={}'.format(args.species),
-               '--treefile={}'.format(os.path.join(o, 'tree.nwk')),
-               '--alnfile={}'.format(os.path.join(o, 'maf_chunk.maf')),
-               '--dbaccess={}'.format(args.hints_db),
-               '--speciesfilenames={}'.format(genome_fofn),
-               '--softmasking=1',
-               '--exoncands={}'.format(1 if training else 0),
-               '--alternatives-from-evidence=0',
-               '--/CompPred/logreg=on',
-               '--printOEs={}'.format(1 if training else 0),
-               '--/CompPred/outdir={}'.format(os.getcwd())]
-        if training is False:
-            shutil.copy(params, os.path.join(o, 'params'))
-            cmd.append('--optCfgFile={}'.format(os.path.join(o, 'params')))
-        else:
-            cmd.append('--printSampled=true')
-        with open(os.path.join(o, 'cmd.sh'), 'w') as outf:
-            outf.write(' '.join(cmd) + '\n')
-
+    p = 'cgp' if training is False else 'cgp_training'
+    o = os.path.join(base_dir, p, ''.join([random.choice(string.digits) for _ in xrange(10)]))
+    tools.fileOps.ensure_dir(o)
+    shutil.copy(tree, os.path.join(o, 'tree.nwk'))
+    shutil.copy(maf_chunk, os.path.join(o, 'maf_chunk.maf'))
+    cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
+           '--extrinsicCfgFile={}'.format(cgp_cfg),
+           '--species={}'.format(args.species),
+           '--treefile={}'.format(os.path.join(o, 'tree.nwk')),
+           '--alnfile={}'.format(os.path.join(o, 'maf_chunk.maf')),
+           '--dbaccess={}'.format(args.hints_db),
+           '--speciesfilenames={}'.format(genome_fofn),
+           '--softmasking=1',
+           '--exoncands={}'.format(1 if training else 0),
+           '--alternatives-from-evidence=0',
+           '--/CompPred/logreg=on',
+           '--printOEs={}'.format(1 if training else 0),
+           '--/CompPred/outdir={}'.format(os.getcwd())]
+    if training is False:
+        shutil.copy(params, os.path.join(o, 'params'))
+        cmd.append('--optCfgFile={}'.format(os.path.join(o, 'params')))
+    else:
+        cmd.append('--printSampled=true')
+    with open(os.path.join(o, 'cmd.sh'), 'w') as outf:
+        outf.write(' '.join(cmd) + '\n')
 
     if training is True:
         cmd = ['cat', os.path.abspath('{}.sampled_GFs.gff'.format(args.ref_genome)),
@@ -311,9 +307,8 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
                os.path.abspath('orthoExons.{}.gff3'.format(args.ref_genome))]
         combined_file = tools.fileOps.get_tmp_toil_file()
         tools.procOps.run_proc(cmd, stdout=combined_file)
-        if useme is True:
-            with open(os.path.join(o, 'cmd.sh'), 'a') as outf:
-                outf.write(' '.join(cmd) + ' > combined_training.gff\n')
+        with open(os.path.join(o, 'cmd.sh'), 'a') as outf:
+            outf.write(' '.join(cmd) + ' > combined_training.gff\n')
         return job.fileStore.writeGlobalFile(combined_file)
     else:
         stdout_file_id = job.fileStore.writeGlobalFile(stdout)
@@ -363,7 +358,6 @@ def join_genes(job, gff_chunks):
     shutil.copy(raw_gtf_file, '/rds/project/shm37/rds-shm37-helixmbodyw/TetramoriumProject/Comparative-Annotation-Toolkit/raw.gtf')
     shutil.copy(raw_gtf_fofn,
                 '/rds/project/shm37/rds-shm37-helixmbodyw/TetramoriumProject/Comparative-Annotation-Toolkit/gtf.fofn')
-    assert False, i
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
