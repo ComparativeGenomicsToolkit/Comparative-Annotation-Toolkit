@@ -16,7 +16,7 @@ import os
 import collections
 import shutil
 import random
-
+import string
 from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
