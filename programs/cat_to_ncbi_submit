@@ -570,7 +570,15 @@ def get_cds_regions(txd):
     shift, adjust the CDS accordingly, inserting a gap. If this CDS interval set has been seen before, ignore it
     """
     cds_spec = CdsSpec(txd.tx.strand)
-    coding_interval = ChromosomeInterval(txd.tx.coding_interval.chromosome, int(txd.attrs["adj_start"]), int(txd.attrs["adj_stop"]), txd.tx.strand)
+    adj_start = txd.attrs["adj_start"]
+    adj_stop = txd.attrs["adj_stop"]
+    if adj_start is None or adj_stop is None:
+        adj_start = txd.tx.thick_start
+        adj_stop = txd.tx.thick_stop
+    else:
+        adj_start = int(adj_start)
+        adj_stop = int(adj_stop)
+    coding_interval = ChromosomeInterval(txd.tx.coding_interval.chromosome, adj_start, adj_stop, txd.tx.strand)
     expected_frame = 0
     # traverse in transcription order
     trans_start_incmpl = None
