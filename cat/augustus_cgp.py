@@ -280,19 +280,21 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
     tools.fileOps.ensure_dir(o)
     shutil.copy(tree, os.path.join(o, 'tree.nwk'))
     shutil.copy(maf_chunk, os.path.join(o, 'maf_chunk.maf'))
+    shutil.copy(cgp_cfg, os.path.join(o, 'cgp_cfg'))
+    shutil.copy(genome_fofn, os.path.join(o, 'genome_fofn'))
     cmd = ['augustus', '--dbhints=1', '--allow_hinted_splicesites=atac',
-           '--extrinsicCfgFile={}'.format(cgp_cfg),
+           '--extrinsicCfgFile={}'.format(os.path.join(o, 'cgp_cfg')),
            '--species={}'.format(args.species),
            '--treefile={}'.format(os.path.join(o, 'tree.nwk')),
            '--alnfile={}'.format(os.path.join(o, 'maf_chunk.maf')),
            '--dbaccess={}'.format(args.hints_db),
-           '--speciesfilenames={}'.format(genome_fofn),
+           '--speciesfilenames={}'.format(os.path.join(o, 'genome_fofn')),
            '--softmasking=1',
            '--exoncands={}'.format(1 if training else 0),
            '--alternatives-from-evidence=0',
            '--/CompPred/logreg=on',
            '--printOEs={}'.format(1 if training else 0),
-           '--/CompPred/outdir={}'.format(os.getcwd())]
+           '--/CompPred/outdir={}'.format(o)]
     if training is False:
         shutil.copy(params, os.path.join(o, 'params'))
         cmd.append('--optCfgFile={}'.format(os.path.join(o, 'params')))
