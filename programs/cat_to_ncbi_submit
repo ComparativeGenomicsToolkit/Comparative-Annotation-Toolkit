@@ -5,6 +5,7 @@ import os
 import re
 import argparse
 import pandas as pd
+import numpy as np
 from collections import defaultdict, namedtuple
 my_bin_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
 sys.path.insert(0, os.path.join(my_bin_dir, "../tools"))
@@ -572,7 +573,7 @@ def get_cds_regions(txd):
     cds_spec = CdsSpec(txd.tx.strand)
     adj_start = txd.attrs["adj_start"]
     adj_stop = txd.attrs["adj_stop"]
-    if adj_start is None or adj_stop is None:
+    if np.isnan(adj_start) or np.isnan(adj_stop):
         adj_start = txd.tx.thick_start
         adj_stop = txd.tx.thick_stop
     else:
