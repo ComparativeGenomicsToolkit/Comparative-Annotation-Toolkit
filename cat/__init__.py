@@ -2062,7 +2062,7 @@ class ConsensusDriverTask(RebuildableTask):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         metrics_dict = generate_consensus(consensus_args)
-        metrics_json = self.output()[0]
+        metrics_json = self.output().next()
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 
