@@ -1996,9 +1996,12 @@ class Consensus(PipelineWrapperTask):
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.hints_db_has_rnaseq = len(pipeline_args.rnaseq_genomes) > 0
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.consensus_gp = os.path.join(base_dir, genome + '.gp')
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')
         args.consensus_gff3 = os.path.join(base_dir, genome + '.gff3')
+        args.consensus_fasta = os.path.join(base_dir, genome + '.consensus.fasta')
+        args.consensus_protein_fasta = os.path.join(base_dir, genome + '.protein.consensus.fasta')
         args.metrics_json = os.path.join(PipelineTask.get_metrics_dir(pipeline_args, genome), 'consensus.json')
         # user configurable options on how consensus finding should work
         args.intron_rnaseq_support = pipeline_args.intron_rnaseq_support
@@ -2035,6 +2038,8 @@ class ConsensusDriverTask(RebuildableTask):
         yield luigi.LocalTarget(consensus_args.consensus_gp_info)
         yield luigi.LocalTarget(consensus_args.metrics_json)
         yield luigi.LocalTarget(consensus_args.consensus_gff3)
+        yield luigi.LocalTarget(consensus_args.consensus_fasta)
+        yield luigi.LocalTarget(consensus_args.consensus_protein_fasta)
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
