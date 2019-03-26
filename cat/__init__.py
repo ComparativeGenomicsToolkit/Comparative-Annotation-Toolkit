@@ -2034,9 +2034,9 @@ class ConsensusDriverTask(RebuildableTask):
 
     def output(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
+        yield luigi.LocalTarget(consensus_args.metrics_json)
         yield luigi.LocalTarget(consensus_args.consensus_gp)
         yield luigi.LocalTarget(consensus_args.consensus_gp_info)
-        yield luigi.LocalTarget(consensus_args.metrics_json)
         yield luigi.LocalTarget(consensus_args.consensus_gff3)
         yield luigi.LocalTarget(consensus_args.consensus_fasta)
         yield luigi.LocalTarget(consensus_args.consensus_protein_fasta)
@@ -2062,6 +2062,7 @@ class ConsensusDriverTask(RebuildableTask):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         metrics_dict = generate_consensus(consensus_args)
+        metrics_json = self.output()[0]
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 
