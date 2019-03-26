@@ -2061,7 +2061,6 @@ class ConsensusDriverTask(RebuildableTask):
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
-        consensus_gp, consensus_gp_info, metrics_json, consensus_gff3 = self.output()
         metrics_dict = generate_consensus(consensus_args)
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
