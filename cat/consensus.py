@@ -25,6 +25,7 @@ import luigi
 import logging
 import pandas as pd
 
+import tools.bio
 import tools.intervals
 import tools.misc
 import tools.mathOps
@@ -151,6 +152,7 @@ def generate_consensus(args):
     consensus_gene_dict = write_consensus_gps(args.consensus_gp, args.consensus_gp_info,
                                               final_consensus, tx_dict, args.genome)
     write_consensus_gff3(consensus_gene_dict, args.consensus_gff3)
+    write_consensus_fastas(consensus_gene_dict, args.consensus_fasta, args.consensus_protein_fasta, args.fasta)
 
     return metrics
 
@@ -934,3 +936,19 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
                     tx_lines.extend(list(generate_transcript_record(chrom, tx_obj, attrs)))
                 tx_lines = sorted(tx_lines, key=lambda l: l[3])
                 tools.fileOps.print_rows(out_gff3, tx_lines)
+
+
+def write_consensus_fastas(consensus_gene_dict, consensus_fasta, consensus_protein_fasta, fasta):
+    """Write FASTA records for both"""
+    seq_dict = tools.bio.get_sequence_dict(fasta)
+    consensus_fasta = luigi.LocalTarget(consensus_fasta)
+    consensus_protein_fasta = luigi.LocalTarget(consensus_protein_fasta)
+    with consensus_fasta.open('w') as cfa, consensus_protein_fasta.open('w') as cpfa:
+        for chrom in sorted(consensus_gene_dict):
+            for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
+                tx_objs, _ = zip(*tx_list)
+                for tx in tx_objs:
+                    tools.bio.write_fasta(cfa, tx.name, tx.get_mrna(seq_dict))
+                    if tx.cds_size > 0:
+                        tools.bio.write_fasta(cfa, tx.name, tx.get_protein_sequence(seq_dict))
+            
