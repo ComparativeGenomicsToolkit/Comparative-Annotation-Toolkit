@@ -35,3 +35,20 @@ if __name__ == '__main__':
     print df.head(20)
     print 'Some example gene rows:'
     print tmp.head(10)
+    # validate one-to-one mappings for reference
+    mixed_genes = {}
+    for gene_id, d in df.groupby('GeneId'):
+        if len(set(d.GeneName)) != 1:
+            mixed_genes[gene_id] = ','.join(set(d.GeneName))
+    if len(mixed_genes) > 0:
+        print 'Found {} genes where one gene ID maps to multiple gene names:'.format(len(mixed_genes))
+        for x, y in mixed_genes.iteritems():
+            print '{}: {}'.format(x, y)
+    mixed_genes = {}
+    for gene_id, d in df.groupby('GeneName'):
+        if len(set(d.GeneId)) != 1:
+            mixed_genes[gene_id] = ','.join(set(d.GeneId))
+    if len(mixed_genes) > 0:
+        print 'Found {} genes where one gene name maps to multiple gene IDs:'.format(len(mixed_genes))
+        for x, y in mixed_genes.iteritems():
+            print '{}: {}'.format(x, y)
