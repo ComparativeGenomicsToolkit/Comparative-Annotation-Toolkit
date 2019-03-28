@@ -24,6 +24,7 @@ that are disjoint in original transcript coordinates. This implies that there wa
 import os
 import json
 import collections
+import hashlib
 import pandas as pd
 import tools.nameConversions
 import tools.transcripts
@@ -75,9 +76,12 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     def hash_aln(aln):
         """Hacky way to hash an alignment"""
-        return hash(tuple([aln.t_name, aln.t_start, aln.t_end, aln.matches, aln.mismatches, aln.block_count,
-                           tools.nameConversions.strip_alignment_numbers(aln.q_name),
-                           tuple(aln.t_starts), tuple(aln.q_starts), tuple(aln.block_sizes)]))
+        m = hashlib.sha1()
+        for l in [aln.t_name, aln.t_start, aln.t_end, aln.matches, aln.mismatches, aln.block_count,
+                  tools.nameConversions.strip_alignment_numbers(aln.q_name),
+                  tuple(aln.t_starts), tuple(aln.q_starts), tuple(aln.block_sizes)]:
+            m.update(str(l))
+        return m.hexdigest()
 
     unfiltered_hash_table = {}
     for aln_id, aln in unfiltered.iteritems():
