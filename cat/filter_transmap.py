@@ -25,6 +25,7 @@ import os
 import json
 import collections
 import hashlib
+import logging
 import pandas as pd
 import tools.nameConversions
 import tools.transcripts
@@ -36,7 +37,7 @@ import tools.intervals
 import tools.sqlInterface
 
 pd.options.mode.chained_assignment = None
-
+logger = logging.getLogger(__name__)
 
 def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, json_tgt):
     """
@@ -87,6 +88,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     for aln_id, aln in unfiltered.iteritems():
         unfiltered_hash_table[hash_aln(aln)] = aln_id
     assert len(unfiltered_hash_table) == len(unfiltered)
+    logger.info('Loaded {} unfiltered alignments'.format(len(unfiltered)))
 
     with tools.fileOps.TemporaryFilePath() as local_tmp:
         cmd = [['sed', 's/\-[0-9]\+//', tmp_size_filtered],  # strip unique identifiers for comparative filters
@@ -96,8 +98,16 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
         tools.procOps.run_proc(cmd, stdout=local_tmp)
         filtered_alns = list(tools.psl.psl_iterator(local_tmp))
 
+    logger.info('Loaded {} filtered alignments'.format(len(filtered_alns)))
     # load globalBest IDs by using the hash table to figure out which ones we had
-    global_best = {unfiltered[unfiltered_hash_table[hash_aln(aln)]] for aln in filtered_alns}
+    global_best = set()
+    for aln in filtered_alns:
+        h = hash_aln(aln)
+        try:
+            global_best.add(unfiltered_hash_table[h])
+        except KeyError:
+            logger.warning('Failed to find hash {} for alignment {} in hash dict.'.format(h, aln.psl_string()))
+            assert False, 'Failed to find hash {} for alignment {} in hash dict.'.format(h, aln.psl_string())
     global_best_txs = [unfiltered_tx_dict[aln.q_name] for aln in global_best]
 
     # report counts by biotype
