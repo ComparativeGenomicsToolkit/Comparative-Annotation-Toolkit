@@ -107,6 +107,20 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
             global_best.add(unfiltered_hash_table[h])
         except KeyError:
             logger.warning('Failed to find hash {} for alignment {} in hash dict.'.format(h, aln.psl_string()))
+            with tools.fileOps.TemporaryFilePath(os.getcwd()) as local_tmp:
+                cmd = [['sed', 's/\-[0-9]\+//', tmp_size_filtered],  # strip unique identifiers for comparative filters
+                       ['pslCDnaFilter', '-globalNearBest={}'.format(global_near_best),
+                        '-minCover=0.1', '-verbose=0',
+                        '-minSpan=0.2', '/dev/stdin', '/dev/stdout']]
+                tools.procOps.run_proc(cmd, stdout=local_tmp)
+                retry_filtered_alns = list(tools.psl.psl_iterator(local_tmp))
+                global_best = set()
+                for aln in retry_filtered_alns:
+                    h  = hash_aln(aln)
+                    try:
+                        global_best.add(unfiltered_hash_table[h])
+                    except KeyError:
+                        assert False, 'Using cwd did not fix the problem'
             assert False, 'Failed to find hash {} for alignment {} in hash dict.'.format(h, aln.psl_string())
     global_best_txs = [unfiltered_tx_dict[aln.q_name] for aln in global_best]
 
