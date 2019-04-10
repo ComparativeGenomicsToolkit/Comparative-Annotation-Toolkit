@@ -950,5 +950,5 @@ def write_consensus_fastas(consensus_gene_dict, consensus_fasta, consensus_prote
                 for tx in tx_objs:
                     tools.bio.write_fasta(cfa, tx.name, tx.get_mrna(seq_dict))
                     if tx.cds_size > 0:
-                        tools.bio.write_fasta(cfa, tx.name, tx.get_protein_sequence(seq_dict))
+                        tools.bio.write_fasta(cpfa, tx.name, tx.get_protein_sequence(seq_dict))
             
