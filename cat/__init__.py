@@ -78,6 +78,7 @@ class PipelineTask(luigi.Task):
     work_dir = luigi.Parameter(default='./cat_work')
     target_genomes = luigi.TupleParameter(default=None)
     annotate_ancestors = luigi.BoolParameter(default=False)
+    annotate_reference = luigi.BoolParameter(default=False)
     binary_mode = luigi.ChoiceParameter(choices=["docker", "local"], default='docker',
                                         significant=False)
     # AugustusTM(R) parameters
@@ -202,6 +203,7 @@ class PipelineTask(luigi.Task):
 
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
+        args.set('annotate_reference', self.annotate_reference, False)
 
         # halStats is run below, before any validate() methods are called.
         if not tools.misc.is_exec('halStats'):
@@ -457,7 +459,7 @@ class ToilTask(PipelineTask):
             if os.path.exists(job_dir):
                 for i in os.listdir(job_dir):
                     if os.path.isfile(os.path.join(job_dir,i)) and self.provisioner in i:
-		        job_store = i
+                        job_store = i
                         toil_args.restart = True
                         break
             if toil_args.restart is not True:
@@ -1973,15 +1975,19 @@ class Consensus(PipelineWrapperTask):
         base_dir = os.path.join(pipeline_args.out_dir, 'consensus_gene_set')
         # grab the genePred of every mode
         args = tools.misc.HashableNamespace()
-        gp_list = [TransMap.get_args(pipeline_args, genome).filtered_tm_gp]
         args.tx_modes = ['transMap']
         args.denovo_tx_modes = []
-        if pipeline_args.augustus is True:
-            gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tm_gp)
-            args.tx_modes.append('augTM')
-        if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
-            gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tmr_gp)
-            args.tx_modes.append('augTMR')
+        if genome == pipeline_args.ref_genome:
+            gp_list = [ReferenceFiles.get_args(pipeline_args, genome).annotation_gp]
+        else:
+            gp_list = [TransMap.get_args(pipeline_args, genome).filtered_tm_gp]
+            # augustus modes only apply to non-reference genomes
+            if pipeline_args.augustus is True:
+                gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tm_gp)
+                args.tx_modes.append('augTM')
+            if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
+                gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tmr_gp)
+                args.tx_modes.append('augTMR')
         if pipeline_args.augustus_cgp is True:
             gp_list.append(AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome])
             args.denovo_tx_modes.append('augCGP')
@@ -2024,6 +2030,8 @@ class Consensus(PipelineWrapperTask):
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
             yield self.clone(ConsensusDriverTask, genome=target_genome)
+        if pipeline_args.annotate_reference:
+            yield self.clone(ConsensusDriverTask, genome=pipeline_args.ref_genome)
 
 
 class ConsensusDriverTask(RebuildableTask):
