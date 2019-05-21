@@ -1229,10 +1229,13 @@ class EvaluateTransMap(PipelineWrapperTask):
         tm_args = TransMap.get_args(pipeline_args, genome)
         args = tools.misc.HashableNamespace()
         args.db_path = pipeline_args.dbs[genome]
-        args.filtered_tm_psl = tm_args.filtered_tm_psl
         args.ref_psl = ReferenceFiles.get_args(pipeline_args).ref_psl
-        args.filtered_tm_gp = tm_args.filtered_tm_gp
-        args.annotation_gp = tm_args.annotation_gp
+        if genome == pipeline_args.ref_genome:
+            args.filtered_tm_psl = ReferenceFiles.get_args(pipeline_args).ref_psl
+            args.filtered_tm_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        else:
+            args.filtered_tm_psl = tm_args.filtered_tm_psl
+            args.filtered_tm_gp = tm_args.filtered_tm_gp
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.genome = genome
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
@@ -1248,6 +1251,9 @@ class EvaluateTransMap(PipelineWrapperTask):
         for target_genome in pipeline_args.target_genomes:
             tm_eval_args = EvaluateTransMap.get_args(pipeline_args, target_genome)
             yield self.clone(EvaluateTransMapDriverTask, tm_eval_args=tm_eval_args, genome=target_genome)
+        if pipeline_args.annotate_reference is True:
+            tm_eval_args = EvaluateTransMap.get_args(pipeline_args, pipeline_args.ref_genome)
+            yield self.clone(EvaluateTransMapDriverTask, tm_eval_args=tm_eval_args, genome=pipeline_args.ref_genome)
 
 
 class EvaluateTransMapDriverTask(PipelineTask):
@@ -1978,7 +1984,7 @@ class Consensus(PipelineWrapperTask):
         args.tx_modes = ['transMap']
         args.denovo_tx_modes = []
         if genome == pipeline_args.ref_genome:
-            gp_list = [ReferenceFiles.get_args(pipeline_args, genome).annotation_gp]
+            gp_list = [ReferenceFiles.get_args(pipeline_args).annotation_gp]
         else:
             gp_list = [TransMap.get_args(pipeline_args, genome).filtered_tm_gp]
             # augustus modes only apply to non-reference genomes
@@ -1996,7 +2002,6 @@ class Consensus(PipelineWrapperTask):
             args.denovo_tx_modes.append('augPB')
         args.gp_list = gp_list
         args.genome = genome
-        args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
         args.augustus_cgp = pipeline_args.augustus_cgp
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
