@@ -263,7 +263,7 @@ def parse_verbose(verbose):
     for l in open(verbose):
         if l.startswith('align'):
             l = l.split()
-            aln_id = l[-3].split(':')[0].split(']')[1]
+            aln_id = l[-3].rsplit(':', 1)[0].split(']')[1]
             score = l[5]
             score = float(score.split('=')[1])
             scores[aln_id] = score
