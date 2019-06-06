@@ -732,6 +732,7 @@ def divide_clusters(clustered_reads, ref_names):
     Discards any cluster that does not contain members of both ref and non-ref.
 
     """
+    ref_names = set(ref_names)
     divided_clusters = {}
     for chrom in clustered_reads:
         for cluster_id, tx_list in clustered_reads[chrom].iteritems():
