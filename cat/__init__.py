@@ -215,8 +215,9 @@ class PipelineTask(luigi.Task):
                 raise ToolMissingException('singularity binary not found. Either install it or use a different option for --binary-mode.')
             os.environ['SINGULARITY_PULLFOLDER'] = args.work_dir
             os.environ['SINGULARITY_CACHEDIR'] = args.work_dir
-            check_call(['singularity', 'pull', '--name', 'cat.img',
-                'docker://quay.io/ucsc_cgl/cat:latest'])
+            if not os.path.isfile(os.path.join(args.work_dir, 'cat.img')):
+                check_call(['singularity', 'pull', '--name', 'cat.img',
+                    'docker://quay.io/ucsc_cgl/cat:latest'])
 
         # halStats is run below, before any validate() methods are called.
         if not tools.misc.is_exec('halStats'):
