@@ -78,7 +78,7 @@ class PipelineTask(luigi.Task):
     work_dir = luigi.Parameter(default='./cat_work')
     target_genomes = luigi.TupleParameter(default=None)
     annotate_ancestors = luigi.BoolParameter(default=False)
-    binary_mode = luigi.ChoiceParameter(choices=["docker", "local"], default='docker',
+    binary_mode = luigi.ChoiceParameter(choices=["docker", "local", "singularity"], default='docker',
                                         significant=False)
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)

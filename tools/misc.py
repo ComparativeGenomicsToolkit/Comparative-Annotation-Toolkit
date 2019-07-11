@@ -68,14 +68,15 @@ def is_exec(program):
         # We assume containerized versions don't need to check if the
         # tools are installed--they definitely are, and calling docker
         # just to run "which" can be surprisingly expensive. But we do
-        # check for the presence of Docker, since that should take
+        # check for the presence of Docker or Singularity, since that should take
         # only a few ms.
-        cmd = ['which', 'docker']
+        binary_mode = os.environ.get('CAT_BINARY_MODE')
+        cmd = ['which', binary_mode]
         pl = Procline(cmd, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null')
         try:
             pl.wait()
         except ProcException:
-            raise ToolMissingException("Docker not found. Either install Docker, or install CAT's dependencies and use --binary-mode local.")
+            raise ToolMissingException("{0} not found. Either install {0}, or install CAT's dependencies and use --binary-mode local.".format(binary_mode))
     cmd = ['which', program]
     try:
         return procOps.call_proc_lines(cmd)[0].endswith(program)
