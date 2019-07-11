@@ -75,13 +75,15 @@ def is_exec(program):
         pl = Procline(cmd, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null')
         try:
             pl.wait()
+            return True
         except ProcException:
             raise ToolMissingException("{0} not found. Either install {0}, or install CAT's dependencies and use --binary-mode local.".format(binary_mode))
-    cmd = ['which', program]
-    try:
-        return procOps.call_proc_lines(cmd)[0].endswith(program)
-    except ProcException:
-        return False
+    else:
+        cmd = ['which', program]
+        try:
+            return procOps.call_proc_lines(cmd)[0].endswith(program)
+        except ProcException:
+            return False
 
 
 def samtools_version():
