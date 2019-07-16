@@ -213,6 +213,8 @@ def merge_filtered_bams(job, filtered_file_ids):
     fofn = tools.fileOps.get_tmp_toil_file()
     with open(fofn, 'w') as outf:
         for l in local_paths:
+            if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                l = tools.procOps.singularify_arg(l)
             outf.write(l + '\n')
     out_bam = tools.fileOps.get_tmp_toil_file()
     cmd = ['samtools', 'merge', '-b', fofn, out_bam]
