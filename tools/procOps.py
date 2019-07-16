@@ -13,7 +13,9 @@ import time
 logger = logging.getLogger(__name__)
 
 def cmdLists(cmd):
-    """creates dockers commands from lists or a list of lists
+    """
+    creates docker or singularity command(s) from either a
+    single command or a list of commands.
     """
     if os.environ.get('CAT_BINARY_MODE') == 'docker':
         if isinstance(cmd[0],list):
@@ -23,6 +25,12 @@ def cmdLists(cmd):
             return docList
         else:
             return getDockerCommand('quay.io/ucsc_cgl/cat',cmd)
+    elif os.environ.get('CAT_BINARY_MODE') == 'singularity':
+        img = os.path.join(os.environ.get('SINGULARITY_PULLFOLDER'), 'cat.img')
+        if isinstance(cmd[0], list):
+            return list(map(lambda c: getSingularityCommand(img, c), cmd))
+        else:
+            return getSingularityCommand(img, cmd)
     else:
         return cmd
 
@@ -171,3 +179,60 @@ def getDockerCommand(image, cmd):
         work_dir = os.path.abspath(work_dir)
         dockerPreamble += ['-v', work_dir + ':' + work_dir]
     return dockerPreamble + [image] + cmd
+
+def getSingularityCommand(image, cmd):
+    """
+    Takes a command and turns it into a Singularity command
+    that will run the original command inside a container.
+
+    image: the Singularity image to use. For some reason,
+        it is much faster to give Singularity a pre-built
+        '.img' file than to give it a URL, even if it has
+        already cached that URL.
+    cmd: command to turn into a Singularity command,
+        represented as a list of arguments
+    """
+    # singularity only allows mounting at existing mount
+    # points by default, so rather than mounting the
+    # directory for each file argument as in
+    # getDockerCommand, we mount the entire root of the
+    # outside file system in '/mnt' of the container, and
+    # then prepend '/mnt' to all file paths in the command.
+    singularity_cmd = ['singularity', 'exec', '-B', '/:/mnt', image]
+    for arg in cmd:
+        if arg.startswith('-') and len(arg.split('=')) == 2:
+            # We assume this is -option=value syntax. Special-case
+            # this to check if the value is a path.
+            option, value = arg.split('=')
+            singularified_arg = '='.join([option, singularify_arg(value)])
+        else:
+            singularified_arg = singularify_arg(arg)
+
+        singularity_cmd.append(singularified_arg)
+
+    return singularity_cmd
+
+def singularify_arg(arg, singularity_mount_point='/mnt'):
+    """
+    Check to see if 'arg' is a path; if it is, modify it to
+    be accessible from inside the singularity container.
+
+    arg: String containing an argument to singularify
+    singularity_mount_point: the place where the outside
+        root is mounted in the singularity container
+
+    Returns: arg if arg is not a path, or a container-
+        accessible version of arg if it is a path
+    """
+    # first, check to see if this argument is a file,
+    # or could potentially be a file in the future, by
+    # seeing if its dirname exists
+    if os.path.exists(os.path.dirname(arg)):
+        # prepend /mnt to the path because we mounted
+        # '/' of the outside to '/mnt' of the container
+        # (os.path.join() cannot be used to prepend
+        # like this)
+        arg = '/mnt/' + os.path.abspath(arg)
+
+    return arg
+

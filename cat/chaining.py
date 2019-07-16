@@ -4,6 +4,7 @@ Toil program to generate UCSC chains and nets between two genomes in a HAL file.
 import argparse
 import collections
 import logging
+import os
 
 from toil.fileStore import FileID
 from toil.common import Toil
@@ -108,6 +109,8 @@ def merge(job, chain_files, genome):
     with open(fofn, 'w') as outf:
         for i, file_id in enumerate(chain_files):
             local_path = job.fileStore.readGlobalFile(file_id, userPath='{}.chain'.format(i))
+            if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                local_path = tools.procOps.singularify_arg(local_path)
             outf.write(local_path + '\n')
     cmd = ['chainMergeSort', '-inputList={}'.format(fofn), '-tempDir={}/'.format(job.fileStore.getLocalTempDir())]
     tmp_chain_file = tools.fileOps.get_tmp_toil_file()

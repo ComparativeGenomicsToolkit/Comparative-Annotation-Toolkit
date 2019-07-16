@@ -53,14 +53,20 @@ def hgm(args):
                     supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
                 else:
                     supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
-                tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
+                if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                    tools.fileOps.print_row(outf, [genome] + map(tools.procOps.singularify_arg, [gtf, supplementary_gff]))
+                else:
+                    tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
                 supplementary_gffs.append(supplementary_gff)
             if args.ref_genome not in args.in_gtf:  # we are not running CGP, and so have no GTF for the reference
                 dummy_gtf = tools.fileOps.get_tmp_file()
                 tools.fileOps.touch(dummy_gtf)
                 supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
                                                              args.annotation_gp)
-                tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
+                if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                    tools.fileOps.print_row(outf, [args.ref_genome] + map(tools.procOps.singularify_arg, [dummy_gtf, supplementary_gff]))
+                else:
+                    tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
                 supplementary_gffs.append(supplementary_gff)
             else:
                 dummy_gtf = None
