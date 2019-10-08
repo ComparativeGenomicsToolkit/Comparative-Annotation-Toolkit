@@ -21,6 +21,13 @@ if __name__ == '__main__':
     with tools.fileOps.TemporaryFilePath() as attrs, tools.fileOps.TemporaryFilePath() as gp:
         cmd = tools.gff3.convert_gff3_cmd(attrs, args.gff3)
         tools.procOps.run_proc(cmd, stdout=gp)
+        # check for duplicates
+        c = collections.Counter()
+        for l in open(gp):
+            l = l.split()
+            c[l[0]] += 1
+        duplicates = {x for x, y in c.iteritems() if y > 1}
+        assert len(duplicates) == 1, 'Found {} duplicate genes: {}'.format(len(duplicates), '\n'.join(duplicates))®
         df = tools.gff3.parse_gff3(attrs, gp)
         tx_dict = tools.transcripts.get_gene_pred_dict(gp)
     assert len(tx_dict) == len(df)

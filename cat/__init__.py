@@ -105,7 +105,7 @@ class PipelineTask(luigi.Task):
     hub_email = luigi.Parameter(default='NoEmail', significant=False)
     # Paralogy detection options
     global_near_best = luigi.FloatParameter(default=0.15, significant=False)
-    filter_overlapping_genes = luigi.BoolParameter(default=True, significant=True)
+    filter_overlapping_genes = luigi.BoolParameter(default=False, significant=True)
     # consensus options
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
