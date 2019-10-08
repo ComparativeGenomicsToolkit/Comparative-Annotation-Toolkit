@@ -105,6 +105,7 @@ class PipelineTask(luigi.Task):
     hub_email = luigi.Parameter(default='NoEmail', significant=False)
     # Paralogy detection options
     global_near_best = luigi.FloatParameter(default=0.15, significant=False)
+    filter_overlapping_genes = luigi.BoolParameter(default=True, significant=True)
     # consensus options
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
@@ -179,6 +180,7 @@ class PipelineTask(luigi.Task):
 
         # user flags for paralog resolution
         args.set('global_near_best', self.global_near_best, True)
+        args.set('filter_overlapping_genes', self.filter_overlapping_genes, True)
         
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
@@ -467,23 +469,21 @@ class ToilTask(PipelineTask):
         toil_args.stats = True
         toil_args.defaultPreemptable = True
         if self.zone is not None:
-            #job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
-
-            job_dir = os.path.join(work_dir, 'jobStore') # Directory where the AWS directory file is
+            job_dir = os.path.join(work_dir, 'jobStore')  # Directory where the AWS directory file is
             if os.path.exists(job_dir):
                 for i in os.listdir(job_dir):
-                    if os.path.isfile(os.path.join(job_dir,i)) and self.provisioner in i:
-		        job_store = i
+                    if os.path.isfile(os.path.join(job_dir, i)) and self.provisioner in i:
+                        job_store = i
                         toil_args.restart = True
                         break
             if toil_args.restart is not True:
-                job_store = self.provisioner + ':' + self.zone + ':' + ''.join(random.choice(string.ascii_lowercase) for m in range(7))
+                job_store = self.provisioner + ':' + self.zone + ':' + ''.join(
+                    random.choice(string.ascii_lowercase) for _ in range(7))
                 try:
                     os.makedirs(job_dir)
                 except OSError:
                     pass
-                open(os.path.join(job_dir,job_store),'w+').close() # Creates empty file with the title as the AWS jobstore
-
+                tools.fileOps.touch(os.path.join(job_dir, job_store))
         else:
             job_store = os.path.join(work_dir, 'jobStore')
             tools.fileOps.ensure_file_dir(job_store)
@@ -513,7 +513,6 @@ class ToilTask(PipelineTask):
                                '--workDir.')
         if toil_args.workDir is not None:
             tools.fileOps.ensure_dir(toil_args.workDir)
-        #job_store = 'file:' + job_store
         toil_args.jobStore = job_store
         self.job_store = job_store
         return toil_args
@@ -1127,12 +1126,13 @@ class TransMap(PipelineWrapperTask):
         args.ref_db_path = pipeline_args.dbs[pipeline_args.ref_genome]
         args.db_path = pipeline_args.dbs[genome]
         args.global_near_best = pipeline_args.global_near_best
+        args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes
         return args
 
     def validate(self):
         for tool in ['pslMap', 'pslRecalcMatch', 'pslMapPostChain', 'pslCDnaFilter', 'clusterGenes']:
             if not tools.misc.is_exec(tool):
-                    raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
+                raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
     def requires(self):
         self.validate()
@@ -1203,7 +1203,8 @@ class FilterTransMap(PipelineTask):
         logger.info('Filtering transMap PSL for {}.'.format(self.genome))
         table_target, psl_target, json_target, gp_target = self.output()
         resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp,
-                                      tm_args.ref_db_path, psl_target, tm_args.global_near_best, json_target)
+                                      tm_args.ref_db_path, psl_target, tm_args.global_near_best,
+                                      tm_args.filter_overlapping_genes, json_target)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
@@ -2196,7 +2197,7 @@ class ReportStats(PipelineTask):
             toil_core_time = round(sum(toil_stats.TotalTime) / 3600, 1)
             total = core_time + toil_core_time
             logger.info('Local core time: {:,} hours. Toil core time: {:,} hours. '
-                    'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
+                        'Total computation time: {:,} hours.'.format(core_time, toil_core_time, total))
         self.output().touch()
 
 
@@ -2542,7 +2543,6 @@ class BgpTrack(TrackTask):
             tools.procOps.run_proc(cmd, stderr='/dev/null')
             tools.fileOps.atomic_install(out_path, track.path)
 
-
         with trackdb.open('w') as outf:
             sanitized_label = self.label.replace(' ', '_').replace('.', '_')
             outf.write(bgp_template.format(name='{}_{}'.format(sanitized_label, self.genome),
@@ -2584,7 +2584,8 @@ class ConsensusTrack(TrackTask):
                        info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
-                       info.paralogy, info.frameshift, info.exon_annotation_support,
+                       info.paralogy, info.collapsed_gene_ids, info.collapsed_gene_names,
+                       info.frameshift, info.exon_annotation_support,
                        info.intron_annotation_support, info.transcript_class, info.transcript_modes,
                        info.valid_start, info.valid_stop, info.proper_orf]
                 if has_rnaseq:
@@ -2599,7 +2600,7 @@ class ConsensusTrack(TrackTask):
         tools.procOps.run_proc(['bedSort', tmp_gp.path, tmp_gp.path])
         with tools.fileOps.TemporaryFilePath() as out_path:
             cmd = ['bedToBigBed', '-extraIndex=name,name2,txId,geneName,sourceGene,sourceTranscript,alignmentId',
-                   '-type=bed12+21', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, out_path]
+                   '-type=bed12+23', '-tab', '-as={}'.format(as_file.path), tmp_gp.path, chrom_sizes, out_path]
             tools.procOps.run_proc(cmd, stderr='/dev/null')
             tools.fileOps.atomic_install(out_path, track.path)
 
@@ -2910,6 +2911,8 @@ def construct_consensus_gp_as(has_rna, has_pb):
     string alignmentId;  "Alignment ID"
     lstring alternativeSourceTranscripts;    "Alternative source transcripts"
     lstring Paralogy;    "Paralogous alignment IDs"
+    lstring collapsedGeneIds;   "Collapsed Gene IDs"
+    lstring collapsedGeneNames;  "Collapsed Gene Names"
     string frameshift;  "Frameshifted relative to source?"
     lstring exonAnnotationSupport;   "Exon support in reference annotation"
     lstring intronAnnotationSupport;   "Intron support in reference annotation"
