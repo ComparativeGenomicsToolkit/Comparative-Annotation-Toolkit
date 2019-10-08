@@ -2029,6 +2029,7 @@ class Consensus(PipelineWrapperTask):
         args.denovo_exon_support = pipeline_args.denovo_exon_support
         args.require_pacbio_support = pipeline_args.require_pacbio_support
         args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
+        args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes
         return args
 
     def validate(self):

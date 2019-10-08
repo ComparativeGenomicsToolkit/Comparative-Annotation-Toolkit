@@ -136,7 +136,10 @@ def generate_consensus(args):
                                                                          args.db_path, tx_dict, metrics,
                                                                          args.require_pacbio_support)
 
-    gene_resolved_consensus = resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx_dict)
+    if args.filter_overlapping_genes is True:
+        gene_resolved_consensus = resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx_dict)
+    else:
+        gene_resolved_consensus = deduplicated_strand_resolved_consensus
 
     # sort by genomic interval for prettily increasing numbers
     final_consensus = sorted(gene_resolved_consensus,
