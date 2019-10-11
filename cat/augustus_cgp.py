@@ -294,8 +294,6 @@ def join_genes(job, gff_chunks):
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
         for (chrom, start, chunksize), chunk in gff_chunks.iteritems():
             local_path = job.fileStore.readGlobalFile(chunk)
-            if os.environ.get('CAT_BINARY_MODE') == 'singularity':
-                local_path = tools.procOps.singularify_arg(local_path)
             fofn_handle.write(local_path + '\n')
             raw_handle.write('## BEGIN CHUNK chrom: {} start: {} chunksize: {}\n'.format(chrom, start, chunksize))
             for line in open(local_path):
