@@ -24,6 +24,9 @@ if __name__ == '__main__':
         df = tools.gff3.parse_gff3(attrs, gp)
         tx_dict = tools.transcripts.get_gene_pred_dict(gp)
     assert len(tx_dict) == len(df)
+    exons = {len(x.exon_intervals) for x in tx_dict.itervalues()}
+    if len(exons) == 1:
+        print 'WARNING: no multi-exonic transcripts found'
     assert tx_dict.viewkeys() == set(df.index)
     genes = {x.name2 for x in tx_dict.itervalues()}
     assert genes == set(df.GeneId)

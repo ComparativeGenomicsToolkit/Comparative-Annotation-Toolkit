@@ -47,7 +47,7 @@ def parse_gff3(annotation_attrs, annotation_gp):
             # Gencode also includes the gene name on the transcript level, so it is carried over.
             # Ensembl does not do this, but we can infer this via the regular schema Name-Version
             # However, Ensembl also does not always include a Name tag, so we have to account for this as well
-            if 'transcript' in d['ID']:  # probably Ensembl
+            if 'ID' in d and 'transcript' in d['ID']:  # probably Ensembl
                 gene_id = d['Parent'].replace('gene:', '')
                 if 'Name' in d:
                     gene_name = d['Name'].split('-')[0]
