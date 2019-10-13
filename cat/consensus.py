@@ -136,7 +136,10 @@ def generate_consensus(args):
                                                                          args.db_path, tx_dict, metrics,
                                                                          args.require_pacbio_support)
 
-    gene_resolved_consensus = resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx_dict)
+    if args.filter_overlapping_genes is True:
+        gene_resolved_consensus = resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx_dict)
+    else:
+        gene_resolved_consensus = deduplicated_strand_resolved_consensus
 
     # sort by genomic interval for prettily increasing numbers
     final_consensus = sorted(gene_resolved_consensus,
@@ -895,7 +898,6 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             yield [chrom, 'CAT', 'exon', exon.start + 1, exon.stop, score, exon.strand, '.', attrs_field]
             cds_interval = exon.intersection(tx_obj.coding_interval)
             if cds_interval is not None:
-                #attrs['reference_support'] = find_feature_support(attrs, 'cds_annotation_support', cds_i)
                 score, attrs_field = convert_attrs(attrs, 'CDS:{}:{}'.format(tx_id, cds_i))
                 cds_i += 1
                 yield [chrom, 'CAT', 'CDS', cds_interval.start + 1, cds_interval.stop, score, exon.strand,
@@ -928,7 +930,6 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     with consensus_gff3.open('w') as out_gff3:
         out_gff3.write('##gff-version 3\n')
         for chrom in sorted(consensus_gene_dict):
-            #out_gff3.write('###sequence-region {}\n'.format(chrom))
             for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
                 tx_objs, attrs_list = zip(*tx_list)
                 tx_lines = [generate_gene_record(chrom, tx_objs, gene_id, attrs_list)]
@@ -951,4 +952,3 @@ def write_consensus_fastas(consensus_gene_dict, consensus_fasta, consensus_prote
                     tools.bio.write_fasta(cfa, tx.name, tx.get_mrna(seq_dict))
                     if tx.cds_size > 0:
                         tools.bio.write_fasta(cpfa, tx.name, tx.get_protein_sequence(seq_dict))
-            

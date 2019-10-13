@@ -38,7 +38,7 @@ import tools.sqlInterface
 pd.options.mode.chained_assignment = None
 
 
-def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, json_tgt):
+def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes, json_tgt):
     """
     Entry point for transMap filtering.
     :param tm_psl: input PSL
@@ -47,6 +47,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     :param db_path: Path to reference database, to get gene name to transcript name mapping
     :param psl_tgt: luigi.LocalTarget() object for PSL output
     :param global_near_best: globalNearBest value to pass to PslCDnaFilter
+    :param filter_overlapping_genes: Should we filter out overlapping genes?
     :param json_tgt: luigi.localTarget() object for JSON output
     :return:
     """
@@ -143,9 +144,11 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     metrics['Gene Family Collapse'] = collections.defaultdict(lambda: collections.Counter())
     coding_merged_df, coding_collapse_filtered = filter_clusters(coding_clustered, transcript_gene_map,
-                                                                 gene_name_map, scores, metrics, gene_biotype_map)
+                                                                 gene_name_map, scores, metrics, gene_biotype_map,
+                                                                 filter_overlapping_genes)
     noncoding_merged_df, noncoding_collapse_filtered = filter_clusters(noncoding_clustered, transcript_gene_map,
-                                                                       gene_name_map, scores, metrics, gene_biotype_map)
+                                                                       gene_name_map, scores, metrics, gene_biotype_map,
+                                                                       filter_overlapping_genes)
 
     merged_collapse_filtered = pd.concat([coding_collapse_filtered, noncoding_collapse_filtered])
     merged_df = pd.concat([coding_merged_df, noncoding_merged_df])
@@ -293,7 +296,8 @@ def construct_alt_loci(group, best_cluster):
     return ','.join('{}:{}-{}'.format(x.chromosome, x.start, x.stop) for x in merged_intervals)
 
 
-def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metrics, gene_biotype_map):
+def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metrics, gene_biotype_map,
+                    filter_overlapping_genes):
     """
     Wrapper for taking the output of clusterGenes and filtering it
     """
@@ -326,7 +330,10 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
             collapsed_gene_names = {gene_name_map[x] for x in collapsed_gene_ids}
             genes_to_remove.update(collapsed_gene_ids)
             collapsed_genes.append([best_gene, ','.join(collapsed_gene_ids), ','.join(collapsed_gene_names)])
-    collapse_filtered = paralog_filtered[~paralog_filtered['gene_id'].isin(genes_to_remove)]
+    if filter_overlapping_genes is True:
+        collapse_filtered = paralog_filtered[~paralog_filtered['gene_id'].isin(genes_to_remove)]
+    else:
+        collapse_filtered = paralog_filtered
     collapsed_df = pd.DataFrame(collapsed_genes, columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
     merged_df = collapsed_df.merge(paralog_df, how='outer', on='GeneId')
     return merged_df, collapse_filtered
