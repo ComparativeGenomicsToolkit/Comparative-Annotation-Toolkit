@@ -25,6 +25,7 @@ import os
 import json
 import collections
 import hashlib
+from copy import deepcopy
 import pandas as pd
 import tools.nameConversions
 import tools.transcripts
@@ -79,6 +80,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
         """Hacky way to hash an alignment"""
         m = hashlib.sha1()
         for l in [aln.t_name, aln.t_start, aln.t_end, aln.matches, aln.mismatches, aln.block_count,
+                  tools.nameConversions.strip_alignment_numbers(aln.q_name),
                   tuple(aln.t_starts), tuple(aln.q_starts), tuple(aln.block_sizes)]:
             m.update(str(l))
         return m.hexdigest()
@@ -91,6 +93,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     with tools.fileOps.TemporaryFilePath() as local_tmp, tools.fileOps.TemporaryFilePath() as strip_tmp:
         with open(strip_tmp, 'w') as outf:
             for rec in unfiltered.itervalues():
+                rec = deepcopy(rec)
                 rec.q_name = tools.nameConversions.strip_alignment_numbers(rec.q_name)
                 tools.fileOps.print_row(outf, rec.psl_string())
         cmd = ['pslCDnaFilter', '-globalNearBest={}'.format(global_near_best),
