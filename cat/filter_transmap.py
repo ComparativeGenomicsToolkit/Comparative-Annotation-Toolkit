@@ -85,14 +85,14 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
         return m.hexdigest()
 
     unfiltered_hash_table = {}
-    for aln_id, aln in unfiltered.iteritems():
+    for aln_id, aln in size_filtered.iteritems():
         stripped_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         unfiltered_hash_table[hash_aln(aln, stripped_id)] = aln_id
-    assert len(unfiltered_hash_table) == len(unfiltered)
+    assert len(unfiltered_hash_table) == len(size_filtered)
 
     with tools.fileOps.TemporaryFilePath() as local_tmp, tools.fileOps.TemporaryFilePath() as strip_tmp:
         with open(strip_tmp, 'w') as outf:
-            for rec in unfiltered.itervalues():
+            for rec in size_filtered.itervalues():
                 rec = deepcopy(rec)
                 rec.q_name = tools.nameConversions.strip_alignment_numbers(rec.q_name)
                 tools.fileOps.print_row(outf, rec.psl_string())
