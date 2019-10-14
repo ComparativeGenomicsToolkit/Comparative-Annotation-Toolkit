@@ -76,18 +76,18 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     # Construct a hash of alignment metrics to alignment IDs
     # The reason for this is that pslCDnaFilter rearranges them internally, so we lose order information
 
-    def hash_aln(aln):
+    def hash_aln(aln, aln_id):
         """Hacky way to hash an alignment"""
         m = hashlib.sha1()
         for l in [aln.t_name, aln.t_start, aln.t_end, aln.matches, aln.mismatches, aln.block_count,
-                  tools.nameConversions.strip_alignment_numbers(aln.q_name),
-                  tuple(aln.t_starts), tuple(aln.q_starts), tuple(aln.block_sizes)]:
+                  tuple(aln.t_starts), tuple(aln.q_starts), tuple(aln.block_sizes), aln_id]:
             m.update(str(l))
         return m.hexdigest()
 
     unfiltered_hash_table = {}
     for aln_id, aln in unfiltered.iteritems():
-        unfiltered_hash_table[hash_aln(aln)] = aln_id
+        stripped_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+        unfiltered_hash_table[hash_aln(aln, stripped_id)] = aln_id
     assert len(unfiltered_hash_table) == len(unfiltered)
 
     with tools.fileOps.TemporaryFilePath() as local_tmp, tools.fileOps.TemporaryFilePath() as strip_tmp:
@@ -103,7 +103,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
         filtered_alns = list(tools.psl.psl_iterator(local_tmp))
 
     # load globalBest IDs by using the hash table to figure out which ones we had
-    global_best = {unfiltered[unfiltered_hash_table[hash_aln(aln)]] for aln in filtered_alns}
+    global_best = {unfiltered[unfiltered_hash_table[hash_aln(aln, aln.q_name)]] for aln in filtered_alns}
     global_best_txs = [unfiltered_tx_dict[aln.q_name] for aln in global_best]
 
     # report counts by biotype
