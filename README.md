@@ -123,6 +123,8 @@ As described above, the primary method to executing the pipeline is to follow th
 
 ## Filtering and consensus finding options
 
+`--filter-overlapping-genes`: Should genes that get flagged as overlapping be removed? After consensus finding is finished, instances of gene family collapse or paralog mis-assignment may lead to overlapping CDS intervals on different genes. This also in some instances may be a feature of the original annotation set. However, some annotation databases do not like this, so this flag will remove all such instances and resolve them down to one gene. 
+
 `--intron-rnaseq-support`: Amount of RNA-seq intron support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
 `--exon-rnaseq-support`: Amount of RNA-seq exon support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
