@@ -2,7 +2,7 @@
 Represent continuous genomic coordinates. Allows for coordinate arithmetic.
 """
 import mathOps
-from bio import reverse_complement
+from bio import reverse_complement, translate_sequence
 
 __author__ = 'Ian Fiddes'
 
@@ -218,6 +218,20 @@ class ChromosomeInterval(object):
         elif self.strand is '-':
             return reverse_complement(seq_dict[self.chromosome][self.start: self.stop])
 
+    def get_protein_sequence(self, seq_dict, frame, truncate=True):
+        """
+        Returns the protein sequence for this ChromosomeInterval, in frame.
+        :param seq_dict: Dictionary-like object with DNA sequences.
+        :param frame: an integer between 0 and 2
+        :param truncate: Truncate to multiple of 3. Do this if you are on an non-terminal exon.
+        :return: A sequence string.
+        """
+        seq = self.get_sequence(seq_dict)
+        if truncate:
+            return translate_sequence(seq[frame:len(seq) - len(seq) % 3])
+        else:
+            return translate_sequence(seq[frame:len(seq)])
+
 
 def gap_merge_intervals(intervals, gap):
     """
@@ -241,7 +255,7 @@ def gap_merge_intervals(intervals, gap):
 
 def union_of_intervals(intervals):
     """
-    Takes an interable of intervals and finds the union of them. Will fail if they are not on the same chromosome
+    Takes an iterable of intervals and finds the union of them. Will fail if they are not on the same chromosome
     :param intervals: Iterable of ChromosomeIntervals
     :return: List of new ChromosomeIntervals
     """

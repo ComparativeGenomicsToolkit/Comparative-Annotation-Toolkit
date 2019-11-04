@@ -109,14 +109,19 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     # report counts by biotype
     grouped = tools.psl.group_alignments_by_qname(global_best)
-    metrics = {'Paralogy': collections.defaultdict(lambda: collections.Counter())}
+    unfiltered_grouped = tools.psl.group_alignments_by_qname(unfiltered)
+    metrics = {'Paralogy': collections.defaultdict(lambda: collections.Counter()),
+               'UnfilteredParalogy': collections.defaultdict(lambda: collections.Counter())}
     paralogy_df = []
     for tx_id, alns in grouped.iteritems():
         biotype = transcript_biotype_map[tx_id]
-        paralogy_df.append([tx_id, ','.join(sorted([x.q_name for x in alns if x.q_name not in global_best_ids]))])
+        putative_paralogs = ','.join(sorted([x.q_name for x in alns if x.q_name not in global_best_ids]))
+        all_alns = ','.join(sorted([x.q_name for x in unfiltered_grouped[tx_id] if x.q_name not in global_best_ids]))
+        paralogy_df.append([tx_id, putative_paralogs, all_alns])
         metrics['Paralogy'][biotype][len(alns)] += 1
+        metrics['Paralogy'][biotype][len(unfiltered_grouped[tx_id])] += 1
 
-    paralogy_df = pd.DataFrame(paralogy_df, columns=['TranscriptId', 'Paralogy'])
+    paralogy_df = pd.DataFrame(paralogy_df, columns=['TranscriptId', 'Paralogy', 'UnfilteredParalogy'])
 
     # run pslCDnaFilter again, with no options, to get scores
     with tools.fileOps.TemporaryFilePath() as tmp_verbose:

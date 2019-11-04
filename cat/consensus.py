@@ -14,8 +14,9 @@ GFF3 tags generated in this process:
 4. transcript_mode: The name of the mode of operation that generated this transcript
 5. transcript_class: One of possible_paralog, poor_alignment, putative_novel, putative_novel_isoform, ortholog
 6. paralogy: The names of paralogous alignments
-7. gene_biotype: gene biotype
-8. transcript_biotype: transcript biotype
+7. unfiltered_paralogy: The names of all alignments without globalNearBest filtering.
+8. gene_biotype: gene biotype
+9. transcript_biotype: transcript biotype
 10. alternative_source_transcripts: Other possible transcripts, if this was collapsed as the result of deduplication
 11. gene_alternate_contigs: contigs that this gene was also found on are comma separated in this tag.
 12: transcript_modes: The mode(s) that generated this transcript
@@ -440,6 +441,8 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
     if best_series.Paralogy is not None:
         d['paralogy'] = best_series.Paralogy
+    if best_series.UnfilteredParalogy is not None:
+        d['unfiltered_paralogy'] = best_series.UnfilteredParalogy
     if best_series.GeneAlternateLoci is not None:
         d['gene_alternate_contigs'] = best_series.GeneAlternateLoci
     if best_series.CollapsedGeneIds is not None:

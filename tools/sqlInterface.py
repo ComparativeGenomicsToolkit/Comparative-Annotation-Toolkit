@@ -103,6 +103,7 @@ class TmFilterEval(MetricsColumns, Base):
     CollapsedGeneNames = Column(Text)
     CollapsedGeneIds = Column(Text)
     Paralogy = Column(Text)
+    UnfilteredParalogy = Column(Text)
 
 
 class TmMetrics(MetricsColumns, Base):

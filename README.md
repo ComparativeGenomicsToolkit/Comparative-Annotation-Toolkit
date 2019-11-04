@@ -428,10 +428,11 @@ A large range of plots are produced in `--output-dir/plots`. These include:
 8. `transmap_coverage.pdf`: A violinplot that shows the overall transcript coverage in the filtered transMap output. Provides a overall plot and a per-biotype plot.
 9.  `transmap_identity.pdf`: A violinplot that shows the overall transcript identity in the filtered transMap output. Provides a overall plot and a per-biotype plot.
 10. `missing_genes_transcripts.pdf`: Similar to `completeness.pdf`, this plot reports the number of genes and transcripts in the original annotation set not found on the target genomes.
-11. `paralogy.pdf`: Stacked bar charts of the number of alignments a given source transcript had in each target.
-12. `split_genes.pdf`: The number of transMap genes split within and between contigs.
-13. `transcript_modes.pdf`: The number of modes that supported a given comparative annotation. Applies only to protein coding transcripts derived from `transMap`, because `AugustusTMR` is not ran on non-coding inputs.
-14. `augustus_improvement.pdf`: A scatterplot + density plot reporting the improvement of primary consensus metrics when an `augustus` transcript was chosen over a transMap transcript. The density plot may fail in some cases.
+11. `paralogy.pdf`: Stacked bar charts of the number of alignments a given source transcript had in each target *after globalNearBest filtering*. This represents a best guess of true paralogy.
+12. `unfiltered_paralogy.pdf`: Stacked bar charts of the number of alignments a given source transcript had in each target. This represents all possible alignments for a given source transcript.
+13. `split_genes.pdf`: The number of transMap genes split within and between contigs.
+14. `transcript_modes.pdf`: The number of modes that supported a given comparative annotation. Applies only to protein coding transcripts derived from `transMap`, because `AugustusTMR` is not ran on non-coding inputs.
+15. `augustus_improvement.pdf`: A scatterplot + density plot reporting the improvement of primary consensus metrics when an `augustus` transcript was chosen over a transMap transcript. The density plot may fail in some cases.
 16. `coding_indels.pdf`: The rate of insertions, deletions and indels that are a multiple of 3 are reported from the final consensus set based on the pairwise alignments. Preference is given to the CDS space alignment, if it worked.
 17. `IsoSeq_isoform_validation.pdf`: The number of transcripts in the consensus set whose intron structure is exactly validated by at least one IsoSeq read.
 18. `gene_family_collapse.pdf`: The X-axis for each plot is the number of genes in the source transcript set that were collapsed into one locus, and the Y-axis is the number of this this occurred. So, for example, if X=1 and Y=200 that means there were 200 instances of 2 genes being collapsed into 1.
