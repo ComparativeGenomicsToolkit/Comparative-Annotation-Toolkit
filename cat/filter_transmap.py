@@ -105,6 +105,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     # load globalBest IDs by using the hash table to figure out which ones we had
     global_best = {unfiltered[unfiltered_hash_table[hash_aln(aln, aln.q_name)]] for aln in filtered_alns}
     global_best_txs = [unfiltered_tx_dict[aln.q_name] for aln in global_best]
+    global_best_ids = {x.name for x in global_best_txs}
 
     # report counts by biotype
     grouped = tools.psl.group_alignments_by_qname(global_best)
@@ -112,7 +113,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     paralogy_df = []
     for tx_id, alns in grouped.iteritems():
         biotype = transcript_biotype_map[tx_id]
-        paralogy_df.append([tx_id, ','.join(sorted([x.q_name for x in alns if x.q_name != tx_id]))])
+        paralogy_df.append([tx_id, ','.join(sorted([x.q_name for x in alns if x.q_name not in global_best_ids]))])
         metrics['Paralogy'][biotype][len(alns)] += 1
 
     paralogy_df = pd.DataFrame(paralogy_df, columns=['TranscriptId', 'Paralogy'])
