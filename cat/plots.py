@@ -178,7 +178,7 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_t
         df = df.sort_values('genome')
         for biotype, biotype_df in df.groupby('biotype'):
             for genome, genome_df in biotype_df.groupby('genome'):
-                high_para = genome_df[genome_df.Paralogy >= 4]['count'].sum()
+                high_para = genome_df[genome_df[key] >= 4]['count'].sum()
                 counts = dict(zip(genome_df[key], genome_df['count']))
                 r.append([biotype, genome, counts.get(1, 0), counts.get(2, 0), counts.get(3, 0), high_para])
         df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', u'\u2265 4'])

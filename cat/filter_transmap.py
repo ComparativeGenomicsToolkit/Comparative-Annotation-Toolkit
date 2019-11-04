@@ -117,9 +117,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
         biotype = transcript_biotype_map[tx_id]
         putative_paralogs = ','.join(sorted([x.q_name for x in alns if x.q_name not in global_best_ids]))
         all_alns = ','.join(sorted([x.q_name for x in unfiltered_grouped[tx_id] if x.q_name not in global_best_ids]))
-        paralogy_df.append([tx_id,
-                            putative_paralogs if putative_paralogs else None,
-                            all_alns if all_alns else None])
+        paralogy_df.append([tx_id, putative_paralogs, all_alns])
         metrics['Paralogy'][biotype][len(alns)] += 1
         metrics['UnfilteredParalogy'][biotype][len(unfiltered_grouped[tx_id])] += 1
 
