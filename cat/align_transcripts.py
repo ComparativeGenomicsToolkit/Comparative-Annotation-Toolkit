@@ -23,6 +23,7 @@ import tools.psl
 import tools.sqlInterface
 import tools.toilInterface
 import tools.transcripts
+import tools.parasail_wrapper
 
 
 def align_transcripts(args, toil_options):
@@ -90,7 +91,7 @@ def setup(job, args, input_file_ids):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)
             for chunk in group_transcripts(seq_iter):
-                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode, memory='8G', disk='2G')
+                j = job.addChildJobFn(run_aln_chunk, chunk, memory='8G', disk='2G')
                 results[out_path].append(j.rv())
 
     if len(results) == 0:
@@ -112,44 +113,25 @@ def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, 
             yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
-def run_blat_chunk(job, chunk, mode):
+def run_aln_chunk(job, chunk):
     """
-    Runs an alignment chunk through BLAT for either coding or non-coding transcripts
+    Runs a chunk of sequences through parasail alignment
     :param chunk: List of (tx_id, tx_seq, ref_tx_id, ref_tx_seq) tuples
     :param mode: One of ['mRNA', 'CDS']. Determines what mode of alignment we will perform.
     :return: List of PSL output
     """
-    def parse_blat(tmp_psl):
-        # filter for only + alignments, as we are expecting to be on the same strand
-        # translation alignments have explicit strand, and we only want ++
-        filter_strand = '+' if mode == 'mRNA' else '++'
-        psls = [psl for psl in tools.psl.psl_iterator(tmp_psl) if psl.strand == filter_strand]
-        if len(psls) == 0:
-            return None
-        longest = sorted(psls, key=lambda p: -p.coverage)[0]
-        return '\t'.join(longest.psl_string())
-
-    assert mode in ['mRNA', 'CDS']
-    tmp_ref = tools.fileOps.get_tmp_toil_file()
-    tmp_tgt = tools.fileOps.get_tmp_toil_file()
     tmp_psl = tools.fileOps.get_tmp_toil_file()
-    tmp_filtered_psl = tools.fileOps.get_tmp_toil_file()
     results = []
-    if mode == 'mRNA':
-        cmd = ['blat', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
-    else:  # mode == CDS. Filter these for problematic alignments that happen in edge cases
-        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
-        with open(tmp_ref, 'w') as tmp_ref_h:
-            tools.bio.write_fasta(tmp_ref_h, ref_tx_id, ref_tx_seq)
-        with open(tmp_tgt, 'w') as tmp_tgt_h:
-            tools.bio.write_fasta(tmp_tgt_h, tx_id, tx_seq)
-        tools.procOps.run_proc(cmd)
+        p = tools.parasail_wrapper.aln_nucleotides(tx_seq, tx_id, ref_tx_seq, ref_tx_id)
+        psl_str = '\t'.join(p.psl_string())
+        with open(tmp_psl, 'w') as outf:
+            outf.write(psl_str + '\n')
         try:
-            tools.procOps.run_proc(['pslCheck', '-quiet', tmp_psl, '-pass={}'.format(tmp_filtered_psl)])
+            tools.procOps.run_proc(['pslCheck', '-quiet', tmp_psl, '-pass={}'.format(tmp_psl)])
         except tools.pipeline.ProcException:
             pass
-        results.append(parse_blat(tmp_filtered_psl))
+        results.append(psl_str)
     return results
 
 

@@ -100,7 +100,7 @@ def setup_hints(job, input_file_ids):
         bam_path = job.fileStore.readGlobalFile(bam_file_id)
         sam_handle = pysam.Samfile(bam_path)
         # triple disk usage to deal with name sorted bam
-        disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id]) * 3
+        disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id]) * 3 + 2
         # generate reference grouping that will be used downstream until final cat step
         grouped_references = [tuple(x) for x in group_references(sam_handle)]
         for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():

@@ -31,7 +31,7 @@ Below is a full breakdown of the required dependencies if you are not using Dock
 
 By default, you don't need to worry about installing any of these. However, there are also binary dependencies that must be compiled and installed if you are not using the Docker container we provide.
 
-1. [Kent toolkit](https://github.com/ucscGenomeBrowser/kent). Follow the installation instructions there. Make sure you put the newly created `~/bin/$MACHTYPE` directory on your path. All of the binaries except for `blat` required by CAT are available pre-compiled on the [utilities page](http://hgdownload.soe.ucsc.edu/admin/exe/). The required tools are ` faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf blat pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed wigToBigWig`.
+1. [Kent toolkit](https://github.com/ucscGenomeBrowser/kent). Follow the installation instructions there. Make sure you put the newly created `~/bin/$MACHTYPE` directory on your path. All of the binaries required by CAT are available pre-compiled on the [utilities page](http://hgdownload.soe.ucsc.edu/admin/exe/). The required tools are ` faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed wigToBigWig`.
 2. [bedtools](http://bedtools.readthedocs.io/en/latest/).
 3. [samtools](http://www.htslib.org/) (1.3 or greater).
 4. [Augustus](http://bioinf.uni-greifswald.de/augustus/binaries/). Make sure you are installing `augustus >= 3.3.1`. If you want to use Augustus CGP, install the development version from the [Github repository](https://github.com/Gaius-Augustus/Augustus). You need to follow the instructions to compile `augustus` in comparative augustus mode. This requires that you modify a few lines in the `common.mk` file, and also need to have `sqlite3`, `lp-solve`, `bamtools`, and `libboost` installed. If you are using ubuntu, this should work:
@@ -51,7 +51,7 @@ By default, you don't need to worry about installing any of these. However, ther
 7. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl transMapPslToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl`
+`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl transMapPslToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl pal2nal.pl`
 
 # Running the pipeline
 
@@ -360,7 +360,7 @@ Which can be interpreted as 'species 0 had 6273 extrinsic hints (RNA-seq coverag
 
 ## AlignTranscripts
 
-Transcript alignment allows for `AugustusTM(R)` transcripts to be compared to their parental `transMap`. As a result, only protein coding transcripts are aligned. For each transcripts, alignment is performed by BLAT two ways -- in frame codon aware alignment, and mRNA alignment. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
+Transcript alignment allows for `AugustusTM(R)` transcripts to be compared to their parental `transMap`. As a result, only protein coding transcripts are aligned. For each transcripts, alignment is performed by parasail two ways -- CDS alignment, and mRNA alignment. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
 
 ## EvaluateTranscripts
 

@@ -19,7 +19,8 @@ setup(
         'numpy>=1.10',
         'scipy>=0.18.1',
         'bx-python>=0.7.1',
-        'bd2k-python-lib==1.14a1.dev48'
+        'bd2k-python-lib==1.14a1.dev48',
+        'parasail',
     ],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',
