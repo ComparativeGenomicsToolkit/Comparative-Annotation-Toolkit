@@ -52,7 +52,7 @@ def generate_plots(args):
     tx_modes_plot(consensus_data, args.ordered_genomes, args.tx_modes)
     tm_metrics_plot(tm_metrics, args.ordered_genomes, biotypes, transcript_biotype_map, args.tm_coverage,
                     args.tm_identity)
-    tm_para_plot(tm_data, args.ordered_genomes, biotypes, args.paralogy)
+    tm_para_plot(tm_data, args.ordered_genomes, biotypes, args.paralogy, args.unfiltered_paralogy)
     tm_gene_family_plot(tm_data, args.ordered_genomes, biotypes, args.gene_collapse)
     consensus_metrics_plot(consensus_data, args.ordered_genomes, biotypes, args.coverage, args.identity)
     missing_rate_plot(consensus_data, args.ordered_genomes, biotypes, args.missing)
@@ -162,38 +162,39 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
                 multipage_close(pdf, tight_layout=False)
 
 
-def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt):
+def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_tgt):
     """transMap paralogy plots"""
-    legend_labels = ['= 1', '= 2', '= 3', u'\u2265 4']
-    title_string = 'Proportion of transcripts that have multiple alignments'
-    biotype_title_string = 'Proportion of {} transcripts that have multiple alignments'
-    df = json_biotype_nested_counter_to_df(tm_data, 'Paralogy')
-    # we want a dataframe where each row is the counts, in genome order
-    # we construct the transpose first
-    r = []
-    df['Paralogy'] = pd.to_numeric(df['Paralogy'])
-    # make sure genomes are in order
-    df['genome'] = pd.Categorical(df['genome'], ordered_genomes, ordered=True)
-    df = df.sort_values('genome')
-    for biotype, biotype_df in df.groupby('biotype'):
-        for genome, genome_df in biotype_df.groupby('genome'):
-            high_para = genome_df[genome_df.Paralogy >= 4]['count'].sum()
-            counts = dict(zip(genome_df['Paralogy'], genome_df['count']))
-            r.append([biotype, genome, counts.get(1, 0), counts.get(2, 0), counts.get(3, 0), high_para])
-    df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', u'\u2265 4'])
-    sum_df = df.groupby('genome', sort=False).aggregate(sum).T
+    for key, tgt in [['Paralogy', para_tgt], ['UnfilteredParalogy', unfiltered_para_tgt]]:
+        legend_labels = ['= 1', '= 2', '= 3', u'\u2265 4']
+        title_string = 'Proportion of transcripts that have multiple alignments'
+        biotype_title_string = 'Proportion of {} transcripts that have multiple alignments'
+        df = json_biotype_nested_counter_to_df(tm_data, key)
+        # we want a dataframe where each row is the counts, in genome order
+        # we construct the transpose first
+        r = []
+        df[key] = pd.to_numeric(df[key])
+        # make sure genomes are in order
+        df['genome'] = pd.Categorical(df['genome'], ordered_genomes, ordered=True)
+        df = df.sort_values('genome')
+        for biotype, biotype_df in df.groupby('biotype'):
+            for genome, genome_df in biotype_df.groupby('genome'):
+                high_para = genome_df[genome_df[key] >= 4]['count'].sum()
+                counts = dict(zip(genome_df[key], genome_df['count']))
+                r.append([biotype, genome, counts.get(1, 0), counts.get(2, 0), counts.get(3, 0), high_para])
+        df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', u'\u2265 4'])
+        sum_df = df.groupby('genome', sort=False).aggregate(sum).T
 
-    plot_fn = generic_unstacked_barplot if len(df.columns) <= 5 else generic_stacked_barplot
-    box_label = 'Number of\nalignments'
-    with para_tgt.open('w') as outf, PdfPages(outf) as pdf:
-        plot_fn(sum_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes, box_label)
-        for biotype in biotypes:
-            biotype_df = biotype_filter(df, biotype)
-            if biotype_df is not None:
-                biotype_df = biotype_df.drop(['genome', 'biotype'], axis=1).T
-                title_string = biotype_title_string.format(biotype)
-                plot_fn(biotype_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes,
-                        box_label)
+        plot_fn = generic_unstacked_barplot if len(df.columns) <= 5 else generic_stacked_barplot
+        box_label = 'Number of\nalignments'
+        with tgt.open('w') as outf, PdfPages(outf) as pdf:
+            plot_fn(sum_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes, box_label)
+            for biotype in biotypes:
+                biotype_df = biotype_filter(df, biotype)
+                if biotype_df is not None:
+                    biotype_df = biotype_df.drop(['genome', 'biotype'], axis=1).T
+                    title_string = biotype_title_string.format(biotype)
+                    plot_fn(biotype_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes,
+                            box_label)
 
 
 def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):

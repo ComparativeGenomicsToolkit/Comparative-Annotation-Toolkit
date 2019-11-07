@@ -2099,6 +2099,7 @@ class Plots(RebuildableTask):
         args.tm_identity = luigi.LocalTarget(os.path.join(base_dir, 'transmap_identity.pdf'))
         # plots derived from transMap filtering
         args.paralogy = luigi.LocalTarget(os.path.join(base_dir, 'paralogy.pdf'))
+        args.unfiltered_paralogy = luigi.LocalTarget(os.path.join(base_dir, 'unfiltered_paralogy.pdf'))
         args.gene_collapse = luigi.LocalTarget(os.path.join(base_dir, 'gene_family_collapse.pdf'))
         # plots derived from transcript alignment / consensus finding
         args.coverage = luigi.LocalTarget(os.path.join(base_dir, 'coverage.pdf'))
@@ -2585,7 +2586,7 @@ class ConsensusTrack(TrackTask):
                        info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
-                       info.paralogy, info.collapsed_gene_ids, info.collapsed_gene_names,
+                       info.paralogy, info.unfiltered_paralogy, info.collapsed_gene_ids, info.collapsed_gene_names,
                        info.frameshift, info.exon_annotation_support,
                        info.intron_annotation_support, info.transcript_class, info.transcript_modes,
                        info.valid_start, info.valid_stop, info.proper_orf]
@@ -2912,6 +2913,7 @@ def construct_consensus_gp_as(has_rna, has_pb):
     string alignmentId;  "Alignment ID"
     lstring alternativeSourceTranscripts;    "Alternative source transcripts"
     lstring Paralogy;    "Paralogous alignment IDs"
+    lstring UnfilteredParalogy;   "Unfiltered paralogous alignment IDs"
     lstring collapsedGeneIds;   "Collapsed Gene IDs"
     lstring collapsedGeneNames;  "Collapsed Gene Names"
     string frameshift;  "Frameshifted relative to source?"
