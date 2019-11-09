@@ -3,12 +3,12 @@ Represent either BED12 or genePred transcripts as objects. Allows for conversion
 chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
 import collections
-from itertools import izip
+
 from bx.intervals.cluster import ClusterTree
-from mathOps import find_closest, find_intervals
-from bio import reverse_complement, translate_sequence
-from fileOps import iter_lines
-from intervals import ChromosomeInterval
+from .mathOps import find_closest, find_intervals
+from .bio import reverse_complement, translate_sequence
+from .fileOps import iter_lines
+from .intervals import ChromosomeInterval
 
 __author__ = "Ian Fiddes"
 
@@ -96,7 +96,7 @@ class Transcript(object):
         :return: List of ChromosomeIntervals
         """
         exon_intervals = []
-        for block_size, block_start in izip(*(self.block_sizes, self.block_starts)):
+        for block_size, block_start in zip(*(self.block_sizes, self.block_starts)):
             start = self.start + block_start
             stop = self.start + block_start + block_size
             exon_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand))
@@ -108,7 +108,7 @@ class Transcript(object):
         :return: List of ChromosomeIntervals
         """
         intron_intervals = []
-        for i in xrange(1, len(self.block_starts)):
+        for i in range(1, len(self.block_starts)):
             stop = self.start + self.block_starts[i]
             start = self.start + self.block_starts[i - 1] + self.block_sizes[i - 1]
             intron_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand))
@@ -143,8 +143,8 @@ class Transcript(object):
             else:
                 thick_start = new_start
                 thick_stop = new_stop
-            return map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start,
-                             thick_stop, rgb, 1, 0, 0])
+            return list(map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start,
+                             thick_stop, rgb, 1, 0, 0]))
 
         if self.chromosome_coordinate_to_mrna(new_start) is None:
             new_start = find_closest([x.start for x in self.exon_intervals], new_start)
@@ -173,8 +173,8 @@ class Transcript(object):
         block_count = len(exon_intervals)
         block_sizes = ','.join(map(str, [len(x) for x in exon_intervals]))
         block_starts = ','.join(map(str, [x.start - new_start for x in exon_intervals]))
-        return map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start, thick_stop,
-                         rgb, block_count, block_sizes, block_starts])
+        return list(map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start, thick_stop,
+                         rgb, block_count, block_sizes, block_starts]))
 
     def chromosome_coordinate_to_mrna(self, coord):
         if not (self.start <= coord < self.stop):
@@ -370,7 +370,7 @@ class GenePredTranscript(Transcript):
         # convert genePred format coordinates to BED-like coordinates to make intervals
         block_starts = [int(x) for x in exon_starts.split(',') if x != '']
         block_ends = [int(x) for x in exon_ends.split(',') if x != '']
-        block_sizes = ",".join(map(str, [e - s for e, s in izip(block_ends, block_starts)]))
+        block_sizes = ",".join(map(str, [e - s for e, s in zip(block_ends, block_starts)]))
         block_starts = ",".join(map(str, [x - int(start) for x in block_starts]))
         bed_tokens = [chrom, start, stop, name, self.score, strand, thick_start, thick_stop, '0', block_count,
                       block_sizes, block_starts]
@@ -398,7 +398,7 @@ class GenePredTranscript(Transcript):
         :return: List of ChromosomeIntervals
         """
         exon_intervals = []
-        for block_size, block_start, frame in izip(*(self.block_sizes, self.block_starts, self.exon_frames)):
+        for block_size, block_start, frame in zip(*(self.block_sizes, self.block_starts, self.exon_frames)):
             start = self.start + block_start
             stop = self.start + block_start + block_size
             exon_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand, data={'frame': frame}))
@@ -407,9 +407,9 @@ class GenePredTranscript(Transcript):
     def _make_exon_idx_iter(self):
         """make iterator exon indexes in order of transcriptions"""
         if self.strand == '+':
-            return xrange(0, len(self.exon_intervals))
+            return range(0, len(self.exon_intervals))
         else:
-            return xrange(len(self.exon_intervals) - 1, -1, -1)
+            return range(len(self.exon_intervals) - 1, -1, -1)
 
     def _cds_region(self, cds_interval, frame, expected_frame):
         """Compute the next cds region"""
@@ -499,14 +499,14 @@ class GenePredTranscript(Transcript):
         cds_pos = 0
         for i in codon_regions:
             if i.data is None:
-                for p in xrange(i.start, i.stop):
+                for p in range(i.start, i.stop):
                     positions.append(p)
                     cds_pos += 1
 
         if self.strand == '-':
             positions = positions[::-1]
 
-        for i in xrange(0, cds_pos - cds_pos % 3, 3):
+        for i in range(0, cds_pos - cds_pos % 3, 3):
             codon = cds[i:i + 3]
             if self.strand == '+':
                 if positions[i + 2] + 1 != self.thick_stop:
@@ -546,9 +546,9 @@ class GenePredTranscript(Transcript):
             exon_starts = ','.join(map(str, [exon.start for exon in self.exon_intervals]))
             exon_ends = ','.join(map(str, [exon.stop for exon in self.exon_intervals]))
             exon_frames = ','.join(map(str, self.exon_frames))
-            return map(str, [name, self.chromosome, self.strand, self.start, self.stop, self.thick_start,
+            return list(map(str, [name, self.chromosome, self.strand, self.start, self.stop, self.thick_start,
                              self.thick_stop, len(self.exon_intervals), exon_starts, exon_ends, score, name2,
-                             self.cds_start_stat, self.cds_end_stat, exon_frames])
+                             self.cds_start_stat, self.cds_end_stat, exon_frames]))
         if new_start is not None and new_stop is not None:
             assert new_start <= new_stop
         if new_start is not None:
@@ -611,8 +611,8 @@ class GenePredTranscript(Transcript):
         exon_starts = ','.join(map(str, [exon.start for exon in exon_intervals]))
         exon_ends = ','.join(map(str, [exon.stop for exon in exon_intervals]))
         exon_frames = ','.join(map(str, exon_frames))
-        return map(str, [name, self.chromosome, self.strand, new_start, new_stop, thick_start, thick_stop, exon_count,
-                         exon_starts, exon_ends, score, name2, cds_start_stat, cds_end_stat, exon_frames])
+        return list(map(str, [name, self.chromosome, self.strand, new_start, new_stop, thick_start, thick_stop, exon_count,
+                         exon_starts, exon_ends, score, name2, cds_start_stat, cds_end_stat, exon_frames]))
 
 
 def get_gene_pred_dict(gp_file):
@@ -716,7 +716,7 @@ def cluster_txs(txs):
     # convert the clusters to a nested structure of chrom -> cluster_id -> tx objects
     clustered_reads = collections.defaultdict(dict)
     cluster_id = 0
-    for chrom, cluster_tree in cluster_trees.iteritems():
+    for chrom, cluster_tree in cluster_trees.items():
         for start, end, interval_indices in cluster_tree.getregions():
             clustered_reads[chrom][cluster_id] = [txs[ix] for ix in interval_indices]
             cluster_id += 1
@@ -735,7 +735,7 @@ def divide_clusters(clustered_reads, ref_names):
     ref_names = set(ref_names)
     divided_clusters = {}
     for chrom in clustered_reads:
-        for cluster_id, tx_list in clustered_reads[chrom].iteritems():
+        for cluster_id, tx_list in clustered_reads[chrom].items():
             ref = [tx for tx in tx_list if tx.name in ref_names and len(tx.intron_intervals) > 0]
             iso = [tx for tx in tx_list if tx.name not in ref_names and len(tx.intron_intervals) > 0]
             if len(ref) > 0 and len(iso) > 0:
@@ -775,7 +775,7 @@ def calculate_subset_matches(divided_clusters, fuzz_distance=8, filter_short_int
 
     """
     r = collections.defaultdict(list)
-    for cluster_id, (ensts, isos) in divided_clusters.iteritems():
+    for cluster_id, (ensts, isos) in divided_clusters.items():
         enst_intervals = collections.defaultdict(list)
         for tx in ensts:
             tx_intervals = [x for x in tx.intron_intervals if len(x) >= filter_short_intron]
@@ -784,7 +784,7 @@ def calculate_subset_matches(divided_clusters, fuzz_distance=8, filter_short_int
         for iso in isos:
             iso_intervals = [x for x in iso.intron_intervals if len(x) >= filter_short_intron]
             iso_intervals = construct_start_stop_intervals(iso_intervals, fuzz_distance)
-            for enst_interval, enst_txs in enst_intervals.iteritems():
+            for enst_interval, enst_txs in enst_intervals.items():
                 m = find_subset_match(iso_intervals, enst_interval)
                 if m:
                     r[iso.name].extend(enst_txs)

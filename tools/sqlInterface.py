@@ -1,7 +1,7 @@
 """
 Functions to interface with the sqlite databases produced by various steps of the annotation pipeline
 """
-import transcripts
+from . import transcripts
 
 import pandas as pd
 from sqlalchemy import Column, Integer, Text, Float, Boolean, func, create_engine
@@ -258,7 +258,7 @@ def get_transcript_gene_map(db_path, table=Annotation.__tablename__, index_col='
     :return: dictionary {tx_id: GeneId}
     """
     df = read_attrs(db_path, table, index_col)
-    return dict(zip(df.index, df.GeneId))
+    return dict(list(zip(df.index, df.GeneId)))
 
 
 def get_gene_transcript_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
@@ -285,7 +285,7 @@ def get_transcript_biotype_map(db_path, table=Annotation.__tablename__, index_co
     :return: dictionary {tx_id: tx_biotype}
     """
     df = read_attrs(db_path, table, index_col)
-    return dict(zip(df.index, df.TranscriptBiotype))
+    return dict(list(zip(df.index, df.TranscriptBiotype)))
 
 
 def get_gene_biotype_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
@@ -297,7 +297,7 @@ def get_gene_biotype_map(db_path, table=Annotation.__tablename__, index_col='Tra
     :return: dictionary {tx_id: tx_biotype}
     """
     df = read_attrs(db_path, table, index_col)
-    return dict(zip(df.GeneId, df.GeneBiotype))
+    return dict(list(zip(df.GeneId, df.GeneBiotype)))
 
 
 def get_transcript_biotypes(db_path, table=Annotation):

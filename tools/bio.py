@@ -5,7 +5,7 @@ import string
 import array
 import os
 from pyfasta import Fasta, NpyFastaRecord
-from fileOps import opengz
+from .fileOps import opengz
 
 
 class UpperNpyFastaRecord(NpyFastaRecord):
@@ -15,7 +15,7 @@ class UpperNpyFastaRecord(NpyFastaRecord):
     """
     def __getitem__(self, islice):
         d = self.getdata(islice)
-        return d.tostring().decode().upper() if self.as_string else map(string.upper, d)
+        return d.tostring().decode().upper() if self.as_string else list(map(string.upper, d))
 
 
 def read_fasta(path_or_handle, validate='DNA'):
@@ -72,7 +72,7 @@ def write_fasta(path_or_handle, name, seq, chunk_size=100, validate=None):
     else:
         valid_chars = set()
     try:
-        assert any([isinstance(seq, unicode), isinstance(seq, str)])
+        assert any([isinstance(seq, str), isinstance(seq, str)])
     except AssertionError:
         raise RuntimeError("Sequence is not unicode or string")
     if validate is not None:
@@ -82,13 +82,13 @@ def write_fasta(path_or_handle, name, seq, chunk_size=100, validate=None):
             bad_chars = {x for x in seq if x not in valid_chars}
             raise RuntimeError("Invalid FASTA character(s) seen in fasta sequence: {}".format(bad_chars))
     fh.write(">%s\n" % name)
-    for i in xrange(0, len(seq), chunk_size):
+    for i in range(0, len(seq), chunk_size):
         fh.write("%s\n" % seq[i:i+chunk_size])
     if isinstance(path_or_handle, str):
         fh.close()
 
 
-def complement(seq, comp=string.maketrans("ATGCatgc", "TACGtacg")):
+def complement(seq, comp=str.maketrans("ATGCatgc", "TACGtacg")):
     """
     given a sequence, return the complement.
     """
@@ -152,7 +152,7 @@ def translate_sequence(sequence):
     result = []
     sequence = sequence.upper()
     i = 0
-    for i in xrange(0, len(sequence) - len(sequence) % 3, 3):
+    for i in range(0, len(sequence) - len(sequence) % 3, 3):
         result.append(codon_to_amino_acid(sequence[i: i + 3]))
     if len(sequence) % 3 == 2:
         c = codon_to_amino_acid(sequence[i + 3:] + 'N')
@@ -168,7 +168,7 @@ def read_codons(seq, offset=0, skip_last=True):
     l = len(seq)
     if skip_last:
         l -= 3
-    for i in xrange(offset,  l - l % 3, 3):
+    for i in range(offset,  l - l % 3, 3):
             yield seq[i:i + 3]
 
 
@@ -180,7 +180,7 @@ def read_codons_with_position(seq, offset=0, skip_last=True):
     l = len(seq)
     if skip_last:
         l -= 3
-    for i in xrange(offset, l - l % 3, 3):
+    for i in range(offset, l - l % 3, 3):
             yield i, seq[i:i + 3]
 
 

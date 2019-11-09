@@ -2,7 +2,7 @@
 Functions for working with HAL files.
 """
 import ete3
-from procOps import call_proc_lines
+from .procOps import call_proc_lines
 from bd2k.util import memoize
 
 @memoize
@@ -35,8 +35,8 @@ def build_genome_order(hal, ref_genome, genome_subset=None, include_ancestors=Fa
         distances = [[t.get_distance(ref_genome, x), x.name] for x in t.get_leaves() if x.name != ref_genome]
     if genome_subset is not None:
         distances = [[dist, name] for dist, name in distances if name in genome_subset]
-    ordered = sorted(distances, key=lambda (dist, name): dist)
-    distances, ordered_names = zip(*ordered)
+    ordered = sorted(distances, key=lambda dist_name: dist_name[0])
+    distances, ordered_names = list(zip(*ordered))
     return ordered_names
 
 @memoize

@@ -26,7 +26,7 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min
     """
     filtered_transmap_dict = tools.transcripts.get_gene_pred_dict(filtered_tm_gp)
     unfiltered_transmap_dict = tools.transcripts.get_gene_pred_dict(unfiltered_tm_gp)
-    filtered_ids = unfiltered_transmap_dict.viewkeys() - filtered_transmap_dict.viewkeys()
+    filtered_ids = unfiltered_transmap_dict.keys() - filtered_transmap_dict.keys()
 
     tm_chrom_dict = create_chrom_dict(unfiltered_transmap_dict, chrom_sizes)
     denovo_dict = tools.transcripts.get_gene_pred_dict(denovo_gp)
@@ -34,8 +34,8 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min
 
     # begin parent gene assignment
     r = []
-    for chrom, tm_tx_by_chromosome in tm_chrom_dict.iteritems():
-        for denovo_tx_id, denovo_tx in denovo_chrom_dict[chrom].iteritems():
+    for chrom, tm_tx_by_chromosome in tm_chrom_dict.items():
+        for denovo_tx_id, denovo_tx in denovo_chrom_dict[chrom].items():
             # find the names of both filtered and unfiltered transMap transcript IDs that overlap
             unfiltered_overlapping_tm_txs = find_tm_overlaps(denovo_tx, tm_tx_by_chromosome)
             filtered_overlapping_tm_txs = {tx for tx in unfiltered_overlapping_tm_txs if tx.name not in filtered_ids}
@@ -65,7 +65,7 @@ def create_chrom_dict(tx_dict, chrom_sizes=None):
     Split up a dictionary of Transcript objects by chromosome. Add in extra chromosomes based on a sizes file
     """
     chrom_dict = collections.defaultdict(dict)
-    for tx_id, tx in tx_dict.iteritems():
+    for tx_id, tx in tx_dict.items():
         chrom_dict[tx.chromosome][tx_id] = tx
     if chrom_sizes is not None:
         for chrom, size in tools.fileOps.iter_lines(chrom_sizes):
@@ -77,7 +77,7 @@ def create_chrom_dict(tx_dict, chrom_sizes=None):
 def find_tm_overlaps(denovo_tx, tm_tx_dict):
     """Find overlap with transMap transcripts first on a genomic scale then an exonic scale"""
     r = []
-    for tx in tm_tx_dict.itervalues():
+    for tx in tm_tx_dict.values():
         if tx.interval.intersection(denovo_tx.interval) is not None:
             # make sure that we have exon overlap
             if ensure_exon_overlap(tx, denovo_tx) is True:
@@ -100,7 +100,7 @@ def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance):
     """
     # use Jaccard metric to determine if the problem lies with transMap or annotation
     tm_txs_by_gene = tools.transcripts.group_transcripts_by_name2(overlapping_tm_txs)
-    tm_jaccards = [find_highest_gene_jaccard(x, y) for x, y in itertools.combinations(tm_txs_by_gene.values(), 2)]
+    tm_jaccards = [find_highest_gene_jaccard(x, y) for x, y in itertools.combinations(list(tm_txs_by_gene.values()), 2)]
     if any(x > 0.001 for x in tm_jaccards):
         return None, 'badAnnotOrTm'
     # calculate asymmetric difference for this prediction
@@ -108,9 +108,9 @@ def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance):
     for tx in overlapping_tm_txs:
         scores[tx.name2].append(calculate_asymmetric_closeness(denovo_tx, tx))
     best_scores = {gene_id: max(scores[gene_id]) for gene_id in scores}
-    high_score = max(best_scores.itervalues())
-    if all(high_score - x >= min_distance for x in best_scores.itervalues() if x != high_score):
-        best = sorted(best_scores.iteritems(), key=lambda (gene_id, score): score)[-1][0]
+    high_score = max(best_scores.values())
+    if all(high_score - x >= min_distance for x in best_scores.values() if x != high_score):
+        best = sorted(iter(best_scores.items()), key=lambda gene_id_score: gene_id_score[1])[-1][0]
         return best, 'rescued'
     else:
         return None, 'ambiguousOrFusion'

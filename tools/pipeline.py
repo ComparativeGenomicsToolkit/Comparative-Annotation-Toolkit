@@ -3,7 +3,7 @@
 Process pipelines constructed as a DAG.
 """
 import os, sys, fcntl, signal, errno, threading, traceback, pickle, time
-import fifo, trace, strOps
+from . import fifo, trace, strOps
 from tools import PycbioException
 
 try:
@@ -28,7 +28,7 @@ def _setPgid(pid, pgid):
     # or EPERM.  To handle this is a straight-forward way, just check that the
     # change has been made.  However, in some cases the change didn't take,
     # retrying seems to make the problem go away.
-    for i in xrange(0,5):
+    for i in range(0,5):
         try:
             os.setpgid(pid, pgid)
             return
@@ -507,9 +507,9 @@ class File(Dev):
             if isinstance(pio, PIn):
                 self.fd = os.open(self.path, os.O_RDONLY)
             elif self.append:
-                self.fd = os.open(self.path, os.O_WRONLY|os.O_CREAT|os.O_APPEND, 0666)
+                self.fd = os.open(self.path, os.O_WRONLY|os.O_CREAT|os.O_APPEND, 0o666)
             else:
-                self.fd = os.open(self.path, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0666)
+                self.fd = os.open(self.path, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o666)
         return self.fd
         
     def getPath(self, pio):
@@ -590,7 +590,7 @@ class Proc(object):
             return spec.fileno()  # is file-like
 
         # make spec into PInOut object if needed
-        if isinstance(spec, str) or isinstance(spec, unicode):
+        if isinstance(spec, str) or isinstance(spec, str):
             spec = File(spec)
         if isinstance(spec, Dev):
             if mode == "r":
@@ -644,7 +644,7 @@ class Proc(object):
             if stdfd == 0:  # stdin?
                 fd = os.open(spec, os.O_RDONLY)
             else:
-                fd = os.open(spec, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0666)
+                fd = os.open(spec, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o666)
         elif isinstance(spec, int):
             fd = spec
         if (fd is not None) and (fd != stdfd):
@@ -654,7 +654,7 @@ class Proc(object):
     def __closeFiles(self):
         "clone non-stdio files"
         keepOpen = set([self.statusPipe.wfd]) | trace.getActiveTraceFds()
-        for fd in xrange(3, MAXFD+1):
+        for fd in range(3, MAXFD+1):
             try:
                 if not fd in keepOpen:
                     os.close(fd)
@@ -723,7 +723,7 @@ class Proc(object):
                 ex = ProcException(str(self), cause=ex)
             raise ex
 
-    def running():
+    def running(self):
         "determined if this process has been started, but not finished"
         return self.started and not self.finished
 
@@ -746,7 +746,7 @@ class Proc(object):
     def raiseIfExcept(self):
         """raise exception if one is saved, otherwise do nothing"""
         if self.exceptInfo is not None:
-            raise self.exceptInfo[0], self.exceptInfo[1], self.exceptInfo[2]
+            raise self.exceptInfo[0].with_traceback(self.exceptInfo[2])
 
     def __handleErrExit(self):
         # get saved stderr, if possible
@@ -1248,8 +1248,8 @@ class Pipeline(Procline):
         "iter over contents of file"
         return self.fh.__iter__()
 
-    def next(self):
-        return self.fh.next()
+    def __next__(self):
+        return next(self.fh)
   
     def flush(self):
         "Flush the internal I/O buffer."

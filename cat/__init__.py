@@ -5,7 +5,6 @@ import string
 import random
 import datetime
 import collections
-import itertools
 import logging
 import os
 import shutil
@@ -13,7 +12,7 @@ import json
 from collections import OrderedDict
 from frozendict import frozendict
 from configobj import ConfigObj
-from subprocess import check_call
+from subprocess import check_call, DEVNULL
 
 import luigi
 import luigi.contrib.sqla
@@ -37,20 +36,20 @@ import tools.hintsDatabaseInterface
 import tools.transcripts
 import tools.gff3
 from tools.luigiAddons import multiple_requires, IndexTarget
-from align_transcripts import align_transcripts
-from augustus import augustus
-from augustus_cgp import augustus_cgp
-from augustus_pb import augustus_pb
-from chaining import chaining
-from classify import classify
-from consensus import generate_consensus, load_alt_names, load_hgm_vectors
-from filter_transmap import filter_transmap
-from hgm import hgm, parse_hgm_gtf
-from transmap_classify import transmap_classify
-from plots import generate_plots
-from hints_db import hints_db
-from parent_gene_assignment import assign_parents
-from exceptions import *
+from .align_transcripts import align_transcripts
+from .augustus import augustus
+from .augustus_cgp import augustus_cgp
+from .augustus_pb import augustus_pb
+from .chaining import chaining
+from .classify import classify
+from .consensus import generate_consensus, load_alt_names, load_hgm_vectors
+from .filter_transmap import filter_transmap
+from .hgm import hgm, parse_hgm_gtf
+from .transmap_classify import transmap_classify
+from .plots import generate_plots
+from .hints_db import hints_db
+from .parent_gene_assignment import assign_parents
+from .exceptions import *
 
 logger = logging.getLogger('cat')
 
@@ -145,11 +144,6 @@ class PipelineTask(luigi.Task):
 
     def get_pipeline_args(self):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
-        # We use this environment variable as a bit of global state,
-        # to avoid threading this through in each of the hundreds of
-        # command invocations.
-        os.environ['CAT_BINARY_MODE'] = self.binary_mode
-
         args = tools.misc.PipelineNamespace()
         args.set('binary_mode', self.binary_mode, False)
         args.set('hal', os.path.abspath(self.hal), True)
@@ -205,22 +199,6 @@ class PipelineTask(luigi.Task):
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
 
-        # get the Docker/Singularity image set up, if applicable, because we
-        # will need it to run halStats.
-        if args.binary_mode == 'docker':
-            if not tools.misc.is_exec('docker'):
-                raise ToolMissingException('docker binary not found. Either install it or use a different option for --binary-mode.')
-            # Update docker container
-            check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
-        elif args.binary_mode == 'singularity':
-            if not tools.misc.is_exec('singularity'):
-                raise ToolMissingException('singularity binary not found. Either install it or use a different option for --binary-mode.')
-            os.environ['SINGULARITY_PULLFOLDER'] = args.work_dir
-            os.environ['SINGULARITY_CACHEDIR'] = args.work_dir
-            if not os.path.isfile(os.path.join(args.work_dir, 'cat.img')):
-                check_call(['singularity', 'pull', '--name', 'cat.img',
-                    'docker://quay.io/ucsc_cgl/cat:latest'])
-
         # halStats is run below, before any validate() methods are called.
         if not tools.misc.is_exec('halStats'):
             raise ToolMissingException('halStats from the HAL tools package not in global path')
@@ -236,8 +214,8 @@ class PipelineTask(luigi.Task):
         args.set('hints_db', os.path.join(args.work_dir, 'hints_database', 'hints.db'), True)
         args.set('rnaseq_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) | set(args.cfg['BAM'].keys())), True)
         args.set('intron_only_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) - set(args.cfg['BAM'].keys())), True)
-        args.set('isoseq_genomes', frozenset(args.cfg['ISO_SEQ_BAM'].keys()), True)
-        args.set('annotation_genomes', frozenset(args.cfg['ANNOTATION'].keys()), True)
+        args.set('isoseq_genomes', frozenset(list(args.cfg['ISO_SEQ_BAM'].keys())), True)
+        args.set('annotation_genomes', frozenset(list(args.cfg['ANNOTATION'].keys())), True)
         args.set('modes', self.get_modes(args), True)
         args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
 
@@ -289,7 +267,7 @@ class PipelineTask(luigi.Task):
             if dtype not in parser:
                 cfg[dtype] = {}
             else:
-                for genome, annot in parser[dtype].iteritems():
+                for genome, annot in parser[dtype].items():
                     annot = os.path.abspath(annot)
                     if not os.path.exists(annot):
                         raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
@@ -319,7 +297,7 @@ class PipelineTask(luigi.Task):
 
         # return a hashable version
         return frozendict((key, frozendict((ikey, tuple(ival) if isinstance(ival, list) else ival)
-                                           for ikey, ival in val.iteritems())) for key, val in cfg.iteritems())
+                                           for ikey, ival in val.items())) for key, val in cfg.items())
 
     def validate_cfg(self, args):
         """Validate the input config file."""
@@ -340,7 +318,7 @@ class PipelineTask(luigi.Task):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
 
         for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
-            for genome, annot in args.cfg[dtype].iteritems():
+            for genome, annot in args.cfg[dtype].items():
                 if not os.path.exists(annot):
                     raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
 
@@ -378,6 +356,30 @@ class PipelineTask(luigi.Task):
         """
         pipeline_args = self.get_pipeline_args()
         return module.get_args(pipeline_args, **args)
+
+    def load_docker(self):
+        """
+        Download Docker or Singularity container, if applicable
+        """
+        # We use this environment variable as a bit of global state,
+        # to avoid threading this through in each of the hundreds of
+        # command invocations.
+        os.environ['CAT_BINARY_MODE'] = self.binary_mode
+        if self.binary_mode == 'docker':
+            if not tools.misc.is_exec('docker'):
+                raise ToolMissingException('docker binary not found. '
+                                           'Either install it or use a different option for --binary-mode.')
+            # Update docker container
+            check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
+        elif self.binary_mode == 'singularity':
+            if not tools.misc.is_exec('singularity'):
+                raise ToolMissingException('singularity binary not found. '
+                                           'Either install it or use a different option for --binary-mode.')
+            os.environ['SINGULARITY_PULLFOLDER'] = self.work_dir
+            os.environ['SINGULARITY_CACHEDIR'] = self.work_dir
+            if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
+                check_call(['singularity', 'pull', '--name', 'cat.img',
+                            'docker://quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
 
     @staticmethod
     def get_databases(pipeline_args):
@@ -491,7 +493,7 @@ class ToilTask(PipelineTask):
             # this logic tries to determine if we should try and restart an existing jobStore
             if os.path.exists(job_store):
                 try:
-                    root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
+                    root_job = next(open(os.path.join(job_store, 'rootJobStoreID'))).rstrip()
                     if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
                         shutil.rmtree(job_store)
                     else:
@@ -621,6 +623,7 @@ class RunCat(PipelineWrapperTask):
             raise InvalidInputException('A target genome cannot be the reference genome.')
 
     def requires(self):
+        self.load_docker()
         pipeline_args = self.get_pipeline_args()
         self.validate(pipeline_args)
         yield self.clone(PrepareFiles)
@@ -818,7 +821,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
         for l in open(self.output().path):
             l = l.split()
             c[l[0]] += 1
-        duplicates = {x for x, y in c.iteritems() if y > 1}
+        duplicates = {x for x, y in c.items() if y > 1}
         if len(duplicates) > 0:
             with open(self.duplicates, 'w') as outf:
                 for l in duplicates:
@@ -911,7 +914,7 @@ class TranscriptFasta(AbstractAtomicFileTask):
         seq_dict = tools.bio.get_sequence_dict(self.fasta, upper=False)
         seqs = {tx.name: tx.get_mrna(seq_dict) for tx in tools.transcripts.transcript_iterator(self.transcript_bed)}
         with self.output().open('w') as outf:
-            for name, seq in seqs.iteritems():
+            for name, seq in seqs.items():
                 tools.bio.write_fasta(outf, name, seq)
 
 
@@ -1079,7 +1082,7 @@ class Chaining(ToilTask):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         chain_args = self.get_args(pipeline_args)
-        for path in chain_args.chain_files.itervalues():
+        for path in chain_args.chain_files.values():
             yield luigi.LocalTarget(path)
 
     def validate(self):
@@ -1418,7 +1421,7 @@ class AugustusCgp(ToilTask):
         pipeline_args = self.get_pipeline_args()
         cgp_args = self.get_args(pipeline_args)
         for path_dict in [cgp_args.augustus_cgp_gp, cgp_args.augustus_cgp_gtf, cgp_args.augustus_cgp_raw_gtf]:
-            for path in path_dict.itervalues():
+            for path in path_dict.values():
                 yield luigi.LocalTarget(path)
 
     def validate(self):
@@ -1595,7 +1598,7 @@ class FindDenovoParents(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         denovo_args = FindDenovoParents.get_args(pipeline_args, self.mode)
-        for genome, denovo_gp in denovo_args.gps.iteritems():
+        for genome, denovo_gp in denovo_args.gps.items():
             table_target = self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
             filtered_tm_gp = denovo_args.filtered_tm_gps[genome]
             unfiltered_tm_gp = denovo_args.unfiltered_tm_gps[genome]
@@ -1610,7 +1613,7 @@ class FindDenovoParents(PipelineTask):
             assigned_str = '{}: {:,}'.format('assigned', counts[None])
             log_msg = log_msg.format(genome, denovo_args.tablename, assigned_str)
             result_str = ', '.join(['{}: {:,}'.format(name, val)
-                                    for name, val in sorted(counts.iteritems()) if name is not None])
+                                    for name, val in sorted(counts.items()) if name is not None])
             if len(result_str) > 0:
                 log_msg += ', ' + result_str + '.'
             logger.info(log_msg)
@@ -1699,7 +1702,7 @@ class HgmDriverTask(PipelineTask):
             yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                       target_table=tablename,
                                                       update_id='_'.join([tablename, str(hash(pipeline_args))]))
-        for f in hgm_args.gtf_out_files.itervalues():
+        for f in hgm_args.gtf_out_files.values():
             yield luigi.LocalTarget(f)
 
     def requires(self):
@@ -1726,7 +1729,7 @@ class HgmDriverTask(PipelineTask):
         # convert the output to a dataframe and write to the genome database
         databases = self.__class__.get_databases(pipeline_args)
         tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
-        for genome, sqla_target in itertools.izip(*[hgm_args.genomes, self.output()]):
+        for genome, sqla_target in zip(*[hgm_args.genomes, self.output()]):
             df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome)
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
                 df.to_sql(tablename, engine, if_exists='replace')
@@ -1796,7 +1799,7 @@ class IsoSeqTranscriptsDriverTask(PipelineTask):
         # we also need to keep track of every interval for downstream processing
         i = 0
         interval_flat_list = []
-        for grp, intervals in groups.iteritems():
+        for grp, intervals in groups.items():
             for chrom, start, stop in intervals:
                 interval_flat_list.append([chrom, start, stop])
                 cluster_trees[chrom][grp].insert(start, stop, i)
@@ -1805,7 +1808,7 @@ class IsoSeqTranscriptsDriverTask(PipelineTask):
         # for each cluster, convert to a transcript object
         txs = []
         for chrom in cluster_trees:
-            for grp, cluster_tree in cluster_trees[chrom].iteritems():
+            for grp, cluster_tree in cluster_trees[chrom].items():
                 for start, end, interval_indices in cluster_tree.getregions():
                     intervals = [interval_flat_list[i] for i in interval_indices]
                     intervals = {tools.intervals.ChromosomeInterval(chrom, start, stop, '.')
@@ -1880,7 +1883,7 @@ class AlignTranscriptDriverTask(ToilTask):
 
     def output(self):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
-        for mode, paths in alignment_args.transcript_modes.iteritems():
+        for mode, paths in alignment_args.transcript_modes.items():
             for aln_type in ['CDS', 'mRNA']:
                 yield luigi.LocalTarget(paths[aln_type])
 
@@ -1940,19 +1943,19 @@ class EvaluateDriverTask(PipelineTask):
         """construct table names based on input arguments"""
         tables = []
         for aln_mode in ['mRNA', 'CDS']:
-            for tx_mode in eval_args.transcript_modes.iterkeys():
-                names = [x.__tablename__ for x in tools.sqlInterface.tables[aln_mode][tx_mode].values()]
+            for tx_mode in eval_args.transcript_modes.keys():
+                names = [x.__tablename__ for x in list(tools.sqlInterface.tables[aln_mode][tx_mode].values())]
                 tables.extend(names)
         return tables
 
     def pair_table_output(self, eval_args):
         """return dict of {table_name: SQLAlchemyTarget} for final writing"""
-        return dict(zip(*[self.build_table_names(eval_args), self.output()]))
+        return dict(list(zip(*[self.build_table_names(eval_args), self.output()])))
 
     def write_to_sql(self, results, eval_args):
         """Load the results into the SQLite database"""
         with tools.sqlite.ExclusiveSqlConnection(eval_args.db_path) as engine:
-            for table, target in self.pair_table_output(eval_args).iteritems():
+            for table, target in self.pair_table_output(eval_args).items():
                 df = results[table]
                 df.to_sql(table, engine, if_exists='replace')
                 target.touch()
@@ -2005,7 +2008,7 @@ class Consensus(PipelineWrapperTask):
             args.denovo_tx_modes.append('augPB')
         args.gp_list = gp_list
         args.genome = genome
-        args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
+        args.transcript_modes = list(AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys())
         args.augustus_cgp = pipeline_args.augustus_cgp
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
@@ -2078,7 +2081,7 @@ class ConsensusDriverTask(RebuildableTask):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         metrics_dict = generate_consensus(consensus_args)
-        metrics_json = self.output().next()
+        metrics_json = next(self.output())
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 
@@ -2133,7 +2136,7 @@ class Plots(RebuildableTask):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         args = Plots.get_args(pipeline_args)
-        return [p for p in args.__dict__.itervalues() if isinstance(p, luigi.LocalTarget)]
+        return [p for p in args.__dict__.values() if isinstance(p, luigi.LocalTarget)]
 
     def requires(self):
         yield self.clone(Consensus)
@@ -2229,7 +2232,7 @@ class CreateDirectoryStructure(RebuildableTask):
         sizes = {}
         twobits = {}
         trackdbs = {}
-        for genome, genome_file in genome_files.iteritems():
+        for genome, genome_file in genome_files.items():
             sizes[genome] = (genome_file.sizes, os.path.join(args.out_dir, genome, 'chrom.sizes'))
             twobits[genome] = (genome_file.two_bit, os.path.join(args.out_dir, genome, '{}.2bit'.format(genome)))
             trackdbs[genome] = os.path.join(args.out_dir, genome, 'trackDb.txt')
@@ -2255,9 +2258,9 @@ class CreateDirectoryStructure(RebuildableTask):
         yield luigi.LocalTarget(args.genomes_txt)
         yield luigi.LocalTarget(args.groups_txt)
         yield luigi.LocalTarget(args.hal)
-        for local_path, hub_path in args.sizes.itervalues():
+        for local_path, hub_path in args.sizes.values():
             yield luigi.LocalTarget(hub_path)
-        for local_path, hub_path in args.twobits.itervalues():
+        for local_path, hub_path in args.twobits.values():
             yield luigi.LocalTarget(hub_path)
 
     def run(self):
@@ -2276,14 +2279,14 @@ class CreateDirectoryStructure(RebuildableTask):
 
         # write the genomes.txt file, construct a dir
         with luigi.LocalTarget(args.genomes_txt).open('w') as outf:
-            for genome, (sizes_local_path, sizes_hub_path) in args.sizes.iteritems():
+            for genome, (sizes_local_path, sizes_hub_path) in args.sizes.items():
                 outf.write(genome_str.format(genome=genome, default_pos=find_default_pos(sizes_local_path)))
 
         # link the hal
         shutil.copy(pipeline_args.hal, args.hal)
 
         # construct a directory for each genome
-        for genome, (sizes_local_path, sizes_hub_path) in args.sizes.iteritems():
+        for genome, (sizes_local_path, sizes_hub_path) in args.sizes.items():
             tools.fileOps.ensure_file_dir(sizes_hub_path)
             shutil.copy(sizes_local_path, sizes_hub_path)
             twobit_local_path, twobit_hub_path = args.twobits[genome]
@@ -2874,7 +2877,7 @@ def find_default_pos(chrom_sizes, window_size=200000):
     :return: string
     """
     sizes = [x.split() for x in open(chrom_sizes)]
-    sorted_sizes = sorted(sizes, key=lambda (chrom, size): -int(size))
+    sorted_sizes = sorted(sizes, key=lambda chrom_size: -int(chrom_size[1]))
     return '{}:{}-{}'.format(sorted_sizes[0][0], 1, window_size)
 
 

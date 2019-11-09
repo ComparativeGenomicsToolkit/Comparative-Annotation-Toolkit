@@ -20,7 +20,7 @@ import tools.procOps
 import tools.toilInterface
 import tools.transcripts
 import tools.bio
-from exceptions import UserException
+from .exceptions import UserException
 from tools.pipeline import ProcException
 
 logger = logging.getLogger(__name__)
@@ -92,18 +92,18 @@ def setup_hints(job, input_file_ids):
     """
     # RNA-seq hints
     filtered_bam_file_ids = {'BAM': collections.defaultdict(list), 'INTRONBAM': collections.defaultdict(list)}
-    for dtype, bam_dict in input_file_ids['bams'].iteritems():
+    for dtype, bam_dict in input_file_ids['bams'].items():
         if len(bam_dict) == 0:
             continue
         # Since BAMs are valid, we can assume that they all share the same header
-        bam_file_id, bai_file_id = bam_dict.values()[0]
+        bam_file_id, bai_file_id = list(bam_dict.values())[0]
         bam_path = job.fileStore.readGlobalFile(bam_file_id)
         sam_handle = pysam.Samfile(bam_path)
         # triple disk usage to deal with name sorted bam
         disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id]) * 3
         # generate reference grouping that will be used downstream until final cat step
         grouped_references = [tuple(x) for x in group_references(sam_handle)]
-        for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
+        for original_path, (bam_file_id, bai_file_id) in bam_dict.items():
             for reference_subset in grouped_references:
                 j = job.addChildJobFn(namesort_bam, bam_file_id, bai_file_id, reference_subset, disk_usage,
                                       disk=disk_usage, cores=4, memory='16G')
@@ -162,7 +162,7 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
     ns_handle = pysam.Samfile(name_sorted)
     # this group may come up empty -- check to see if we have at least one mapped read
     try:
-        _ = ns_handle.next()
+        _ = next(ns_handle)
     except StopIteration:
         return None
     # reset file handle to start
@@ -231,7 +231,7 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
     """
     merged_bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
     for dtype in filtered_bam_file_ids:
-        for ref_group, file_ids in filtered_bam_file_ids[dtype].iteritems():
+        for ref_group, file_ids in filtered_bam_file_ids[dtype].items():
             file_ids = [x for x in file_ids if x is not None]  # some groups will end up empty
             if len(file_ids) > 0:
                 disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
@@ -254,7 +254,7 @@ def cat_sort_bams(job, bam_file_ids):
 
     # do the first one
     cmd = ['samtools', 'cat', '-o', catfile]
-    cmd.extend(sam_iter.next())
+    cmd.extend(next(sam_iter))
     tools.procOps.run_proc(cmd)
 
     # do any subsequent ones left, creating a new file each time
@@ -283,7 +283,7 @@ def generate_protein_hints(job, protein_fasta_file_id, genome_fasta_file_id):
     protein_handle = tools.bio.get_sequence_dict(protein_fasta)
     # group up proteins for sub-jobs
     results = []
-    for chunk in tools.dataOps.grouper(protein_handle.iteritems(), 100):
+    for chunk in tools.dataOps.grouper(iter(protein_handle.items()), 100):
         j = job.addChildJobFn(run_protein_blat, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
         results.append(j.rv())
     # return merged results
@@ -338,7 +338,7 @@ def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hint
     intron_hints_file_ids = []
     exon_hints_file_ids = []
     for dtype in merged_bam_file_ids:
-        for ref_group, file_ids in merged_bam_file_ids[dtype].iteritems():
+        for ref_group, file_ids in merged_bam_file_ids[dtype].items():
             intron_hints_file_ids.append(job.addChildJobFn(build_intron_hints, file_ids).rv())
             if dtype == 'BAM':
                 exon_hints_file_ids.append(job.addChildJobFn(build_exon_hints, file_ids).rv())
@@ -406,7 +406,7 @@ def generate_annotation_hints(job, annotation_hints_file_id):
     tools.procOps.run_proc(cmd)
     tx_dict = tools.transcripts.get_gene_pred_dict(tm_gp)
     hints = []
-    for tx_id, tx in tx_dict.iteritems():
+    for tx_id, tx in tx_dict.items():
         if tx.cds_size == 0:
             continue
         # rather than try to re-do the arithmetic, we will use the get_bed() function to convert this transcript
@@ -503,8 +503,8 @@ def group_references(sam_handle, num_bases=10 ** 7, max_seqs=1000):
     """
     Group up references by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
     """
-    name_iter = itertools.izip(*[sam_handle.references, sam_handle.lengths])
-    name, size = name_iter.next()
+    name_iter = zip(*[sam_handle.references, sam_handle.lengths])
+    name, size = next(name_iter)
     this_bin = [name]
     bin_base_count = size
     num_seqs = 1

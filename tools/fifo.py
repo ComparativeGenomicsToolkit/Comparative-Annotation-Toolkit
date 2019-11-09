@@ -127,7 +127,7 @@ class _NamedFifo(_Fifo):
             return False
         # atomic create
         try:
-            os.mkfifo(path, 0600)
+            os.mkfifo(path, 0o600)
         except OSError as ex:
             if ex.errno == errno.EEXIST:
                 return False

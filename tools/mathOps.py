@@ -56,5 +56,5 @@ def all_disjoint(sets):
 
 
 def find_intervals(data):
-    for k, g in groupby(enumerate(data), lambda (i, x): i - x):
-        yield map(itemgetter(1), g)
+    for k, g in groupby(enumerate(data), lambda i_x: i_x[0] - i_x[1]):
+        yield list(map(itemgetter(1), g))

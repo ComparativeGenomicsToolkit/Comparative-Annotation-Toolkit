@@ -79,7 +79,7 @@ def get_wiggle_hints(genome, speciesnames, seqnames, hints, session):
     speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
     seqs = {x.seqnr: x.seqname for x in session.query(seqnames).filter_by(speciesid=speciesid)}
     # chunk up the genome to reduce memory usage
-    for seqnr, seqname in seqs.iteritems():
+    for seqnr, seqname in seqs.items():
         query = session.query(hints.start, hints.end, hints.score).filter(
                 sqlalchemy.and_(hints.speciesid.in_(speciesid), hints.source == 'w2h', hints.seqnr == seqnr))
         for start, end, score in query:

@@ -46,7 +46,7 @@ def transmap_classify(tm_eval_args):
     synteny_scores = synteny(ref_gp_dict, gp_dict)
 
     r = []
-    for aln_id, tx in gp_dict.iteritems():
+    for aln_id, tx in gp_dict.items():
         aln = psl_dict[aln_id]
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         ref_aln = ref_psl_dict[tx_id]
@@ -142,7 +142,7 @@ def synteny(ref_gp_dict, gp_dict):
         Skips huge intervals to avoid mapping issues
         """
         interval_dict = collections.defaultdict(lambda: collections.defaultdict(list))
-        for tx in tx_dict.itervalues():
+        for tx in tx_dict.values():
             interval_dict[tx.chromosome][tx.name2].append(tx.interval)
         return interval_dict
 
@@ -150,7 +150,7 @@ def synteny(ref_gp_dict, gp_dict):
         """Merges the above intervals into the one genic interval."""
         merged_interval_dict = collections.defaultdict(dict)
         for chrom in interval_dict:
-            for gene_id, gene_intervals in interval_dict[chrom].iteritems():
+            for gene_id, gene_intervals in interval_dict[chrom].items():
                 merged_intervals = tools.intervals.gap_merge_intervals(gene_intervals, float('inf'))
                 assert len(merged_intervals) == 1
                 merged_interval = merged_intervals[0]
@@ -162,13 +162,13 @@ def synteny(ref_gp_dict, gp_dict):
         """Sorts the dict produced by create_interval_dict so that we can do list bisection"""
         sorted_interval_dict = {}
         for chrom in merged_interval_dict:
-            sorted_interval_dict[chrom] = sorted(merged_interval_dict[chrom].itervalues())
+            sorted_interval_dict[chrom] = sorted(merged_interval_dict[chrom].values())
         return sorted_interval_dict
 
     def make_ref_interval_map(ref_intervals):
         """Creates a dictionary mapping reference intervals to their name"""
         ref_interval_map = {}
-        for interval_list in ref_intervals.itervalues():
+        for interval_list in ref_intervals.values():
             for interval in interval_list:
                 assert interval.data not in ref_interval_map
                 ref_interval_map[interval.data] = interval
@@ -183,7 +183,7 @@ def synteny(ref_gp_dict, gp_dict):
 
     # synteny score algorithm
     scores = {}
-    for tx in gp_dict.itervalues():
+    for tx in gp_dict.values():
         # find the genes from -5 to +5 in the target genome
         target_intervals = tm_chrom_intervals[tx.chromosome]
         target_position = bisect.bisect_left(target_intervals, tx.interval)

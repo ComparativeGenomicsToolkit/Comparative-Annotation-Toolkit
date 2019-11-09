@@ -91,7 +91,7 @@ class IndexTarget(luigi.Target):
             query = 'PRAGMA index_info("{}")'.format(idx)
             try:
                 v = cur.execute(query).fetchall()
-            except sqlite3.OperationalError, exc:
+            except sqlite3.OperationalError as exc:
                 raise RuntimeError("query failed: {}\nOriginal error message: {}".format(query, exc))
             if len(v) > 0:
                 r.append(v)

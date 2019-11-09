@@ -14,7 +14,7 @@ generating SQL where clauses to restrict by bin."""
 # start and end are int's, the practical limit is up to 2Gb-1, and thus, only
 # four result bins on the second level. A range goes into the smallest bin it
 # will fit in.
-from __future__ import print_function
+
 
 
 class Binner(object):
@@ -133,7 +133,7 @@ class RangeBins(object):
         "generator over values overlapping the specified range"
         if (start < end):
             for bins in Binner.getOverlappingBins(start, end):
-                for j in xrange(bins[0], bins[1] + 1):
+                for j in range(bins[0], bins[1] + 1):
                     bin = self.bins.get(j)
                     if (bin is not None):
                         for entry in bin:
@@ -146,7 +146,7 @@ class RangeBins(object):
             bucket = self.buckets[(Binner.calcBin(start, end))]  # exception if no bucket
             bucket.remove(Entry(start, end, value))  # exception if no value
             return True
-        except IndexError, ValueError:
+        except IndexError as ValueError:
             return False
 
     def values(self):

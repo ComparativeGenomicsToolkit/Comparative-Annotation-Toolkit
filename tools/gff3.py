@@ -1,7 +1,7 @@
 import collections
 import pandas as pd
-import fileOps
-import transcripts
+from . import fileOps
+from . import transcripts
 
 def parse_gff3(annotation_attrs, annotation_gp):
     def parse_attrs(attrs):
@@ -12,9 +12,9 @@ def parse_gff3(annotation_attrs, annotation_gp):
 
     attrs_dict = parse_attrs(annotation_attrs)
     tx_dict = transcripts.get_gene_pred_dict(annotation_gp)
-    tx_name_map = {x: y.name2 for x, y in tx_dict.iteritems()}
+    tx_name_map = {x: y.name2 for x, y in tx_dict.items()}
     results = []
-    for tx_id, gene_id in tx_name_map.iteritems():
+    for tx_id, gene_id in tx_name_map.items():
         d = attrs_dict[tx_id]
         if 'gbkey' in d:  # NCBI
             if d['gbkey'] == 'mRNA':
