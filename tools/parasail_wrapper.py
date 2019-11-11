@@ -4,8 +4,8 @@ Utility functions that add functionality to the parasail pairwise alignment libr
 """
 import re
 import parasail
-from misc import pairwise
-from psl import PslRow
+from .misc import pairwise
+from .psl import PslRow
 
 cigar_re = re.compile('([MIDNSHPX=])')
 INS = 'I'
@@ -52,7 +52,7 @@ def construct_fa(seq1, seq2, cigar):
     return aln1, aln2
 
 
-def construct_psl(seq1, name1, seq2, name2, result):
+def construct_psl(name1, name2, result):
     block_sizes = []
     q_starts = []
     t_starts = []
@@ -104,10 +104,10 @@ def construct_psl(seq1, name1, seq2, name2, result):
 
 
 def aln_proteins(seq1, name1, seq2, name2):
-    result = parasail.nw_trace_scan_32(seq1, seq2, 10, 1, parasail.blosum62)
-    return construct_psl(seq1, name1, seq2, name2, result)
+    result = parasail.sg_trace_scan_32(seq1, seq2, 10, 1, parasail.blosum62)
+    return construct_psl(name1, name2, result)
 
 
 def aln_nucleotides(seq1, name1, seq2, name2):
-    result = parasail.nw_trace_scan_32(seq1, seq2, 10, 1, parasail.nuc44)
-    return construct_psl(seq1, name1, seq2, name2, result)
+    result = parasail.sg_trace_scan_32(seq1, seq2, 10, 1, parasail.nuc44)
+    return construct_psl(name1, name2, result)
