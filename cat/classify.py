@@ -293,7 +293,6 @@ def find_indels(tx, psl, aln_mode):
     for block_size, q_start, t_start in itertools.izip(*[psl.block_sizes, psl.q_starts[1:], psl.t_starts[1:]]):
         q_offset = q_start - block_size - q_pos
         t_offset = t_start - block_size - t_pos
-        assert not (q_offset == t_offset == 0)
         assert (q_offset >= 0 and t_offset >= 0)
         if q_offset != 0:  # query insertion -> insertion in target sequence
             left_pos = q_start - q_offset
