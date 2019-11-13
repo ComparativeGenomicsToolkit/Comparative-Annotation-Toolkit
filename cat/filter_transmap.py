@@ -388,7 +388,7 @@ def resolve_split_genes(tmp_size_filtered, transcript_gene_map, resolved_df, unf
     Use localNearBest algorithm to determine split genes and populate that field
     """
     with tools.fileOps.TemporaryFilePath() as local_tmp:
-        cmd = [['sed', 's/\-[0-9]\+//', tmp_size_filtered],  # strip unique identifiers for comparative filters
+        cmd = [['sed', 's/\-[0-9]\+	/	/', tmp_size_filtered],  # strip unique identifiers for comparative filters
                ['pslCDnaFilter', '-localNearBest=0.05',
                 '-minCover=0.1', '-verbose=0',
                 '-minSpan=0.2', '/dev/stdin', '/dev/stdout']]
@@ -398,7 +398,7 @@ def resolve_split_genes(tmp_size_filtered, transcript_gene_map, resolved_df, unf
     # remove alignments that we didn't resolve
     resolved_ids = set(resolved_df.TranscriptId)
     filtered_alns = [x for x in filtered_alns if x.q_name in resolved_ids]
-    grouped = tools.psl.group_alignments_by_qname(filtered_alns)
+    grouped = tools.psl.group_alignments_by_qname(filtered_alns, False)
 
     # construct the transcript interval for resolved transcripts
     tx_intervals = {tx_id: unfiltered_tx_dict[aln_id].interval for
