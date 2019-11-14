@@ -2586,7 +2586,7 @@ class ConsensusTrack(TrackTask):
                        info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
-                       info.paralogy, info.unfiltered_paralogy, info.collapsed_gene_ids, info.collapsed_gene_names,
+                       info.paralogy, info.unfiltered_paralogy, info.get('collapsed_gene_ids'), info.get('collapsed_gene_names'),
                        info.frameshift, info.exon_annotation_support,
                        info.intron_annotation_support, info.transcript_class, info.transcript_modes,
                        info.valid_start, info.valid_stop, info.proper_orf]
