@@ -5,7 +5,7 @@ import argparse
 import collections
 import os
 
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 from toil.common import Toil
 from toil.job import Job
 

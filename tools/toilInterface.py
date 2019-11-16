@@ -4,7 +4,7 @@ Helper functions for toil-luigi interfacing
 import bio
 import math
 import argparse
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 from bd2k.util.humanize import human2bytes
 
 ###
