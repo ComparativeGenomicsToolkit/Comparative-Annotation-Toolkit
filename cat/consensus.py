@@ -647,18 +647,23 @@ def resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics):
     the largest sum of scores.
     """
     gene_dict = collections.defaultdict(list)
+    deduplicated_strand_resolved_consensus = []
     for tx_id, attrs in deduplicated_consensus.iteritems():
         tx_obj = tx_dict[tx_id]
-        gene_dict[tx_obj.name2].append([tx_obj, attrs])
+        # don't try to resolve novel genes
+        source_gene = attrs['source_gene']
+        if source_gene is not None:
+            gene_dict[source_gene].append([tx_obj, attrs])
+        else:
+            deduplicated_strand_resolved_consensus.append([tx_obj.name, attrs])
 
-    deduplicated_strand_resolved_consensus = []
     for gene in gene_dict:
         tx_objs, attrs = zip(*gene_dict[gene])
         if len(set(tx_obj.strand for tx_obj in tx_objs)) > 1:
             strand_scores = collections.Counter()
             for tx_obj, attrs in gene_dict[gene]:
                 strand_scores[tx_obj.strand] += attrs.get('score', 0)
-            best_strand = sorted(strand_scores.items())[0][0]
+            best_strand = sorted(strand_scores.items())[1][0]
             for tx_obj, attrs in gene_dict[gene]:
                 if tx_obj.strand == best_strand:
                     deduplicated_strand_resolved_consensus.append([tx_obj.name, attrs])
