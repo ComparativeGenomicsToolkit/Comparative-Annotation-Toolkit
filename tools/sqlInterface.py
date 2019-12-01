@@ -180,6 +180,11 @@ class AugPbIntronSupport(HgmColumns, Base):
     __tablename__ = 'augPB_Hgm'
 
 
+class ExRefIntronSupport(HgmColumns, Base):
+    """Table for intron support of External reference transcripts from homGeneMapping"""
+    __tablename__ = 'ExRef_Hgm'
+
+
 class AlternativeGeneIdColumns(object):
     """mixin class for AlternativeGenes"""
     TranscriptId = Column(Text, primary_key=True)
@@ -196,6 +201,11 @@ class AugCgpAlternativeGenes(AlternativeGeneIdColumns, Base):
 class AugPbAlternativeGenes(AlternativeGeneIdColumns, Base):
     """Table for recording a list of alternative parental genes for IsoSeq"""
     __tablename__ = 'augPB_AlternativeGenes'
+
+
+class ExRefAlternativeGenes(AlternativeGeneIdColumns, Base):
+    """Table for recording a list of alternative parental genes for external references"""
+    __tablename__ = 'ExRef_AlternativeGenes'
 
 
 class IsoSeqExonStructures(Bed12, Base):
@@ -223,13 +233,16 @@ def start_session(db_path):
 
 tables = {'hgm': {'augCGP': AugCgpIntronSupport, 'augTM': AugTmIntronSupport,
                   'augTMR': AugTmrIntronSupport, 'transMap': TmIntronSupport,
-                  'augPB': AugPbIntronSupport},
+                  'augPB': AugPbIntronSupport, 'exRef': ExRefIntronSupport},
           'CDS': {'augTM': {'metrics': CdsAugTmMetrics, 'evaluation': CdsAugTmEval},
                   'augTMR': {'metrics': CdsAugTmrMetrics, 'evaluation': CdsAugTmrEval},
                   'transMap': {'metrics': CdsTmMetrics, 'evaluation': CdsTmEval}},
           'mRNA': {'augTM': {'metrics': MrnaAugTmMetrics, 'evaluation': MrnaAugTmEval},
                    'augTMR': {'metrics': MrnaAugTmrMetrics, 'evaluation': MrnaAugTmrEval},
-                   'transMap': {'metrics': MrnaTmMetrics, 'evaluation': MrnaTmEval}}}
+                   'transMap': {'metrics': MrnaTmMetrics, 'evaluation': MrnaTmEval}},
+          'alt_names': {'exRef': ExRefAlternativeGenes,
+                        'augPB': AugPbAlternativeGenes,
+                        'augCGP': AugCgpAlternativeGenes}}
 
 
 ###

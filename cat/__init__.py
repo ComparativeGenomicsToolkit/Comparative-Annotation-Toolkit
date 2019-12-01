@@ -282,6 +282,9 @@ class PipelineTask(luigi.Task):
                       '[ISO_SEQ_BAM]', '__many__ = list',
                       '[PROTEIN_FASTA]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
+        for key in parser:
+            if key not in ['ANNOTATION', 'INTRONBAM', 'BAM', 'ISO_SEQ_BAM', 'PROTEIN_FASTA']:
+                raise InvalidInputException('Invalid field {} in config file'.format(key))
 
         # convert the config into a new dict, parsing the fofns
         cfg = collections.defaultdict(dict)
@@ -769,18 +772,17 @@ class ReferenceFiles(PipelineWrapperTask):
                          FakePsl, TranscriptGtf
     """
     @staticmethod
-    def get_args(pipeline_args):
+    def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'reference')
-        annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
         args = tools.misc.HashableNamespace()
-        args.annotation_gp = os.path.join(base_dir, annotation + '.gp')
-        args.annotation_attrs = os.path.join(base_dir, annotation + '.gp_attrs')
-        args.annotation_gtf = os.path.join(base_dir, annotation + '.gtf')
-        args.transcript_fasta = os.path.join(base_dir, annotation + '.fa')
-        args.transcript_flat_fasta = os.path.join(base_dir, annotation + '.fa.flat')
-        args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
-        args.duplicates = os.path.join(base_dir, annotation + '.duplicates.txt')
-        args.ref_psl = os.path.join(base_dir, annotation + '.psl')
+        args.annotation_gp = os.path.join(base_dir, genome + '.gp')
+        args.annotation_attrs = os.path.join(base_dir, genome + '.gp_attrs')
+        args.annotation_gtf = os.path.join(base_dir, genome + '.gtf')
+        args.transcript_fasta = os.path.join(base_dir, genome + '.fa')
+        args.transcript_flat_fasta = os.path.join(base_dir, genome + '.fa.flat')
+        args.transcript_bed = os.path.join(base_dir, genome + '.bed')
+        args.duplicates = os.path.join(base_dir, genome + '.duplicates.txt')
+        args.ref_psl = os.path.join(base_dir, genome + '.psl')
         args.__dict__.update(**vars(GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)))
         return args
 
@@ -792,14 +794,15 @@ class ReferenceFiles(PipelineWrapperTask):
     def requires(self):
         self.validate()
         pipeline_args = self.get_pipeline_args()
-        args = self.get_args(pipeline_args)
-        yield self.clone(Gff3ToGenePred, **vars(args))
-        yield self.clone(Gff3ToAttrs, **vars(args))
-        yield self.clone(TranscriptBed, **vars(args))
-        yield self.clone(TranscriptFasta, **vars(args))
-        yield self.clone(TranscriptGtf, **vars(args))
-        yield self.clone(FlatTranscriptFasta, **vars(args))
-        yield self.clone(FakePsl, **vars(args))
+        for genome in pipeline_args.annotation_genomes:
+            args = self.get_args(pipeline_args, genome)
+            yield self.clone(Gff3ToGenePred, **vars(args))
+            yield self.clone(Gff3ToAttrs, **vars(args))
+            yield self.clone(TranscriptBed, **vars(args))
+            yield self.clone(TranscriptFasta, **vars(args))
+            yield self.clone(TranscriptGtf, **vars(args))
+            yield self.clone(FlatTranscriptFasta, **vars(args))
+            yield self.clone(FakePsl, **vars(args))
 
 
 class Gff3ToGenePred(AbstractAtomicFileTask):
@@ -841,11 +844,12 @@ class Gff3ToAttrs(PipelineTask):
     """
     Converts the attrs file from -attrsOut in gff3ToGenePred into a SQLite table.
     """
+    genome = luigi.Parameter()
     table = tools.sqlInterface.Annotation.__tablename__
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
-        database = pipeline_args.dbs[pipeline_args.ref_genome]
+        database = pipeline_args.dbs[self.genome]
         tools.fileOps.ensure_file_dir(database)
         conn_str = 'sqlite:///{}'.format(database)
         digest = tools.fileOps.hashfile(pipeline_args.annotation)
@@ -1565,6 +1569,21 @@ class FindDenovoParents(PipelineTask):
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
+        elif mode == 'exRef':
+            args.tablename = tools.sqlInterface.ExternalGenes.__tablename__
+            args.gps = {genome: ReferenceFiles.get_args(pipeline_args, genome).annotation_gp
+                        for genome in pipeline_args.annotation_genomes if genome != pipeline_args.ref_genome}
+            filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
+                                    for genome in pipeline_args.annotation_genomes}
+            unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+                                      for genome in pipeline_args.annotation_genomes}
+            # add the reference annotation as a pseudo-transMap to assign parents in reference
+            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            args.filtered_tm_gps = filtered_tm_gp_files
+            args.unfiltered_tm_gps = unfiltered_tm_gp_files
+            args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
+                                for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         return args
@@ -1574,6 +1593,8 @@ class FindDenovoParents(PipelineTask):
             yield self.clone(AugustusPb)
         elif self.mode == 'augCGP':
             yield self.clone(AugustusCgp)
+        elif self.mode == 'exRef':
+            pass
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         yield self.clone(TransMap)
@@ -1648,6 +1669,10 @@ class Hgm(PipelineWrapperTask):
             tgt_genomes = pipeline_args.target_genomes
             gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
                             for genome in tgt_genomes}
+        elif mode == 'exRef':
+            annotation_genomes = pipeline_args.annotation_genomes
+            gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
+                            for genome in annotation_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
         args = tools.misc.HashableNamespace()
@@ -2003,6 +2028,9 @@ class Consensus(PipelineWrapperTask):
         if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
             args.denovo_tx_modes.append('augPB')
+        if genome in pipeline_args.annotation_genomes:
+            gp_list.append(ReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
+            args.denovo_tx_modes.append('exRef')
         args.gp_list = gp_list
         args.genome = genome
         args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
@@ -2073,6 +2101,7 @@ class ConsensusDriverTask(RebuildableTask):
         if pipeline_args.augustus_cgp:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
+        yield self.clone(FindDenovoParents, mode='exRef')
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
