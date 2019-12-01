@@ -284,13 +284,13 @@ def generate_protein_hints(job, protein_fasta_file_id, genome_fasta_file_id):
     # group up proteins for sub-jobs
     results = []
     for chunk in tools.dataOps.grouper(protein_handle.iteritems(), 100):
-        j = job.addChildJobFn(run_protein_blat, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
+        j = job.addChildJobFn(run_protein_aln, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
         results.append(j.rv())
     # return merged results
-    return job.addFollowOnJobFn(convert_blat_results_to_hints, results, memory='8G').rv()
+    return job.addFollowOnJobFn(convert_protein_aln_results_to_hints, results, memory='8G').rv()
 
 
-def run_protein_blat(job, protein_subset, genome_fasta_file_id):
+def run_protein_aln(job, protein_subset, genome_fasta_file_id):
     """
     Runs BLAT on a small chunk of proteins
     """
@@ -301,32 +301,27 @@ def run_protein_blat(job, protein_subset, genome_fasta_file_id):
         for name, seq in protein_subset:
             tools.bio.write_fasta(outf, name, str(seq))
     # perform alignment
-    tmp_psl = tools.fileOps.get_tmp_toil_file()
-    cmd = [['blat', '-t=dnax', '-q=prot', '-noHead', genome_fasta, protein_fasta, '/dev/stdout'],
-           ['pslCheck', '-skipInsertCounts', '/dev/stdin', '-pass={}'.format(tmp_psl)]]
-    try:  # we expect pslCheck to fail
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
-    except ProcException:
-        tools.fileOps.touch(tmp_psl)
-        pass
-    return job.fileStore.writeGlobalFile(tmp_psl)
+    tmp_exonerate = tools.fileOps.get_tmp_toil_file()
+    cmd = ['exonerate', '--model', 'protein2genome', '--showvulgar', 'no', '--showalignment', 'no',
+           '--showquerygff', 'yes', genome_fasta, protein_fasta]
+    tools.procOps.run_proc(cmd, stdout=tmp_exonerate)
+    return job.fileStore.writeGlobalFile(tmp_exonerate)
 
 
-def convert_blat_results_to_hints(job, results):
+def convert_protein_aln_results_to_hints(job, results):
     """
-    Concatenates protein blat, converts to hints
+    Concatenates exonerate protein2genome, converts to hints
     """
-    merged_psl = tools.fileOps.get_tmp_toil_file()
-    with open(merged_psl, 'w') as outf:
+    merged_exonerate = tools.fileOps.get_tmp_toil_file()
+    with open(merged_exonerate, 'w') as outf:
         for r in results:
             f = job.fileStore.readGlobalFile(r)
             outf.write(open(f).read())
     # sort psl and generate hints
+    tmp_sorted = tools.fileOps.get_tmp_toil_file()
+    tools.misc.sort_gff(merged_exonerate, tmp_sorted)
     out_hints = tools.fileOps.get_tmp_toil_file()
-    cmd = [['sort', '-n', '-k16,16', merged_psl],
-           ['sort', '-s', '-k14,14'],
-           ['perl', '-ne', '@f=split; print if ($f[0]>=100)'],
-           ['blat2hints.pl', '--in=/dev/stdin', '--nomult', '--ep_cutoff=5', '--out={}'.format(out_hints)]]
+    cmd = ['exonerate2hints.pl', '--in={}'.format(tmp_sorted), '--CDSpart_cutoff=5', '--out={}'.format(out_hints)]
     tools.procOps.run_proc(cmd)
     return job.fileStore.writeGlobalFile(out_hints)
 

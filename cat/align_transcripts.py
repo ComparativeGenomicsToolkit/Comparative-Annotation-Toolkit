@@ -59,7 +59,7 @@ def align_transcripts(args, toil_options):
 def setup(job, args, input_file_ids):
     """
     First function for align_transcripts pipeline. Splits up the genePred entries into chunks that will be aligned
-    with BLAT.
+    with parasail.
     :param args: dictionary of arguments from CAT
     :param input_file_ids: dictionary of fileStore file IDs for the inputs to this pipeline
     """
@@ -125,12 +125,6 @@ def run_aln_chunk(job, chunk):
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
         p = tools.parasail_wrapper.aln_nucleotides(tx_seq, tx_id, ref_tx_seq, ref_tx_id)
         psl_str = '\t'.join(p.psl_string())
-        with open(tmp_psl, 'w') as outf:
-            outf.write(psl_str + '\n')
-        try:
-            tools.procOps.run_proc(['pslCheck', '-quiet', tmp_psl, '-pass={}'.format(tmp_psl)])
-        except tools.pipeline.ProcException:
-            pass
         results.append(psl_str)
     return results
 
@@ -162,7 +156,7 @@ def merge(job, results, args):
 def group_transcripts(tx_iter, num_bases=10 ** 6, max_seqs=1000):
     """
     Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
-    Helps speed up the execution of BLAT when faced with very large genes
+    Helps speed up the execution of exonerate when faced with very large genes
     """
     tx_id, tx_seq, ref_tx_id, ref_tx_seq = tx_iter.next()
     this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]

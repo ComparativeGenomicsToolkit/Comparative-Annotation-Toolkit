@@ -987,7 +987,7 @@ class BuildDb(PipelineTask):
     def validate(self):
         tools.misc.samtools_version()  # validate samtools version
         for tool in ['load2sqlitedb', 'samtools', 'filterBam', 'bam2hints', 'bam2wig', 'wig2hints.pl', 'bam2hints',
-                     'bamToPsl', 'blat2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl', 'sambamba']:
+                     'bamToPsl', 'exonerate2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl', 'sambamba']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Auxiliary program {} not found on path.'.format(tool))
 
@@ -1041,7 +1041,8 @@ class GenerateHints(ToilTask):
         for tool in ['gff3ToGenePred', 'bamToPsl']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
-        for tool in ['join_mult_hints.pl', 'blat2hints.pl', 'wig2hints.pl', 'bam2wig', 'bam2hints', 'filterBam']:
+        for tool in ['join_mult_hints.pl', 'exonerate2hints.pl', 'blat2hints.pl',
+                     'wig2hints.pl', 'bam2wig', 'bam2hints', 'filterBam']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('{} from the augustus tool package not in global path.'.format(tool))
 
@@ -1857,13 +1858,7 @@ class AlignTranscripts(PipelineWrapperTask):
                                                'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
         return args
 
-    def validate(self):
-        for tool in ['blat', 'pslCheck']:
-            if not tools.misc.is_exec(tool):
-                raise ToolMissingException('Tool {} not in global path.'.format(tool))
-
     def requires(self):
-        self.validate()
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
             yield self.clone(AlignTranscriptDriverTask, genome=target_genome)

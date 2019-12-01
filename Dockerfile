@@ -67,7 +67,6 @@ RUN apt-get update
 RUN apt-get install -y wget bedtools bamtools samtools sqlite3 python-pip libgsl0-dev libcolamd2
 # Kent
 RUN for i in wigToBigWig faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf bedtools pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed ; do wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/$i -O /bin/$i ; chmod +x /bin/$i ; done
-RUN wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/blat/blat -O /bin/blat ; chmod +x /bin/blat
 
 COPY --from=builder /hal/bin/* /bin/
 COPY --from=builder /sambamba /bin/
