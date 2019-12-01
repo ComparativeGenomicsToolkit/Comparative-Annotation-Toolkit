@@ -8,7 +8,11 @@ import logging
 
 import pyfasta
 import pysam
-from toil.fileStores import FileID
+
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -21,7 +25,6 @@ import tools.toilInterface
 import tools.transcripts
 import tools.bio
 from exceptions import UserException
-from tools.pipeline import ProcException
 
 logger = logging.getLogger(__name__)
 
