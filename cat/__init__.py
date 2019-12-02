@@ -862,7 +862,7 @@ class Gff3ToAttrs(PipelineTask):
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
-        return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args).annotation_gp)
+        return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp)
 
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
@@ -1116,7 +1116,7 @@ class TransMap(PipelineWrapperTask):
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'transMap')
-        ref_files = ReferenceFiles.get_args(pipeline_args)
+        ref_files = ReferenceFiles.get_args(pipeline_args, genome)
         args = tools.misc.HashableNamespace()
         args.two_bit = GenomeFiles.get_args(pipeline_args, genome).two_bit
         args.chain_file = Chaining.get_args(pipeline_args).chain_files[genome]
@@ -1249,10 +1249,10 @@ class EvaluateTransMap(PipelineWrapperTask):
         args = tools.misc.HashableNamespace()
         args.db_path = pipeline_args.dbs[genome]
         args.filtered_tm_psl = tm_args.filtered_tm_psl
-        args.ref_psl = ReferenceFiles.get_args(pipeline_args).ref_psl
+        args.ref_psl = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).ref_psl
         args.filtered_tm_gp = tm_args.filtered_tm_gp
         args.annotation_gp = tm_args.annotation_gp
-        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
         args.genome = genome
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.ref_genome = pipeline_args.ref_genome
@@ -1312,7 +1312,7 @@ class Augustus(PipelineWrapperTask):
         args.ref_genome = pipeline_args.ref_genome
         args.genome = genome
         args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
-        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args, args.ref_genome).annotation_gp
         args.filtered_tm_gp = TransMap.get_args(pipeline_args, genome).filtered_tm_gp
         tm_args = TransMap.get_args(pipeline_args, genome)
         args.ref_psl = tm_args.ref_psl
@@ -1417,7 +1417,7 @@ class AugustusCgp(ToilTask):
         args.num_exons = pipeline_args.cgp_train_num_exons
         args.hints_db = pipeline_args.hints_db
         args.query_sizes = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
-        args.gtf = ReferenceFiles.get_args(pipeline_args).annotation_gtf
+        args.gtf = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gtf
         return args
 
     def output(self):
@@ -1555,8 +1555,8 @@ class FindDenovoParents(PipelineTask):
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in pipeline_args.isoseq_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
-            args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
+            args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
         elif mode == 'augCGP':
             args.tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
             args.gps = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp
@@ -1565,14 +1565,14 @@ class FindDenovoParents(PipelineTask):
             unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
                                       for genome in pipeline_args.target_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
-            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
+            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
             args.filtered_tm_gps = filtered_tm_gp_files
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         elif mode == 'exRef':
-            args.tablename = tools.sqlInterface.ExternalGenes.__tablename__
+            args.tablename = tools.sqlInterface.ExRefAlternativeGenes.__tablename__
             args.gps = {genome: ReferenceFiles.get_args(pipeline_args, genome).annotation_gp
                         for genome in pipeline_args.annotation_genomes if genome != pipeline_args.ref_genome}
             filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
@@ -1580,8 +1580,8 @@ class FindDenovoParents(PipelineTask):
             unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
                                       for genome in pipeline_args.annotation_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
-            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
+            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
             args.filtered_tm_gps = filtered_tm_gp_files
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
@@ -1685,8 +1685,8 @@ class Hgm(PipelineWrapperTask):
         args.gtf_out_dir = base_dir
         args.gtf_out_files = {genome: os.path.join(base_dir, genome + '.gtf') for genome in tgt_genomes}
         args.hints_db = pipeline_args.hints_db
-        args.annotation_gtf = ReferenceFiles.get_args(pipeline_args).annotation_gtf
-        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.annotation_gtf = ReferenceFiles.get_args(pipeline_args, args.ref_genome).annotation_gtf
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args, args.ref_genome).annotation_gp
         args.hgm_cpu = pipeline_args.hgm_cpu
         return args
 
@@ -1868,7 +1868,7 @@ class AlignTranscripts(PipelineWrapperTask):
         args.genome = genome
         args.ref_genome_fasta = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).fasta
         args.genome_fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
-        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args, args.ref_genome).annotation_gp
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         # the alignment_modes members hold the input genePreds and the mRNA/CDS alignment output paths
         args.transcript_modes = {'transMap': {'gp': TransMap.get_args(pipeline_args, genome).filtered_tm_gp,
@@ -1939,7 +1939,7 @@ class EvaluateTranscripts(PipelineWrapperTask):
         args = tools.misc.HashableNamespace()
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
-        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.genome = genome
         args.ref_genome = pipeline_args.ref_genome
@@ -2040,7 +2040,7 @@ class Consensus(PipelineWrapperTask):
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
         args.hints_db_has_rnaseq = len(pipeline_args.rnaseq_genomes) > 0
-        args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        args.annotation_gp = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.consensus_gp = os.path.join(base_dir, genome + '.gp')
         args.consensus_gp_info = os.path.join(base_dir, genome + '.gp_info')
@@ -2363,7 +2363,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
         # TODO: allow non-reference annotations
         #if self.genome in pipeline_args.annotation_genomes:
         if self.genome == pipeline_args.ref_genome:
-            annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            annotation_gp = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
                              genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0])
@@ -2699,7 +2699,7 @@ class TransMapTrack(TrackTask):
         pipeline_args = self.get_pipeline_args()
         track, trackdb = self.output()
         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
-        fasta = ReferenceFiles.get_args(pipeline_args).transcript_fasta
+        fasta = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).transcript_fasta
         tm_args = TransMap.get_args(pipeline_args, self.genome)
 
         # we have to construct a reference CDS file as well as rename the reference fasta to the new names
@@ -2708,7 +2708,7 @@ class TransMapTrack(TrackTask):
         tmp = luigi.LocalTarget(is_tmp=True)
         as_file = luigi.LocalTarget(is_tmp=True)
         seq_dict = tools.bio.get_sequence_dict(fasta)
-        ref_tx_dict = tools.transcripts.get_gene_pred_dict(ReferenceFiles.get_args(pipeline_args).annotation_gp)
+        ref_tx_dict = tools.transcripts.get_gene_pred_dict(ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome).annotation_gp)
         with cds.open('w') as cds_handle, mrna.open('w') as mrna_handle:
             for tx in tools.transcripts.gene_pred_iterator(tm_args.tm_gp):
                 ref_tx = ref_tx_dict[tools.nameConversions.strip_alignment_numbers(tx.name)]
