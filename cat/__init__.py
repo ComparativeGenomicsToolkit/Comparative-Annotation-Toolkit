@@ -1116,7 +1116,7 @@ class TransMap(PipelineWrapperTask):
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'transMap')
-        ref_files = ReferenceFiles.get_args(pipeline_args, genome)
+        ref_files = ReferenceFiles.get_args(pipeline_args, pipeline_args.ref_genome)
         args = tools.misc.HashableNamespace()
         args.two_bit = GenomeFiles.get_args(pipeline_args, genome).two_bit
         args.chain_file = Chaining.get_args(pipeline_args).chain_files[genome]
