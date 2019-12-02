@@ -115,6 +115,7 @@ class PipelineTask(luigi.Task):
     denovo_num_introns = luigi.IntParameter(default=0, significant=False)
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
+    denovo_ignore_novel_genes = luigi.BoolParameter(default=False, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
     in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
     rebuild_consensus = luigi.BoolParameter(default=False, significant=True)
@@ -191,6 +192,7 @@ class PipelineTask(luigi.Task):
         args.set('denovo_num_introns', self.denovo_num_introns, False)
         args.set('denovo_splice_support', self.denovo_splice_support, False)
         args.set('denovo_exon_support', self.denovo_exon_support, False)
+        args.set('denovo_ignore_novel_genes', self.denovo_ignore_novel_genes, False)
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
@@ -2055,6 +2057,7 @@ class Consensus(PipelineWrapperTask):
         args.denovo_num_introns = pipeline_args.denovo_num_introns
         args.denovo_splice_support = pipeline_args.denovo_splice_support
         args.denovo_exon_support = pipeline_args.denovo_exon_support
+        args.denovo_ignore_novel_genes = pipeline_args.denovo_ignore_novel_genes
         args.require_pacbio_support = pipeline_args.require_pacbio_support
         args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes

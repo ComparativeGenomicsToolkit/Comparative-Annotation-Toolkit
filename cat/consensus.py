@@ -125,7 +125,8 @@ def generate_consensus(args):
                                           'Possible fusion': 0, 'Putative novel isoform': 0}
         denovo_dict = find_novel(args.db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map,
                                  args.denovo_num_introns, args.in_species_rna_support_only,
-                                 args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support)
+                                 args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
+                                 args.denovo_ignore_novel_genes)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
@@ -472,7 +473,8 @@ def evaluate_ties(best_rows):
 
 
 def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map, denovo_num_introns,
-               in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support):
+               in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support,
+               denovo_ignore_novel_genes):
     """
     Finds novel loci, builds their attributes. Only calls novel loci if they have sufficient intron and splice support
     as defined by the user.
@@ -482,6 +484,8 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     2) PoorMapping -- the transcript has no assigned or alternative genes but has exons/introns supported by annotation
     3) PutativeNovel -- the transcript has no matches to the reference
     4) PossibleFusion -- the transcript was flagged in parent finding as a fusion, and has all valid splices
+
+    If the denovo_ignore_novel_genes flag is set, only incorporate PossibleParalog into the final consensus.
 
     Also finds novel splice junctions in CGP/PB transcripts. A novel splice junction is defined as a splice which
     homGeneMapping did not map over and which is supported by RNA-seq.
@@ -500,7 +504,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         # validate the support level
         intron = s.IntronRnaSupportPercent if in_species_rna_support_only else s.AllSpeciesIntronRnaSupportPercent
         exon = s.ExonRnaSupportPercent if in_species_rna_support_only else s.AllSpeciesExonRnaSupportPercent
-        if not (intron >= denovo_splice_support and exon >= denovo_exon_support and len(s.IntronRnaSupport) > 0):
+        if intron < denovo_splice_support or exon < denovo_exon_support:
             return None
         # if we previously flagged this as ambiguousOrFusion, propagate this tag
         if s.ResolutionMethod == 'ambiguousOrFusion':
@@ -562,11 +566,14 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     denovo_df['TranscriptClass'] = denovo_df.apply(is_novel, axis=1)
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
-    # filter out non-novel as we as fusions
+    # filter out non-novel as well as fusions
     filtered_denovo_df = denovo_df[~denovo_df.TranscriptClass.isnull()]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
+    # filter out novel if requested by user
+    if denovo_ignore_novel_genes is True:
+        filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass == 'possible_paralog']
 
     # construct aln_id -> features map to return
     denovo_tx_dict = {}
