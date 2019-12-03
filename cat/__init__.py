@@ -1709,8 +1709,9 @@ class Hgm(PipelineWrapperTask):
             gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
                             for genome in tgt_genomes}
         elif mode == 'exRef':
+            tgt_genomes = pipeline_args.external_ref_genomes
             gtf_in_files = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gtf
-                            for genome in pipeline_args.external_ref_genomes}
+                            for genome in tgt_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
         args = tools.misc.HashableNamespace()
