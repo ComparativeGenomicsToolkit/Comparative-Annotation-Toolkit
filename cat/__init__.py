@@ -231,7 +231,6 @@ class PipelineTask(luigi.Task):
         target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
         target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
         args.set('target_genomes', target_genomes, True)
-
         args.set('cfg', self.parse_cfg(), True)
         args.set('dbs', PipelineTask.get_databases(args), True)
         args.set('annotation', args.cfg['ANNOTATION'][args.ref_genome], True)
@@ -240,6 +239,7 @@ class PipelineTask(luigi.Task):
         args.set('intron_only_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) - set(args.cfg['BAM'].keys())), True)
         args.set('isoseq_genomes', frozenset(args.cfg['ISO_SEQ_BAM'].keys()), True)
         args.set('annotation_genomes', frozenset(args.cfg['ANNOTATION'].keys()), True)
+        args.set('external_ref_genomes', args.annotation_genomes - {args.ref_genome}, True)
         args.set('modes', self.get_modes(args), True)
         args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
 
@@ -777,6 +777,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
         args.annotation = pipeline_args.cfg['ANNOTATION'][genome]
         args.annotation_gp = os.path.join(base_dir, genome + '.external_reference.gp')
         args.annotation_gtf = os.path.join(base_dir, genome + '.external_reference.gtf')
+        args.annotation_attrs = os.path.join(base_dir, genome + '.external_reference.gp_attrs')
         args.duplicates = os.path.join(base_dir, genome + '.external_reference.duplicates.txt')
         return args
 
@@ -787,9 +788,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
     def requires(self):
         self.validate()
         pipeline_args = self.get_pipeline_args()
-        for genome in pipeline_args.annotation_genomes:
-            if genome == pipeline_args.ref_genome:
-                continue
+        for genome in pipeline_args.external_ref_genomes:
             args = self.get_args(pipeline_args, genome)
             yield self.clone(Gff3ToGenePred, **vars(args))
 
@@ -1013,7 +1012,12 @@ class BuildDb(PipelineTask):
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.hal = pipeline_args.hal
         args.cfg = pipeline_args.cfg
-        args.annotation_gp = ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
+        if genome == pipeline_args.ref_genome:
+            args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        elif genome in pipeline_args.external_ref_genomes:
+            args.annotation_gp = ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
+        else:
+            args.annotation_gp = None
         args.protein_fasta = pipeline_args.cfg['PROTEIN_FASTA'].get(genome, None)
         args.hints_path = os.path.join(base_dir, genome + '.extrinsic_hints.gff')
         return args
@@ -1601,12 +1605,12 @@ class FindDenovoParents(PipelineTask):
                                 for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         elif mode == 'exRef':
             args.tablename = tools.sqlInterface.ExRefAlternativeGenes.__tablename__
-            args.gps = {genome: ReferenceFiles.get_args(pipeline_args, genome).annotation_gp
-                        for genome in pipeline_args.annotation_genomes if genome != pipeline_args.ref_genome}
+            args.gps = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
+                        for genome in pipeline_args.external_ref_genomes}
             filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in pipeline_args.annotation_genomes}
+                                    for genome in pipeline_args.external_ref_genomes}
             unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in pipeline_args.annotation_genomes}
+                                      for genome in pipeline_args.external_ref_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
             filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
@@ -1624,7 +1628,7 @@ class FindDenovoParents(PipelineTask):
         elif self.mode == 'augCGP':
             yield self.clone(AugustusCgp)
         elif self.mode == 'exRef':
-            pass
+            yield self.clone(ExternalReferenceFiles)
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         yield self.clone(TransMap)
@@ -1700,9 +1704,8 @@ class Hgm(PipelineWrapperTask):
             gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
                             for genome in tgt_genomes}
         elif mode == 'exRef':
-            annotation_genomes = pipeline_args.annotation_genomes
             gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
-                            for genome in annotation_genomes}
+                            for genome in pipeline_args.external_ref_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
         args = tools.misc.HashableNamespace()
@@ -2058,8 +2061,8 @@ class Consensus(PipelineWrapperTask):
         if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
             args.denovo_tx_modes.append('augPB')
-        if genome in pipeline_args.annotation_genomes:
-            gp_list.append(ReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
+        if genome in pipeline_args.external_ref_genomes:
+            gp_list.append(ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
             args.denovo_tx_modes.append('exRef')
         args.gp_list = gp_list
         args.genome = genome
