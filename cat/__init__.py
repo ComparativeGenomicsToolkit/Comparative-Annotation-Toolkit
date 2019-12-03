@@ -1613,12 +1613,9 @@ class FindDenovoParents(PipelineTask):
             args.gps = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
                         for genome in pipeline_args.external_ref_genomes}
             filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in pipeline_args.external_ref_genomes}
+                                    for genome in pipeline_args.annotation_genomes}
             unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in pipeline_args.external_ref_genomes}
-            # add the reference annotation as a pseudo-transMap to assign parents in reference
-            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+                                      for genome in pipeline_args.annotation_genomes}
             args.filtered_tm_gps = filtered_tm_gp_files
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
@@ -1633,7 +1630,7 @@ class FindDenovoParents(PipelineTask):
         elif self.mode == 'augCGP':
             yield self.clone(AugustusCgp)
         elif self.mode == 'exRef':
-            yield self.clone(ExternalReferenceFiles)
+            yield self.clone(PrepareFiles)
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         yield self.clone(TransMap)
