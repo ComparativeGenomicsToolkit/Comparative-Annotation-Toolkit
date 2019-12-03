@@ -774,7 +774,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'reference')
         args = tools.misc.HashableNamespace()
-        args.annotation = pipeline_args.cfg['ANNOTATION'][genome]
+        args.annotation_gff3 = pipeline_args.cfg['ANNOTATION'][genome]
         args.annotation_gp = os.path.join(base_dir, genome + '.external_reference.gp')
         args.annotation_gtf = os.path.join(base_dir, genome + '.external_reference.gtf')
         args.annotation_attrs = os.path.join(base_dir, genome + '.external_reference.gp_attrs')
@@ -806,6 +806,7 @@ class ReferenceFiles(PipelineWrapperTask):
         base_dir = os.path.join(pipeline_args.work_dir, 'reference')
         annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
         args = tools.misc.HashableNamespace()
+        args.annotation_gff3 = pipeline_args.annotation
         args.annotation_gp = os.path.join(base_dir, annotation + '.gp')
         args.annotation_attrs = os.path.join(base_dir, annotation + '.gp_attrs')
         args.annotation_gtf = os.path.join(base_dir, annotation + '.gtf')
@@ -839,6 +840,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
     """
     Generates a genePred from a gff3 file.
     """
+    annotation_gff3 = luigi.Parameter()
     annotation_gp = luigi.Parameter()
     annotation_attrs = luigi.Parameter()
     duplicates = luigi.Parameter()
@@ -862,9 +864,8 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
                                         '{}'.format(len(duplicates), self.duplicates))
 
     def run(self):
-        pipeline_args = self.get_pipeline_args()
         logger.info('Converting annotation gff3 to genePred.')
-        cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, pipeline_args.annotation)
+        cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3)
         self.run_cmd(cmd)
         self.validate()
 
