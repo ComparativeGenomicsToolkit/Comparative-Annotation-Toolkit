@@ -374,6 +374,8 @@ class PipelineTask(luigi.Task):
                 modes.append('augTMR')
         if args.augustus_pb is True:
             modes.append('augPB')
+        if len(args.annotation_genomes) > 1:
+            modes.append('exRef')
         return tuple(modes)
 
     def get_module_args(self, module, **args):
