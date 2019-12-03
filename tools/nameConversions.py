@@ -87,4 +87,4 @@ def alignment_type(aln_id):
     elif aln_id_is_transmap(aln_id):
         return 'transMap'
     else:
-        return 'ExRef'
+        return 'exRef'
