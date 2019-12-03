@@ -56,11 +56,11 @@ def hints_db(hints_args, toil_options):
                     validate_bam_fasta_pairs(bam_path, fasta_sequences, hints_args.genome)
                     iso_seq_file_ids.append(validate_import_bam(t, bam_path, fasta_sequences, hints_args.genome))
 
-            if hints_args.annotation is None:
+            if hints_args.annotation_gp is None:
                 annotation_file_id = None
             else:
-                annotation_file_id = FileID.forPath(t.importFile('file://' + hints_args.annotation),
-                                                    hints_args.annotation)
+                annotation_file_id = FileID.forPath(t.importFile('file://' + hints_args.annotation_gp),
+                                                    hints_args.annotation_gp)
             if hints_args.protein_fasta is None:
                 protein_fasta_file_id = genome_fasta_file_id = None
             else:
@@ -394,17 +394,12 @@ def generate_iso_seq_hints(job, bam_file_id, bai_file_id):
 
 def generate_annotation_hints(job, annotation_hints_file_id):
     """
-    Converts the annotation file into hints. First converts the gff3 directly to genePred so we can make use
-    of the transcript library.
+    Converts the annotation file into hints.
 
     Hints are derived from both CDS exonic intervals and intron intervals
     """
-    annotation_gff3 = job.fileStore.readGlobalFile(annotation_hints_file_id)
-    tm_gp = tools.fileOps.get_tmp_toil_file()
-    cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
-           annotation_gff3, tm_gp]
-    tools.procOps.run_proc(cmd)
-    tx_dict = tools.transcripts.get_gene_pred_dict(tm_gp)
+    annotation_gp = job.fileStore.readGlobalFile(annotation_hints_file_id)
+    tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     hints = []
     for tx_id, tx in tx_dict.iteritems():
         if tx.cds_size == 0:

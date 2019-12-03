@@ -262,7 +262,7 @@ def load_alt_names(db_path, denovo_tx_modes):
     session = tools.sqlInterface.start_session(db_path)
     r = []
     for tx_mode in denovo_tx_modes:
-        table = tools.sqlInterface.AugCgpAlternativeGenes if tx_mode == 'augCGP' else tools.sqlInterface.AugPbAlternativeGenes
+        table = tools.sqlInterface.tables['alt_names'][tx_mode]
         r.append(tools.sqlInterface.load_alternatives(table, session))
     df = pd.concat(r)
     # rename TranscriptId to AlignmentId. This is all super confusing and silly

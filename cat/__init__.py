@@ -284,6 +284,9 @@ class PipelineTask(luigi.Task):
                       '[ISO_SEQ_BAM]', '__many__ = list',
                       '[PROTEIN_FASTA]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
+        for key in parser:
+            if key not in ['ANNOTATION', 'INTRONBAM', 'BAM', 'ISO_SEQ_BAM', 'PROTEIN_FASTA']:
+                raise InvalidInputException('Invalid field {} in config file'.format(key))
 
         # convert the config into a new dict, parsing the fofns
         cfg = collections.defaultdict(dict)
@@ -656,6 +659,7 @@ class PrepareFiles(PipelineWrapperTask):
     def requires(self):
         yield self.clone(GenomeFiles)
         yield self.clone(ReferenceFiles)
+        yield self.clone(ExternalReferenceFiles)
 
 
 class GenomeFiles(PipelineWrapperTask):
@@ -762,6 +766,34 @@ class GenomeFlatFasta(AbstractAtomicFileTask):
         tools.procOps.run_proc(cmd)
 
 
+class ExternalReferenceFiles(PipelineWrapperTask):
+    """
+    WrapperTask for running gff3ToGenePred <only> for non-reference annotation files
+    """
+    @staticmethod
+    def get_args(pipeline_args, genome):
+        base_dir = os.path.join(pipeline_args.work_dir, 'reference')
+        args = tools.misc.HashableNamespace()
+        args.annotation = pipeline_args.cfg['ANNOTATION'][genome]
+        args.annotation_gp = os.path.join(base_dir, genome + '.external_reference.gp')
+        args.annotation_gtf = os.path.join(base_dir, genome + '.external_reference.gtf')
+        args.duplicates = os.path.join(base_dir, genome + '.external_reference.duplicates.txt')
+        return args
+
+    def validate(self):
+        if not tools.misc.is_exec('gff3ToGenePred'):
+            raise ToolMissingException('gff3ToGenePred from the Kent tools package not in global path')
+
+    def requires(self):
+        self.validate()
+        pipeline_args = self.get_pipeline_args()
+        for genome in pipeline_args.annotation_genomes:
+            if genome == pipeline_args.ref_genome:
+                continue
+            args = self.get_args(pipeline_args, genome)
+            yield self.clone(Gff3ToGenePred, **vars(args))
+
+
 class ReferenceFiles(PipelineWrapperTask):
     """
     WrapperTask for producing annotation files.
@@ -789,7 +821,7 @@ class ReferenceFiles(PipelineWrapperTask):
     def validate(self):
         for tool in ['gff3ToGenePred', 'genePredToBed', 'genePredToFakePsl']:
             if not tools.misc.is_exec(tool):
-                    raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
+                raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
 
     def requires(self):
         self.validate()
@@ -981,7 +1013,7 @@ class BuildDb(PipelineTask):
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.hal = pipeline_args.hal
         args.cfg = pipeline_args.cfg
-        args.annotation = pipeline_args.cfg['ANNOTATION'].get(genome, None)
+        args.annotation_gp = ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
         args.protein_fasta = pipeline_args.cfg['PROTEIN_FASTA'].get(genome, None)
         args.hints_path = os.path.join(base_dir, genome + '.extrinsic_hints.gff')
         return args
@@ -1567,6 +1599,21 @@ class FindDenovoParents(PipelineTask):
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
+        elif mode == 'exRef':
+            args.tablename = tools.sqlInterface.ExRefAlternativeGenes.__tablename__
+            args.gps = {genome: ReferenceFiles.get_args(pipeline_args, genome).annotation_gp
+                        for genome in pipeline_args.annotation_genomes if genome != pipeline_args.ref_genome}
+            filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
+                                    for genome in pipeline_args.annotation_genomes}
+            unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+                                      for genome in pipeline_args.annotation_genomes}
+            # add the reference annotation as a pseudo-transMap to assign parents in reference
+            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            args.filtered_tm_gps = filtered_tm_gp_files
+            args.unfiltered_tm_gps = unfiltered_tm_gp_files
+            args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
+                                for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         return args
@@ -1576,6 +1623,8 @@ class FindDenovoParents(PipelineTask):
             yield self.clone(AugustusPb)
         elif self.mode == 'augCGP':
             yield self.clone(AugustusCgp)
+        elif self.mode == 'exRef':
+            pass
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         yield self.clone(TransMap)
@@ -1650,6 +1699,10 @@ class Hgm(PipelineWrapperTask):
             tgt_genomes = pipeline_args.target_genomes
             gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
                             for genome in tgt_genomes}
+        elif mode == 'exRef':
+            annotation_genomes = pipeline_args.annotation_genomes
+            gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
+                            for genome in annotation_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
         args = tools.misc.HashableNamespace()
@@ -2005,6 +2058,9 @@ class Consensus(PipelineWrapperTask):
         if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
             args.denovo_tx_modes.append('augPB')
+        if genome in pipeline_args.annotation_genomes:
+            gp_list.append(ReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
+            args.denovo_tx_modes.append('exRef')
         args.gp_list = gp_list
         args.genome = genome
         args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
@@ -2076,6 +2132,7 @@ class ConsensusDriverTask(RebuildableTask):
         if pipeline_args.augustus_cgp:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
+        yield self.clone(FindDenovoParents, mode='exRef')
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
