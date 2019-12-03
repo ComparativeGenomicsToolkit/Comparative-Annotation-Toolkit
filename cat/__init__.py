@@ -770,7 +770,7 @@ class GenomeFlatFasta(AbstractAtomicFileTask):
 
 class ExternalReferenceFiles(PipelineWrapperTask):
     """
-    WrapperTask for running gff3ToGenePred <only> for non-reference annotation files
+    WrapperTask for running gff3ToGenePred and genePredToGtf <only> for non-reference annotation files
     """
     @staticmethod
     def get_args(pipeline_args, genome):
@@ -784,8 +784,9 @@ class ExternalReferenceFiles(PipelineWrapperTask):
         return args
 
     def validate(self):
-        if not tools.misc.is_exec('gff3ToGenePred'):
-            raise ToolMissingException('gff3ToGenePred from the Kent tools package not in global path')
+        for tool in ['gff3ToGenePred', 'genePredToBed']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
 
     def requires(self):
         self.validate()
@@ -793,6 +794,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
         for genome in pipeline_args.external_ref_genomes:
             args = self.get_args(pipeline_args, genome)
             yield self.clone(Gff3ToGenePred, **vars(args))
+            yield self.clone(TranscriptGtf, **vars(args))
 
 
 class ReferenceFiles(PipelineWrapperTask):
@@ -1707,7 +1709,7 @@ class Hgm(PipelineWrapperTask):
             gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
                             for genome in tgt_genomes}
         elif mode == 'exRef':
-            gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
+            gtf_in_files = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gtf
                             for genome in pipeline_args.external_ref_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
@@ -1774,6 +1776,8 @@ class HgmDriverTask(PipelineTask):
         elif self.mode == 'augPB':
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
+        elif self.mode == 'exRef':
+            yield self.clone(FindDenovoParents, mode='exRef')
         else:
             raise UserException('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
         yield self.clone(BuildDb)
