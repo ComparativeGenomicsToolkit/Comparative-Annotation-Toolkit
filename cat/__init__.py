@@ -1047,9 +1047,9 @@ class BuildDb(PipelineTask):
         for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]:
             args = BuildDb.get_args(pipeline_args, genome)
             logger.info('Loading sequence for {} into database.'.format(genome))
-            cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
-                   '--dbaccess={}'.format(pipeline_args.hints_db), args.fasta]
-            tools.procOps.run_proc(cmd, stdout='/dev/null', stderr='/dev/null')
+            base_cmd = ['load2sqlitedb', '--noIdx', '--clean', '--species={}'.format(genome),
+                        '--dbaccess={}'.format(pipeline_args.hints_db)]
+            tools.procOps.run_proc(base_cmd + [args.fasta], stdout='/dev/null', stderr='/dev/null')
             if os.path.getsize(args.hints_path) != 0:
                 logger.info('Loading hints for {} into database.'.format(genome))
                 tools.procOps.run_proc(base_cmd + [args.hints_path], stderr='/dev/null')
