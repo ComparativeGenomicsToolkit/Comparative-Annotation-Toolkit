@@ -142,16 +142,20 @@ def join_genes(job, gff_chunks):
     """
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
+    files = []
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
         for chunk in gff_chunks:
             local_path = job.fileStore.readGlobalFile(chunk)
+            files.append(os.path.basename(local_path))
             fofn_handle.write(local_path + '\n')
             for line in open(local_path):
                 raw_handle.write(line)
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
-    cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
+    # TODO: figure out why this fails on certain filesystems
+    #cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
+    cmd = [['joingenes', '-g', ','.join(files), '-o', '/dev/stdout'],
            ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
            ['sed', ' s/jg/augPB-/g']]
     tools.procOps.run_proc(cmd, stdout=join_genes_file)
