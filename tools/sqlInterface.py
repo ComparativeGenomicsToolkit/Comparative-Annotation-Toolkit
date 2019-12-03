@@ -422,7 +422,7 @@ def load_intron_vector(table, session):
     :return: DataFrame
     """
     assert any(table == cls for cls in (TmIntronSupport, AugCgpIntronSupport, AugTmIntronSupport, AugPbIntronSupport,
-                                        AugTmrIntronSupport))
+                                        AugTmrIntronSupport, ExRefIntronSupport))
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
 
@@ -434,7 +434,7 @@ def load_alternatives(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes
+    assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes or table == ExRefAlternativeGenes
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
 
