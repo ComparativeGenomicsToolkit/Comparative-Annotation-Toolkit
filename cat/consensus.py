@@ -556,11 +556,11 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         denovo_tx_obj = tx_dict[s.AlignmentId]
         five_p = denovo_tx_obj.get_5p_interval()
         three_p = denovo_tx_obj.get_3p_interval()
-        five_p_matches = not tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
-                                                                                       five_p, denovo_novel_end_distance)
-        three_p_matches = not tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
-                                                                                        three_p, denovo_novel_end_distance)
-        tx_class = 'putative_novel_isoform' if five_p_matches or three_p_matches else s.TranscriptClass
+        five_p_matches = tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
+                                                                                   five_p, denovo_novel_end_distance)
+        three_p_matches = tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
+                                                                                    three_p, denovo_novel_end_distance)
+        tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
         return pd.Series([five_p_matches, three_p_matches, tx_class])
 
     denovo_hgm_df = pd.concat([load_hgm_vectors(db_path, tx_mode) for tx_mode in denovo_tx_modes])
