@@ -780,6 +780,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'reference')
         args = tools.misc.HashableNamespace()
+        args.genome = genome
         args.annotation_gff3 = pipeline_args.cfg['ANNOTATION'][genome]
         args.annotation_gp = os.path.join(base_dir, genome + '.external_reference.gp')
         args.annotation_gtf = os.path.join(base_dir, genome + '.external_reference.gtf')
@@ -799,6 +800,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
             args = self.get_args(pipeline_args, genome)
             yield self.clone(Gff3ToGenePred, **vars(args))
             yield self.clone(TranscriptGtf, **vars(args))
+            yield self.clone(Gff3ToAttrs, **vars(args))
 
 
 class ReferenceFiles(PipelineWrapperTask):
@@ -823,6 +825,7 @@ class ReferenceFiles(PipelineWrapperTask):
         args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
         args.duplicates = os.path.join(base_dir, annotation + '.duplicates.txt')
         args.ref_psl = os.path.join(base_dir, annotation + '.psl')
+        args.genome = pipeline_args.ref_genome
         args.__dict__.update(**vars(GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)))
         return args
 
@@ -883,14 +886,15 @@ class Gff3ToAttrs(PipelineTask):
     """
     Converts the attrs file from -attrsOut in gff3ToGenePred into a SQLite table.
     """
+    genome = luigi.Parameter()
     table = tools.sqlInterface.Annotation.__tablename__
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
-        database = pipeline_args.dbs[pipeline_args.ref_genome]
+        database = pipeline_args.dbs[self.genome]
         tools.fileOps.ensure_file_dir(database)
         conn_str = 'sqlite:///{}'.format(database)
-        digest = tools.fileOps.hashfile(pipeline_args.annotation)
+        digest = tools.fileOps.hashfile(self.annotation_gp)
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                           target_table=self.table,
                                                           update_id='_'.join([self.table, digest]))
@@ -898,7 +902,11 @@ class Gff3ToAttrs(PipelineTask):
 
     def requires(self):
         pipeline_args = self.get_pipeline_args()
-        return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args).annotation_gp)
+        if self.genome == pipeline_args.ref_genome:
+            return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args).annotation_gp)
+        else:
+            return self.clone(Gff3ToGenePred, annotation_gp=ExternalReferenceFiles.get_args(pipeline_args,
+                                                                                            self.genome).annotation_gp)
 
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
@@ -1192,7 +1200,7 @@ class TransMap(PipelineWrapperTask):
 
 class TransMapPsl(PipelineTask):
     """
-    Runs transMap. Requires Kent tools pslMap, pslMapPostChain, pslRecalcMatch
+    Runs transMap. Requires Kent tools pslMap, pslMapPostChain, pslRecalcMatch, transMapPslToGenePred
     """
     genome = luigi.Parameter()
 
@@ -1282,7 +1290,7 @@ class TransMapGtf(PipelineTask):
 
 class EvaluateTransMap(PipelineWrapperTask):
     """
-    Evaluates transMap alignments.
+    Evaluates transMap derived transcripts (cat/classify.py)
     """
     @staticmethod
     def get_args(pipeline_args, genome):
@@ -1312,7 +1320,7 @@ class EvaluateTransMap(PipelineWrapperTask):
 
 class EvaluateTransMapDriverTask(PipelineTask):
     """
-    Task for per-genome launching of a toil pipeline for aligning transcripts to their parent.
+    Task for per-genome analysis of transMap derived transcripts (cat/classify.py)
     """
     genome = luigi.Parameter()
     tm_eval_args = luigi.Parameter()
@@ -2406,7 +2414,10 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
         if self.genome in pipeline_args.annotation_genomes:
-            annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            if self.genome == pipeline_args.ref_genome:
+                annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            else:
+                annotation_gp = ExternalReferenceFiles.get_args(pipeline_args, self.genome).annotation_gp
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
                              genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0])

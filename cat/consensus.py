@@ -126,7 +126,8 @@ def generate_consensus(args):
         denovo_dict = find_novel(args.db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map,
                                  args.denovo_num_introns, args.in_species_rna_support_only,
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
-                                 args.denovo_ignore_novel_genes, args.denovo_novel_end_distance)
+                                 args.denovo_ignore_novel_genes, args.denovo_novel_end_distance,
+                                 args.denovo_allow_unsupported)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
