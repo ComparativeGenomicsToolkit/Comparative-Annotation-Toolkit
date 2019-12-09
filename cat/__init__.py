@@ -923,7 +923,7 @@ class Gff3ToAttrs(PipelineTask):
         if tot_genes != len(df):
             raise InvalidInputException('The number of genes parsed from the attrs file is not the same number as '
                                         'in the genePred. This is a parser failure. Contact Ian and make him fix it.')
-        database = pipeline_args.dbs[pipeline_args.ref_genome]
+        database = pipeline_args.dbs[self.genome]
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
             df.to_sql(self.table, engine, if_exists='replace')
         self.output().touch()
@@ -2416,11 +2416,14 @@ class CreateTracksDriverTask(PipelineWrapperTask):
         if self.genome in pipeline_args.annotation_genomes:
             if self.genome == pipeline_args.ref_genome:
                 annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+                annotation_genome = pipeline_args.ref_genome
             else:
                 annotation_gp = ExternalReferenceFiles.get_args(pipeline_args, self.genome).annotation_gp
+                annotation_genome = self.genome
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
-                             genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0])
+                             genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0],
+                             annotation_genome=annotation_genome)
 
         if self.genome in pipeline_args.target_genomes:
             yield self.clone(ConsensusTrack, track_path=os.path.join(out_dir, 'consensus.bb'),
@@ -2440,7 +2443,8 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'transmap.txt'))
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
-                             genepred_path=tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide')
+                             genepred_path=tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide',
+                             annotation_genome=pipeline_args.ref_genome)
 
             if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
@@ -2586,6 +2590,7 @@ class BgpTrack(TrackTask):
     """Constructs a standard modified bigGenePred track"""
     genepred_path = luigi.Parameter()
     label = luigi.Parameter()
+    annotation_genome = luigi.Parameter()
     visibility = luigi.Parameter(default='pack')
 
     def run(self):
@@ -2602,7 +2607,7 @@ class BgpTrack(TrackTask):
         pipeline_args = self.get_pipeline_args()
         track, trackdb = self.output()
         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
-        annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[pipeline_args.ref_genome])
+        annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[self.annotation_genome])
         # hacky way to make columns consistent
         if 'transcript_id' in annotation_info.columns:
             annotation_info.columns = [convert_case(c) for c in annotation_info.columns]
