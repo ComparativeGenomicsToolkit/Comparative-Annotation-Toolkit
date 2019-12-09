@@ -560,7 +560,8 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                                                                        five_p, denovo_novel_end_distance)
         three_p_matches = not tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
                                                                                         three_p, denovo_novel_end_distance)
-        return pd.Series([five_p_matches, three_p_matches])
+        tx_class = 'putative_novel_isoform' if five_p_matches or three_p_matches else s.TranscriptClass
+        return pd.Series([five_p_matches, three_p_matches, tx_class])
 
     denovo_hgm_df = pd.concat([load_hgm_vectors(db_path, tx_mode) for tx_mode in denovo_tx_modes])
     # remove the TranscriptId and GeneId columns so they can be populated by others
@@ -584,7 +585,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
 
     # apply the novel finding functions
     denovo_df['TranscriptClass'] = denovo_df.apply(is_novel, axis=1)
-    denovo_df[['Novel5pCap', 'NovelPolyA']] = denovo_df.apply(has_novel_ends, axis=1)
+    denovo_df[['Novel5pCap', 'NovelPolyA', 'TranscriptClass']] = denovo_df.apply(has_novel_ends, axis=1)
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
     # filter out non-novel as well as fusions
@@ -595,7 +596,8 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
     # filter out novel if requested by user
     if denovo_ignore_novel_genes is True:
-        filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass == 'possible_paralog']
+        filtered_denovo_df = filtered_denovo_df[(filtered_denovo_df.TranscriptClass == 'possible_paralog') |
+                                                (filtered_denovo_df.TranscriptClass == 'putative_novel_isoform')]
 
     # construct aln_id -> features map to return
     denovo_tx_dict = {}
