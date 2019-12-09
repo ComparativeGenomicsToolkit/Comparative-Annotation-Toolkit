@@ -126,7 +126,7 @@ def generate_consensus(args):
         denovo_dict = find_novel(args.db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map,
                                  args.denovo_num_introns, args.in_species_rna_support_only,
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
-                                 args.denovo_ignore_novel_genes)
+                                 args.denovo_ignore_novel_genes, args.denovo_novel_end_distance)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
@@ -474,7 +474,7 @@ def evaluate_ties(best_rows):
 
 def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map, denovo_num_introns,
                in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support,
-               denovo_ignore_novel_genes):
+               denovo_ignore_novel_genes, denovo_novel_end_distance, denovo_allow_unsupported):
     """
     Finds novel loci, builds their attributes. Only calls novel loci if they have sufficient intron and splice support
     as defined by the user.
@@ -530,11 +530,14 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         elif in_species_rna_support_only is False and s.AllSpeciesExonRnaSupportPercent <= denovo_exon_support or \
                         s.AllSpeciesIntronRnaSupportPercent <= denovo_splice_support:
             return None
+        # look for splices that are not supported by the reference annotation
+        # these splices may or may not be supported by RNA-seq based on the denovo_allow_unsupported flag
         new_supported_splices = set()
         intron_vector = s.IntronRnaSupport if in_species_rna_support_only else s.AllSpeciesIntronRnaSupport
         for intron, rna in zip(*[denovo_tx_obj.intron_intervals, intron_vector]):
-            if rna > 0 and intron not in existing_splices:
-                new_supported_splices.add(intron)
+            if intron not in existing_splices:
+                if denovo_allow_unsupported is True or rna > 0:
+                    new_supported_splices.add(intron)
         if len(new_supported_splices) == 0:
             return None
         # if any splices are both not supported by annotation and supported by RNA, call this as novel
@@ -547,6 +550,17 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
             tx_class = 'poor_alignment'
         return tx_class
 
+    def has_novel_ends(s):
+        """Does this transcript have any novel ends we want to retain?"""
+        denovo_tx_obj = tx_dict[s.AlignmentId]
+        five_p = denovo_tx_obj.get_5p_interval()
+        three_p = denovo_tx_obj.get_3p_interval()
+        five_p_matches = not tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
+                                                                                       five_p, denovo_novel_end_distance)
+        three_p_matches = not tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
+                                                                                        three_p, denovo_novel_end_distance)
+        return pd.Series([five_p_matches, three_p_matches])
+
     denovo_hgm_df = pd.concat([load_hgm_vectors(db_path, tx_mode) for tx_mode in denovo_tx_modes])
     # remove the TranscriptId and GeneId columns so they can be populated by others
     denovo_hgm_df = denovo_hgm_df.drop(['GeneId', 'TranscriptId'], axis=1)
@@ -557,17 +571,24 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     denovo_df['CommonName'] = [common_name_map.get(x, None) for x in denovo_df.AssignedGeneId]
     denovo_df['GeneBiotype'] = [gene_biotype_map.get(x, None) for x in denovo_df.AssignedGeneId]
 
-    # extract all splices we have already seen
+    # extract all splices, 5' and 3' ends we have already seen
     existing_splices = set()
+    existing_5p = collections.defaultdict(set)
+    existing_3p = collections.defaultdict(set)
     for consensus_tx in consensus_dict:
-        existing_splices.update(tx_dict[consensus_tx].intron_intervals)
+        tx_obj = tx_dict[consensus_tx]
+        existing_splices.update(tx_obj.intron_intervals)
+        existing_5p[tx_obj.chromosome].add(tx_obj.get_5p_interval())
+        existing_3p[tx_obj.chromosome].add(tx_obj.get_3p_interval())
 
     # apply the novel finding functions
     denovo_df['TranscriptClass'] = denovo_df.apply(is_novel, axis=1)
+    denovo_df[['Novel5pCap', 'NovelPolyA']] = denovo_df.apply(has_novel_ends, axis=1)
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
     # filter out non-novel as well as fusions
-    filtered_denovo_df = denovo_df[~denovo_df.TranscriptClass.isnull()]
+    filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull()) | (~denovo_df.Novel5pCap.isnull())
+                                   | (~denovo_df.NovelPolyA.isnull())]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
@@ -582,6 +603,8 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         tx_mode = s.TranscriptMode
         denovo_tx_dict[aln_id] = {'source_gene': s.AssignedGeneId,
                                   'transcript_class': s.TranscriptClass,
+                                  'novel_5p_cap': s.Novel5pCap,
+                                  'novel_poly_a': s.NovelPolyA,
                                   'transcript_biotype': 'unknown_likely_coding',
                                   'gene_biotype': s.GeneBiotype,
                                   'intron_rna_support': ','.join(map(str, s.IntronRnaSupport)),
@@ -602,7 +625,8 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
 
     # record how many of each type we threw out
     for tx_mode, df in denovo_df.groupby('TranscriptMode'):
-        metrics['denovo'][tx_mode]['Discarded'] = len(df[df.TranscriptClass.isnull()])
+        metrics['denovo'][tx_mode]['Discarded'] = len(df[(~df.TranscriptClass.isnull()) | (~df.Novel5pCap.isnull())
+                                                         | (~df.NovelPolyA.isnull())])
     return denovo_tx_dict
 
 

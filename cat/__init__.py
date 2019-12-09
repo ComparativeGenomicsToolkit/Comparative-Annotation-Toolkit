@@ -116,6 +116,8 @@ class PipelineTask(luigi.Task):
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
     denovo_ignore_novel_genes = luigi.BoolParameter(default=False, significant=False)
+    denovo_novel_end_distance = luigi.IntParameter(default=0, significant=False)
+    denovo_allow_unsupported = luigi.BoolParameter(default=False, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
     in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
     rebuild_consensus = luigi.BoolParameter(default=False, significant=True)
@@ -193,6 +195,8 @@ class PipelineTask(luigi.Task):
         args.set('denovo_splice_support', self.denovo_splice_support, False)
         args.set('denovo_exon_support', self.denovo_exon_support, False)
         args.set('denovo_ignore_novel_genes', self.denovo_ignore_novel_genes, False)
+        args.set('denovo_novel_end_distance', self.denovo_novel_end_distance, False)
+        args.set('denovo_allow_unsupported', self.denovo_allow_unsupported, False)
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
@@ -2097,6 +2101,8 @@ class Consensus(PipelineWrapperTask):
         args.denovo_splice_support = pipeline_args.denovo_splice_support
         args.denovo_exon_support = pipeline_args.denovo_exon_support
         args.denovo_ignore_novel_genes = pipeline_args.denovo_ignore_novel_genes
+        args.denovo_novel_end_distance = pipeline_args.denovo_novel_end_distance
+        args.denovo_allow_unsupported = pipeline_args.denovo_allow_unsupported
         args.require_pacbio_support = pipeline_args.require_pacbio_support
         args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes
@@ -2399,9 +2405,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_pb.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
-        # TODO: allow non-reference annotations
-        #if self.genome in pipeline_args.annotation_genomes:
-        if self.genome == pipeline_args.ref_genome:
+        if self.genome in pipeline_args.annotation_genomes:
             annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),

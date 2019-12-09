@@ -342,6 +342,24 @@ class Transcript(object):
             c += len(i)
         return intervals
 
+    def get_5p_interval(self):
+        """
+        Returns a ChromosomeInterval representing the 5' end
+        """
+        if self.strand == '+':
+            return ChromosomeInterval(self.chromosome, self.start, self.start + 1, self.strand)
+        else:
+            return ChromosomeInterval(self.chromosome, self.stop - 1, self.stop, self.strand)
+
+    def get_3p_interval(self):
+        """
+        Returns a ChromosomeInterval representing the 3' end
+        """
+        if self.strand == '-':
+            return ChromosomeInterval(self.chromosome, self.start, self.start + 1, self.strand)
+        else:
+            return ChromosomeInterval(self.chromosome, self.stop - 1, self.stop, self.strand)
+
 
 class GenePredTranscript(Transcript):
     """

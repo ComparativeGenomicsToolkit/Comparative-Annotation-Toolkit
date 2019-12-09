@@ -141,6 +141,12 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--denovo-exon-support`: For de-novo predictions, discard any transcripts with less than this percent of RNA-seq exon support. Must be a value between 0 and 100. Default is 0.
 
+`--denovo-ignore-novel-genes`: For de-novo predictions, discard any transcripts that are predicted to be novel genes. In other words, only retain putative novel isoforms.
+
+`--denovo-novel-end-distance`: For de-novo predictions, allow transcripts to be included if they provide a novel 5' or 3' end N distance away from any existing ends. Default is 0.
+
+`--denovo-allow-unsupported`: For de-novo predictions, allow novel isoforms to be called if they contain splices that are not supported by the reference annotation even if they are also not supported by RNA-seq. Without this flag, novel isoforms will only be called if they have one or more splice that has RNA-seq/IsoSeq support and no reference annotation support.
+
 `--require-pacbio-support`: If set, all isoforms in the final set must be supported by at least one IsoSeq read. This flag is likely to discard a ton of transcripts, so be careful.
 
 `--in-species-rna-support-only`: If set, all of the above intron/exon support flags will look only at RNA-seq/IsoSeq data from the species in question, and not make use of `homGeneMapping` to check support in all species. The output plots will always report in-species support.
@@ -214,11 +220,11 @@ For the PROTEIN_FASTA field, every genome you wish to have the protein fasta be 
 
 It is **extremely** important that you use high quality RNA-seq. Libraries should be poly-A selected and paired end with a minimum read length of 75bp. If any of these are not true, it is advisable to place these libraries in the INTRONBAM field. Any genome can have a mix of BAM and INTRONBAM hints.
 
-**BAM files must be indexed!**
+**BAM files must be genomic-coordinate sorted and indexed!**
 
 ## ISoSeq libraries
 
-If you are using IsoSeq data, it is recommended that you doing your mapping with `gmap`. Follow [the tutorial](https://github.com/PacificBiosciences/cDNA_primer/wiki/Aligner-tutorial:-GMAP,-STAR,-BLAT,-and-BLASR).
+If you are using IsoSeq data, it is recommended that you doing your mapping with `minimap2`. These BAM files must also be genomic coordinate sorted and indexed.
 
 # GFF3 Reference
 
