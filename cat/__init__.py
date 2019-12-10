@@ -894,30 +894,18 @@ class Gff3ToAttrs(PipelineTask):
         database = pipeline_args.dbs[self.genome]
         tools.fileOps.ensure_file_dir(database)
         conn_str = 'sqlite:///{}'.format(database)
-        digest = tools.fileOps.hashfile(self.annotation_gp)
+        digest = tools.fileOps.hashfile(pipeline_args.cfg['ANNOTATION'][self.genome])
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                           target_table=self.table,
                                                           update_id='_'.join([self.table, digest]))
         return attrs_table
-
-    def requires(self):
-        pipeline_args = self.get_pipeline_args()
-        if self.genome == pipeline_args.ref_genome:
-            return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args).annotation_gp)
-        else:
-            return self.clone(Gff3ToGenePred, annotation_gp=ExternalReferenceFiles.get_args(pipeline_args,
-                                                                                            self.genome).annotation_gp)
 
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         pipeline_args = self.get_pipeline_args()
         df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp)
         if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
-            if pipeline_args.augustus:
-                raise InvalidInputException('No protein_coding annotations found. This will cause problems for '
-                                            'AugustusTMR. Please check your GFF3 input.')
-            else:
-                logger.critical('No protein_coding annotations found!')
+            logger.critical('No protein_coding annotations found!')
         # validate number parsed
         tot_genes = len(open(self.annotation_gp).readlines())
         if tot_genes != len(df):
@@ -2157,7 +2145,8 @@ class ConsensusDriverTask(RebuildableTask):
         if pipeline_args.augustus_cgp:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
-        yield self.clone(FindDenovoParents, mode='exRef')
+        if self.genome in pipeline_args.external_ref_genomes:
+            yield self.clone(FindDenovoParents, mode='exRef')
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
