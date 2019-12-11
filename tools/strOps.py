@@ -16,7 +16,7 @@ def splitAtSpaces(s):
 def dup(n, s):
     "make a string with n copies of s"
     l = []
-    for i in xrange(n):
+    for i in range(n):
         l.append(s)
     return "".join(l)
 

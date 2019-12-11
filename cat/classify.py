@@ -74,7 +74,7 @@ def classify(eval_args):
     seq_dict = tools.bio.get_sequence_dict(eval_args.fasta)
     # results stores the final dataframes
     results = {}
-    for tx_mode, path_dict in eval_args.transcript_modes.iteritems():
+    for tx_mode, path_dict in eval_args.transcript_modes.items():
         tx_dict = tools.transcripts.get_gene_pred_dict(path_dict['gp'])
         aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
         for aln_mode in aln_modes:
@@ -290,7 +290,7 @@ def find_indels(tx, psl, aln_mode):
     q_pos = 0
     t_pos = 0
     # iterate over block starts[i], q_starts[i + 1], t_starts[i + 1]
-    for block_size, q_start, t_start in itertools.izip(*[psl.block_sizes, psl.q_starts[1:], psl.t_starts[1:]]):
+    for block_size, q_start, t_start in zip(*[psl.block_sizes, psl.q_starts[1:], psl.t_starts[1:]]):
         q_offset = q_start - block_size - q_pos
         t_offset = t_start - block_size - t_pos
         assert (q_offset >= 0 and t_offset >= 0)

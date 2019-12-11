@@ -78,11 +78,11 @@ def setup(job, args, input_file_ids):
     intervals = collections.defaultdict(list)
     for chrom in genome_fasta:
         chrom_size = len(genome_fasta[chrom])
-        for start in xrange(0, chrom_size, args.chunksize - args.overlap):
+        for start in range(0, chrom_size, args.chunksize - args.overlap):
             stop = min(start + args.chunksize, chrom_size)
             intervals[chrom].append([start, stop])
 
-    for chrom, interval_list in intervals.iteritems():
+    for chrom, interval_list in intervals.items():
         if len(interval_list) < 2:
             continue
         last_start, last_stop = interval_list[-1]
@@ -91,7 +91,7 @@ def setup(job, args, input_file_ids):
             interval_list[-1][-1] = last_stop
 
     predictions = []
-    for chrom, interval_list in intervals.iteritems():
+    for chrom, interval_list in intervals.items():
         for start, stop in interval_list:
             hints = [h for h in hints_by_chrom[chrom] if h[3] >= start and h[4] <= stop]
             if len(hints) == 0:

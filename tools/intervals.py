@@ -1,8 +1,8 @@
 """
 Represent continuous genomic coordinates. Allows for coordinate arithmetic.
 """
-import mathOps
-from bio import reverse_complement, translate_sequence
+from . import mathOps
+from .bio import reverse_complement, translate_sequence
 
 __author__ = 'Ian Fiddes'
 

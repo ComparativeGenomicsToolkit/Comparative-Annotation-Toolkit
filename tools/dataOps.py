@@ -3,13 +3,14 @@ Operations on dictionaries and lists.
 """
 import operator
 import itertools
+from functools import reduce
 
 
 def combine_dicts(a, b, op=operator.add):
     """
     http://stackoverflow.com/questions/11011756/is-there-any-pythonic-way-to-combine-two-dicts-adding-values-for-keys-that-appe
     """
-    return dict(a.items() + b.items() + [(k, op(a[k], b[k])) for k in b.viewkeys() & a.viewkeys()])
+    return dict(list(a.items()) + list(b.items()) + [(k, op(a[k], b[k])) for k in b.keys() & a.keys()])
 
 
 def merge_dicts(list_of_dicts):
@@ -27,7 +28,7 @@ def flatten_list_of_lists(l):
 
 
 def flatten_defaultdict_list(d):
-    return {k: flatten_list_of_lists(v) for k, v in d.iteritems()}
+    return {k: flatten_list_of_lists(v) for k, v in d.items()}
 
 
 def grouper(iterable, size):

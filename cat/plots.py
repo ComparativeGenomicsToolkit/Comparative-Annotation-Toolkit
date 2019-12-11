@@ -35,8 +35,8 @@ def generate_plots(args):
     :param args:
     :return:
     """
-    tm_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.tm_jsons.iteritems()])
-    consensus_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.metrics_jsons.iteritems()])
+    tm_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.tm_jsons.items()])
+    consensus_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.metrics_jsons.items()])
     tm_metrics = load_tm_metrics(args.dbs)
     transcript_biotype_map = tools.sqlInterface.get_transcript_biotype_map(args.annotation_db)
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(args.annotation_db)
@@ -86,7 +86,7 @@ def load_tm_metrics(dbs):
     """Loads transMap data from PSLs"""
     tm_metrics = {'transMap Coverage': OrderedDict(), 'transMap Identity': OrderedDict()}
     tm_name_map = {'TransMapCoverage': 'transMap Coverage', 'TransMapIdentity': 'transMap Identity'}
-    for genome, db_path in dbs.iteritems():
+    for genome, db_path in dbs.items():
         session = tools.sqlInterface.start_session(db_path)
         table = tools.sqlInterface.TmEval
         for classifier in ['TransMapCoverage', 'TransMapIdentity']:
@@ -102,8 +102,8 @@ def load_tm_metrics(dbs):
 
 def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_map, tm_coverage_tgt, tm_identity_tgt):
     """plots for transMap coverage, identity"""
-    tm_iter = zip(*[['transMap Coverage', 'transMap Identity'],
-                    [tm_coverage_tgt, tm_identity_tgt]])
+    tm_iter = list(zip(*[['transMap Coverage', 'transMap Identity'],
+                    [tm_coverage_tgt, tm_identity_tgt]]))
     for mode, tgt in tm_iter:
         df = dict_to_df_with_biotype(tm_metrics[mode], transcript_biotype_map)
         df = pd.melt(df, id_vars='biotype', value_vars=ordered_genomes).dropna()
@@ -113,8 +113,8 @@ def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_ma
 
 def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_tgt, identity_tgt):
     """plots for consensus coverage, identity, score"""
-    cons_iter = zip(*[['Coverage', 'Identity'],
-                      [coverage_tgt, identity_tgt]])
+    cons_iter = list(zip(*[['Coverage', 'Identity'],
+                      [coverage_tgt, identity_tgt]]))
     for mode, tgt in cons_iter:
         df = json_to_df_with_biotype(consensus_data, mode)
         cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome')
@@ -165,7 +165,7 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
 def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_tgt):
     """transMap paralogy plots"""
     for key, tgt in [['Paralogy', para_tgt], ['UnfilteredParalogy', unfiltered_para_tgt]]:
-        legend_labels = ['= 1', '= 2', '= 3', u'\u2265 4']
+        legend_labels = ['= 1', '= 2', '= 3', '\u2265 4']
         title_string = 'Proportion of transcripts that have multiple alignments'
         biotype_title_string = 'Proportion of {} transcripts that have multiple alignments'
         df = json_biotype_nested_counter_to_df(tm_data, key)
@@ -179,9 +179,9 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_t
         for biotype, biotype_df in df.groupby('biotype'):
             for genome, genome_df in biotype_df.groupby('genome'):
                 high_para = genome_df[genome_df[key] >= 4]['count'].sum()
-                counts = dict(zip(genome_df[key], genome_df['count']))
+                counts = dict(list(zip(genome_df[key], genome_df['count'])))
                 r.append([biotype, genome, counts.get(1, 0), counts.get(2, 0), counts.get(3, 0), high_para])
-        df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', u'\u2265 4'])
+        df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', '\u2265 4'])
         sum_df = df.groupby('genome', sort=False).aggregate(sum).T
 
         plot_fn = generic_unstacked_barplot if len(df.columns) <= 5 else generic_stacked_barplot
@@ -267,7 +267,7 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
     df = modes_df.pivot(index='genome', columns='Transcript Modes').transpose().reset_index()
     df['Modes'] = df.apply(split_fn, axis=1)
     df = df[['Modes'] + ordered_genomes]
-    ordered_values = [x for x in ordered_groups.itervalues() if x in set(df['Modes'])]
+    ordered_values = [x for x in ordered_groups.values() if x in set(df['Modes'])]
     with tx_mode_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
         title_string = 'Transcript modes in protein coding consensus gene set'
         ylabel = 'Number of transcripts'
@@ -366,8 +366,8 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
                 biotype_df = sort_long_df(biotype_df, ordered_genomes)
-                gene_biotype_count = len({i for i, b in gene_biotype_map.iteritems() if b == biotype})
-                tx_biotype_count = len({i for i, b in transcript_biotype_map.iteritems() if b == biotype})
+                gene_biotype_count = len({i for i, b in gene_biotype_map.items() if b == biotype})
+                tx_biotype_count = len({i for i, b in transcript_biotype_map.items() if b == biotype})
                 title = 'Number of comparative genes/transcripts present for biotype {}'.format(biotype)
                 g = generic_barplot(pdf=pdf, data=biotype_df, x='genome', y='count', col='category', xlabel='',
                                     sharey=False, ylabel='Number of genes/transcripts',
@@ -560,7 +560,7 @@ def generic_stacked_barplot(df, pdf, title_string, legend_labels, ylabel, names,
 def json_flat_to_df(consensus_data, key):
     """converts cases where we have exactly genome:value pairs"""
     r = []
-    for genome, d in consensus_data.iteritems():
+    for genome, d in consensus_data.items():
         r.append([genome, d[key]])
     return pd.DataFrame(r)
 
@@ -568,8 +568,8 @@ def json_flat_to_df(consensus_data, key):
 def json_to_df_with_biotype(consensus_data, key):
     """converts JSON entries with many transcripts, such as those for coverage/identity"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
-        for biotype, vals in d[key].iteritems():
+    for genome, d in consensus_data.items():
+        for biotype, vals in d[key].items():
             df = pd.DataFrame(vals)
             if len(df) > 0:
                 df.columns = [key]
@@ -581,10 +581,10 @@ def json_to_df_with_biotype(consensus_data, key):
 def json_biotype_nested_counter_to_df(consensus_data, key):
     """converts the JSON entries with nested counts. Expects the first level keys to be biotypes"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
+    for genome, d in consensus_data.items():
         if key in d:
-            for biotype, vals in d[key].iteritems():
-                df = pd.DataFrame(vals.items())
+            for biotype, vals in d[key].items():
+                df = pd.DataFrame(list(vals.items()))
                 if len(df) > 0:
                     df.columns = [key, 'count']
                     df = df.assign(biotype=[biotype] * len(df), genome=[genome] * len(df))
@@ -595,9 +595,9 @@ def json_biotype_nested_counter_to_df(consensus_data, key):
 def json_grouped_biotype_nested_counter_to_df(consensus_data, key):
     """converts the JSON entries with nested counts. Expects the second level keys to be biotypes"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
-        for group, vals in d[key].iteritems():
-            df = pd.DataFrame(vals.items())
+    for genome, d in consensus_data.items():
+        for group, vals in d[key].items():
+            df = pd.DataFrame(list(vals.items()))
             if len(df) > 0:
                 df.columns = ['biotype', 'count']
                 df = df.assign(category=[group] * len(df), genome=[genome] * len(df))
@@ -608,9 +608,9 @@ def json_grouped_biotype_nested_counter_to_df(consensus_data, key):
 def json_biotype_counter_to_df(consensus_data, key):
     """converts the JSON entries with nested counts. Expects the first level keys to be biotypes"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
+    for genome, d in consensus_data.items():
         vals = consensus_data[genome][key]
-        df = pd.DataFrame(vals.items())
+        df = pd.DataFrame(list(vals.items()))
         if len(df) > 0:
             df.columns = [key, 'count']
             df = df.assign(genome=[genome] * len(df))
@@ -619,7 +619,7 @@ def json_biotype_counter_to_df(consensus_data, key):
 
 
 def dict_to_df_with_biotype(data, transcript_biotype_map):
-    df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in data.iteritems()]))
+    df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in data.items()]))
     try:
         df['biotype'] = [transcript_biotype_map[tx] for tx in df.index]
     except KeyError:
@@ -661,7 +661,7 @@ def set_ticks(names, ax, nbins=10.0):
 
 def sort_long_df(df, ordered_genomes):
     """sorts a long form dataframe by ordered genomes"""
-    ordered_index = dict(zip(ordered_genomes, range(len(ordered_genomes))))
+    ordered_index = dict(list(zip(ordered_genomes, list(range(len(ordered_genomes))))))
     df['order'] = df['genome'].map(ordered_index)
     df = df.sort_values('order')
     return df.drop('order', axis=1)

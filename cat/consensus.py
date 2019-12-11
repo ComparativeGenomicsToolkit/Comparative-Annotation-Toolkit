@@ -54,7 +54,7 @@ def generate_consensus(args):
     ref_df = tools.sqlInterface.load_annotation(args.ref_db_path)
     ref_biotype_counts = collections.Counter(ref_df.TranscriptBiotype)
     coding_count = ref_biotype_counts['protein_coding']
-    non_coding_count = sum(y for x, y in ref_biotype_counts.iteritems() if x != 'protein_coding')
+    non_coding_count = sum(y for x, y in ref_biotype_counts.items() if x != 'protein_coding')
     # gene transcript map to iterate over so that we capture missing gene information
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(args.ref_db_path)
     transcript_biotype_map = tools.sqlInterface.get_transcript_biotype_map(args.ref_db_path)
@@ -104,10 +104,10 @@ def generate_consensus(args):
 
     # we can keep track of missing stuff now
     for gene_biotype, tx_df in best_df.groupby('GeneBiotype'):
-        biotype_genes = {gene_id for gene_id, b in gene_biotype_map.iteritems() if b == gene_biotype}
+        biotype_genes = {gene_id for gene_id, b in gene_biotype_map.items() if b == gene_biotype}
         metrics['Gene Missing'][gene_biotype] = len(biotype_genes) - len(set(tx_df.GeneId))
     for tx_biotype, tx_df in best_df.groupby('TranscriptBiotype'):
-        biotype_txs = {gene_id for gene_id, b in transcript_biotype_map.iteritems() if b == tx_biotype}
+        biotype_txs = {gene_id for gene_id, b in transcript_biotype_map.items() if b == tx_biotype}
         metrics['Transcript Missing'][tx_biotype] = len(biotype_txs) - len(set(tx_df.TranscriptId))
 
     # main consensus finding -- using incorporate_tx to transform best scoring transcripts
@@ -146,7 +146,7 @@ def generate_consensus(args):
 
     # sort by genomic interval for prettily increasing numbers
     final_consensus = sorted(gene_resolved_consensus,
-                             key=lambda (tx, attrs): (tx_dict[tx].chromosome, tx_dict[tx].start))
+                             key=lambda tx_attrs: (tx_dict[tx_attrs[0]].chromosome, tx_dict[tx_attrs[0]].start))
 
     # calculate final gene set completeness
     calculate_completeness(final_consensus, metrics)
@@ -297,7 +297,7 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     # combine in homGeneMapping results
     hgm_ref_tm_df = pd.merge(hgm_ref_df, tm_eval_df, on=['GeneId', 'TranscriptId'])
     # remove filtered transMap
-    hgm_ref_tm_df = hgm_ref_tm_df[hgm_ref_tm_df.AlignmentId.isin(tx_dict.viewkeys())]
+    hgm_ref_tm_df = hgm_ref_tm_df[hgm_ref_tm_df.AlignmentId.isin(tx_dict.keys())]
     # split merged_df into coding and noncoding
     coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype == 'protein_coding']
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
@@ -391,14 +391,14 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
     If users passed the --require-pacbio-support, remove any transcript which does not have support.
     """
     iso_txs = tools.sqlInterface.load_isoseq_txs(db_path)
-    tx_ids, _ = zip(*deduplicated_strand_resolved_consensus)
+    tx_ids, _ = list(zip(*deduplicated_strand_resolved_consensus))
     txs = [tx_dict[tx_id] for tx_id in tx_ids]
     clustered = tools.transcripts.cluster_txs(txs + iso_txs)
     divided_clusters = tools.transcripts.divide_clusters(clustered, tx_ids)
     subset_matches = tools.transcripts.calculate_subset_matches(divided_clusters)
     # invert the subset_matches to extract all validated tx_ids
     validated_ids = set()
-    for tx_list in subset_matches.itervalues():
+    for tx_list in subset_matches.values():
         for tx in tx_list:
             validated_ids.add(tx.name)
     # begin resolving
@@ -572,7 +572,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # load the alignment metrics data
     denovo_alt_names = load_alt_names(db_path, denovo_tx_modes)
     denovo_df = pd.merge(denovo_hgm_df, denovo_alt_names, on='AlignmentId')
-    common_name_map = dict(zip(*[ref_df.GeneId, ref_df.GeneName]))
+    common_name_map = dict(list(zip(*[ref_df.GeneId, ref_df.GeneName])))
     denovo_df['CommonName'] = [common_name_map.get(x, None) for x in denovo_df.AssignedGeneId]
     denovo_df['GeneBiotype'] = [gene_biotype_map.get(x, None) for x in denovo_df.AssignedGeneId]
 
@@ -649,7 +649,7 @@ def deduplicate_consensus(consensus_dict, tx_dict, metrics):
         if len(biotype_txs) > 0:
             tx_list = biotype_txs
         sorted_scores = sorted([[tx, consensus_dict[tx].get('score', 0)] for tx in tx_list],
-                               key=lambda (tx, s): -s)
+                               key=lambda tx_s1: -tx_s1[1])
         return sorted_scores[0][0]
 
     def add_duplicate_field(best_tx, tx_list, consensus_dict, deduplicated_consensus):
@@ -666,7 +666,7 @@ def deduplicate_consensus(consensus_dict, tx_dict, metrics):
 
     # begin iterating
     deduplicated_consensus = {}
-    for tx_list in duplicates.itervalues():
+    for tx_list in duplicates.values():
         if len(tx_list) > 1:
             metrics['Duplicate transcripts'][len(tx_list)] += 1
             best_tx = resolve_duplicate(tx_list, consensus_dict)
@@ -685,7 +685,7 @@ def resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics):
     """
     gene_dict = collections.defaultdict(list)
     deduplicated_strand_resolved_consensus = []
-    for tx_id, attrs in deduplicated_consensus.iteritems():
+    for tx_id, attrs in deduplicated_consensus.items():
         tx_obj = tx_dict[tx_id]
         # don't try to resolve novel genes
         source_gene = attrs['source_gene']
@@ -695,7 +695,7 @@ def resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics):
             deduplicated_strand_resolved_consensus.append([tx_obj.name, attrs])
 
     for gene in gene_dict:
-        tx_objs, attrs = zip(*gene_dict[gene])
+        tx_objs, attrs = list(zip(*gene_dict[gene]))
         if len(set(tx_obj.strand for tx_obj in tx_objs)) > 1:
             strand_scores = collections.Counter()
             for tx_obj, attrs in gene_dict[gene]:
@@ -748,7 +748,7 @@ def resolve_overlapping_cds_intervals(deduplicated_strand_resolved_consensus, tx
         if len(set(group['gene_id'])) > 1:
             if 'unknown_likely_coding' in set(group['gene_biotype']):  # pick longest ORF
                 orfs = {tx_id: tx_dict[tx_id].cds_size for tx_id in group['transcript_id']}
-                best_tx = sorted(orfs.iteritems(), key=lambda x: x[1])[-1][0]
+                best_tx = sorted(iter(orfs.items()), key=lambda x: x[1])[-1][0]
                 tx_df = group[group.transcript_id == best_tx].iloc[0]
                 best_gene = tx_df.gene_id
             else:  # pick highest average score
@@ -774,7 +774,7 @@ def calculate_completeness(final_consensus, metrics):
             continue
         genes[c['gene_biotype']].add(c['source_gene'])
         txs[c['transcript_biotype']] += 1
-    genes = {biotype: len(gene_list) for biotype, gene_list in genes.iteritems()}
+    genes = {biotype: len(gene_list) for biotype, gene_list in genes.items()}
     metrics['Completeness'] = {'Gene': genes, 'Transcript': txs}
 
 
@@ -880,7 +880,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         if 'source_gene_common_name' in attrs:
             attrs['Name'] = attrs['source_gene_common_name']
         # don't include the support vectors in the string, they will be placed in their respective places
-        attrs_str = ['='.join([key, str(val).replace('=', '_')]) for key, val in sorted(attrs.iteritems()) if 'support' not in key]
+        attrs_str = ['='.join([key, str(val).replace('=', '_')]) for key, val in sorted(attrs.items()) if 'support' not in key]
         # explicitly escape any semicolons that may exist in the input strings
         attrs_str = [x.replace(';', '%3B') for x in attrs_str]
         return score, ';'.join(attrs_str)
@@ -888,7 +888,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     def find_feature_support(attrs, feature, i):
         """Extracts the boolean value from the comma delimited string"""
         try:
-            vals = map(bool, attrs[feature].split(','))
+            vals = list(map(bool, attrs[feature].split(',')))
         except KeyError:
             return 'N/A'
         return vals[i]
@@ -975,8 +975,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
     with consensus_gff3.open('w') as out_gff3:
         out_gff3.write('##gff-version 3\n')
         for chrom in sorted(consensus_gene_dict):
-            for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
-                tx_objs, attrs_list = zip(*tx_list)
+            for gene_id, tx_list in consensus_gene_dict[chrom].items():
+                tx_objs, attrs_list = list(zip(*tx_list))
                 tx_lines = [generate_gene_record(chrom, tx_objs, gene_id, attrs_list)]
                 for tx_obj, attrs in tx_list:
                     tx_lines.extend(list(generate_transcript_record(chrom, tx_obj, attrs)))
@@ -991,8 +991,8 @@ def write_consensus_fastas(consensus_gene_dict, consensus_fasta, consensus_prote
     consensus_protein_fasta = luigi.LocalTarget(consensus_protein_fasta)
     with consensus_fasta.open('w') as cfa, consensus_protein_fasta.open('w') as cpfa:
         for chrom in sorted(consensus_gene_dict):
-            for gene_id, tx_list in consensus_gene_dict[chrom].iteritems():
-                tx_objs, _ = zip(*tx_list)
+            for gene_id, tx_list in consensus_gene_dict[chrom].items():
+                tx_objs, _ = list(zip(*tx_list))
                 for tx in tx_objs:
                     tools.bio.write_fasta(cfa, tx.name, tx.get_mrna(seq_dict))
                     if tx.cds_size > 0:

@@ -54,7 +54,7 @@ def align_transcripts(args, toil_options):
             results_file_ids = t.start(job)
         else:
             results_file_ids = t.restart()
-        for file_path, file_id in results_file_ids.iteritems():
+        for file_path, file_id in results_file_ids.items():
             tools.fileOps.ensure_file_dir(file_path)
             t.exportFile(file_id, 'file://' + file_path)
 
@@ -88,7 +88,7 @@ def setup(job, args, input_file_ids):
         # begin loading transcripts and sequences
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[tx_mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
-        transcript_dict = {aln_id: tx for aln_id, tx in transcript_dict.iteritems() if
+        transcript_dict = {aln_id: tx for aln_id, tx in transcript_dict.items() if
                            tx_biotype_map[tools.nameConversions.strip_alignment_numbers(aln_id)] == 'protein_coding'}
         for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
@@ -107,7 +107,7 @@ def setup(job, args, input_file_ids):
 def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, mode):
     """Generator that yields a tuple of (tx_id, tx_seq, ref_tx_id, ref_tx_seq)"""
     assert mode in ['mRNA', 'CDS']
-    for tx_id, tx in transcript_dict.iteritems():
+    for tx_id, tx in transcript_dict.items():
         ref_tx_id = tools.nameConversions.strip_alignment_numbers(tx_id)
         ref_tx = ref_transcript_dict[ref_tx_id]
         tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta)
@@ -141,7 +141,7 @@ def merge(job, results, args):
     """
     job.fileStore.logToMaster('Merging Alignment output for {}'.format(args.genome), level=logging.INFO)
     results_file_ids = {}
-    for gp_category, result_list in results.iteritems():
+    for gp_category, result_list in results.items():
         tmp_results_file = tools.fileOps.get_tmp_toil_file()
         with open(tmp_results_file, 'w') as outf:
             for line in itertools.chain.from_iterable(result_list):  # results is list of lists
@@ -161,7 +161,7 @@ def group_transcripts(tx_iter, num_bases=10 ** 6, max_seqs=1000):
     Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
     Helps speed up the execution of exonerate when faced with very large genes
     """
-    tx_id, tx_seq, ref_tx_id, ref_tx_seq = tx_iter.next()
+    tx_id, tx_seq, ref_tx_id, ref_tx_seq = next(tx_iter)
     this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
     bin_base_count = len(tx_seq)
     num_seqs = 1

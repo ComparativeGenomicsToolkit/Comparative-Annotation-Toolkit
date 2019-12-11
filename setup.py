@@ -4,7 +4,7 @@ setup(
     name='cat',
     version='0.1',
     packages=['cat', 'tools'],
-    python_requires='<3.0.0',
+    python_requires='>=3.7.0',
     install_requires=[
         'pyfasta>=0.5.2',
         'toil>=3.5',
@@ -31,7 +31,7 @@ setup(
         'Intended Audience :: Bioinformatics',
         'Topic :: Bioinformatics',
         'License :: Apache 2.0',
-        'Programming Language :: Python :: 2.7'
+        'Programming Language :: Python :: 3.7'
     ],
     keywords='bioinformatics comparative genomics',
 )
