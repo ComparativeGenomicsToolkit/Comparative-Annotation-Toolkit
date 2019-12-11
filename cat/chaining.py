@@ -6,7 +6,10 @@ import collections
 import logging
 import os
 
-from toil.fileStore import FileID
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
