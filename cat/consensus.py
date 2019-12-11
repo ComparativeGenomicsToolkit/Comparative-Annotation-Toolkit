@@ -127,7 +127,7 @@ def generate_consensus(args):
                                  args.denovo_num_introns, args.in_species_rna_support_only,
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
                                  args.denovo_ignore_novel_genes, args.denovo_novel_end_distance,
-                                 args.denovo_allow_unsupported)
+                                 args.denovo_allow_unsupported, args.denovo_allow_bad_annot_or_tm)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
