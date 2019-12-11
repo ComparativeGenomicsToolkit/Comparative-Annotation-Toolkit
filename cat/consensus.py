@@ -475,7 +475,8 @@ def evaluate_ties(best_rows):
 
 def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map, denovo_num_introns,
                in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support,
-               denovo_ignore_novel_genes, denovo_novel_end_distance, denovo_allow_unsupported):
+               denovo_ignore_novel_genes, denovo_novel_end_distance, denovo_allow_unsupported,
+               denovo_allow_bad_annot_or_tm):
     """
     Finds novel loci, builds their attributes. Only calls novel loci if they have sufficient intron and splice support
     as defined by the user.
@@ -498,7 +499,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         """
         if s.AssignedGeneId is not None:
             return is_novel_supported(s)
-        if s.ResolutionMethod == 'badAnnotOrTm':
+        if denovo_allow_bad_annot_or_tm is False and s.ResolutionMethod == 'badAnnotOrTm':
             return None
         elif s.ResolutionMethod == 'ambiguousOrFusion' and s.IntronRnaSupportPercent != 100:
             return None
@@ -510,6 +511,8 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         # if we previously flagged this as ambiguousOrFusion, propagate this tag
         if s.ResolutionMethod == 'ambiguousOrFusion':
             return 'possible_fusion'
+        elif s.ResolutionMethod == 'badAnnotOrTm':
+            return 'bad_annot_or_tm'
         # if we have alternatives, this is not novel but could be a gene family expansion
         elif s.AlternativeGeneIds is not None:
             return 'possible_paralog'

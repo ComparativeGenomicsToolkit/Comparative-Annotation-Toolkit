@@ -147,6 +147,8 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--denovo-allow-unsupported`: For de-novo predictions, allow novel isoforms to be called if they contain splices that are not supported by the reference annotation even if they are also not supported by RNA-seq. Without this flag, novel isoforms will only be called if they have one or more splice that has RNA-seq/IsoSeq support and no reference annotation support.
 
+`--denovo-allow-bad-annot-or-tm`: For de-novo predictions, allow novel isoforms to be called that were flagged as BadAnnotOrTm. These predictions overlap instances where multiple genes transMapped to the same location with significant overlap, and so may be alignment mistakes, collapsed repeats or gene family collapse.
+
 `--require-pacbio-support`: If set, all isoforms in the final set must be supported by at least one IsoSeq read. This flag is likely to discard a ton of transcripts, so be careful.
 
 `--in-species-rna-support-only`: If set, all of the above intron/exon support flags will look only at RNA-seq/IsoSeq data from the species in question, and not make use of `homGeneMapping` to check support in all species. The output plots will always report in-species support.
