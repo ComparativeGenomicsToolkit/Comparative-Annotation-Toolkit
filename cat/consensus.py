@@ -815,7 +815,7 @@ def calculate_indel_metrics(final_consensus, eval_df, metrics):
     tm_vals = eval_df_transmap.set_index('AlignmentId').sum(axis=0)
     tm_vals = 100.0 * tm_vals / len(set(eval_df_transmap.index))
     metrics['transMap Indels'] = tm_vals.to_dict()
-    consensus_ids = set(zip(*final_consensus)[0])
+    consensus_ids = set(list(zip(*final_consensus))[0])
     consensus_vals = eval_df[eval_df['AlignmentId'].isin(consensus_ids)].set_index('AlignmentId').sum(axis=0)
     consensus_vals = 100.0 * consensus_vals / len(final_consensus)
     metrics['Consensus Indels'] = consensus_vals.to_dict()
