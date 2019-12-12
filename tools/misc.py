@@ -6,6 +6,7 @@ import argparse
 import pysam
 import pandas as pd
 import os
+import hashlib
 
 from . import procOps
 from .pipeline import ProcException, Procline
@@ -16,14 +17,13 @@ from functools import reduce
 
 class HashableNamespace(argparse.Namespace):
     """
-    Adds a __hash__ function to argparse's Namespace. Follows best practices for implementation of __hash__.
+    Adds a __hash__ function to argparse's Namespace.
     """
     def __hash__(self):
-        def xor(x, y):
-            return x ^ hash(y)
-        val_iter = iter(self.__dict__.values())
-        first = hash(next(val_iter))
-        return reduce(xor, val_iter, first) ^ hash(tuple(self.__dict__.values()))
+        m = hashlib.sha1()
+        for val in self.__dict__.values():
+            m.update(str(val).encode('utf-8'))
+        return m.hexdigest()
 
 
 class PipelineNamespace(object):
@@ -40,12 +40,11 @@ class PipelineNamespace(object):
         self.significant[name] = significant
 
     def __hash__(self):
-        def xor(x, y):
-            return x ^ hash(y)
         vals = tuple(name for name in self.__dict__ if name != 'significant' and self.significant[name])
-        val_iter = iter(vals)
-        first = hash(next(val_iter))
-        return reduce(xor, val_iter, first) ^ hash(vals)
+        m = hashlib.sha1()
+        for val in vals:
+            m.update(str(val).encode('utf-8'))
+        return m.hexdigest()
 
 
 def convert_gtf_gp(gp_target, gtf_target):

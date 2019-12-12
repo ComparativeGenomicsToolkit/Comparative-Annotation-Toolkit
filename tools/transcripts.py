@@ -3,6 +3,7 @@ Represent either BED12 or genePred transcripts as objects. Allows for conversion
 chromosome, mRNA and CDS coordinate spaces. Can slice objects into subsets.
 """
 import collections
+import hashlib
 
 from bx.intervals.cluster import ClusterTree
 from .mathOps import find_closest, find_intervals
@@ -43,8 +44,10 @@ class Transcript(object):
         return sum(len(x) for x in self.exon_intervals)
 
     def __hash__(self):
-        return (hash(self.chromosome) ^ hash(self.start) ^ hash(self.stop) ^ hash(self.strand) ^
-                hash((self.chromosome, self.start, self.stop, self.strand)))
+        m = hashlib.sha1()
+        for val in self.__dict__.values():
+            m.update(str(val).encode('utf-8'))
+        return m.hexdigest()
 
     def __repr__(self):
         return 'Transcript({})'.format(self.get_bed())

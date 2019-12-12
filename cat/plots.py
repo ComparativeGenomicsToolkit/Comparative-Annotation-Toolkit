@@ -138,7 +138,7 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
         dfs.append(df)
     df = pd.concat(dfs, axis=1)
     df = pd.melt(df, value_vars=modes, id_vars=['genome', 'biotype'])
-    with tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with tgt.open('wb') as outf, PdfPages(outf) as pdf:
         if len(ordered_genomes) > 1:
             g = sns.factorplot(data=df, y='value', x='genome', col='variable', col_wrap=2, kind='violin', sharex=True,
                                sharey=True, row_order=ordered_genomes, cut=0)
@@ -186,7 +186,7 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_t
 
         plot_fn = generic_unstacked_barplot if len(df.columns) <= 5 else generic_stacked_barplot
         box_label = 'Number of\nalignments'
-        with tgt.open('w') as outf, PdfPages(outf) as pdf:
+        with tgt.open('wb') as outf, PdfPages(outf) as pdf:
             plot_fn(sum_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes, box_label)
             for biotype in biotypes:
                 biotype_df = biotype_filter(df, biotype)
@@ -202,14 +202,14 @@ def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
     try:
         df = json_biotype_nested_counter_to_df(tm_data, 'Gene Family Collapse')
     except ValueError:  # no gene family collapse. probably the test set.
-        with gene_family_tgt.open('w') as outf:
+        with gene_family_tgt.open('wb') as outf:
             pass
         return
     df['Gene Family Collapse'] = pd.to_numeric(df['Gene Family Collapse'])
     tot_df = df[['Gene Family Collapse', 'genome', 'count']].\
         groupby(['genome', 'Gene Family Collapse']).aggregate(sum).reset_index()
     tot_df = tot_df.sort_values('Gene Family Collapse')
-    with gene_family_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with gene_family_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         g = sns.factorplot(y='count', col='genome', x='Gene Family Collapse', data=tot_df, kind='bar',
                            col_order=ordered_genomes, col_wrap=4)
         g.fig.suptitle('Number of genes collapsed during gene family collapse')
@@ -241,7 +241,7 @@ def missing_rate_plot(consensus_data, ordered_genomes, biotypes, missing_plot_tg
     df = transcript_missing_df.merge(gene_missing_df, on=['genome', 'biotype'])
     df = pd.melt(df, id_vars=['biotype', 'genome'])
     ylabel = 'Number of genes or transcripts'
-    with missing_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with missing_plot_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         tot_df = df.groupby(['genome', 'biotype', 'variable']).aggregate(sum).reset_index()
         generic_barplot(tot_df, pdf, '', ylabel, base_title, x='genome', y='value',
                         col='variable', row_order=ordered_genomes)
@@ -268,7 +268,7 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
     df['Modes'] = df.apply(split_fn, axis=1)
     df = df[['Modes'] + ordered_genomes]
     ordered_values = [x for x in ordered_groups.values() if x in set(df['Modes'])]
-    with tx_mode_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with tx_mode_plot_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         title_string = 'Transcript modes in protein coding consensus gene set'
         ylabel = 'Number of transcripts'
         if len(ordered_genomes) > 1:
@@ -285,7 +285,7 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
 
 
 def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
-    with denovo_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with denovo_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         try:
             df = json_biotype_nested_counter_to_df(consensus_data, 'denovo')
         except ValueError:
@@ -314,7 +314,7 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
 
 
 def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
-    with split_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with split_plot_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         df = json_biotype_counter_to_df(tm_data, 'Split Genes')
         df.columns = ['category', 'count', 'genome']
         title = 'Split genes'
@@ -328,7 +328,7 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
 
 
 def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt):
-    with pb_support_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with pb_support_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         pb_genomes = [x for x in ordered_genomes if x in pb_genomes]  # fix order
         df = json_biotype_counter_to_df(consensus_data, 'IsoSeq Transcript Validation')
         if len(df) == 0:
@@ -353,7 +353,7 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
             ax.spines['top'].set_linestyle('dashed')
 
     df = json_grouped_biotype_nested_counter_to_df(consensus_data, 'Completeness')
-    with completeness_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with completeness_plot_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         tot_df = df.groupby(by=['genome', 'category']).aggregate(np.sum).reset_index()
         tot_df = sort_long_df(tot_df, ordered_genomes)
         title = 'Number of comparative genes/transcripts present'
@@ -386,7 +386,7 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
             logger.warning('Unable to do a KDE fit to AUGUSTUS improvement.')
             pass
 
-    with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf, sns.axes_style("whitegrid"):
+    with improvement_tgt.open('wb') as outf, PdfPages(outf) as pdf, sns.axes_style("whitegrid"):
         for genome in ordered_genomes:
             data = pd.DataFrame(consensus_data[genome]['Evaluation Improvement']['changes'])
             unchanged = consensus_data[genome]['Evaluation Improvement']['unchanged']
@@ -431,7 +431,7 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
 
 
 def indel_plot(consensus_data, ordered_genomes, indel_plot_tgt):
-    with indel_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with indel_plot_tgt.open('wb') as outf, PdfPages(outf) as pdf:
         tm_df = pd.concat([pd.DataFrame.from_dict(consensus_data[genome]['transMap Indels'], orient='index').T
                            for genome in ordered_genomes])
         try:  # this is a hack to deal with weird small input datasets
@@ -465,7 +465,7 @@ def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xla
     """violin plots for coverage and identity."""
     if xlabel is None:
         xlabel = 'Percent {}'.format(mode)
-    with tgt.open('w') as outf, PdfPages(outf) as pdf:
+    with tgt.open('wb') as outf, PdfPages(outf) as pdf:
         title = 'Overall {}'.format(mode)
         xmin = int(min(df[mode]))
         horizontal_violin_plot(df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=(xmin, 100))
