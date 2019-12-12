@@ -78,7 +78,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     def hash_aln(aln, aln_id):
         """Hacky way to hash an alignment"""
-        m = hashlib.sha1()
+        m = hashlib.sha256()
         for l in [aln.t_name, aln.t_start, aln.t_end, aln.matches, aln.mismatches, aln.block_count,
                   tuple(aln.t_starts), tuple(aln.q_starts), tuple(aln.block_sizes), aln_id]:
             m.update(str(l).encode('utf-8'))

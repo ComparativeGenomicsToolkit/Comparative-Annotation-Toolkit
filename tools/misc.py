@@ -20,10 +20,10 @@ class HashableNamespace(argparse.Namespace):
     Adds a __hash__ function to argparse's Namespace.
     """
     def __hash__(self):
-        m = hashlib.sha1()
+        m = hashlib.sha256()
         for val in self.__dict__.values():
             m.update(str(val).encode('utf-8'))
-        return m.hexdigest()
+        return int(m.hexdigest(), 16) % 10 ** 12
 
 
 class PipelineNamespace(object):
@@ -41,10 +41,10 @@ class PipelineNamespace(object):
 
     def __hash__(self):
         vals = tuple(name for name in self.__dict__ if name != 'significant' and self.significant[name])
-        m = hashlib.sha1()
+        m = hashlib.sha256()
         for val in vals:
             m.update(str(val).encode('utf-8'))
-        return m.hexdigest()
+        return int(m.hexdigest(), 16) % 10 ** 12
 
 
 def convert_gtf_gp(gp_target, gtf_target):

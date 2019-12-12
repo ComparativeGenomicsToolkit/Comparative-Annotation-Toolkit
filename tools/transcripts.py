@@ -44,10 +44,10 @@ class Transcript(object):
         return sum(len(x) for x in self.exon_intervals)
 
     def __hash__(self):
-        m = hashlib.sha1()
+        m = hashlib.sha256()
         for val in self.__dict__.values():
             m.update(str(val).encode('utf-8'))
-        return m.hexdigest()
+        return int(m.hexdigest(), 16) % 10 ** 12
 
     def __repr__(self):
         return 'Transcript({})'.format(self.get_bed())

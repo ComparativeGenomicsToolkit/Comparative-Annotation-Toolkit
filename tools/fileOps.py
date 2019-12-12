@@ -242,7 +242,7 @@ def _resolve_fspec(fspec, mode='r'):
         return fspec
 
 
-def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=8):
+def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=12):
     """
     Calculates a SHA256 hash of a file.
     :param fspec: path or handle
@@ -257,4 +257,4 @@ def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=8):
     while len(buf) > 0:
         hasher.update(buf.encode('utf-8'))
         buf = fh.read(blocksize)
-    return hasher.hexdigest()[:num_characters]
+    return int(buf.hexdigest(), 16) % 10 ** num_characters
