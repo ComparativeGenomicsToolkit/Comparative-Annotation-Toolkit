@@ -257,4 +257,4 @@ def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=12):
     while len(buf) > 0:
         hasher.update(buf.encode('utf-8'))
         buf = fh.read(blocksize)
-    return int(buf.hexdigest(), 16) % 10 ** num_characters
+    return int(hasher.hexdigest(), 16) % 10 ** num_characters
