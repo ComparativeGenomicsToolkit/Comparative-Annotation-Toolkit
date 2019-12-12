@@ -547,7 +547,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         # if any splices are both not supported by annotation and supported by RNA, call this as novel
         if any(annot == 0 and i in new_supported_splices for i, annot in zip(*[denovo_tx_obj.intron_intervals,
                                                                                s.IntronAnnotSupport])):
-            metrics['Transcript Modes'][tx_mode] += 1
+            metrics['Transcript Modes'][tools.nameConversions.alignment_type(s.AlignmentId)] += 1
             tx_class = 'putative_novel_isoform'
         # if any splices are new, and supported by RNA-seq call this poor alignment
         else:
