@@ -902,7 +902,7 @@ class Gff3ToAttrs(PipelineTask):
         digest = tools.fileOps.hashfile(pipeline_args.cfg['ANNOTATION'][self.genome])
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                           target_table=self.table,
-                                                          update_id='_'.join([self.table, digest]))
+                                                          update_id='_'.join([self.table, str(digest)]))
         return attrs_table
 
     def run(self):
