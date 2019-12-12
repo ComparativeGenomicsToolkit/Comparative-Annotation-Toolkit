@@ -45,8 +45,8 @@ class Transcript(object):
 
     def __hash__(self):
         m = hashlib.sha256()
-        for val in self.__dict__.values():
-            m.update(str(val).encode('utf-8'))
+        for key in self.__slots__:
+            m.update(str(self.__getattribute__(key)).encode('utf-8'))
         return int(m.hexdigest(), 16) % 10 ** 12
 
     def __repr__(self):
