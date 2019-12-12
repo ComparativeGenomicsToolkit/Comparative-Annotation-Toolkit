@@ -1035,7 +1035,8 @@ class BuildDb(PipelineTask):
     def validate(self):
         tools.misc.samtools_version()  # validate samtools version
         for tool in ['load2sqlitedb', 'samtools', 'filterBam', 'bam2hints', 'bam2wig', 'wig2hints.pl', 'bam2hints',
-                     'bamToPsl', 'exonerate2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl', 'sambamba']:
+                     'bamToPsl', 'exonerate2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl', 'sambamba',
+                     'exonerate']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Auxiliary program {} not found on path.'.format(tool))
 
@@ -1676,7 +1677,7 @@ class FindDenovoParents(PipelineTask):
             assigned_str = '{}: {:,}'.format('assigned', counts[None])
             log_msg = log_msg.format(genome, denovo_args.tablename, assigned_str)
             result_str = ', '.join(['{}: {:,}'.format(name, val)
-                                    for name, val in sorted(counts.items()) if name is not None])
+                                    for name, val in counts.items() if name is not None])
             if len(result_str) > 0:
                 log_msg += ', ' + result_str + '.'
             logger.info(log_msg)

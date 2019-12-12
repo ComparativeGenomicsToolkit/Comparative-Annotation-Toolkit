@@ -68,7 +68,7 @@ def construct_psl(name1, name2, result):
     t_pos = result.cigar.beg_ref
     t_size = result.len_ref
 
-    parsed_cigar = list(pairwise(re.split(cigar_re, result.cigar.decode)))
+    parsed_cigar = list(pairwise(re.split(cigar_re, result.cigar.decode.decode('utf-8'))))
 
     for i, (num, op) in enumerate(parsed_cigar):
         num = int(num)

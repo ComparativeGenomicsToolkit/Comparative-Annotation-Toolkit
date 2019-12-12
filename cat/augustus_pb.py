@@ -1,6 +1,7 @@
 """
 Runs AugustusPB on a target genome
 """
+import os
 import argparse
 import collections
 

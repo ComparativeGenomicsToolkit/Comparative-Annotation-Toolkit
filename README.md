@@ -49,9 +49,20 @@ By default, you don't need to worry about installing any of these. However, ther
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 6. [wiggletools](https://github.com/Ensembl/WiggleTools). Used to combine RNA-seq expression in assembly hubs.
 7. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
+8. [exonerate]. Used for protein alignments in hints building.
+
+### Conda/bioconda
+
+Many of the above dependencies are on `conda`. In particular, you should be able to do the following:
+
+```
+conda create -y -n cat python=3.7 sambamba samtools htslib exonerate wiggletools bedtools bx-python seaborn pandas scipy numpy pyfasta pysam 
+```
+
+Augustus and HAL tools still need to be compiled by hand, and Kent tools still need to be downloaded.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl exonerate2hints.pl blat2hints.pl transMapPslToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl pal2nal.pl`
+`hal2fasta halStats halLiftover exonerate faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl exonerate2hints.pl blat2hints.pl transMapPslToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl pal2nal.pl`
 
 # Running the pipeline
 
