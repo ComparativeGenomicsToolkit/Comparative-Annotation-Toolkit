@@ -28,7 +28,7 @@ class Transcript(object):
         self.stop = int(bed_tokens[2])
         self.name = bed_tokens[3]
         self.score = int(bed_tokens[4])
-        self.strand = bed_tokens[5] if self.stranded else '.'
+        self.strand = bed_tokens[5] if stranded else '.'
         self.thick_start = int(bed_tokens[6])
         self.thick_stop = int(bed_tokens[7])
         self.rgb = bed_tokens[8]
@@ -395,7 +395,7 @@ class GenePredTranscript(Transcript):
         block_starts = ",".join(map(str, [x - int(start) for x in block_starts]))
         bed_tokens = [chrom, start, stop, name, self.score, strand, thick_start, thick_stop, '0', block_count,
                       block_sizes, block_starts]
-        super(GenePredTranscript, self).__init__(bed_tokens)
+        super(GenePredTranscript, self).__init__(bed_tokens, stranded=stranded)
 
     def __repr__(self):
         return 'GenePredTranscript({})'.format(self.get_gene_pred())
