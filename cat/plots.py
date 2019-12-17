@@ -487,7 +487,8 @@ def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xla
     """violin plots for coverage and identity."""
     if xlabel is None:
         xlabel = 'Percent {}'.format(mode)
-    with tgt.open('wb') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         title = 'Overall {}'.format(mode)
         xmin = int(min(df[mode]))
         horizontal_violin_plot(df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=(xmin, 100))
@@ -497,7 +498,7 @@ def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xla
                 title = '{} for biotype {}'.format(mode, biotype)
                 xmin = int(min(df[mode]))
                 horizontal_violin_plot(biotype_df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=(xmin, 100))
-
+    af.move_to_final_destination()
 
 ###
 # generic plotting functions
