@@ -11,7 +11,7 @@ import tools.transcripts
 import tools.intervals
 
 
-def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min_distance=0.9):
+def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min_distance=0.9, stranded=True):
     """
     Main function for assigning parental genes. Parental gene assignment methodology:
     A) Each denovo transcript is evaluated for overlapping any transMap transcripts.
@@ -24,12 +24,12 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min
     in these distances is over min_distance for all comparisons, we call this rescued and it can be incorporated.
     Otherwise, this transcript is tagged ambiguousOrFusion.
     """
-    filtered_transmap_dict = tools.transcripts.get_gene_pred_dict(filtered_tm_gp)
-    unfiltered_transmap_dict = tools.transcripts.get_gene_pred_dict(unfiltered_tm_gp)
+    filtered_transmap_dict = tools.transcripts.get_gene_pred_dict(filtered_tm_gp, stranded)
+    unfiltered_transmap_dict = tools.transcripts.get_gene_pred_dict(unfiltered_tm_gp, stranded)
     filtered_ids = unfiltered_transmap_dict.keys() - filtered_transmap_dict.keys()
 
     tm_chrom_dict = create_chrom_dict(unfiltered_transmap_dict, chrom_sizes)
-    denovo_dict = tools.transcripts.get_gene_pred_dict(denovo_gp)
+    denovo_dict = tools.transcripts.get_gene_pred_dict(denovo_gp, stranded)
     denovo_chrom_dict = create_chrom_dict(denovo_dict)
 
     # begin parent gene assignment
