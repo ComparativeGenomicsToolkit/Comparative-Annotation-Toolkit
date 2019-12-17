@@ -4,6 +4,7 @@ A set of functions to perform parental gene assignment in the AugustusPB/Augustu
 import pandas as pd
 import itertools
 import collections
+from tools.defaultOrderedDict import DefaultOrderedDict
 import tools.procOps
 import tools.fileOps
 import tools.mathOps
@@ -74,24 +75,16 @@ def create_chrom_dict(tx_dict, chrom_sizes=None):
     return chrom_dict
 
 
-def find_tm_overlaps(denovo_tx, tm_tx_dict):
+def find_tm_overlaps(denovo_tx, tm_tx_dict, cutoff=100):
     """Find overlap with transMap transcripts first on a genomic scale then an exonic scale"""
-    r = []
+    r = DefaultOrderedDict(int)
     for tx in tm_tx_dict.values():
-        if tx.interval.intersection(denovo_tx.interval) is not None:
-            # make sure that we have exon overlap
-            if ensure_exon_overlap(tx, denovo_tx) is True:
-                r.append(tx)
-    return r
-
-
-def ensure_exon_overlap(tx, denovo_tx):
-    """Do these two transcripts have at least 1 exonic base of overlap?"""
-    for tm_exon in tx.exon_intervals:
-        for denovo_exon in denovo_tx.exon_intervals:
-            if tm_exon.overlap(denovo_exon) is True:
-                return True
-    return False
+        for tx_exon in tx.exon_intervals:
+            for denovo_exon in denovo_tx.exon_intervals:
+                i = tx_exon.intersection(denovo_exon)
+                if i is not None:
+                    r[tx] += len(i)
+    return [tx_id for tx_id, num_bases in r.items() if num_bases >= cutoff]
 
 
 def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance):
