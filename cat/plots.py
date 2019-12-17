@@ -444,7 +444,7 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             
             for ax in [ax1, ax2, ax3, ax4]:
-                ax.set(adjustable='box-forced', aspect='equal')
+                ax.set(adjustable='box', aspect='equal')
             fig.subplots_adjust(hspace=0.3)
             multipage_close(pdf, tight_layout=False)
     af.move_to_final_destination()
