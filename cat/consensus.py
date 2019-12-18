@@ -992,8 +992,7 @@ def write_consensus_fastas(consensus_gene_dict, consensus_fasta, consensus_prote
     with consensus_fasta.open('w') as cfa, consensus_protein_fasta.open('w') as cpfa:
         for chrom in sorted(consensus_gene_dict):
             for gene_id, tx_list in consensus_gene_dict[chrom].items():
-                tx_objs, _ = list(zip(*tx_list))
-                for tx in tx_objs:
-                    tools.bio.write_fasta(cfa, tx.name, tx.get_mrna(seq_dict))
-                    if tx.cds_size > 0:
-                        tools.bio.write_fasta(cpfa, tx.name, tx.get_protein_sequence(seq_dict))
+                for tx_obj, attrs in tx_list:
+                    tools.bio.write_fasta(cfa, attrs['transcript_id'], tx_obj.get_mrna(seq_dict))
+                    if tx_obj.cds_size > 0:
+                        tools.bio.write_fasta(cpfa, attrs['transcript_id'], tx_obj.get_protein_sequence(seq_dict))
