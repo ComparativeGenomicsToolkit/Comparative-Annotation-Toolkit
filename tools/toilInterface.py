@@ -4,8 +4,11 @@ Helper functions for toil-luigi interfacing
 from . import bio
 import math
 import argparse
-from toil.fileStores import FileID
 from bd2k.util.humanize import human2bytes
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 
 ###
 # Helper functions for luigi-toil pipelines

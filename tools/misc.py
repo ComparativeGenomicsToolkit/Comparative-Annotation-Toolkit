@@ -10,7 +10,7 @@ import hashlib
 
 from . import procOps
 from .pipeline import ProcException, Procline
-from cat.exceptions import ToolMissingException
+#from cat.exceptions import Exception
 from distutils.version import StrictVersion
 from functools import reduce
 
@@ -66,9 +66,9 @@ def samtools_version():
     try:
         r = procOps.call_proc_lines(['samtools', '--version'])
         if StrictVersion(r[0].split()[1].split('-')[0]) < '1.3':
-            raise ToolMissingException('samtools version is not >= 1.3.0')
+            raise Exception('samtools version is not >= 1.3.0')
     except ProcException:
-        raise ToolMissingException('samtools is not installed')
+        raise Exception('samtools is not installed')
 
 
 def is_bam(path):
@@ -145,7 +145,7 @@ def is_exec(program):
             pl.wait()
             return True
         except ProcException:
-            raise ToolMissingException("{0} not found. Either install {0}, or install CAT's dependencies and use --binary-mode local.".format(binary_mode))
+            raise Exception("{0} not found. Either install {0}, or install CAT's dependencies and use --binary-mode local.".format(binary_mode))
     else:
         cmd = ['which', program]
         try:
