@@ -2165,6 +2165,7 @@ class Plots(RebuildableTask):
     @staticmethod
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
+        tools.fileOps.ensure_dir(base_dir)
         ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
                                                        pipeline_args.target_genomes,
                                                        pipeline_args.annotate_ancestors)
