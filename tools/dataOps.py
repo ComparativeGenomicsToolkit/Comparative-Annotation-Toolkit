@@ -1,7 +1,6 @@
 """
 Operations on dictionaries and lists.
 """
-from functools import reduce
 import operator
 import itertools
 
