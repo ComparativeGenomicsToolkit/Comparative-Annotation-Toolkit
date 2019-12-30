@@ -128,7 +128,7 @@ def read_codons(seq, offset=0, skip_last=True):
     if skip_last:
         l -= 3
     for i in range(offset,  l - l % 3, 3):
-            yield seq[i:i + 3]
+        yield seq[i:i + 3]
 
 
 def read_codons_with_position(seq, offset=0, skip_last=True):
@@ -140,7 +140,7 @@ def read_codons_with_position(seq, offset=0, skip_last=True):
     if skip_last:
         l -= 3
     for i in range(offset, l - l % 3, 3):
-            yield i, seq[i:i + 3]
+        yield i, seq[i:i + 3]
 
 
 def get_sequence_dict(file_path, upper=True):
