@@ -1,6 +1,6 @@
 sudo: required
 language: python
-python: 2.7
+python: 3.7
 services:
   - docker
 stages:
@@ -27,4 +27,4 @@ jobs:
         - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxMemory = self.physicalMemory/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         # Just go through the test set and make sure it doesn't crash. It's not much, but it's better than nothing.
-        - luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "rn6", "galGal4")' --ref-genome=mm10 --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler --augustus --augustus-cgp --augustus-pb --assembly-hub
+        - luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10 --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler --augustus --augustus-cgp --augustus-pb --assembly-hub
