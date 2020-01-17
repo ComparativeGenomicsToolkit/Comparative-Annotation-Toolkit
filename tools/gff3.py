@@ -3,6 +3,15 @@ import pandas as pd
 from . import fileOps
 from . import transcripts
 
+
+reserved_keys = ['gene_biotype',
+                 'transcript_biotype',
+                 'gene_name',
+                 'gene_id',
+                 'transcript_id',
+                 'transcript_name']
+
+
 def parse_gff3(annotation_attrs, annotation_gp):
     def parse_attrs(attrs):
         r = collections.defaultdict(dict)
@@ -16,59 +25,16 @@ def parse_gff3(annotation_attrs, annotation_gp):
     results = []
     for tx_id, gene_id in tx_name_map.items():
         d = attrs_dict[tx_id]
-        if 'gbkey' in d:  # NCBI
-            if d['gbkey'] == 'mRNA':
-                # hacky check because of lack of biotype features on transcript-level features
-                if 'pseudo' in d and d['pseudo'] == 'true':
-                    gene_biotype = tx_biotype = 'pseudogene'
-                else:
-                    gene_biotype = tx_biotype = 'protein_coding'
-            elif d['gbkey'] == 'CDS':  # this is a transcript missing a transcript-level feature
-                gene_biotype = tx_biotype = 'protein_coding'
-            else:
-                gene_biotype = tx_biotype = d['gbkey']
-            if 'gene' in d:
-                gene_name = d['gene']
-            elif 'Name' in d:
-                gene_name = d['Name']
-            else:
-                gene_name = d.get('Parent', 'ID')
-            tx_name = d.get('product', tx_id)
-        else:
-            if 'biotype' in d:  # possibly Ensembl
-                gene_biotype = tx_biotype = d['biotype']
-            elif 'gene_type' in d:  # probably Gencode
-                gene_biotype = d['gene_type']
-                tx_biotype = d['transcript_type']
-            else:
-                raise InvalidInputException('Could not parse biotype for {}. Values: {}'.format(tx_id, d))
-            # Ensembl formats their GFF3 with the format ID=transcript:XXX, while Gencode doesn't have the
-            # extraneous transcript: portion.
-            # Gencode also includes the gene name on the transcript level, so it is carried over.
-            # Ensembl does not do this, but we can infer this via the regular schema Name-Version
-            # However, Ensembl also does not always include a Name tag, so we have to account for this as well
-            if 'ID' in d and 'transcript' in d['ID']:  # probably Ensembl
-                gene_id = d['Parent'].replace('gene:', '')
-                if 'Name' in d:
-                    gene_name = d['Name'].split('-')[0]
-                    tx_name = d['Name']
-                else:  # no names here, just use IDs
-                    gene_name = gene_id
-                    tx_name = tx_id
-            elif 'gene_name' in d and 'gene_id' in d and 'transcript_name' in d:  # Gencode
-                gene_name = d['gene_name']
-                tx_name = d['transcript_name']
-            else:  # ambiguous type, hope for the best here
-                if 'gene' in d:
-                    gene_name = d['gene']
-                elif 'Name' in d:
-                    gene_name = d['Name']
-                else:
-                    gene_name = d['Parent']
-                tx_name = d.get('product', tx_id)
-        results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype])
+        gene_biotype = d['gene_biotype']
+        tx_biotype = d['transcript_biotype']
+        gene_name = d['gene_name']
+        gene_id = d['gene_id']
+        tx_id = d['transcript_id']
+        tx_name = d['transcript_name']
+        extra_tags = ';'.join(['{}={}'.format(x, y) for x, y in d.items() if x not in reserved_keys])
+        results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype, extra_tags])
     df = pd.DataFrame(results, columns=['GeneId', 'TranscriptId', 'TranscriptName', 'GeneName',
-                                        'GeneBiotype', 'TranscriptBiotype'])
+                                        'GeneBiotype', 'TranscriptBiotype', 'ExtraTags'])
     df = df.set_index('TranscriptId')
     return df
 

@@ -438,6 +438,9 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
          'adj_start': best_series.AdjStart_mRNA,
          'adj_stop': best_series.AdjStop_mRNA,
          'proper_orf': bool(best_series.ProperOrf)}
+    # incorporate any extra tags
+    for key, val in tools.misc.parse_gff_attr_line(best_series.ExtraTags):
+        d[key] = val
     if hints_db_has_rnaseq is True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))

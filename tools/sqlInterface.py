@@ -25,6 +25,7 @@ class Annotation(Base):
     GeneName = Column(Text)
     GeneBiotype = Column(Text)
     TranscriptBiotype = Column(Text)
+    ExtraTags = Column(Text)
 
 
 class Bed12(object):

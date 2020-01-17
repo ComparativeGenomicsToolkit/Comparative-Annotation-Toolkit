@@ -22,6 +22,7 @@ setup(
         'bd2k-python-lib==1.14a1.dev48',
         'parasail',
     ],
+    scripts=['programs/cat_to_ncbi_submit', 'programs/translate_gene_pred.py'],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',
     url='https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit',
