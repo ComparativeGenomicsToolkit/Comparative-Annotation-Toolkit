@@ -88,8 +88,8 @@ def alignment_type(aln_id):
         return 'augCGP'
     elif aln_id_is_pb(aln_id):
         return 'augPB'
-    elif aln_id_is_transmap(aln_id):
-        return 'transMap'
     elif aln_id_is_exref(aln_id):
         return 'exRef'
+    elif aln_id_is_transmap(aln_id):
+        return 'transMap'
     assert False
