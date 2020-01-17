@@ -596,8 +596,8 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
     # filter out non-novel as well as fusions
-    filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull()) | (~denovo_df.Novel5pCap.isnull())
-                                   | (~denovo_df.NovelPolyA.isnull())]
+    filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull()) | (denovo_df.Novel5pCap == True)
+                                   | (denovo_df.NovelPolyA == True)]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
@@ -626,10 +626,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'exon_annotation_support': ','.join(map(str, s.ExonAnnotSupport)),
                                   'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport)),
                                   'alignment_id': aln_id,
-                                  'source_gene_common_name': s.CommonName,
-                                  'valid_start': True,
-                                  'valid_stop': True,
-                                  'proper_orf': True}
+                                  'source_gene_common_name': s.CommonName}
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
         metrics['Transcript Modes'][tx_mode] += 1
