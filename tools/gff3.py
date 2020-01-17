@@ -13,7 +13,7 @@ reserved_keys = ['gene_biotype',
                  'transcript_name']
 
 
-def parse_gff3(annotation_attrs, annotation_gp):
+def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
     def parse_attrs(attrs):
         r = collections.defaultdict(dict)
         for tx_id, key, value in fileOps.iter_lines(attrs):
@@ -37,6 +37,10 @@ def parse_gff3(annotation_attrs, annotation_gp):
             misc.parse_gff_attr_line(extra_tags)
         except:
             raise Exception('Error parsing extra tags in input GFF3')
+        if is_external_reference is True:
+            # hack to fix names
+            gene_id = f'exRef-{gene_id}'
+            tx_id = f'exRef-{tx_id}'
         results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype, extra_tags])
     df = pd.DataFrame(results, columns=['GeneId', 'TranscriptId', 'TranscriptName', 'GeneName',
                                         'GeneBiotype', 'TranscriptBiotype', 'ExtraTags'])
