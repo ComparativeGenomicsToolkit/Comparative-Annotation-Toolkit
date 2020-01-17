@@ -865,7 +865,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
     prefix = luigi.Parameter(default=None)
 
     def output(self):
-        return luigi.LocalTarget(self.annotation_gp)
+        return luigi.LocalTarget(self.annotation_gp), luigi.LocalTarget(self.annotation_attrs)
 
     def validate(self):
         c = collections.Counter()
@@ -888,14 +888,16 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
             cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3)
             self.run_cmd(cmd)
         else:
-            with luigi.LocalTarget(is_tmp=True) as tmp_attrs, luigi.LocalTarget(is_tmp=True) as tmp_gp:
-                cmd = tools.gff3.convert_gff3_cmd(tmp_attrs, self.annotation_gff3)
-                tools.procOps.run_proc(cmd, stdout=tmp_gp)
-                sed_cmd = ['sed', 's/^/{}-/'.format(self.prefix)]
-                with luigi.LocalTarget(self.annotation_gp).open('w') as outf:
-                    tools.procOps.run_proc(sed_cmd, stdin=tmp_gp, stdout=outf)
-                with luigi.LocalTarget(self.annotation_attrs).open('w') as outf:
-                    tools.procOps.run_proc(sed_cmd, stdin=tmp_attrs, stdout=outf)
+            tmp_attrs = luigi.LocalTarget(is_tmp=True)
+            tmp_gp = luigi.LocalTarget(is_tmp=True)
+            annotation_gp, annotation_attrs = self.output()
+            cmd = tools.gff3.convert_gff3_cmd(tmp_attrs, self.annotation_gff3)
+            tools.procOps.run_proc(cmd, stdout=tmp_gp)
+            sed_cmd = ['sed', 's/^/{}-/'.format(self.prefix)]
+            with annotation_gp.open('w') as outf:
+                tools.procOps.run_proc(sed_cmd, stdin=tmp_gp, stdout=outf)
+            with annotation_attrs.open('w') as outf:
+                tools.procOps.run_proc(sed_cmd, stdin=tmp_attrs, stdout=outf)
         self.validate()
 
 
