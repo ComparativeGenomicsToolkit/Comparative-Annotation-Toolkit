@@ -115,6 +115,7 @@ class PipelineTask(luigi.Task):
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
     denovo_ignore_novel_genes = luigi.BoolParameter(default=False, significant=False)
+    denovo_only_novel_genes = luigi.BoolParameter(default=False, significant=False)
     denovo_novel_end_distance = luigi.IntParameter(default=0, significant=False)
     denovo_allow_unsupported = luigi.BoolParameter(default=False, significant=False)
     denovo_allow_bad_annot_or_tm = luigi.BoolParameter(default=False, significant=False)
@@ -190,6 +191,7 @@ class PipelineTask(luigi.Task):
         args.set('denovo_splice_support', self.denovo_splice_support, False)
         args.set('denovo_exon_support', self.denovo_exon_support, False)
         args.set('denovo_ignore_novel_genes', self.denovo_ignore_novel_genes, False)
+        args.set('denovo_only_novel_genes', self.denovo_only_novel_genes, False)
         args.set('denovo_novel_end_distance', self.denovo_novel_end_distance, False)
         args.set('denovo_allow_unsupported', self.denovo_allow_unsupported, False)
         args.set('denovo_allow_bad_annot_or_tm', self.denovo_allow_bad_annot_or_tm, False)
@@ -2098,6 +2100,7 @@ class Consensus(PipelineWrapperTask):
         args.denovo_splice_support = pipeline_args.denovo_splice_support
         args.denovo_exon_support = pipeline_args.denovo_exon_support
         args.denovo_ignore_novel_genes = pipeline_args.denovo_ignore_novel_genes
+        args.denovo_only_novel_genes = pipeline_args.denovo_only_novel_genes
         args.denovo_novel_end_distance = pipeline_args.denovo_novel_end_distance
         args.denovo_allow_unsupported = pipeline_args.denovo_allow_unsupported
         args.denovo_allow_bad_annot_or_tm = pipeline_args.denovo_allow_bad_annot_or_tm

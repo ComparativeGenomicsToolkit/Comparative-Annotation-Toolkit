@@ -127,7 +127,8 @@ def generate_consensus(args):
                                  args.denovo_num_introns, args.in_species_rna_support_only,
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
                                  args.denovo_ignore_novel_genes, args.denovo_novel_end_distance,
-                                 args.denovo_allow_unsupported, args.denovo_allow_bad_annot_or_tm)
+                                 args.denovo_allow_unsupported, args.denovo_allow_bad_annot_or_tm,
+                                 args.denovo_only_novel_genes)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
@@ -479,7 +480,7 @@ def evaluate_ties(best_rows):
 def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map, denovo_num_introns,
                in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support,
                denovo_ignore_novel_genes, denovo_novel_end_distance, denovo_allow_unsupported,
-               denovo_allow_bad_annot_or_tm):
+               denovo_allow_bad_annot_or_tm, denovo_only_novel_genes):
     """
     Finds novel loci, builds their attributes. Only calls novel loci if they have sufficient intron and splice support
     as defined by the user.
@@ -604,6 +605,9 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     if denovo_ignore_novel_genes is True:
         filtered_denovo_df = filtered_denovo_df[(filtered_denovo_df.TranscriptClass == 'possible_paralog') |
                                                 (filtered_denovo_df.TranscriptClass == 'putative_novel_isoform')]
+    elif denovo_only_novel_genes is True:
+        filtered_denovo_df = filtered_denovo_df[~((filtered_denovo_df.TranscriptClass == 'possible_paralog') |
+                                                (filtered_denovo_df.TranscriptClass == 'putative_novel_isoform'))]
 
     # construct aln_id -> features map to return
     denovo_tx_dict = {}
