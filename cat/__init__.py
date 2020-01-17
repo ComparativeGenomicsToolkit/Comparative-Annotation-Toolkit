@@ -2436,7 +2436,8 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
                              genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0],
-                             annotation_genome=annotation_genome)
+                             annotation_genome=annotation_genome,
+                             mode='annot')
 
         if self.genome in pipeline_args.target_genomes:
             yield self.clone(ConsensusTrack, track_path=os.path.join(out_dir, 'consensus.bb'),
@@ -2457,7 +2458,8 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
                              genepred_path=tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide',
-                             annotation_genome=pipeline_args.ref_genome)
+                             annotation_genome=pipeline_args.ref_genome,
+                             mode='tm')
 
             if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
@@ -2605,6 +2607,7 @@ class BgpTrack(TrackTask):
     label = luigi.Parameter()
     annotation_genome = luigi.Parameter()
     visibility = luigi.Parameter(default='pack')
+    mode = luigi.Parameter()
 
     def run(self):
         def find_rgb(info):
@@ -2613,17 +2616,17 @@ class BgpTrack(TrackTask):
                 return '76,85,212'
             return '85,212,76'
 
-        def convert_case(snake_str):
-            components = snake_str.split('_')
-            return ''.join(x.title() for x in components)
+        #def convert_case(snake_str):
+        #    components = snake_str.split('_')
+        #    return ''.join(x.title() for x in components)
 
         pipeline_args = self.get_pipeline_args()
         track, trackdb = self.output()
         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
         annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[self.annotation_genome])
         # hacky way to make columns consistent
-        if 'transcript_id' in annotation_info.columns:
-            annotation_info.columns = [convert_case(c) for c in annotation_info.columns]
+        #if 'transcript_id' in annotation_info.columns:
+        #    annotation_info.columns = [convert_case(c) for c in annotation_info.columns]
         annotation_info = annotation_info.set_index('TranscriptId')
 
         tmp = luigi.LocalTarget(is_tmp=True)
@@ -2634,7 +2637,10 @@ class BgpTrack(TrackTask):
 
         with tmp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(self.genepred_path):
-                s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                if self.mode == 'tm':
+                    s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                else:
+                    s = annotation_info.ix[tx.name]
                 block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                        tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
