@@ -168,9 +168,13 @@ def get_alignment_dict(psl_file, make_unique=False):
     return {psl.q_name: psl for psl in psl_iterator(psl_file, make_unique)}
 
 
-def group_alignments_by_qname(psl_iterator):
+def group_alignments_by_qname(psl_iterator, strip=True):
     """Convenience function for grouping PSLs by their name"""
     r = defaultdict(list)
-    for p in psl_iterator:
-        r[strip_alignment_numbers(p.q_name)].append(p)
+    if strip is True:
+        for p in psl_iterator:
+            r[strip_alignment_numbers(p.q_name)].append(p)
+    else:
+        for p in psl_iterator:
+            r[p.q_name].append(p)
     return r
