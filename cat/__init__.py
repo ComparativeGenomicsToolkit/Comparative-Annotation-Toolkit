@@ -805,7 +805,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
         pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.external_ref_genomes:
             args = self.get_args(pipeline_args, genome)
-            yield self.clone(Gff3ToGenePred, **vars(args))
+            yield self.clone(Gff3ToGenePred, prefix='exRef', **vars(args))
             yield self.clone(TranscriptGtf, **vars(args))
             yield self.clone(Gff3ToAttrs, **vars(args))
 
@@ -862,6 +862,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
     annotation_gp = luigi.Parameter()
     annotation_attrs = luigi.Parameter()
     duplicates = luigi.Parameter()
+    prefix = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.annotation_gp)

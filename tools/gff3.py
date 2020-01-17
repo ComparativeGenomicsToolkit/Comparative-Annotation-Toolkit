@@ -44,7 +44,10 @@ def parse_gff3(annotation_attrs, annotation_gp):
     return df
 
 
-def convert_gff3_cmd(annotation_attrs, annotation):
+def convert_gff3_cmd(annotation_attrs, annotation, prefix=None):
     cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
            '-attrsOut={}'.format(annotation_attrs), annotation, '/dev/stdout']
+    if prefix is not None:
+        sed_cmd = ['sed', 's/^/{}-/'.format(prefix)]
+        cmd = [cmd, sed_cmd]
     return cmd

@@ -1,6 +1,8 @@
+#!/usr/bin/env python
 import argparse
 from tools.transcripts import *
 from tools.bio import *
+
 
 def parse_args():
     parser = argparse.ArgumentParser()

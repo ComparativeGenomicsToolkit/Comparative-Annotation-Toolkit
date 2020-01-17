@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 This script allows you to test your GFF3 for compatibility with CAT before running the pipeline.
 

@@ -21,8 +21,12 @@ setup(
         'bx-python>=0.7.1',
         'bd2k-python-lib==1.14a1.dev48',
         'parasail',
+        'bcbio-gff',
+        'biopython'
     ],
-    scripts=['programs/cat_to_ncbi_submit', 'programs/translate_gene_pred.py'],
+    scripts=['programs/cat_to_ncbi_submit', 'programs/translate_gene_pred',
+             'programs/validate_gff3', 'programs/cat_parse_ncbi_genbank',
+             'programs/cat_parse_ncbi_gbff'],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',
     url='https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit',
