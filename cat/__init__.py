@@ -805,7 +805,7 @@ class ExternalReferenceFiles(PipelineWrapperTask):
         pipeline_args = self.get_pipeline_args()
         for genome in pipeline_args.external_ref_genomes:
             args = self.get_args(pipeline_args, genome)
-            yield self.clone(Gff3ToGenePred, prefix='exRef', **vars(args))
+            yield self.clone(Gff3ToGenePred, **vars(args))
             yield self.clone(TranscriptGtf, **vars(args))
             yield self.clone(Gff3ToAttrs, **vars(args))
 
@@ -858,11 +858,11 @@ class Gff3ToGenePred(PipelineTask):
     """
     Generates a genePred from a gff3 file.
     """
+    genome = luigi.Parameter()
     annotation_gff3 = luigi.Parameter()
     annotation_gp = luigi.Parameter()
     annotation_attrs = luigi.Parameter()
     duplicates = luigi.Parameter()
-    prefix = luigi.Parameter(default=None)
 
     def output(self):
         return luigi.LocalTarget(self.annotation_gp), luigi.LocalTarget(self.annotation_attrs)
@@ -885,7 +885,7 @@ class Gff3ToGenePred(PipelineTask):
 
     def run(self):
         logger.info('Converting annotation gff3 to genePred.')
-        if self.prefix is None:
+        if self.genome == self.ref_genome:
             cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3)
             annotation_gp, annotation_attrs = self.output()
             with annotation_gp.open('w') as outf:
@@ -912,7 +912,6 @@ class Gff3ToAttrs(PipelineTask):
     """
     Converts the attrs file from -attrsOut in gff3ToGenePred into a SQLite table.
     """
-    genome = luigi.Parameter()
     table = tools.sqlInterface.Annotation.__tablename__
 
     def output(self):
