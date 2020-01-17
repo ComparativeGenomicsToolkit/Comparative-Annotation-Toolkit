@@ -903,7 +903,7 @@ class Gff3ToGenePred(PipelineTask):
                     for rec in recs.values():
                         tools.fileOps.print_row(outf, rec.get_gene_pred())
                 with annotation_attrs.open('w') as outf:
-                    tools.procOps.run_proc(['sed', 's/^/{}-/'.format(self.prefix)], stdin=tmp_attrs, stdout=outf)
+                    tools.procOps.run_proc(['sed', 's/^/exRef-/'], stdin=tmp_attrs, stdout=outf)
         self.validate()
 
 
