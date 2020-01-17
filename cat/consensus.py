@@ -963,12 +963,12 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
         """generate start/stop codon GFF3 records, handling frame appropriately"""
-        if attrs['valid_start'] is True:
+        if attrs.get('valid_start') is True:
             score, attrs_field = convert_attrs(attrs, 'start_codon:{}'.format(tx_id))
             for interval in tx_obj.get_start_intervals():
                 yield [chrom, 'CAT', 'start_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
                        interval.data, attrs_field]
-        if attrs['valid_stop'] is True:
+        if attrs.get('valid_stop') is True:
             score, attrs_field = convert_attrs(attrs, 'stop_codon:{}'.format(tx_id))
             for interval in tx_obj.get_stop_intervals():
                 yield [chrom, 'CAT', 'stop_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
