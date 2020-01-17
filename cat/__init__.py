@@ -2616,17 +2616,10 @@ class BgpTrack(TrackTask):
                 return '76,85,212'
             return '85,212,76'
 
-        #def convert_case(snake_str):
-        #    components = snake_str.split('_')
-        #    return ''.join(x.title() for x in components)
-
         pipeline_args = self.get_pipeline_args()
         track, trackdb = self.output()
         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
         annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[self.annotation_genome])
-        # hacky way to make columns consistent
-        #if 'transcript_id' in annotation_info.columns:
-        #    annotation_info.columns = [convert_case(c) for c in annotation_info.columns]
         annotation_info = annotation_info.set_index('TranscriptId')
 
         tmp = luigi.LocalTarget(is_tmp=True)
