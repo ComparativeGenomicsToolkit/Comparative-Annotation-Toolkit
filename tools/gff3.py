@@ -32,7 +32,7 @@ def parse_gff3(annotation_attrs, annotation_gp):
         gene_id = d['gene_id']
         tx_id = d['transcript_id']
         tx_name = d['transcript_name']
-        extra_tags = ';'.join(['{}={}'.format(x, y) for x, y in d.items() if x not in reserved_keys])
+        extra_tags = ';'.join(['{}={}'.format(x, y.replace(';', '%3B')) for x, y in d.items() if x not in reserved_keys])
         try:
             misc.parse_gff_attr_line(extra_tags)
         except:
