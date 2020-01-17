@@ -895,11 +895,15 @@ class Gff3ToGenePred(PipelineTask):
             with tools.fileOps.TemporaryFilePath() as tmp_attrs, tools.fileOps.TemporaryFilePath() as tmp_gp:
                 cmd = tools.gff3.convert_gff3_cmd(tmp_attrs, self.annotation_gff3)
                 tools.procOps.run_proc(cmd, stdout=tmp_gp)
-                sed_cmd = ['sed', 's/^/{}-/'.format(self.prefix)]
+                recs = tools.transcripts.get_gene_pred_dict(tmp_gp)
+                for rec in recs.values():
+                    rec.name = f'exRef-{rec.name}'
+                    rec.name2 = f'exRef-{rec.name2}'
                 with annotation_gp.open('w') as outf:
-                    tools.procOps.run_proc(sed_cmd, stdin=tmp_gp, stdout=outf)
+                    for rec in recs.values():
+                        tools.fileOps.print_row(outf, rec.get_gene_pred())
                 with annotation_attrs.open('w') as outf:
-                    tools.procOps.run_proc(sed_cmd, stdin=tmp_attrs, stdout=outf)
+                    tools.procOps.run_proc(['sed', 's/^/{}-/'.format(self.prefix)], stdin=tmp_attrs, stdout=outf)
         self.validate()
 
 
