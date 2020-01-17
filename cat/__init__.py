@@ -928,7 +928,7 @@ class Gff3ToAttrs(PipelineTask):
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         pipeline_args = self.get_pipeline_args()
-        df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp, self.genome == self.ref_genome)
+        df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp, self.genome != self.ref_genome)
         if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
             logger.critical('No protein_coding annotations found!')
         # validate number parsed
