@@ -2,6 +2,7 @@ import collections
 import pandas as pd
 from . import fileOps
 from . import transcripts
+from . import misc
 
 
 reserved_keys = ['gene_biotype',
@@ -32,6 +33,10 @@ def parse_gff3(annotation_attrs, annotation_gp):
         tx_id = d['transcript_id']
         tx_name = d['transcript_name']
         extra_tags = ';'.join(['{}={}'.format(x, y) for x, y in d.items() if x not in reserved_keys])
+        try:
+            misc.parse_gff_attr_line(extra_tags)
+        except:
+            raise Exception('Error parsing extra tags in input GFF3')
         results.append([gene_id, tx_id, tx_name, gene_name, gene_biotype, tx_biotype, extra_tags])
     df = pd.DataFrame(results, columns=['GeneId', 'TranscriptId', 'TranscriptName', 'GeneName',
                                         'GeneBiotype', 'TranscriptBiotype', 'ExtraTags'])
