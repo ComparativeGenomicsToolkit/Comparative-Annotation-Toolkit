@@ -884,7 +884,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Converting annotation gff3 to genePred.')
-        cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3)
+        cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3, prefix=self.prefix)
         self.run_cmd(cmd)
         self.validate()
 
