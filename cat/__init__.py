@@ -854,7 +854,7 @@ class ReferenceFiles(PipelineWrapperTask):
         yield self.clone(FakePsl, **vars(args))
 
 
-class Gff3ToGenePred(AbstractAtomicFileTask):
+class Gff3ToGenePred(PipelineTask):
     """
     Generates a genePred from a gff3 file.
     """
@@ -886,7 +886,9 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
         logger.info('Converting annotation gff3 to genePred.')
         if self.prefix is None:
             cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3)
-            self.run_cmd(cmd)
+            annotation_gp, annotation_attrs = self.output()
+            with annotation_gp.open('w') as outf:
+                tools.procOps.run_proc(cmd, stdout=outf)
         else:
             annotation_gp, annotation_attrs = self.output()
             with tools.fileOps.TemporaryFilePath as tmp_attrs, tools.fileOps.TemporaryFilePath as tmp_gp:
