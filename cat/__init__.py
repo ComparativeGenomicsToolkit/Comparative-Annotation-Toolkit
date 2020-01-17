@@ -862,7 +862,7 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
     annotation_gp = luigi.Parameter()
     annotation_attrs = luigi.Parameter()
     duplicates = luigi.Parameter()
-    prefix = luigi.Parameter()
+    prefix = luigi.Parameter(default=None)
 
     def output(self):
         return luigi.LocalTarget(self.annotation_gp)
