@@ -387,18 +387,21 @@ def resolve_split_genes(tmp_size_filtered, transcript_gene_map, resolved_df, unf
     """
     Use localNearBest algorithm to determine split genes and populate that field
     """
-    with tools.fileOps.TemporaryFilePath() as local_tmp:
-        cmd = [['sed', 's/\-[0-9]\+//', tmp_size_filtered],  # strip unique identifiers for comparative filters
-               ['pslCDnaFilter', '-localNearBest=0.05',
-                '-minCover=0.1', '-verbose=0',
-                '-minSpan=0.2', '/dev/stdin', '/dev/stdout']]
+    with tools.fileOps.TemporaryFilePath() as local_tmp, tools.fileOps.TemporaryFilePath() as stripped_tmp:
+        with open(stripped_tmp, 'w') as outf:
+            for rec in tools.psl.psl_iterator(tmp_size_filtered):
+                rec.q_name = tools.nameConversions.strip_alignment_numbers(rec.q_name)
+                tools.fileOps.print_row(outf, rec.psl_string())
+        cmd = ['pslCDnaFilter', '-localNearBest=0.05',
+               '-minCover=0.1', '-verbose=0',
+               '-minSpan=0.2', stripped_tmp, '/dev/stdout']
         tools.procOps.run_proc(cmd, stdout=local_tmp)
         filtered_alns = list(tools.psl.psl_iterator(local_tmp))
 
     # remove alignments that we didn't resolve
     resolved_ids = set(resolved_df.TranscriptId)
     filtered_alns = [x for x in filtered_alns if x.q_name in resolved_ids]
-    grouped = tools.psl.group_alignments_by_qname(filtered_alns)
+    grouped = tools.psl.group_alignments_by_qname(filtered_alns, strip=False)
 
     # construct the transcript interval for resolved transcripts
     tx_intervals = {tx_id: unfiltered_tx_dict[aln_id].interval for
@@ -418,3 +421,4 @@ def resolve_split_genes(tmp_size_filtered, transcript_gene_map, resolved_df, unf
                           'Number of intra-contig split genes': len(split_gene_data['intra'])}
 
     return merged, split_gene_metrics
+
