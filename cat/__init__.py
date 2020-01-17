@@ -892,7 +892,7 @@ class Gff3ToGenePred(PipelineTask):
                 tools.procOps.run_proc(cmd, stdout=outf)
         else:
             annotation_gp, annotation_attrs = self.output()
-            with tools.fileOps.TemporaryFilePath as tmp_attrs, tools.fileOps.TemporaryFilePath as tmp_gp:
+            with tools.fileOps.TemporaryFilePath() as tmp_attrs, tools.fileOps.TemporaryFilePath() as tmp_gp:
                 cmd = tools.gff3.convert_gff3_cmd(tmp_attrs, self.annotation_gff3)
                 tools.procOps.run_proc(cmd, stdout=tmp_gp)
                 sed_cmd = ['sed', 's/^/{}-/'.format(self.prefix)]
