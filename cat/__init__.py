@@ -884,8 +884,18 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Converting annotation gff3 to genePred.')
-        cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3, prefix=self.prefix)
-        self.run_cmd(cmd)
+        if self.prefix is None:
+            cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3)
+            self.run_cmd(cmd)
+        else:
+            with luigi.LocalTarget(is_tmp=True) as tmp_attrs, luigi.LocalTarget(is_tmp=True) as tmp_gp:
+                cmd = tools.gff3.convert_gff3_cmd(tmp_attrs, self.annotation_gff3)
+                tools.procOps.run_proc(cmd, stdout=tmp_gp)
+                sed_cmd = ['sed', 's/^/{}-/'.format(self.prefix)]
+                with luigi.LocalTarget(self.annotation_gp).open('w') as outf:
+                    tools.procOps.run_proc(sed_cmd, stdin=tmp_gp, stdout=outf)
+                with luigi.LocalTarget(self.annotation_attrs).open('w') as outf:
+                    tools.procOps.run_proc(sed_cmd, stdin=tmp_attrs, stdout=outf)
         self.validate()
 
 
