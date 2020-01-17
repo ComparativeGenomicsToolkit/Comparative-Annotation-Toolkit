@@ -869,7 +869,8 @@ class Gff3ToGenePred(PipelineTask):
 
     def validate(self):
         c = collections.Counter()
-        for l in open(self.output().path):
+        annotation_gp, annotation_attrs = self.output()
+        for l in open(annotation_gp.path):
             l = l.split()
             c[l[0]] += 1
         duplicates = {x for x, y in c.items() if y > 1}
