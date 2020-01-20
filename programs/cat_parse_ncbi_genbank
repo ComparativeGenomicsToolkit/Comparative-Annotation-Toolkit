@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""
+This file was developed against Genbank annotation of E. coli
+"""
 import argparse
 from BCBio import GFF
 from Bio import SeqIO

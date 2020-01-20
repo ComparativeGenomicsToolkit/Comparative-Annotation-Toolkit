@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+import argparse
+from BCBio import GFF
+from Bio import SeqIO
+from collections import Counter, OrderedDict
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('genbank', help='Output Genbank file')
+    parser.add_argument('gff3', help='Input GFF3')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = parse_args()

@@ -2,6 +2,7 @@
 Miscellaneous tools for the pipeline. Some may eventually be refactored into their own modules.
 """
 import re
+import itertools
 import argparse
 import pysam
 import pandas as pd
@@ -10,9 +11,7 @@ import hashlib
 
 from . import procOps
 from .pipeline import ProcException, Procline
-#from cat.exceptions import Exception
 from distutils.version import StrictVersion
-from functools import reduce
 
 
 class HashableNamespace(argparse.Namespace):
@@ -86,6 +85,13 @@ def pairwise(iterable):
     """s -> (s0, s1), (s2, s3), (s4, s5), ..."""
     a = iter(iterable)
     return zip(a, a)
+
+
+def pairwise_adjacent(iterable):
+    "s -> (s0,s1), (s1,s2), (s2, s3), ..."
+    a, b = itertools.tee(iterable)
+    next(b, None)
+    return zip(a, b)
 
 
 def sort_gff(input_file, output_file):

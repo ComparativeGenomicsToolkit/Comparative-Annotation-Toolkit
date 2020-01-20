@@ -10,7 +10,10 @@ reserved_keys = ['gene_biotype',
                  'gene_name',
                  'gene_id',
                  'transcript_id',
-                 'transcript_name']
+                 'transcript_name',
+                 'ID',
+                 'Name',
+                 'Parent']
 
 
 def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
