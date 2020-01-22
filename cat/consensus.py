@@ -881,8 +881,10 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             del attrs['score']
         else:
             score = '.'
-        if 'source_gene_common_name' in attrs:
+        if 'source_gene_common_name' in attrs and isinstance(attrs['source_gene_common_name'], str):
             attrs['Name'] = attrs['source_gene_common_name']
+        else:
+            attrs['Name'] = attrs['gene_id']
         # don't include the support vectors in the string, they will be placed in their respective places
         attrs_str = ['='.join([key, str(val).replace('=', '_')]) for key, val in sorted(attrs.items()) if 'support' not in key]
         # explicitly escape any semicolons that may exist in the input strings
@@ -913,7 +915,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         # subset the attrs to gene fields
         attrs = attrs_list[0]
         useful_keys = ['source_gene_common_name', 'source_gene', 'gene_biotype',
-                       'alternative_source_transcripts', 'gene_alternate_contigs']
+                       'alternative_source_transcripts', 'gene_alternate_contigs',
+                       'gene_name', 'gene_id']
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
         attrs['transcript_modes'] = find_all_tx_modes(attrs_list)
         score, attrs_field = convert_attrs(attrs, gene_id)

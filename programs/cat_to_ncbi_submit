@@ -326,8 +326,13 @@ class NcbiTblWriter(object):
                                         end_incmpl=(end_incmpl and (region == regions[-1])))
 
     def write_locus_tag(self, locus_tag_prefix, gene):
-        """write locus tag in the form ${locus_tag_prefix}_${gene_name}"""
+        """write locus tag and gene tag in the form ${locus_tag_prefix}_${gene_name}"""
         self.write_qualifier("locus_tag", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(gene)))
+        gene_tag = get_gene_tag(gene)
+        if gene_tag is not None:
+            self.write_qualifier("gene", gene_tag)
+        else:
+            self.write_qualifier("gene", '{}_{}'.format(locus_tag_prefix, get_gene_locus_tag(gene)))
 
     def write_qualifier(self, qualifier_key, qualifier_value=None):
         """write a qualifier with optional value"""
@@ -397,6 +402,13 @@ def adjust_cds_start(cds_interval, expected_frame, frame):
 def get_gene_locus_tag(gene):
     # remove species identifier from CAT names (Clint_Chim, etc)
     return gene.gene_id.split('_')[-1]
+
+
+def get_gene_tag(gene):
+    # try to report best gene name
+    attrs = gene.txds[0].attrs
+    if 'source_gene_common_name' in attrs and not pd.isnull(attrs.source_gene_common_name):
+        return attrs.source_gene_common_name
 
 
 def get_transcript_base_id(txd):

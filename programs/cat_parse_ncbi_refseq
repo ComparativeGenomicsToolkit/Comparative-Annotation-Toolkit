@@ -13,6 +13,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('genbank', help='Genbank file')
     parser.add_argument('gff3', help='Output GFF3')
+    parser.add_argument('--replace-chr-names', help='Use chromosome tag on source feature to rename chromosomes',
+                        action='store_true')
+    parser.add_argument('--add-chr-prefix', help='Add chr prefix? Only applies if using --replace-chr-names',
+                        action='store_true')
     return parser.parse_args()
 
 
@@ -81,6 +85,17 @@ if __name__ == '__main__':
     lt_counts = Counter()
     records = list(SeqIO.parse(args.genbank, format='genbank'))
     for seqrecord in records:
+        if args.replace_chr_names is True:
+            source_rec = seqrecord.features[0]
+            assert source_rec.type == 'source'
+            try:
+                chrom = source_rec.qualifiers['chromosome'][0]
+            except KeyError:
+                print(f'Unable to find chromosome name for {seqrecord.id}. Continuing')
+                continue
+            if args.add_chr_prefix is True:
+                chrom = f'chr{chrom}'
+            seqrecord.name = seqrecord.id = chrom
         features = [x for x in seqrecord.features if x.type in ['gene', 'CDS', 'mRNA', 'tRNA', 'ncRNA',
                                                                 'rRNA', 'misc_RNA', 'mRNA']]
         for gene in grouper_fn(features):
@@ -104,10 +119,6 @@ if __name__ == '__main__':
                 rec.qualifiers['gene_biotype'] = [biotype]
                 if rec.type != 'gene':
                     rec.qualifiers['transcript_biotype'] = rec.qualifiers['gene_biotype']
-
-            # for genes with no
-
-
 
     with open(args.gff3, 'w') as fh:
         GFF.write(records, fh)
