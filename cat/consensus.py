@@ -596,6 +596,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         exref_common_name_map = dict(list(zip(exref_annot.TranscriptId, exref_annot.GeneName)))
         exref_gene_biotype_map = dict(list(zip(exref_annot.TranscriptId, exref_annot.GeneBiotype)))
         denovo_df[['CommonName', 'GeneBiotype']] = denovo_df.apply(add_exref_ids, axis=1)
+        exref_annot = exref_annot.set_index('TranscriptId')
 
     # extract all splices, 5' and 3' ends we have already seen
     existing_splices = set()
@@ -644,6 +645,11 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'intron_annotation_support': ','.join(map(str, s.IntronAnnotSupport)),
                                   'alignment_id': aln_id,
                                   'source_gene_common_name': s.CommonName}
+
+        # bring in extra tags for exRef
+        if 'exRef' in denovo_tx_modes:
+            denovo_tx_dict[aln_id]['extra_tags'] = exref_annot.loc[aln_id].ExtraTags
+
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
         metrics['Transcript Modes'][tx_mode] += 1
