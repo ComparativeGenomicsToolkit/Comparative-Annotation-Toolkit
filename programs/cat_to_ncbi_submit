@@ -628,7 +628,7 @@ def write_cds_regions(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr):
 
     tblwr.write_locus_tag(locus_tag_prefix, gene)
 
-    # product and protein id  must be same on mRNA and CDS
+    # product and protein id must be same on mRNA and CDS
     write_product(locus_tag_prefix, gene, txd, trans_num, tblwr)
 
     # coding transcripts must have a protein_id tag -- just use the name with _prot suffix

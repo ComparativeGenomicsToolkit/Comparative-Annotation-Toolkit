@@ -576,9 +576,21 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # load the alignment metrics data
     denovo_alt_names = load_alt_names(db_path, denovo_tx_modes)
     denovo_df = pd.merge(denovo_hgm_df, denovo_alt_names, on='AlignmentId')
-    common_name_map = dict(list(zip(*[ref_df.GeneId, ref_df.GeneName])))
+    common_name_map = dict(list(zip(ref_df.GeneId, ref_df.GeneName)))
+
     denovo_df['CommonName'] = [common_name_map.get(x, None) for x in denovo_df.AssignedGeneId]
     denovo_df['GeneBiotype'] = [gene_biotype_map.get(x, None) for x in denovo_df.AssignedGeneId]
+
+    # if we have an external reference, try to incorporate those names as well
+    if 'exRef' in denovo_tx_modes:
+        def add_exref_ids(s):
+            if s.AlignmentId in exref_common_name_map:
+                return pd.Series([exref_common_name_map[s.AlignmentId], exref_gene_biotype_map[s.AlignmentId]])
+            return pd.Series([s.CommonName, s.GeneBiotype])
+        exref_annot = tools.sqlInterface.load_annotation(db_path)
+        exref_common_name_map = dict(list(zip(exref_annot.TranscriptId, exref_annot.GeneName)))
+        exref_gene_biotype_map = dict(list(zip(exref_annot.TranscriptId, exref_annot.GeneBiotype)))
+        denovo_df[['CommonName', 'GeneBiotype']] = denovo_df.apply(add_exref_ids, axis=1)
 
     # extract all splices, 5' and 3' ends we have already seen
     existing_splices = set()
@@ -601,7 +613,6 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
-    filtered_denovo_df['TranscriptBiotype'] = filtered_denovo_df['TranscriptBiotype'].fillna('unknown_likely_coding')
     # filter out novel if requested by user
     if denovo_ignore_novel_genes is True:
         filtered_denovo_df = filtered_denovo_df[(filtered_denovo_df.TranscriptClass == 'possible_paralog') |
@@ -619,7 +630,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'transcript_class': s.TranscriptClass,
                                   'novel_5p_cap': s.Novel5pCap,
                                   'novel_poly_a': s.NovelPolyA,
-                                  'transcript_biotype': s.TranscriptBiotype,
+                                  'transcript_biotype': s.GeneBiotype,
                                   'gene_biotype': s.GeneBiotype,
                                   'intron_rna_support': ','.join(map(str, s.IntronRnaSupport)),
                                   'exon_rna_support': ','.join(map(str, s.ExonRnaSupport)),
