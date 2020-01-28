@@ -586,7 +586,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         def add_exref_ids(s):
             if s.AlignmentId in exref_common_name_map:
                 # if we have an assigned gene ID, defer the gene biotype to that but retain transcript biotype
-                if s.AssignedGeneId == None:
+                if s.AssignedGeneId is None:
                     return pd.Series([exref_common_name_map[s.AlignmentId], exref_gene_biotype_map[s.AlignmentId]])
                 else:
                     return pd.Series([exref_common_name_map[s.AlignmentId], s.GeneBiotype])
