@@ -152,7 +152,7 @@ def generate_consensus(args):
     # calculate final gene set completeness
     calculate_completeness(final_consensus, metrics)
     # add some interesting metrics on how much using Augustus modes improved our results
-    if 'augTM' or 'augTMR' in tx_modes:
+    if 'augTM' in tx_modes or 'augTMR' in tx_modes:
         calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df, metrics)
     calculate_indel_metrics(final_consensus, eval_df, metrics)
     # write out results. consensus tx dict has the unique names
@@ -585,7 +585,12 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     if 'exRef' in denovo_tx_modes:
         def add_exref_ids(s):
             if s.AlignmentId in exref_common_name_map:
-                return pd.Series([exref_common_name_map[s.AlignmentId], exref_gene_biotype_map[s.AlignmentId]])
+                # if we have an assigned gene ID, defer the gene biotype to that but retain transcript biotype
+                if s.AssignedGeneId.isnull():
+                    return pd.Series([exref_common_name_map[s.AlignmentId], exref_gene_biotype_map[s.AlignmentId]])
+                else:
+                    return pd.Series([exref_common_name_map[s.AlignmentId], s.GeneBiotype])
+            # pass along the original data
             return pd.Series([s.CommonName, s.GeneBiotype])
         exref_annot = tools.sqlInterface.load_annotation(db_path)
         exref_common_name_map = dict(list(zip(exref_annot.TranscriptId, exref_annot.GeneName)))
