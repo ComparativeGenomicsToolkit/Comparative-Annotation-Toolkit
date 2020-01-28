@@ -735,6 +735,7 @@ def write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, uni
         tblwr.write_note("CAT source transcript biotype: {}".format(txa.transcript_biotype))
     else:
         tblwr.write_note('CAT novel prediction: {}'.format(txa.transcript_modes))
+    return is_rrna_pseudo
 
 
 def include_transcript(cds_spec):
@@ -753,19 +754,21 @@ def convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr):
             unitary_pseudo = is_possible_unitary_pseudo(txd, cds_spec)
 
     if not include_transcript(cds_spec):
-        return False, False  # CDS truncated too much
+        if verbose:
+            print('skipping CDS', txd.tx.name, cds_spec.cds_len, file=sys.stderr)
+        return False, False, False  # CDS truncated too much
 
     exons = get_transcript_exons(txd)
     if (cds_spec is not None) and (len(cds_spec.regions) > 0) and (len(cds_spec.regions) > 0):
         exons = add_gaps_to_exons(exons, cds_spec)
 
-    write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr)
+    is_rrna_pseudo = write_transcript_features(locus_tag_prefix, gene, txd, trans_num, exons, unitary_pseudo, tblwr)
     if cds_spec is not None and unitary_pseudo is False:
         write_cds(locus_tag_prefix, gene, txd, trans_num, cds_spec, tblwr)
-    return trans_has_cds(txd), unitary_pseudo
+    return trans_has_cds(txd), unitary_pseudo, is_rrna_pseudo
 
 
-def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
+def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, is_rrna_pseudo, tblwr):
     txd = gene.txds[0]  # arbitrary transcript
     txa = txd.attrs
 
@@ -775,7 +778,7 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
     tblwr.write_locus_tag(locus_tag_prefix, gene)
 
     try:
-        if txa.gene_biotype == 'rRNA' and txa.source_transcript_name.startswith('RNA5SP'):
+        if is_rrna_pseudo:
             tblwr.write_qualifier('pseudogene', 'unknown')
     except AttributeError:
         pass
@@ -790,20 +793,23 @@ def write_gene_features(locus_tag_prefix, gene, unitary_pseudo, tblwr):
 def convert_gene_transcripts(locus_tag_prefix, gene, tblwr):
     num_with_cds = 0
     num_unitary_pseudo = 0
+    gene_is_rrna_pseudo = False
     for trans_num, txd in enumerate(gene.txds, 1):
-        has_cds, unitary_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr)
+        has_cds, unitary_pseudo, is_rrna_pseudo = convert_transcript(locus_tag_prefix, gene, txd, trans_num, tblwr)
         if has_cds:
             num_with_cds += 1
         if unitary_pseudo:
             num_unitary_pseudo += 1
-    return num_with_cds, num_unitary_pseudo
+        if is_rrna_pseudo:
+            gene_is_rrna_pseudo = True
+    return num_with_cds, num_unitary_pseudo, gene_is_rrna_pseudo
 
 
 def convert_gene(locus_tag_prefix, gene, tblwr):
-    num_with_cds, num_unitary_pseudo = convert_gene_transcripts(locus_tag_prefix, gene, tblwr)
+    num_with_cds, num_unitary_pseudo, is_rrna_pseudo = convert_gene_transcripts(locus_tag_prefix, gene, tblwr)
     tblwr.push()  # save transcripts
     all_coding_unitary_pseudo = (num_with_cds > 0) and (num_unitary_pseudo == num_with_cds)
-    write_gene_features(locus_tag_prefix, gene, all_coding_unitary_pseudo, tblwr)
+    write_gene_features(locus_tag_prefix, gene, all_coding_unitary_pseudo, is_rrna_pseudo, tblwr)
     tblwr.flush()  # write genes
     tblwr.pop()
     tblwr.flush()  # write transcripts

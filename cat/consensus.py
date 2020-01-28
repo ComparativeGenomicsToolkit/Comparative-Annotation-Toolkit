@@ -601,6 +601,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
+    filtered_denovo_df['TranscriptBiotype'] = filtered_denovo_df['TranscriptBiotype'].fillna('unknown_likely_coding')
     # filter out novel if requested by user
     if denovo_ignore_novel_genes is True:
         filtered_denovo_df = filtered_denovo_df[(filtered_denovo_df.TranscriptClass == 'possible_paralog') |
@@ -618,7 +619,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'transcript_class': s.TranscriptClass,
                                   'novel_5p_cap': s.Novel5pCap,
                                   'novel_poly_a': s.NovelPolyA,
-                                  'transcript_biotype': 'unknown_likely_coding',
+                                  'transcript_biotype': s.TranscriptBiotype,
                                   'gene_biotype': s.GeneBiotype,
                                   'intron_rna_support': ','.join(map(str, s.IntronRnaSupport)),
                                   'exon_rna_support': ','.join(map(str, s.ExonRnaSupport)),

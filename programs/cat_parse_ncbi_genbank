@@ -24,7 +24,7 @@ if __name__ == '__main__':
             if 'locus_tag' not in feature.qualifiers:
                 continue
             feature.qualifiers['gene_id'] = [feature.qualifiers['locus_tag'][0]]
-            feature.qualifiers['gene_name'] = [feature.qualifiers['gene'][0]]
+            feature.qualifiers['gene_name'] = [feature.qualifiers.get('gene', feature.qualifiers['gene_id'])[0]]
             if feature.type in ['CDS', 'ncRNA', 'tRNA', 'rRNA']:
                 feature.qualifiers['transcript_id'] = ['{}-{}'.format(feature.qualifiers['locus_tag'][0],
                                                                       lt_counts[feature.qualifiers['locus_tag'][0]])]
