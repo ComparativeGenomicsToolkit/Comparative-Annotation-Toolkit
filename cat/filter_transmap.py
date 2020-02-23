@@ -39,7 +39,8 @@ import tools.sqlInterface
 pd.options.mode.chained_assignment = None
 
 
-def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes, json_tgt):
+def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes,
+                    overlapping_gene_distance, json_tgt):
     """
     Entry point for transMap filtering.
     :param tm_psl: input PSL
@@ -49,6 +50,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     :param psl_tgt: luigi.LocalTarget() object for PSL output
     :param global_near_best: globalNearBest value to pass to PslCDnaFilter
     :param filter_overlapping_genes: Should we filter out overlapping genes?
+    :param overlapping_gene_distance: How much overlap will we allow when filtering?
     :param json_tgt: luigi.localTarget() object for JSON output
     :return:
     """
@@ -146,9 +148,11 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
                     tools.fileOps.print_row(out_coding, tx.get_gene_pred())
                 else:
                     tools.fileOps.print_row(out_noncoding, tx.get_gene_pred())
-        cmd = ['clusterGenes', '-cds', coding_tmp, 'no', coding_clusters]
+        cmd = ['clusterGenes', '-cds', f'-minOverlappingBases={overlapping_gene_distance}',
+               coding_tmp, 'no', coding_clusters]
         tools.procOps.run_proc(cmd)
-        cmd = ['clusterGenes', noncoding_tmp, 'no', noncoding_clusters]
+        cmd = ['clusterGenes', f'-minOverlappingBases={overlapping_gene_distance}',
+               noncoding_tmp, 'no', noncoding_clusters]
         tools.procOps.run_proc(cmd)
         coding_clustered = pd.read_csv(coding_tmp, sep='\t')
         noncoding_clustered = pd.read_csv(noncoding_tmp, sep='\t')

@@ -105,6 +105,7 @@ class PipelineTask(luigi.Task):
     # Paralogy detection options
     global_near_best = luigi.FloatParameter(default=0.15, significant=False)
     filter_overlapping_genes = luigi.BoolParameter(default=False, significant=True)
+    overlapping_gene_distance = luigi.IntParameter(default=1, significant=True)
     # consensus options
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
@@ -180,6 +181,7 @@ class PipelineTask(luigi.Task):
         # user flags for paralog resolution
         args.set('global_near_best', self.global_near_best, True)
         args.set('filter_overlapping_genes', self.filter_overlapping_genes, True)
+        args.set('overlapping_gene_distance', self.overlapping_gene_distance, True)
         
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
@@ -1197,6 +1199,7 @@ class TransMap(PipelineWrapperTask):
         args.db_path = pipeline_args.dbs[genome]
         args.global_near_best = pipeline_args.global_near_best
         args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes
+        args.overlapping_gene_distance = pipeline_args.overlapping_gene_distance
         return args
 
     def validate(self):
@@ -1274,7 +1277,8 @@ class FilterTransMap(PipelineTask):
         table_target, psl_target, json_target, gp_target = self.output()
         resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp,
                                       tm_args.ref_db_path, psl_target, tm_args.global_near_best,
-                                      tm_args.filter_overlapping_genes, json_target)
+                                      tm_args.filter_overlapping_genes, tm_args.overlapping_gene_distance,
+                                      json_target)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
@@ -2125,6 +2129,7 @@ class Consensus(PipelineWrapperTask):
         args.require_pacbio_support = pipeline_args.require_pacbio_support
         args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes
+        args.overlapping_gene_distance = pipeline_args.overlapping_gene_distance
         return args
 
     def validate(self):
