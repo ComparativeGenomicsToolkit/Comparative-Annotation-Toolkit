@@ -26,7 +26,7 @@ setup(
     ],
     scripts=['programs/cat_to_ncbi_submit', 'programs/translate_gene_pred',
              'programs/validate_gff3', 'programs/cat_parse_ncbi_genbank',
-             'programs/cat_parse_ncbi_gbff'],
+             'programs/cat_parse_ncbi_refseq', 'programs/cat_parse_prokka_gff3'],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',
     url='https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit',
