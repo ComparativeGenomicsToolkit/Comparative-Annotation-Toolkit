@@ -31,8 +31,6 @@ def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
         d = attrs_dict[tx_id]
         gene_biotype = d['gene_biotype']
         tx_biotype = d['transcript_biotype']
-        if tx_biotype != 'protein_coding':
-            assert tx_dict[tx_id].cds_size == 0, 'Found annotated CDS for transcript with a biotype that is not protein_coding'
         gene_name = d['gene_name']
         gene_id = d['gene_id']
         tx_id = d['transcript_id']
