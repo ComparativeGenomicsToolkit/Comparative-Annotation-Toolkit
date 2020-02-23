@@ -17,7 +17,7 @@ MISMATCH = 'X'
 def iter_cigar(cigar):
     ref_pos = cigar.beg_ref
     tgt_pos = cigar.beg_query
-    for num, op in pairwise(re.split(cigar_re, cigar.decode)):
+    for num, op in pairwise(re.split(cigar_re, cigar.decode.decode('utf-8'))):
         num = int(num)
         yield ref_pos, tgt_pos, num, op
         if op == MATCH or op == MISMATCH:
@@ -31,10 +31,10 @@ def iter_cigar(cigar):
             assert False
 
 
-def construct_fa(seq1, seq2, cigar):
+def construct_fa(name1, seq1, name2, seq2, result):
     aln1 = []
     aln2 = []
-    for ref_pos, tgt_pos, num, op in iter_cigar(cigar):
+    for ref_pos, tgt_pos, num, op in iter_cigar(result.cigar):
         if op == MATCH or op == MISMATCH:
             aln1.append(seq1[ref_pos:ref_pos + num])
             aln2.append(seq2[tgt_pos:tgt_pos + num])
@@ -49,7 +49,7 @@ def construct_fa(seq1, seq2, cigar):
     aln2 = ''.join(aln2)
     assert len(aln1) == len(aln2)
     assert max(len(seq1), len(seq2)) == len(aln1)
-    return aln1, aln2
+    return f'>{name1}\n{aln1}\n>{name2}\n{aln2}'
 
 
 def construct_psl(name1, name2, result):
