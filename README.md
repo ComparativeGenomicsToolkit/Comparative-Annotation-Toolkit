@@ -49,7 +49,7 @@ By default, you don't need to worry about installing any of these. However, ther
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 6. [wiggletools](https://github.com/Ensembl/WiggleTools). Used to combine RNA-seq expression in assembly hubs.
 7. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
-8. [exonerate]. Used for protein alignments in hints building.
+8. [exonerate](https://www.ebi.ac.uk/about/vertebrate-genomics/software/exonerate). Used for protein alignments in hints building.
 
 ### Conda/bioconda
 
@@ -135,6 +135,8 @@ As described above, the primary method to executing the pipeline is to follow th
 ## Filtering and consensus finding options
 
 `--filter-overlapping-genes`: Should genes that get flagged as overlapping be removed? After consensus finding is finished, instances of gene family collapse or paralog mis-assignment may lead to overlapping CDS intervals on different genes. This also in some instances may be a feature of the original annotation set. However, some annotation databases do not like this, so this flag will remove all such instances and resolve them down to one gene. 
+
+`--overlapping-gene-distance`: This controls the amount of *exonic* overlap two genes must have to be flagged as overlapping. Setting this value higher than 1 is recommended for smaller genomes that likely have real overlapping genes. Default is 1.
 
 `--intron-rnaseq-support`: Amount of RNA-seq intron support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
