@@ -20,15 +20,15 @@ class Transcript(object):
     """
     __slots__ = ('name', 'strand', 'score', 'thick_start', 'rgb', 'thick_stop', 'start', 'stop', 'intron_intervals',
                  'exon_intervals', 'exons', 'block_sizes', 'block_starts', 'block_count', 'chromosome',
-                 'interval', 'coding_interval')
+                 'interval', 'coding_interval', 'stranded')
 
-    def __init__(self, bed_tokens):
+    def __init__(self, bed_tokens, stranded=True):
         self.chromosome = bed_tokens[0]
         self.start = int(bed_tokens[1])
         self.stop = int(bed_tokens[2])
         self.name = bed_tokens[3]
         self.score = int(bed_tokens[4])
-        self.strand = bed_tokens[5]
+        self.strand = bed_tokens[5] if stranded else '.'
         self.thick_start = int(bed_tokens[6])
         self.thick_stop = int(bed_tokens[7])
         self.rgb = bed_tokens[8]
@@ -372,10 +372,10 @@ class GenePredTranscript(Transcript):
     # adding slots for new fields
     __slots__ = ('cds_start_stat', 'cds_end_stat', 'exon_frames', 'name2', 'score')
 
-    def __init__(self, gene_pred_tokens):
+    def __init__(self, gene_pred_tokens, stranded=True):
         name = gene_pred_tokens[0]
         chrom = gene_pred_tokens[1]
-        strand = gene_pred_tokens[2]
+        strand = gene_pred_tokens[2] if stranded is True else '.'
         start = gene_pred_tokens[3]
         stop = gene_pred_tokens[4]
         thick_start = gene_pred_tokens[5]
@@ -395,7 +395,7 @@ class GenePredTranscript(Transcript):
         block_starts = ",".join(map(str, [x - int(start) for x in block_starts]))
         bed_tokens = [chrom, start, stop, name, self.score, strand, thick_start, thick_stop, '0', block_count,
                       block_sizes, block_starts]
-        super(GenePredTranscript, self).__init__(bed_tokens)
+        super(GenePredTranscript, self).__init__(bed_tokens, stranded=stranded)
 
     def __repr__(self):
         return 'GenePredTranscript({})'.format(self.get_gene_pred())
@@ -636,49 +636,53 @@ class GenePredTranscript(Transcript):
                          exon_starts, exon_ends, score, name2, cds_start_stat, cds_end_stat, exon_frames]))
 
 
-def get_gene_pred_dict(gp_file):
+def get_gene_pred_dict(gp_file, stranded=True):
     """
     Produces a dictionary of GenePredTranscripts from a genePred file
     :param gp_file: A genePred file path or handle.
+    :param stranded: Should strand be considered or the objects made unstranded?
     :return: A dictionary of name:transcript pairs
     """
-    return {t.name: t for t in gene_pred_iterator(gp_file)}
+    return {t.name: t for t in gene_pred_iterator(gp_file, stranded=stranded)}
 
 
-def gene_pred_iterator(gp_file):
+def gene_pred_iterator(gp_file, stranded=True):
     """
     Iterator for GenePred file or handle, producing tuples of (name, GenePredTranscript)
     :param gp_file: A genePred file path or handle.
+    :param stranded: Should strand be considered or the objects made unstranded?
     :return: tuples of (name, GenePredTranscript)
     """
     for i, x in enumerate(open(gp_file)):
         tokens = x.rstrip().split('\t')
         if len(tokens) != 15:
             raise RuntimeError('GenePred line {} had {} tokens, not 15. Record: {}'.format(i + 1, len(tokens), tokens))
-        t = GenePredTranscript(tokens)
+        t = GenePredTranscript(tokens, stranded=stranded)
         yield t
 
 
-def get_transcript_dict(bed_file):
+def get_transcript_dict(bed_file, stranded=True):
     """
     Produces a dictionary of Transcripts from a BED file
     :param bed_file: A BED file path or handle.
+    :param stranded: Should strand be considered or the objects made unstranded?
     :return: A dictionary of name:transcript pairs
     """
-    return {t.name: t for t in transcript_iterator(bed_file)}
+    return {t.name: t for t in transcript_iterator(bed_file, stranded=stranded)}
 
 
-def transcript_iterator(bed_file):
+def transcript_iterator(bed_file, stranded=True):
     """
     Iterator for BED file or handle, producing tuples of (name, Transcript)
     :param bed_file: A BED file path or handle.
+    :param stranded: Should strand be considered or the objects made unstranded?
     :return: tuples of (name, Transcript)
     """
     with open(bed_file) as inf:
         for tokens in iter_lines(inf):
             if len(tokens) != 12:
                 raise RuntimeError('BED line had {} tokens, not 12. Record: {}'.format(len(tokens), tokens))
-            t = Transcript(tokens)
+            t = Transcript(tokens, stranded=stranded)
             yield t
 
 

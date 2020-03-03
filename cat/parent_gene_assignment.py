@@ -4,6 +4,7 @@ A set of functions to perform parental gene assignment in the AugustusPB/Augustu
 import pandas as pd
 import itertools
 import collections
+from tools.defaultOrderedDict import DefaultOrderedDict
 import tools.procOps
 import tools.fileOps
 import tools.mathOps
@@ -11,7 +12,7 @@ import tools.transcripts
 import tools.intervals
 
 
-def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min_distance=0.9):
+def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min_distance=0.9, stranded=True):
     """
     Main function for assigning parental genes. Parental gene assignment methodology:
     A) Each denovo transcript is evaluated for overlapping any transMap transcripts.
@@ -24,12 +25,12 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min
     in these distances is over min_distance for all comparisons, we call this rescued and it can be incorporated.
     Otherwise, this transcript is tagged ambiguousOrFusion.
     """
-    filtered_transmap_dict = tools.transcripts.get_gene_pred_dict(filtered_tm_gp)
-    unfiltered_transmap_dict = tools.transcripts.get_gene_pred_dict(unfiltered_tm_gp)
+    filtered_transmap_dict = tools.transcripts.get_gene_pred_dict(filtered_tm_gp, stranded)
+    unfiltered_transmap_dict = tools.transcripts.get_gene_pred_dict(unfiltered_tm_gp, stranded)
     filtered_ids = unfiltered_transmap_dict.keys() - filtered_transmap_dict.keys()
 
     tm_chrom_dict = create_chrom_dict(unfiltered_transmap_dict, chrom_sizes)
-    denovo_dict = tools.transcripts.get_gene_pred_dict(denovo_gp)
+    denovo_dict = tools.transcripts.get_gene_pred_dict(denovo_gp, stranded)
     denovo_chrom_dict = create_chrom_dict(denovo_dict)
 
     # begin parent gene assignment
@@ -74,24 +75,16 @@ def create_chrom_dict(tx_dict, chrom_sizes=None):
     return chrom_dict
 
 
-def find_tm_overlaps(denovo_tx, tm_tx_dict):
+def find_tm_overlaps(denovo_tx, tm_tx_dict, cutoff=100):
     """Find overlap with transMap transcripts first on a genomic scale then an exonic scale"""
-    r = []
+    r = DefaultOrderedDict(int)
     for tx in tm_tx_dict.values():
-        if tx.interval.intersection(denovo_tx.interval) is not None:
-            # make sure that we have exon overlap
-            if ensure_exon_overlap(tx, denovo_tx) is True:
-                r.append(tx)
-    return r
-
-
-def ensure_exon_overlap(tx, denovo_tx):
-    """Do these two transcripts have at least 1 exonic base of overlap?"""
-    for tm_exon in tx.exon_intervals:
-        for denovo_exon in denovo_tx.exon_intervals:
-            if tm_exon.overlap(denovo_exon) is True:
-                return True
-    return False
+        for tx_exon in tx.exon_intervals:
+            for denovo_exon in denovo_tx.exon_intervals:
+                i = tx_exon.intersection(denovo_exon)
+                if i is not None:
+                    r[tx] += len(i)
+    return [tx_id for tx_id, num_bases in r.items() if num_bases >= cutoff]
 
 
 def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance):
