@@ -136,7 +136,7 @@ class PipelineTask(luigi.Task):
     nodeTypes = luigi.Parameter(default=None, significant=False)
     maxNodes = luigi.Parameter(default=None, significant=False)
     minNode = luigi.Parameter(default=None, significant=False)
-    metrices = luigi.Parameter(default=None, significant=False)
+    metrics = luigi.Parameter(default=None, significant=False)
     zone = luigi.Parameter(default=None, significant=False)
 
     def __repr__(self):
