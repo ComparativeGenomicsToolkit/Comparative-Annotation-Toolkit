@@ -37,10 +37,10 @@ RUN cd hdf5-1.10.1 && ./configure --enable-cxx --prefix=/usr
 RUN cd hdf5-1.10.1 && make && make install
 
 # sonLib
-RUN git clone git://github.com/benedictpaten/sonLib.git
+RUN git clone git://github.com/ComparativeGenomicsToolkit/sonLib.git
 
 # HAL
-RUN git clone git://github.com/glennhickey/hal.git
+RUN git clone git://github.com/ComparativeGenomicsToolkit/hal.git
 RUN cd sonLib && make
 RUN cd hal && make
 
