@@ -4,8 +4,7 @@ python: 3.7
 services:
   - docker
 stages:
-  - name: docker-build
-    if: branch = master
+  - docker-build
   - test
 jobs:
   include:
