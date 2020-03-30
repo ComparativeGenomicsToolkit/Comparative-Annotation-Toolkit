@@ -157,11 +157,16 @@ def join_genes(job, gff_chunks):
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
     # TODO: figure out why this fails on certain filesystems
-    #cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
-    cmd = [['joingenes', '-g', ','.join(files), '-o', '/dev/stdout'],
-           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
-           ['sed', ' s/jg/augPB-/g']]
-    tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    try:
+        cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
+               ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+               ['sed', ' s/jg/augPB-/g']]
+        tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    except:
+        cmd = [['joingenes', '-g', ','.join(files), '-o', '/dev/stdout'],
+               ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+               ['sed', ' s/jg/augPB-/g']]
+        tools.procOps.run_proc(cmd, stdout=join_genes_file)
 
     # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
     cmd = ['gtfToGenePred', '-genePredExt', join_genes_file, join_genes_gp]
