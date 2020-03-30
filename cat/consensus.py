@@ -851,13 +851,13 @@ def calculate_indel_metrics(final_consensus, eval_df, metrics):
 ###
 
 
-def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dict, genome):
+def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dict, genome, gene_offset=0):
     """
     Write the resulting gp + gp_info, generating genome-specific unique identifiers
     """
     # keeps track of gene # -> ID mappings
     genes_seen = collections.defaultdict(dict)
-    gene_count = 0
+    gene_count = gene_offset
     consensus_gene_dict = DefaultOrderedDict(lambda: DefaultOrderedDict(list))  # used to make gff3 next
     gp_infos = []
     consensus_gp_target = luigi.LocalTarget(consensus_gp)
@@ -906,6 +906,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             attrs['Name'] = attrs['source_gene_common_name']
         else:
             attrs['Name'] = attrs['gene_id']
+        # convert empty strings into nan
+        attrs = {x: y if y != '' else 'nan' for x, y in attrs.items()}
         # don't include the support vectors in the string, they will be placed in their respective places
         attrs_str = ['='.join([key, str(val).replace('=', '_')]) for key, val in sorted(attrs.items()) if 'support' not in key]
         # explicitly escape any semicolons that may exist in the input strings
