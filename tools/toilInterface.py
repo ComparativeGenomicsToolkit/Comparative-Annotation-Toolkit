@@ -4,7 +4,7 @@ Helper functions for toil-luigi interfacing
 from . import bio
 import math
 import argparse
-from bd2k.util.humanize import human2bytes
+from toil.lib.humanize import human2bytes
 try:
     from toil.fileStores import FileID
 except ImportError:

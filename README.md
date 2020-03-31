@@ -53,13 +53,21 @@ By default, you don't need to worry about installing any of these. However, ther
 
 ### Conda/bioconda
 
-Many of the above dependencies are on `conda`. In particular, you should be able to do the following:
+Many of the above dependencies are on `conda`. However, you will still need to install the HAL toolkit as well as CAT yourself. Additionally, you will need to install a few things yourself:
+ 1. `clusterGenes`: The version on conda is too old.
+ 2. `toil`: The version on conda is too old (not python3 compatible).
+ 3. `cat`: You will need to install this repo with `pip install` after you enter the conda env (`conda activate cattest`).
 
 ```
-conda create -y -n cat python=3.7 sambamba samtools htslib exonerate wiggletools bedtools bx-python seaborn pandas scipy numpy pyfasta pysam 
+conda create -y -n cattest -c bioconda python=3.7 pyfasta luigi seaborn pandas \
+ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy \
+samtools bamtools augustus exonerate wiggletools \
+ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred \
+ucsc-pslpostarget ucsc-axtchain ucsc-chainmergesort ucsc-pslmap ucsc-pslrecalcmatch ucsc-pslmappostchain \
+ucsc-gtftogenepred ucsc-genepredtogtf ucsc-pslcdnafilter ucsc-psltobigpsl \
+ucsc-bedsort ucsc-bedtobigbed
 ```
 
-Augustus and HAL tools still need to be compiled by hand, and Kent tools still need to be downloaded.
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
 `hal2fasta halStats halLiftover exonerate faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl exonerate2hints.pl blat2hints.pl transMapPslToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl pal2nal.pl`
@@ -70,11 +78,13 @@ This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the
 
 `luigid --background --logdir luigi_logs`
 
-Which provides the central scheduler as well as the web UI, which can be accessed at `localhost:8082`. If you don't want to use the daemon, add the flag `--local-scheduler` to the invocation.
+Which provides the central scheduler as well as the web UI, which can be accessed at `localhost:8082`. 
+If you don't want to use the daemon, *which is highly recommended* add the flag `--local-scheduler` to the invocation.
 
 To run the test data, change directories to the CAT installation folder and do the following:
 
-`luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler --augustus  --augustus-cgp --augustus-pb --assembly-hub > log.txt`
+`luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=test_data/test.config \
+--work-dir test_install --out-dir test_install --local-scheduler --augustus  --augustus-cgp --augustus-pb --assembly-hub > log.txt`
 
 The test should take around 30 minutes to execute. You can track progress in the log file.
 
