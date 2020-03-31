@@ -15,6 +15,7 @@ jobs:
         - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; docker push quay.io/ucsc_cgl/cat:latest; fi
     - stage: test
       script:
+        - set ex
         # Enable logging
         - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
         - sudo apt-get -qq update
@@ -32,8 +33,9 @@ jobs:
           --augustus --augustus-cgp --augustus-pb --assembly-hub
     - stage: test
       script:
+        - set -ex
         - sudo apt-get -qq update
-        - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+        - wget -q https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
         - bash miniconda.sh -b -p $HOME/miniconda
         - source "$HOME/miniconda/etc/profile.d/conda.sh"
         - hash -r
@@ -49,13 +51,16 @@ jobs:
           ucsc-bedsort ucsc-bedtobigbed
         - conda activate cattest
         - pip install .
+        - echo "ls $HOME/miniconda/envs"
+        - echo "$PATH"
+        - echo "$AUGUSTUS_CONFIG_PATH"
         - >
-          wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/clusterGenes -O $HOME/miniconda/envs/cattest/bin/clusterGenes;
-          chmod +x $HOME/miniconda/envs/cattest/bin/clusterGenes
+          wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/clusterGenes -O "$HOME/miniconda/envs/cattest/bin/clusterGenes";
+          chmod +x "$HOME/miniconda/envs/cattest/bin/clusterGenes"
         - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
-        - sed -i "s/maxDisk = self.physicalDisk/pass/g" $HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxMemory = self.physicalMemory/pass/g" $HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxDisk = self.physicalDisk/pass/g" "$HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py"
+        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" "$HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py"
+        - sed -i "s/maxMemory = self.physicalMemory/pass/g" "$HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py"
         - >
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler

@@ -53,10 +53,11 @@ By default, you don't need to worry about installing any of these. However, ther
 
 ### Conda/bioconda
 
-Many of the above dependencies are on `conda`. However, you will still need to install the HAL toolkit as well as CAT yourself. Additionally, you will need to install a few things yourself:
+Many of the above dependencies are on `conda`. However, you will still need to install the following things by hand:
  1. `clusterGenes`: The version on conda is too old.
  2. `toil`: The version on conda is too old (not python3 compatible).
  3. `cat`: You will need to install this repo with `pip install` after you enter the conda env (`conda activate cattest`).
+ 4. `HAL`: Not available on conda.
 
 ```
 conda create -y -n cattest -c bioconda python=3.7 pyfasta luigi seaborn pandas \
