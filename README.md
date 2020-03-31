@@ -62,7 +62,7 @@ Many of the above dependencies are on `conda`. However, you will still need to i
 ```
 conda create -y -n cattest -c conda-forge -c bioconda -c defaults python=3.7 pyfasta luigi seaborn pandas \
 ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy \
-samtools bamtools augustus exonerate wiggletools \
+samtools bamtools augustus exonerate wiggletools bedtools \
 ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred \
 ucsc-pslpostarget ucsc-axtchain ucsc-chainmergesort ucsc-pslmap ucsc-pslrecalcmatch ucsc-pslmappostchain \
 ucsc-gtftogenepred ucsc-genepredtogtf ucsc-pslcdnafilter ucsc-psltobigpsl \

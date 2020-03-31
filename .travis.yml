@@ -44,7 +44,7 @@ jobs:
         - >
           conda create -y -q -n cattest -c conda-forge -c bioconda -c defaults python=3.7 pyfasta luigi seaborn pandas
           ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy
-          samtools bamtools augustus exonerate wiggletools
+          samtools bamtools augustus exonerate wiggletools bedtools
           ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred
           ucsc-pslpostarget ucsc-axtchain ucsc-chainmergesort ucsc-pslmap ucsc-pslrecalcmatch ucsc-pslmappostchain
           ucsc-gtftogenepred ucsc-genepredtogtf ucsc-pslcdnafilter ucsc-psltobigpsl
@@ -61,4 +61,4 @@ jobs:
         - >
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
-          --augustus --augustus-cgp --augustus-pb --assembly-hub
+          --augustus --augustus-cgp --augustus-pb --assembly-hub --binary-mode local
