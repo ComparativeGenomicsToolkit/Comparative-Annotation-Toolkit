@@ -35,6 +35,7 @@ jobs:
       script:
         - set -ex
         - sudo apt-get -qq update
+        - sudo apt-get install git
         - wget -q https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
         - bash miniconda.sh -b -p $HOME/miniconda
         - source "$HOME/miniconda/etc/profile.d/conda.sh"
@@ -51,9 +52,15 @@ jobs:
           ucsc-bedsort ucsc-bedtobigbed
         - conda activate cattest
         - pip install .
+        # section below is a stopgap until hal and clusterGenes are installable via conda
         - >
           wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/clusterGenes -O "$HOME/miniconda/envs/cattest/bin/clusterGenes";
           chmod +x "$HOME/miniconda/envs/cattest/bin/clusterGenes"
+        - git clone git://github.com/ComparativeGenomicsToolkit/sonLib.git
+        - git clone git://github.com/ComparativeGenomicsToolkit/hal.git
+        - cd sonLib && make
+        - cd hal && make
+        - cp /hal/bin/* "$HOME/miniconda/envs/cattest/bin/"
         - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
         - sed -i "s/maxDisk = self.physicalDisk/pass/g" "$HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py"
         - sed -i "s/maxCores = self.numCores/maxCores = 8/g" "$HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py"
