@@ -6,16 +6,14 @@ services:
 stages:
   - name: docker-build
     if: branch = master
-  - name:
-      -test-conda
-      -test-docker
+  - name: test
 jobs:
   include:
     - stage: docker-build
       script:
         - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker build -t quay.io/ucsc_cgl/cat:latest .; fi
         - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; docker push quay.io/ucsc_cgl/cat:latest; fi
-    - stage: test-docker
+    - stage: test
       script:
         # Enable logging
         - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
@@ -28,10 +26,11 @@ jobs:
         - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxMemory = self.physicalMemory/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         # Just go through the test set and make sure it doesn't crash. It's not much, but it's better than nothing.
-        - luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10 \
-          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler \
+        - >
+          luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
+          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
           --augustus --augustus-cgp --augustus-pb --assembly-hub
-    - stage: test-conda
+    - stage: test
       script:
         - sudo apt-get -qq update
         - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
@@ -40,21 +39,24 @@ jobs:
         - hash -r
         - conda config --set always_yes yes --set changeps1 no
         - conda update -q conda
-        - conda create -y -q -n cattest -c bioconda python=3.7 pyfasta luigi seaborn pandas \
-            ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy \
-            samtools bamtools augustus exonerate wiggletools \
-            ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred \
-            ucsc-pslpostarget ucsc-axtchain ucsc-chainmergesort ucsc-pslmap ucsc-pslrecalcmatch ucsc-pslmappostchain \
-            ucsc-gtftogenepred ucsc-genepredtogtf ucsc-pslcdnafilter ucsc-psltobigpsl \
-            ucsc-bedsort ucsc-bedtobigbed
+        - >
+          conda create -y -q -n cattest -c bioconda python=3.7 pyfasta luigi seaborn pandas
+          ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy
+          samtools bamtools augustus exonerate wiggletools
+          ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred
+          ucsc-pslpostarget ucsc-axtchain ucsc-chainmergesort ucsc-pslmap ucsc-pslrecalcmatch ucsc-pslmappostchain
+          ucsc-gtftogenepred ucsc-genepredtogtf ucsc-pslcdnafilter ucsc-psltobigpsl
+          ucsc-bedsort ucsc-bedtobigbed
         - conda activate cattest
         - pip install .
-        - wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/clusterGenes -O $HOME/miniconda/envs/cattest/bin/clusterGenes; \
+        - >
+          wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/clusterGenes -O $HOME/miniconda/envs/cattest/bin/clusterGenes;
           chmod +x $HOME/miniconda/envs/cattest/bin/clusterGenes
         - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
         - sed -i "s/maxDisk = self.physicalDisk/pass/g" $HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxMemory = self.physicalMemory/pass/g" $HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
-        - luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10 \
-          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler \
+        - >
+          luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
+          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
           --augustus --augustus-cgp --augustus-pb --assembly-hub
