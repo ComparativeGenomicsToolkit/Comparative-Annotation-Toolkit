@@ -2569,7 +2569,7 @@ class DenovoTrack(TrackTask):
 
         with tmp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(augustus_gp):
-                s = denovo_df.ix[tx.name]
+                s = denovo_df.loc[tx.name]
                 alternative_gene_ids = 'N/A' if s.AlternativeGeneIds is None else s.AlternativeGeneIds
                 intron_rna = ','.join(map(str, s.IntronRnaSupport))
                 exon_rna = ','.join(map(str, s.ExonRnaSupport))
@@ -2636,9 +2636,9 @@ class BgpTrack(TrackTask):
         with tmp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(self.genepred_path):
                 if self.mode == 'tm':
-                    s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                    s = annotation_info.loc[tools.nameConversions.strip_alignment_numbers(tx.name)]
                 else:
-                    s = annotation_info.ix[tx.name]
+                    s = annotation_info.loc[tx.name]
                 block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                        tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
@@ -2686,7 +2686,7 @@ class ConsensusTrack(TrackTask):
 
         with tmp_gp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(consensus_args.consensus_gp):
-                info = consensus_gp_info.ix[tx.name]
+                info = consensus_gp_info.loc[tx.name]
                 block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 tx_name = info.source_transcript_name if info.source_transcript_name != 'N/A' else tx.name
                 row = [tx.chromosome, tx.start, tx.stop, tx_name, tx.score, tx.strand,
@@ -2841,7 +2841,7 @@ class AugustusTrack(TrackTask):
                         continue
                     gp = tools.transcripts.gene_pred_iterator(gp)
                     for tx in gp:
-                        s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                        s = annotation_info.loc[tools.nameConversions.strip_alignment_numbers(tx.name)]
                         block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                         row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                                tx.thick_stop, color, tx.block_count, block_sizes, block_starts,

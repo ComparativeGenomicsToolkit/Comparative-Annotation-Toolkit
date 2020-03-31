@@ -819,7 +819,7 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
         elif 'transMap' in c['transcript_modes']:
             metrics['Evaluation Improvement']['unchanged'] += 1
             continue
-        tx_s = df.ix[aln_id]
+        tx_s = df.loc[aln_id]
         metrics['Evaluation Improvement']['changes'].append([tx_s.TransMapOriginalIntronsPercent,
                                                              tx_s.IntronAnnotSupportPercentTransMap,
                                                              tx_s.IntronRnaSupportPercentTransMap,
