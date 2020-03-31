@@ -10,8 +10,8 @@ jobs:
   include:
     - stage: docker-build
       script:
-        - docker build -t quay.io/ucsc_cgl/cat:latest .
-        - docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; docker push quay.io/ucsc_cgl/cat:latest
+        - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker build -t quay.io/ucsc_cgl/cat:latest .; fi
+        - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; docker push quay.io/ucsc_cgl/cat:latest; fi
     - stage: test
       script:
         # Enable logging

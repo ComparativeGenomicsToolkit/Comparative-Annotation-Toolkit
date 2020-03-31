@@ -814,7 +814,7 @@ def calculate_improvement_metrics(final_consensus, scored_df, tm_eval_df, hgm_df
     for aln_id, c in final_consensus:
         if c['transcript_biotype'] != 'protein_coding':
             continue
-        elif 'exRef' in c['transcript_modes']:
+        elif 'exRef' in c['transcript_modes'] or 'augPB' in c['transcript_modes'] or 'augCGP' in c['transcript_modes']:
             continue
         elif 'transMap' in c['transcript_modes']:
             metrics['Evaluation Improvement']['unchanged'] += 1
