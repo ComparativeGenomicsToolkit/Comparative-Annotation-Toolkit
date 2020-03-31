@@ -42,7 +42,7 @@ jobs:
         - conda config --set always_yes yes --set changeps1 no
         - conda update -q conda
         - >
-          conda create -y -q -n cattest -c bioconda python=3.7 pyfasta luigi seaborn pandas
+          conda create -y -q -n cattest -c conda-forge -c bioconda -c defaults python=3.7 pyfasta luigi seaborn pandas
           ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy
           samtools bamtools augustus exonerate wiggletools
           ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred
