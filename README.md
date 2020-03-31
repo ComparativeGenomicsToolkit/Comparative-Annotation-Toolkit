@@ -60,7 +60,7 @@ Many of the above dependencies are on `conda`. However, you will still need to i
  4. `HAL`: Not available on conda.
 
 ```
-conda create -y -n cattest2 -c conda-forge -c bioconda -c defaults python=3.7 pyfasta luigi seaborn pandas \
+conda create -y -n cattest -c conda-forge -c bioconda -c defaults python=3.7 pyfasta luigi seaborn pandas \
 ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy \
 samtools bamtools augustus exonerate wiggletools \
 ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred \

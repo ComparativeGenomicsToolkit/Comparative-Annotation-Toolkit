@@ -51,9 +51,6 @@ jobs:
           ucsc-bedsort ucsc-bedtobigbed
         - conda activate cattest
         - pip install .
-        - echo "ls $HOME/miniconda/envs"
-        - echo "$PATH"
-        - echo "$AUGUSTUS_CONFIG_PATH"
         - >
           wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/clusterGenes -O "$HOME/miniconda/envs/cattest/bin/clusterGenes";
           chmod +x "$HOME/miniconda/envs/cattest/bin/clusterGenes"
