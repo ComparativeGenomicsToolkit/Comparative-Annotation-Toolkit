@@ -107,9 +107,11 @@ reserved_keys = ['gene_biotype',
                  'Parent']
 ```
 
-The keys `ID`, `Name` and `Parent` are required for valid GFF3 and define the hierarchical relationship. The remaining keys, `gene_biotype`, `transcript_biotype`, `gene_name`, `gene_id`, `transcript_id` and `transcript_name` are also all required. In many cases you will not have common names, and so it is fine for `transcript_name` to equal `transcript_id` and for `gene_name` to equal `gene_id`. The biotypes can be whatever you want, but `protein_coding` is a special biotype that tells CAT this gene or transcript is coding.
+The keys `ID`, `Name` and `Parent` are required for valid GFF3 and define the hierarchical relationship. The remaining keys, `gene_biotype`, `transcript_biotype`, `gene_name`, `gene_id`, `transcript_id` and `transcript_name` are also all required. In many cases you will not have common names, and so it is fine for `transcript_name` to equal `transcript_id` and for `gene_name` to equal `gene_id`. The biotypes can be whatever you want, but `protein_coding` is a special biotype that tells CAT this gene or transcript is coding. You *must* flag your protein coding genes *and transcripts* as `protein_coding`!
 
 You may have any arbitrary set of keys and values in the GFF3 that are not the reserved keys. These keys and values will be propagated on to the resulting transcript in the CAT output GFF3. 
+
+If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`.
 
 # Command line options
 
@@ -272,14 +274,6 @@ It is **extremely** important that you use high quality RNA-seq. Libraries shoul
 ## ISoSeq libraries
 
 If you are using IsoSeq data, it is recommended that you doing your mapping with `minimap2`. These BAM files must also be genomic coordinate sorted and indexed.
-
-# GFF3 Reference
-
-CAT relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for transMap filtering and consensus finding to work properly.
-
-If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`.
-
-To ensure that your GFF3 is valid and won't cause any problems, there is a script in the `programs` folder that will parse and validate your GFF3. Please run this script before running the pipeline!
 
 # Execution modes
 
