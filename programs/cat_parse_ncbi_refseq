@@ -106,7 +106,7 @@ if __name__ == '__main__':
             for parent, child in pairwise_adjacent(gene):
                 parent.qualifiers['ID'] = [f'{parent.type}:{gene_id}']
                 child.qualifiers['Parent'] = parent.qualifiers['ID'][0]
-            child.qualifiers['ID'] = [f'{child.type}:{gene_id}']
+                child.qualifiers['ID'] = [f'{child.type}:{gene_id}']
 
             # add biotype information
             if gene[1].type in ['CDS', 'mRNA']:  # some genes have only CDS and gene, some have gene and mRNA

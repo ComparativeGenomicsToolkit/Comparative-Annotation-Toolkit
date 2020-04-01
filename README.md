@@ -89,6 +89,27 @@ To run the test data, change directories to the CAT installation folder and do t
 
 The test should take around 30 minutes to execute. You can track progress in the log file.
 
+# GFF3 input
+
+CAT requires valid GFF3 as input. The script `programs/validate_gff3` can test that your GFF3 is both valid and meets the requirements of CAT. These requirements include:
+
+The following keys are reserved, and have special meaning:
+
+```
+reserved_keys = ['gene_biotype',
+                 'transcript_biotype',
+                 'gene_name',
+                 'gene_id',
+                 'transcript_id',
+                 'transcript_name',
+                 'ID',
+                 'Name',
+                 'Parent']
+```
+
+The keys `ID`, `Name` and `Parent` are required for valid GFF3 and define the hierarchical relationship. The remaining keys, `gene_biotype`, `transcript_biotype`, `gene_name`, `gene_id`, `transcript_id` and `transcript_name` are also all required. In many cases you will not have common names, and so it is fine for `transcript_name` to equal `transcript_id` and for `gene_name` to equal `gene_id`. The biotypes can be whatever you want, but `protein_coding` is a special biotype that tells CAT this gene or transcript is coding.
+
+You may have any arbitrary set of keys and values in the GFF3 that are not the reserved keys. These keys and values will be propagated on to the resulting transcript in the CAT output GFF3. 
 
 # Command line options
 
