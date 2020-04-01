@@ -58,9 +58,9 @@ jobs:
           chmod +x "$HOME/miniconda/envs/cattest/bin/clusterGenes"
         - git clone git://github.com/ComparativeGenomicsToolkit/sonLib.git
         - git clone git://github.com/ComparativeGenomicsToolkit/hal.git
-        - cd sonLib && make
-        - cd hal && make
-        - cp /hal/bin/* "$HOME/miniconda/envs/cattest/bin/"
+        - cd sonLib && make && cd ..
+        - cd hal && make && cd ..
+        - cp hal/bin/* "$HOME/miniconda/envs/cattest/bin/"
         - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
         - sed -i "s/maxDisk = self.physicalDisk/pass/g" "$HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py"
         - sed -i "s/maxCores = self.numCores/maxCores = 8/g" "$HOME/miniconda/envs/cattest/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py"
