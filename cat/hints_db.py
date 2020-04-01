@@ -8,7 +8,11 @@ import logging
 
 import pyfasta
 import pysam
-from toil.fileStore import FileID
+
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -20,8 +24,7 @@ import tools.procOps
 import tools.toilInterface
 import tools.transcripts
 import tools.bio
-from exceptions import UserException
-from tools.pipeline import ProcException
+from .exceptions import UserException
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +59,11 @@ def hints_db(hints_args, toil_options):
                     validate_bam_fasta_pairs(bam_path, fasta_sequences, hints_args.genome)
                     iso_seq_file_ids.append(validate_import_bam(t, bam_path, fasta_sequences, hints_args.genome))
 
-            if hints_args.annotation is None:
+            if hints_args.annotation_gp is None:
                 annotation_file_id = None
             else:
-                annotation_file_id = FileID.forPath(t.importFile('file://' + hints_args.annotation),
-                                                    hints_args.annotation)
+                annotation_file_id = FileID.forPath(t.importFile('file://' + hints_args.annotation_gp),
+                                                    hints_args.annotation_gp)
             if hints_args.protein_fasta is None:
                 protein_fasta_file_id = genome_fasta_file_id = None
             else:
@@ -92,18 +95,18 @@ def setup_hints(job, input_file_ids):
     """
     # RNA-seq hints
     filtered_bam_file_ids = {'BAM': collections.defaultdict(list), 'INTRONBAM': collections.defaultdict(list)}
-    for dtype, bam_dict in input_file_ids['bams'].iteritems():
+    for dtype, bam_dict in input_file_ids['bams'].items():
         if len(bam_dict) == 0:
             continue
         # Since BAMs are valid, we can assume that they all share the same header
-        bam_file_id, bai_file_id = bam_dict.values()[0]
+        bam_file_id, bai_file_id = list(bam_dict.values())[0]
         bam_path = job.fileStore.readGlobalFile(bam_file_id)
         sam_handle = pysam.Samfile(bam_path)
         # triple disk usage to deal with name sorted bam
-        disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id]) * 3
+        disk_usage = tools.toilInterface.find_total_disk_usage([bam_file_id, bai_file_id]) * 3 + 2
         # generate reference grouping that will be used downstream until final cat step
         grouped_references = [tuple(x) for x in group_references(sam_handle)]
-        for original_path, (bam_file_id, bai_file_id) in bam_dict.iteritems():
+        for original_path, (bam_file_id, bai_file_id) in bam_dict.items():
             for reference_subset in grouped_references:
                 j = job.addChildJobFn(namesort_bam, bam_file_id, bai_file_id, reference_subset, disk_usage,
                                       disk=disk_usage, cores=4, memory='16G')
@@ -162,7 +165,7 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
     ns_handle = pysam.Samfile(name_sorted)
     # this group may come up empty -- check to see if we have at least one mapped read
     try:
-        _ = ns_handle.next()
+        _ = next(ns_handle)
     except StopIteration:
         return None
     # reset file handle to start
@@ -231,7 +234,7 @@ def merge_bams(job, filtered_bam_file_ids, annotation_hints_file_id, iso_seq_hin
     """
     merged_bam_file_ids = {'BAM': {}, 'INTRONBAM': {}}
     for dtype in filtered_bam_file_ids:
-        for ref_group, file_ids in filtered_bam_file_ids[dtype].iteritems():
+        for ref_group, file_ids in filtered_bam_file_ids[dtype].items():
             file_ids = [x for x in file_ids if x is not None]  # some groups will end up empty
             if len(file_ids) > 0:
                 disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
@@ -254,7 +257,7 @@ def cat_sort_bams(job, bam_file_ids):
 
     # do the first one
     cmd = ['samtools', 'cat', '-o', catfile]
-    cmd.extend(sam_iter.next())
+    cmd.extend(next(sam_iter))
     tools.procOps.run_proc(cmd)
 
     # do any subsequent ones left, creating a new file each time
@@ -283,14 +286,14 @@ def generate_protein_hints(job, protein_fasta_file_id, genome_fasta_file_id):
     protein_handle = tools.bio.get_sequence_dict(protein_fasta)
     # group up proteins for sub-jobs
     results = []
-    for chunk in tools.dataOps.grouper(protein_handle.iteritems(), 100):
-        j = job.addChildJobFn(run_protein_blat, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
+    for chunk in tools.dataOps.grouper(protein_handle.items(), 100):
+        j = job.addChildJobFn(run_protein_aln, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
         results.append(j.rv())
     # return merged results
-    return job.addFollowOnJobFn(convert_blat_results_to_hints, results, memory='8G').rv()
+    return job.addFollowOnJobFn(convert_protein_aln_results_to_hints, results, memory='8G').rv()
 
 
-def run_protein_blat(job, protein_subset, genome_fasta_file_id):
+def run_protein_aln(job, protein_subset, genome_fasta_file_id):
     """
     Runs BLAT on a small chunk of proteins
     """
@@ -301,32 +304,27 @@ def run_protein_blat(job, protein_subset, genome_fasta_file_id):
         for name, seq in protein_subset:
             tools.bio.write_fasta(outf, name, str(seq))
     # perform alignment
-    tmp_psl = tools.fileOps.get_tmp_toil_file()
-    cmd = [['blat', '-t=dnax', '-q=prot', '-noHead', genome_fasta, protein_fasta, '/dev/stdout'],
-           ['pslCheck', '-skipInsertCounts', '/dev/stdin', '-pass={}'.format(tmp_psl)]]
-    try:  # we expect pslCheck to fail
-        tools.procOps.run_proc(cmd, stderr='/dev/null')
-    except ProcException:
-        tools.fileOps.touch(tmp_psl)
-        pass
-    return job.fileStore.writeGlobalFile(tmp_psl)
+    tmp_exonerate = tools.fileOps.get_tmp_toil_file()
+    cmd = ['exonerate', '--model', 'protein2genome', '--showvulgar', 'no', '--showalignment', 'no',
+           '--showquerygff', 'yes', genome_fasta, protein_fasta]
+    tools.procOps.run_proc(cmd, stdout=tmp_exonerate)
+    return job.fileStore.writeGlobalFile(tmp_exonerate)
 
 
-def convert_blat_results_to_hints(job, results):
+def convert_protein_aln_results_to_hints(job, results):
     """
-    Concatenates protein blat, converts to hints
+    Concatenates exonerate protein2genome, converts to hints
     """
-    merged_psl = tools.fileOps.get_tmp_toil_file()
-    with open(merged_psl, 'w') as outf:
+    merged_exonerate = tools.fileOps.get_tmp_toil_file()
+    with open(merged_exonerate, 'w') as outf:
         for r in results:
             f = job.fileStore.readGlobalFile(r)
             outf.write(open(f).read())
     # sort psl and generate hints
+    tmp_sorted = tools.fileOps.get_tmp_toil_file()
+    tools.misc.sort_gff(merged_exonerate, tmp_sorted)
     out_hints = tools.fileOps.get_tmp_toil_file()
-    cmd = [['sort', '-n', '-k16,16', merged_psl],
-           ['sort', '-s', '-k14,14'],
-           ['perl', '-ne', '@f=split; print if ($f[0]>=100)'],
-           ['blat2hints.pl', '--in=/dev/stdin', '--nomult', '--ep_cutoff=5', '--out={}'.format(out_hints)]]
+    cmd = ['exonerate2hints.pl', '--in={}'.format(tmp_sorted), '--CDSpart_cutoff=5', '--out={}'.format(out_hints)]
     tools.procOps.run_proc(cmd)
     return job.fileStore.writeGlobalFile(out_hints)
 
@@ -338,7 +336,7 @@ def build_hints(job, merged_bam_file_ids, annotation_hints_file_id, iso_seq_hint
     intron_hints_file_ids = []
     exon_hints_file_ids = []
     for dtype in merged_bam_file_ids:
-        for ref_group, file_ids in merged_bam_file_ids[dtype].iteritems():
+        for ref_group, file_ids in merged_bam_file_ids[dtype].items():
             intron_hints_file_ids.append(job.addChildJobFn(build_intron_hints, file_ids).rv())
             if dtype == 'BAM':
                 exon_hints_file_ids.append(job.addChildJobFn(build_exon_hints, file_ids).rv())
@@ -394,19 +392,14 @@ def generate_iso_seq_hints(job, bam_file_id, bai_file_id):
 
 def generate_annotation_hints(job, annotation_hints_file_id):
     """
-    Converts the annotation file into hints. First converts the gff3 directly to genePred so we can make use
-    of the transcript library.
+    Converts the annotation file into hints.
 
     Hints are derived from both CDS exonic intervals and intron intervals
     """
-    annotation_gff3 = job.fileStore.readGlobalFile(annotation_hints_file_id)
-    tm_gp = tools.fileOps.get_tmp_toil_file()
-    cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
-           annotation_gff3, tm_gp]
-    tools.procOps.run_proc(cmd)
-    tx_dict = tools.transcripts.get_gene_pred_dict(tm_gp)
+    annotation_gp = job.fileStore.readGlobalFile(annotation_hints_file_id)
+    tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     hints = []
-    for tx_id, tx in tx_dict.iteritems():
+    for tx_id, tx in tx_dict.items():
         if tx.cds_size == 0:
             continue
         # rather than try to re-do the arithmetic, we will use the get_bed() function to convert this transcript
@@ -503,8 +496,8 @@ def group_references(sam_handle, num_bases=10 ** 7, max_seqs=1000):
     """
     Group up references by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
     """
-    name_iter = itertools.izip(*[sam_handle.references, sam_handle.lengths])
-    name, size = name_iter.next()
+    name_iter = zip(*[sam_handle.references, sam_handle.lengths])
+    name, size = next(name_iter)
     this_bin = [name]
     bin_base_count = size
     num_seqs = 1

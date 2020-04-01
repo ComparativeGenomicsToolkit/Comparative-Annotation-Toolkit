@@ -2,15 +2,15 @@ from setuptools import setup
 
 setup(
     name='cat',
-    version='0.1',
+    version='2.0',
     packages=['cat', 'tools'],
-    python_requires='<3.0.0',
+    python_requires='>=3.7.0',
     install_requires=[
         'pyfasta>=0.5.2',
         'toil>=3.5',
         'luigi>=2.5',
         'seaborn>=0.7',
-        'pandas>=0.18',
+        'pandas>=1.0',
         'frozendict',
         'configobj>=5.0',
         'sqlalchemy>=1.0',
@@ -19,8 +19,13 @@ setup(
         'numpy>=1.10',
         'scipy>=0.18.1',
         'bx-python>=0.7.1',
-        'bd2k-python-lib==1.14a1.dev48'
+        'parasail',
+        'bcbio-gff',
+        'biopython'
     ],
+    scripts=['programs/cat_to_ncbi_submit', 'programs/translate_gene_pred',
+             'programs/validate_gff3', 'programs/cat_parse_ncbi_genbank',
+             'programs/cat_parse_ncbi_refseq', 'programs/cat_parse_prokka_gff3'],
     author='Ian Fiddes',
     description='Comparative Annotation Toolkit',
     url='https://github.com/ComparativeGenomicsToolkit/Comparative-Annotation-Toolkit',
@@ -30,7 +35,7 @@ setup(
         'Intended Audience :: Bioinformatics',
         'Topic :: Bioinformatics',
         'License :: Apache 2.0',
-        'Programming Language :: Python :: 2.7'
+        'Programming Language :: Python :: 3.7'
     ],
     keywords='bioinformatics comparative genomics',
 )

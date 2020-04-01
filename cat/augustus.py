@@ -10,7 +10,10 @@ hints to Augustus.
 import argparse
 import itertools
 
-from toil.fileStore import FileID
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -76,7 +79,7 @@ def setup(job, args, input_file_ids, disk_usage):
     def start_jobs(mode, chunk_size, cfg_file_id):
         """loop wrapper that starts jobs for both TM and TMR modes"""
         results = []
-        for chunk in tools.dataOps.grouper(tx_dict.iteritems(), chunk_size):
+        for chunk in tools.dataOps.grouper(iter(tx_dict.items()), chunk_size):
             grouped_recs = {}
             for tx_id, tx in chunk:
                 grouped_recs[tx_id] = [tx,
@@ -124,7 +127,7 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
         speciesnames, seqnames, hints, featuretypes, session = reflect_hints_db(hints_db_file)
     # start iteratively running Augustus on this chunk
     results = []
-    for tm_tx, ref_tx, tm_psl, ref_psl in grouped_recs.itervalues():
+    for tm_tx, ref_tx, tm_psl, ref_psl in grouped_recs.values():
         if len(tm_tx) > 3 * 10 ** 6:  # no huge transcripts -- this should be prefiltered however
             continue
         chromosome = tm_tx.chromosome

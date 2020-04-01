@@ -138,12 +138,12 @@ class PslRow(object):
         """
         Return a list capable of producing a new PslRow object
         """
-        return map(str, [self.matches, self.mismatches, self.repmatches, self.n_count, self.q_num_insert,
+        return list(map(str, [self.matches, self.mismatches, self.repmatches, self.n_count, self.q_num_insert,
                          self.q_base_insert, self.t_num_insert, self.t_base_insert, self.strand, self.q_name,
                          self.q_size, self.q_start, self.q_end, self.t_name, self.t_size, self.t_start,
                          self.t_end, self.block_count, ','.join([str(b) for b in self.block_sizes]),
                          ','.join([str(b) for b in self.q_starts]),
-                         ','.join([str(b) for b in self.t_starts])])
+                         ','.join([str(b) for b in self.t_starts])]))
 
 
 def psl_iterator(psl_file, make_unique=False):

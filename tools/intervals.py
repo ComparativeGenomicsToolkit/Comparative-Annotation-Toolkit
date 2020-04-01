@@ -1,8 +1,9 @@
 """
 Represent continuous genomic coordinates. Allows for coordinate arithmetic.
 """
-import mathOps
-from bio import reverse_complement, translate_sequence
+import hashlib
+from . import mathOps
+from .bio import reverse_complement, translate_sequence
 
 __author__ = 'Ian Fiddes'
 
@@ -26,8 +27,10 @@ class ChromosomeInterval(object):
         return abs(self.stop - self.start)
 
     def __hash__(self):
-        return (hash(self.chromosome) ^ hash(self.start) ^ hash(self.stop) ^ hash(self.strand) ^
-                hash((self.chromosome, self.start, self.stop, self.strand)))
+        m = hashlib.sha256()
+        for key in self.__slots__:
+            m.update(str(self.__getattribute__(key)).encode('utf-8'))
+        return int(m.hexdigest(), 16) % 10 ** 12
 
     def __eq__(self, other):
         return (isinstance(other, type(self)) and

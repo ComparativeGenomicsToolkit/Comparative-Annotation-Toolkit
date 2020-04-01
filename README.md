@@ -31,7 +31,7 @@ Below is a full breakdown of the required dependencies if you are not using Dock
 
 By default, you don't need to worry about installing any of these. However, there are also binary dependencies that must be compiled and installed if you are not using the Docker container we provide.
 
-1. [Kent toolkit](https://github.com/ucscGenomeBrowser/kent). Follow the installation instructions there. Make sure you put the newly created `~/bin/$MACHTYPE` directory on your path. All of the binaries except for `blat` required by CAT are available pre-compiled on the [utilities page](http://hgdownload.soe.ucsc.edu/admin/exe/). The required tools are ` faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf blat pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed wigToBigWig`.
+1. [Kent toolkit](https://github.com/ucscGenomeBrowser/kent). Follow the installation instructions there. Make sure you put the newly created `~/bin/$MACHTYPE` directory on your path. All of the binaries required by CAT are available pre-compiled on the [utilities page](http://hgdownload.soe.ucsc.edu/admin/exe/). The required tools are ` faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed wigToBigWig`.
 2. [bedtools](http://bedtools.readthedocs.io/en/latest/).
 3. [samtools](http://www.htslib.org/) (1.3 or greater).
 4. [Augustus](http://bioinf.uni-greifswald.de/augustus/binaries/). Make sure you are installing `augustus >= 3.3.1`. If you want to use Augustus CGP, install the development version from the [Github repository](https://github.com/Gaius-Augustus/Augustus). You need to follow the instructions to compile `augustus` in comparative augustus mode. This requires that you modify a few lines in the `common.mk` file, and also need to have `sqlite3`, `lp-solve`, `bamtools`, and `libboost` installed. If you are using ubuntu, this should work:
@@ -45,13 +45,33 @@ By default, you don't need to worry about installing any of these. However, ther
   3. `filterBam`. Also requires the `bamtools` headers.
   4. `bam2wig`. Compiling this program will NOT place it in the `augustus` binary directory, you must do so yourself. This program requires you modify the makefile to explicitly point to your installation of `htslib`, `bcftools`, `samtools`, and `tabix`. `Tabix` is now packaged with `htslib`, and both are included in your `kent` directory at `$kent/src/htslib/`.
   5. `homGeneMapping`. This program must also have its makefile at `$augustus/trunks/auxprogs/homGeneMapping/src/Makefile` modified to turn on the `BOOST = true` and `SQLITE = true` flags. Then run `make clean && make` to recompile.
-  6. There are a series of perl scripts that you need to place on your path from the `$augustus/trunks/scripts` directory: `wig2hints.pl`, `blat2hints.pl`, `transMap2hints.pl`, and `join_mult_hints.pl`.
+  6. There are a series of perl scripts that you need to place on your path from the `$augustus/trunks/scripts` directory: `wig2hints.pl`, `exonerate2hints.pl`, `transMap2hints.pl`, and `join_mult_hints.pl`.
 5. [HAL toolkit](https://github.com/glennhickey/hal). To install the HAL toolkit, you must also have the [sonLib](https://github.com/benedictpaten/sonLib) repository in the same parent directory. Compile sonLib first, then compile hal. Once hal is compiled, you need to have the binaries on your path. 
 6. [wiggletools](https://github.com/Ensembl/WiggleTools). Used to combine RNA-seq expression in assembly hubs.
 7. [sambamba](https://github.com/lomereiter/sambamba/releases). Used to name sort faster than samtools for hints building.
+8. [exonerate](https://www.ebi.ac.uk/about/vertebrate-genomics/software/exonerate). Used for protein alignments in hints building.
+
+### Conda/bioconda
+
+Many of the above dependencies are on `conda`. However, you will still need to install the following things by hand:
+ 1. `clusterGenes`: The version on conda is too old.
+ 2. `toil`: The version on conda is too old (not python3 compatible).
+ 3. `cat`: You will need to install this repo with `pip install` after you enter the conda env (`conda activate cattest`).
+ 4. `HAL`: Not available on conda.
+
+```
+conda create -y -n cattest -c conda-forge -c bioconda -c defaults python=3.7 pyfasta luigi seaborn pandas \
+ete3 pysam numpy scipy bx-python bcbio-gff biopython parasail-python configobj sqlalchemy \
+samtools bamtools augustus exonerate wiggletools bedtools \
+ucsc-fatotwobit ucsc-gff3togenepred ucsc-genepredtobed ucsc-genepredtofakepsl ucsc-bamtopsl ucsc-transmappsltogenepred \
+ucsc-pslpostarget ucsc-axtchain ucsc-chainmergesort ucsc-pslmap ucsc-pslrecalcmatch ucsc-pslmappostchain \
+ucsc-gtftogenepred ucsc-genepredtogtf ucsc-pslcdnafilter ucsc-psltobigpsl \
+ucsc-bedsort ucsc-bedtobigbed
+```
+
 
 In total, you must have all of the binaries and scripts listed below on your path. The pipeline will check for them before executing steps.
-`hal2fasta halStats halLiftover faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl blat2hints.pl transMapPslToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping blat pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl`
+`hal2fasta halStats halLiftover exonerate faToTwoBit pyfasta gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl exonerate2hints.pl blat2hints.pl transMapPslToGenePred join_mult_hints.pl pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain augustus transMap2hints.pl joingenes hal2maf gtfToGenePred genePredToGtf bedtools homGeneMapping pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed sambamba wig2hints.pl pal2nal.pl`
 
 # Running the pipeline
 
@@ -59,14 +79,39 @@ This pipeline makes use of [Luigi](https://github.com/spotify/luigi) to link the
 
 `luigid --background --logdir luigi_logs`
 
-Which provides the central scheduler as well as the web UI, which can be accessed at `localhost:8082`. If you don't want to use the daemon, add the flag `--local-scheduler` to the invocation.
+Which provides the central scheduler as well as the web UI, which can be accessed at `localhost:8082`. 
+If you don't want to use the daemon, *which is highly recommended* add the flag `--local-scheduler` to the invocation.
 
 To run the test data, change directories to the CAT installation folder and do the following:
 
-`luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler --augustus  --augustus-cgp --augustus-pb --assembly-hub > log.txt`
+`luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=test_data/test.config \
+--work-dir test_install --out-dir test_install --local-scheduler --augustus  --augustus-cgp --augustus-pb --assembly-hub > log.txt`
 
 The test should take around 30 minutes to execute. You can track progress in the log file.
 
+# GFF3 input
+
+CAT requires valid GFF3 as input. The script `programs/validate_gff3` can test that your GFF3 is both valid and meets the requirements of CAT. These requirements include:
+
+The following keys are reserved, and have special meaning:
+
+```
+reserved_keys = ['gene_biotype',
+                 'transcript_biotype',
+                 'gene_name',
+                 'gene_id',
+                 'transcript_id',
+                 'transcript_name',
+                 'ID',
+                 'Name',
+                 'Parent']
+```
+
+The keys `ID`, `Name` and `Parent` are required for valid GFF3 and define the hierarchical relationship. The remaining keys, `gene_biotype`, `transcript_biotype`, `gene_name`, `gene_id`, `transcript_id` and `transcript_name` are also all required. In many cases you will not have common names, and so it is fine for `transcript_name` to equal `transcript_id` and for `gene_name` to equal `gene_id`. The biotypes can be whatever you want, but `protein_coding` is a special biotype that tells CAT this gene or transcript is coding. You *must* flag your protein coding genes *and transcripts* as `protein_coding`!
+
+You may have any arbitrary set of keys and values in the GFF3 that are not the reserved keys. These keys and values will be propagated on to the resulting transcript in the CAT output GFF3. 
+
+If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`.
 
 # Command line options
 
@@ -125,6 +170,8 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--filter-overlapping-genes`: Should genes that get flagged as overlapping be removed? After consensus finding is finished, instances of gene family collapse or paralog mis-assignment may lead to overlapping CDS intervals on different genes. This also in some instances may be a feature of the original annotation set. However, some annotation databases do not like this, so this flag will remove all such instances and resolve them down to one gene. 
 
+`--overlapping-gene-distance`: This controls the amount of *exonic* overlap two genes must have to be flagged as overlapping. Setting this value higher than 1 is recommended for smaller genomes that likely have real overlapping genes. Default is 1.
+
 `--intron-rnaseq-support`: Amount of RNA-seq intron support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
 `--exon-rnaseq-support`: Amount of RNA-seq exon support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
@@ -140,6 +187,14 @@ As described above, the primary method to executing the pipeline is to follow th
 `--denovo-splice-support`: For de-novo predictions, discard any transcripts with less than this percent of RNA-seq intron support. Must be a value between 0 and 100. Default is 0.
 
 `--denovo-exon-support`: For de-novo predictions, discard any transcripts with less than this percent of RNA-seq exon support. Must be a value between 0 and 100. Default is 0.
+
+`--denovo-ignore-novel-genes`: For de-novo predictions, discard any transcripts that are predicted to be novel genes. In other words, only retain putative novel isoforms.
+
+`--denovo-novel-end-distance`: For de-novo predictions, allow transcripts to be included if they provide a novel 5' or 3' end N distance away from any existing ends. Default is 0.
+
+`--denovo-allow-unsupported`: For de-novo predictions, allow novel isoforms to be called if they contain splices that are not supported by the reference annotation even if they are also not supported by RNA-seq. Without this flag, novel isoforms will only be called if they have one or more splice that has RNA-seq/IsoSeq support and no reference annotation support.
+
+`--denovo-allow-bad-annot-or-tm`: For de-novo predictions, allow novel isoforms to be called that were flagged as BadAnnotOrTm. These predictions overlap instances where multiple genes transMapped to the same location with significant overlap, and so may be alignment mistakes, collapsed repeats or gene family collapse.
 
 `--require-pacbio-support`: If set, all isoforms in the final set must be supported by at least one IsoSeq read. This flag is likely to discard a ton of transcripts, so be careful.
 
@@ -214,19 +269,11 @@ For the PROTEIN_FASTA field, every genome you wish to have the protein fasta be 
 
 It is **extremely** important that you use high quality RNA-seq. Libraries should be poly-A selected and paired end with a minimum read length of 75bp. If any of these are not true, it is advisable to place these libraries in the INTRONBAM field. Any genome can have a mix of BAM and INTRONBAM hints.
 
-**BAM files must be indexed!**
+**BAM files must be genomic-coordinate sorted and indexed!**
 
 ## ISoSeq libraries
 
-If you are using IsoSeq data, it is recommended that you doing your mapping with `gmap`. Follow [the tutorial](https://github.com/PacificBiosciences/cDNA_primer/wiki/Aligner-tutorial:-GMAP,-STAR,-BLAT,-and-BLASR).
-
-# GFF3 Reference
-
-CAT relies on a proper GFF3 file from the reference. One very important part of this GFF3 file is the `biotype` tag, which follows the GENCODE/Ensembl convention. The concept of a `protein_coding` biotype is hard baked into the pipeline. Proper division of biotypes is very important for transMap filtering and consensus finding to work properly.
-
-If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`.
-
-To ensure that your GFF3 is valid and won't cause any problems, there is a script in the `programs` folder that will parse and validate your GFF3. Please run this script before running the pipeline!
+If you are using IsoSeq data, it is recommended that you doing your mapping with `minimap2`. These BAM files must also be genomic coordinate sorted and indexed.
 
 # Execution modes
 
@@ -362,7 +409,7 @@ Which can be interpreted as 'species 0 had 6273 extrinsic hints (RNA-seq coverag
 
 ## AlignTranscripts
 
-Transcript alignment allows for `AugustusTM(R)` transcripts to be compared to their parental `transMap`. As a result, only protein coding transcripts are aligned. For each transcripts, alignment is performed by BLAT two ways -- in frame codon aware alignment, and mRNA alignment. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
+Transcript alignment allows for `AugustusTM(R)` transcripts to be compared to their parental `transMap`. As a result, only protein coding transcripts are aligned. For each transcripts, alignment is performed by parasail two ways -- CDS alignment, and mRNA alignment. The results of these alignments are saved in the folder `--work-dir/transcript_alignment`. These alignments are used to create functional annotations of transcripts in the [EvaluateTranscripts](#evaluatetranscripts) module. 
 
 ## EvaluateTranscripts
 

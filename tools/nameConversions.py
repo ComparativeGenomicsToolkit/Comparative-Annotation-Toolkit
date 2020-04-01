@@ -70,6 +70,10 @@ def aln_id_is_pb(aln_id):
     return aln_id.startswith('augPB-')
 
 
+def aln_id_is_exref(aln_id):
+    return aln_id.startswith('exRef-')
+
+
 def aln_id_is_denovo(aln_id):
     return aln_id_is_pb(aln_id) or aln_id_is_cgp(aln_id)
 
@@ -84,7 +88,8 @@ def alignment_type(aln_id):
         return 'augCGP'
     elif aln_id_is_pb(aln_id):
         return 'augPB'
+    elif aln_id_is_exref(aln_id):
+        return 'exRef'
     elif aln_id_is_transmap(aln_id):
         return 'transMap'
-    else:
-        raise RuntimeError('Alignment ID: {} was not valid.'.format(aln_id))
+    assert False

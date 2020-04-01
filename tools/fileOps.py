@@ -123,7 +123,7 @@ def iter_lines(fspec, skip_lines=0, sep='\t'):
     :return: Iterator of lines"""
     fh = _resolve_fspec(fspec, 'r')
     try:
-        _ = [fh.next() for _ in range(skip_lines)]
+        _ = [next(fh) for _ in range(skip_lines)]
         for line in fh:
             if sep is not None:
                 yield line.rstrip().split(sep)
@@ -149,7 +149,7 @@ def get_tmp_file(prefix=None, suffix="tmp", tmp_dir=None):
     else:
         base_path = os.path.join(tmp_dir, '.'.join([prefix, socket.gethostname(), str(os.getpid())]))
     while True:
-        rand = ''.join([random.choice(string.digits) for _ in xrange(10)])
+        rand = ''.join([random.choice(string.digits) for _ in range(10)])
         path = '.'.join([base_path, rand, suffix])
         if not os.path.exists(path):
             return path
@@ -242,7 +242,7 @@ def _resolve_fspec(fspec, mode='r'):
         return fspec
 
 
-def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=8):
+def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=12):
     """
     Calculates a SHA256 hash of a file.
     :param fspec: path or handle
@@ -255,6 +255,6 @@ def hashfile(fspec, hasher=hashlib.sha256, blocksize=65536, num_characters=8):
     buf = fh.read(blocksize)
     hasher = hasher()  # instantiate this hashing instance
     while len(buf) > 0:
-        hasher.update(buf)
+        hasher.update(buf.encode('utf-8'))
         buf = fh.read(blocksize)
-    return hasher.hexdigest()[:num_characters]
+    return int(hasher.hexdigest(), 16) % 10 ** num_characters

@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+"""
+This file was developed against RefSeq annotation of S. cerevisiae
+"""
+import argparse
+from BCBio import GFF
+from Bio import SeqIO
+from collections import Counter, OrderedDict
+from tools.misc import pairwise_adjacent
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('genbank', help='Genbank file')
+    parser.add_argument('gff3', help='Output GFF3')
+    parser.add_argument('--replace-chr-names', help='Use chromosome tag on source feature to rename chromosomes',
+                        action='store_true')
+    parser.add_argument('--add-chr-prefix', help='Add chr prefix? Only applies if using --replace-chr-names',
+                        action='store_true')
+    return parser.parse_args()
+
+
+def grouper_fn(features):
+    assert features[0].type == 'gene'
+    gene = [features[0]]
+    for rec in features[1:]:
+        if rec.type == 'gene':
+            yield gene
+            gene = [rec]
+        else:
+            gene.append(rec)
+    yield gene
+
+
+def clean_up_qualifiers(qualifiers):
+    new_qualifiers = OrderedDict()
+    for key, val in qualifiers.items():
+        # no upper case keys unless it is ID or Parent or Name
+        if key not in ['ID', 'Parent', 'Name']:
+            key = key.lower()
+        # remove NCBI specific stuff
+        if key in ['translation', 'transl_table', 'codon_start']:
+            continue
+        # collapse to a single item
+        # replace all semicolons
+        # fix empty tags
+        if sum(len(x) for x in val) == 0:
+            val = 'True'
+        elif len(val) > 1:
+            val = [' '.join([x.replace(';', '%3B') for x in val])]
+        new_qualifiers[key] = val
+    return new_qualifiers
+
+
+def parse_qualifiers(rectype, qualifiers):
+    if 'gene' in qualifiers and 'gene_id' not in qualifiers:
+        qualifiers['gene_id'] = [qualifiers['locus_tag'][0]]
+        qualifiers['gene_name'] = [qualifiers['gene'][0]]
+    elif 'gene_id' in qualifiers:
+        qualifiers['gene_name'] = qualifiers['gene_id']
+    else:
+        qualifiers['gene_id'] = qualifiers['gene_name'] = [qualifiers['locus_tag'][0]]
+    if rectype in ['CDS', 'ncRNA', 'tRNA', 'rRNA', 'mRNA']:
+        if 'transcript_id' not in qualifiers:
+            qualifiers['transcript_id'] = ['{}-{}'.format(qualifiers['locus_tag'][0],
+                                                                  lt_counts[qualifiers['locus_tag'][0]])]
+        qualifiers['transcript_name'] = ['{}-{}-{}'.format(qualifiers['gene_name'][0],
+                                                                   qualifiers['locus_tag'][0],
+                                                                   lt_counts[qualifiers['locus_tag'][0]])]
+        if rectype == 'CDS':
+            if 'pseudo' in qualifiers:
+                del qualifiers['pseudo']
+                biotype = ['pseudogene']
+            else:
+                biotype = ['protein_coding']
+        else:
+            biotype = [rectype]
+        qualifiers['gene_biotype'] = qualifiers['transcript_biotype'] = biotype
+        lt_counts[qualifiers['locus_tag'][0]] += 1
+    return qualifiers
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    lt_counts = Counter()
+    records = list(SeqIO.parse(args.genbank, format='genbank'))
+    for seqrecord in records:
+        if args.replace_chr_names is True:
+            source_rec = seqrecord.features[0]
+            assert source_rec.type == 'source'
+            try:
+                chrom = source_rec.qualifiers['chromosome'][0]
+            except KeyError:
+                print(f'Unable to find chromosome name for {seqrecord.id}. Continuing')
+                continue
+            if args.add_chr_prefix is True:
+                chrom = f'chr{chrom}'
+            seqrecord.name = seqrecord.id = chrom
+        features = [x for x in seqrecord.features if x.type in ['gene', 'CDS', 'mRNA', 'tRNA', 'ncRNA',
+                                                                'rRNA', 'misc_RNA', 'mRNA']]
+        for gene in grouper_fn(features):
+            for rec in gene:
+                rec.qualifiers = clean_up_qualifiers(parse_qualifiers(rec.type, rec.qualifiers))
+            # create parent-child relationships
+            gene_id = gene[0].qualifiers['gene_id'][0]
+            for parent, child in pairwise_adjacent(gene):
+                parent.qualifiers['ID'] = [f'{parent.type}:{gene_id}']
+                child.qualifiers['Parent'] = parent.qualifiers['ID'][0]
+                child.qualifiers['ID'] = [f'{child.type}:{gene_id}']
+
+            # add biotype information
+            if gene[1].type in ['CDS', 'mRNA']:  # some genes have only CDS and gene, some have gene and mRNA
+                biotype = 'protein_coding'
+            else:
+                biotype = gene[1].type
+            if 'pseudo' in gene[0].type:
+                biotype = 'pseudogene'
+            for rec in gene:
+                rec.qualifiers['gene_biotype'] = [biotype]
+                if rec.type != 'gene':
+                    rec.qualifiers['transcript_biotype'] = rec.qualifiers['gene_biotype']
+
+    with open(args.gff3, 'w') as fh:
+        GFF.write(records, fh)

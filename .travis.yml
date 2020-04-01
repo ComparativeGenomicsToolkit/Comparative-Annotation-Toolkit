@@ -1,12 +1,12 @@
 sudo: required
 language: python
-python: 2.7
+python: 3.7
 services:
   - docker
 stages:
   - name: docker-build
     if: branch = master
-  - test
+  - name: test
 jobs:
   include:
     - stage: docker-build
@@ -15,16 +15,19 @@ jobs:
         - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; docker push quay.io/ucsc_cgl/cat:latest; fi
     - stage: test
       script:
+        - set ex
         # Enable logging
         - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
         - sudo apt-get -qq update
         - sudo apt-get install liblzo2-dev
-        - pip install bd2k-python-lib
-        - pip install -e .
+        - pip install .
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
         - sed -i "s/maxDisk = self.physicalDisk/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxMemory = self.physicalMemory/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         # Just go through the test set and make sure it doesn't crash. It's not much, but it's better than nothing.
-        - luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "rn6", "galGal4")' --ref-genome=mm10 --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler --augustus --augustus-cgp --augustus-pb --assembly-hub
+        - >
+          luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
+          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
+          --augustus --augustus-cgp --augustus-pb --assembly-hub

@@ -9,7 +9,10 @@ import collections
 import itertools
 import logging
 
-from toil.fileStore import FileID
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -23,6 +26,7 @@ import tools.psl
 import tools.sqlInterface
 import tools.toilInterface
 import tools.transcripts
+import tools.parasail_wrapper
 
 
 def align_transcripts(args, toil_options):
@@ -50,7 +54,7 @@ def align_transcripts(args, toil_options):
             results_file_ids = t.start(job)
         else:
             results_file_ids = t.restart()
-        for file_path, file_id in results_file_ids.iteritems():
+        for file_path, file_id in results_file_ids.items():
             tools.fileOps.ensure_file_dir(file_path)
             t.exportFile(file_id, 'file://' + file_path)
 
@@ -58,7 +62,7 @@ def align_transcripts(args, toil_options):
 def setup(job, args, input_file_ids):
     """
     First function for align_transcripts pipeline. Splits up the genePred entries into chunks that will be aligned
-    with BLAT.
+    with parasail.
     :param args: dictionary of arguments from CAT
     :param input_file_ids: dictionary of fileStore file IDs for the inputs to this pipeline
     """
@@ -84,13 +88,13 @@ def setup(job, args, input_file_ids):
         # begin loading transcripts and sequences
         gp_path = job.fileStore.readGlobalFile(input_file_ids.modes[tx_mode])
         transcript_dict = tools.transcripts.get_gene_pred_dict(gp_path)
-        transcript_dict = {aln_id: tx for aln_id, tx in transcript_dict.iteritems() if
+        transcript_dict = {aln_id: tx for aln_id, tx in transcript_dict.items() if
                            tx_biotype_map[tools.nameConversions.strip_alignment_numbers(aln_id)] == 'protein_coding'}
         for aln_mode, out_path in zip(*[['mRNA', 'CDS'], [mrna_path, cds_path]]):
             seq_iter = get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta,
                                                ref_genome_fasta, aln_mode)
             for chunk in group_transcripts(seq_iter):
-                j = job.addChildJobFn(run_blat_chunk, chunk, aln_mode, memory='8G', disk='2G')
+                j = job.addChildJobFn(run_aln_chunk, chunk, memory='8G', disk='2G')
                 results[out_path].append(j.rv())
 
     if len(results) == 0:
@@ -103,7 +107,7 @@ def setup(job, args, input_file_ids):
 def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, ref_genome_fasta, mode):
     """Generator that yields a tuple of (tx_id, tx_seq, ref_tx_id, ref_tx_seq)"""
     assert mode in ['mRNA', 'CDS']
-    for tx_id, tx in transcript_dict.iteritems():
+    for tx_id, tx in transcript_dict.items():
         ref_tx_id = tools.nameConversions.strip_alignment_numbers(tx_id)
         ref_tx = ref_transcript_dict[ref_tx_id]
         tx_seq = tx.get_mrna(genome_fasta) if mode == 'mRNA' else tx.get_cds(genome_fasta)
@@ -112,44 +116,19 @@ def get_alignment_sequences(transcript_dict, ref_transcript_dict, genome_fasta, 
             yield tx_id, tx_seq, ref_tx_id, ref_tx_seq
 
 
-def run_blat_chunk(job, chunk, mode):
+def run_aln_chunk(job, chunk):
     """
-    Runs an alignment chunk through BLAT for either coding or non-coding transcripts
+    Runs a chunk of sequences through parasail alignment
     :param chunk: List of (tx_id, tx_seq, ref_tx_id, ref_tx_seq) tuples
     :param mode: One of ['mRNA', 'CDS']. Determines what mode of alignment we will perform.
     :return: List of PSL output
     """
-    def parse_blat(tmp_psl):
-        # filter for only + alignments, as we are expecting to be on the same strand
-        # translation alignments have explicit strand, and we only want ++
-        filter_strand = '+' if mode == 'mRNA' else '++'
-        psls = [psl for psl in tools.psl.psl_iterator(tmp_psl) if psl.strand == filter_strand]
-        if len(psls) == 0:
-            return None
-        longest = sorted(psls, key=lambda p: -p.coverage)[0]
-        return '\t'.join(longest.psl_string())
-
-    assert mode in ['mRNA', 'CDS']
-    tmp_ref = tools.fileOps.get_tmp_toil_file()
-    tmp_tgt = tools.fileOps.get_tmp_toil_file()
     tmp_psl = tools.fileOps.get_tmp_toil_file()
-    tmp_filtered_psl = tools.fileOps.get_tmp_toil_file()
     results = []
-    if mode == 'mRNA':
-        cmd = ['blat', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
-    else:  # mode == CDS. Filter these for problematic alignments that happen in edge cases
-        cmd = ['blat', '-t=dnax', '-q=rnax', '-noHead', '-minIdentity=0', tmp_ref, tmp_tgt, tmp_psl]
     for tx_id, tx_seq, ref_tx_id, ref_tx_seq in chunk:
-        with open(tmp_ref, 'w') as tmp_ref_h:
-            tools.bio.write_fasta(tmp_ref_h, ref_tx_id, ref_tx_seq)
-        with open(tmp_tgt, 'w') as tmp_tgt_h:
-            tools.bio.write_fasta(tmp_tgt_h, tx_id, tx_seq)
-        tools.procOps.run_proc(cmd)
-        try:
-            tools.procOps.run_proc(['pslCheck', '-quiet', tmp_psl, '-pass={}'.format(tmp_filtered_psl)])
-        except tools.pipeline.ProcException:
-            pass
-        results.append(parse_blat(tmp_filtered_psl))
+        p = tools.parasail_wrapper.aln_nucleotides(tx_seq, tx_id, ref_tx_seq, ref_tx_id)
+        psl_str = '\t'.join(p.psl_string())
+        results.append(psl_str)
     return results
 
 
@@ -162,7 +141,7 @@ def merge(job, results, args):
     """
     job.fileStore.logToMaster('Merging Alignment output for {}'.format(args.genome), level=logging.INFO)
     results_file_ids = {}
-    for gp_category, result_list in results.iteritems():
+    for gp_category, result_list in results.items():
         tmp_results_file = tools.fileOps.get_tmp_toil_file()
         with open(tmp_results_file, 'w') as outf:
             for line in itertools.chain.from_iterable(result_list):  # results is list of lists
@@ -180,9 +159,9 @@ def merge(job, results, args):
 def group_transcripts(tx_iter, num_bases=10 ** 6, max_seqs=1000):
     """
     Group up transcripts by num_bases, unless that exceeds max_seqs. A greedy implementation of the bin packing problem.
-    Helps speed up the execution of BLAT when faced with very large genes
+    Helps speed up the execution of exonerate when faced with very large genes
     """
-    tx_id, tx_seq, ref_tx_id, ref_tx_seq = tx_iter.next()
+    tx_id, tx_seq, ref_tx_id, ref_tx_seq = next(tx_iter)
     this_bin = [(tx_id, tx_seq, ref_tx_id, ref_tx_seq)]
     bin_base_count = len(tx_seq)
     num_seqs = 1

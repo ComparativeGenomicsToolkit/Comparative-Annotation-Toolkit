@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+import argparse
+from tools.transcripts import *
+from tools.bio import *
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('gp', help='genePred file')
+    parser.add_argument('fasta', help='FASTA in genome_files/ directory')
+    parser.add_argument('outfasta', help='Output FASTA')
+    parser.add_argument('--dont-fix-frame', help='Don\'t translate over frameshifts?', action='store_true')
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    seq_dict = get_sequence_dict(args.fasta)
+    with open(args.outfasta, 'w') as fh:
+        for tx in gene_pred_iterator(args.gp):
+            if tx.cds_size == 0:
+                continue
+            if args.dont_fix_frame:
+                cds = tx.get_cds(seq_dict, False).upper()
+                cds = cds[len(cds): len(cds) - len(cds) % 3]
+                write_fasta(fh, tx.name + 'not_frame_adjusted', translate_sequence(cds))
+            else:
+                write_fasta(fh, tx.name, tx.get_protein_sequence(seq_dict))

@@ -1,11 +1,14 @@
 """
 Helper functions for toil-luigi interfacing
 """
-import bio
+from . import bio
 import math
 import argparse
-from toil.fileStore import FileID
-from bd2k.util.humanize import human2bytes
+from toil.lib.humanize import human2bytes
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 
 ###
 # Helper functions for luigi-toil pipelines
@@ -59,7 +62,7 @@ def find_total_disk_usage(input_file_ids, buffer='2G', round='2G'):
 
     def descend_object(obj):
         if isinstance(obj, dict):
-            for item in obj.values():
+            for item in list(obj.values()):
                 for v in descend_object(item):
                     yield v
         elif isinstance(obj, list):
@@ -67,7 +70,7 @@ def find_total_disk_usage(input_file_ids, buffer='2G', round='2G'):
                 for v in descend_object(item):
                     yield v
         elif isinstance(obj, argparse.Namespace):
-            for item in obj.__dict__.values():
+            for item in list(obj.__dict__.values()):
                 for v in descend_object(item):
                     yield v
         elif isinstance(obj, FileID):

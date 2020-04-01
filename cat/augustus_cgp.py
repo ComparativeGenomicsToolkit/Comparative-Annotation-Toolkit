@@ -16,7 +16,10 @@ import os
 import collections
 import random
 
-from toil.fileStore import FileID
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -51,7 +54,7 @@ def augustus_cgp(args, toil_options):
                 input_file_ids.gtf = FileID.forPath(t.importFile('file://' + args.gtf), args.gtf)
             input_file_ids.cgp_cfg = FileID.forPath(t.importFile('file://' + args.cgp_cfg), args.cgp_cfg)
             input_file_ids.fasta = {genome: FileID.forPath(t.importFile('file://' + fasta), fasta)
-                                    for genome, fasta in args.fasta_files.iteritems()}
+                                    for genome, fasta in args.fasta_files.items()}
             du = tools.toilInterface.find_total_disk_usage([input_file_ids.hints_db], buffer='4G')
             job = Job.wrapJobFn(setup, args, input_file_ids, memory='8G', disk=du)
             results, stdout_file_ids, param_file_id = t.start(job)
@@ -59,12 +62,12 @@ def augustus_cgp(args, toil_options):
             results, stdout_file_ids, param_file_id = t.restart()
         tools.fileOps.ensure_file_dir(args.stdout_file)
         with open(args.stdout_file, 'w') as outf, tools.fileOps.TemporaryFilePath() as tmp:
-            for (chrom, start, chunksize), stdout_file in stdout_file_ids.iteritems():
+            for (chrom, start, chunksize), stdout_file in stdout_file_ids.items():
                 outf.write('## BEGIN CHUNK chrom: {} start: {} chunksize: {}\n'.format(chrom, start, chunksize))
                 t.exportFile(stdout_file, 'file://' + tmp)
                 for l in open(tmp):
                     outf.write(l)
-        for genome, (raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id) in results.iteritems():
+        for genome, (raw_gtf_file_id, joined_gtf_file_id, joined_gp_file_id) in results.items():
             tools.fileOps.ensure_file_dir(args.augustus_cgp_raw_gtf[genome])
             t.exportFile(raw_gtf_file_id, 'file://' + args.augustus_cgp_raw_gtf[genome])
             t.exportFile(joined_gtf_file_id, 'file://' + args.augustus_cgp_gtf[genome])
@@ -93,7 +96,7 @@ def setup(job, args, input_file_ids):
     maf_chunks = []  # list of lists [chrom, start, chunksize, fileID]
     for chrom, chrom_size in tools.fileOps.iter_lines(chrom_sizes):
         chrom_size = int(chrom_size)
-        for start in xrange(0, chrom_size, args.chunksize - args.overlap):
+        for start in range(0, chrom_size, args.chunksize - args.overlap):
             chunksize = args.chunksize if start + args.chunksize <= chrom_size else chrom_size - start
             j = job.addChildJobFn(hal2maf, input_file_ids, args.genomes, args.ref_genome, args.annotate_ancestors,
                                   chrom, start, chunksize, memory='8G', disk=hal2maf_usage)
@@ -271,7 +274,7 @@ def merge_results(job, results, input_file_ids):
     stdout_file_ids = {}
     for chrom, start, chunksize, (gff_chunks, stdout_file_id) in results:
         stdout_file_ids[(chrom, start, chunksize)] = stdout_file_id
-        for genome, gff_file_id in gff_chunks.iteritems():
+        for genome, gff_file_id in gff_chunks.items():
             gff_chunks_by_genome[genome][(chrom, start, chunksize)] = gff_file_id
     results = {}
     for genome in gff_chunks_by_genome:
@@ -292,7 +295,7 @@ def join_genes(job, gff_chunks):
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
     useful_lines = 0
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
-        for (chrom, start, chunksize), chunk in gff_chunks.iteritems():
+        for (chrom, start, chunksize), chunk in gff_chunks.items():
             local_path = job.fileStore.readGlobalFile(chunk)
             fofn_handle.write(local_path + '\n')
             raw_handle.write('## BEGIN CHUNK chrom: {} start: {} chunksize: {}\n'.format(chrom, start, chunksize))
@@ -356,7 +359,7 @@ def write_genome_fofn(job, fasta_file_ids):
     """
     genome_fofn = tools.fileOps.get_tmp_toil_file()
     with open(genome_fofn, 'w') as outf:
-        for genome, file_id in fasta_file_ids.iteritems():
+        for genome, file_id in fasta_file_ids.items():
             local_path = job.fileStore.readGlobalFile(file_id)
             if os.environ.get('CAT_BINARY_MODE') == 'singularity':
                 local_path = tools.procOps.singularify_arg(local_path)

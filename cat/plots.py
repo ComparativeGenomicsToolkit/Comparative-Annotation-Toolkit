@@ -3,6 +3,7 @@ Generate all plots for the pipeline. For biotype specific plots, all plots are g
 is a plot for each biotype on its own, and one for the combined results.
 """
 import json
+import luigi
 import matplotlib
 import logging
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -35,8 +36,8 @@ def generate_plots(args):
     :param args:
     :return:
     """
-    tm_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.tm_jsons.iteritems()])
-    consensus_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.metrics_jsons.iteritems()])
+    tm_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.tm_jsons.items()])
+    consensus_data = OrderedDict([[genome, json.load(open(tgt))] for genome, tgt in args.metrics_jsons.items()])
     tm_metrics = load_tm_metrics(args.dbs)
     transcript_biotype_map = tools.sqlInterface.get_transcript_biotype_map(args.annotation_db)
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(args.annotation_db)
@@ -86,7 +87,7 @@ def load_tm_metrics(dbs):
     """Loads transMap data from PSLs"""
     tm_metrics = {'transMap Coverage': OrderedDict(), 'transMap Identity': OrderedDict()}
     tm_name_map = {'TransMapCoverage': 'transMap Coverage', 'TransMapIdentity': 'transMap Identity'}
-    for genome, db_path in dbs.iteritems():
+    for genome, db_path in dbs.items():
         session = tools.sqlInterface.start_session(db_path)
         table = tools.sqlInterface.TmEval
         for classifier in ['TransMapCoverage', 'TransMapIdentity']:
@@ -102,8 +103,8 @@ def load_tm_metrics(dbs):
 
 def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_map, tm_coverage_tgt, tm_identity_tgt):
     """plots for transMap coverage, identity"""
-    tm_iter = zip(*[['transMap Coverage', 'transMap Identity'],
-                    [tm_coverage_tgt, tm_identity_tgt]])
+    tm_iter = list(zip(*[['transMap Coverage', 'transMap Identity'],
+                    [tm_coverage_tgt, tm_identity_tgt]]))
     for mode, tgt in tm_iter:
         df = dict_to_df_with_biotype(tm_metrics[mode], transcript_biotype_map)
         df = pd.melt(df, id_vars='biotype', value_vars=ordered_genomes).dropna()
@@ -113,8 +114,8 @@ def tm_metrics_plot(tm_metrics, ordered_genomes, biotypes, transcript_biotype_ma
 
 def consensus_metrics_plot(consensus_data, ordered_genomes, biotypes, coverage_tgt, identity_tgt):
     """plots for consensus coverage, identity, score"""
-    cons_iter = zip(*[['Coverage', 'Identity'],
-                      [coverage_tgt, identity_tgt]])
+    cons_iter = list(zip(*[['Coverage', 'Identity'],
+                      [coverage_tgt, identity_tgt]]))
     for mode, tgt in cons_iter:
         df = json_to_df_with_biotype(consensus_data, mode)
         cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=mode, y='genome')
@@ -138,7 +139,8 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
         dfs.append(df)
     df = pd.concat(dfs, axis=1)
     df = pd.melt(df, value_vars=modes, id_vars=['genome', 'biotype'])
-    with tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         if len(ordered_genomes) > 1:
             g = sns.factorplot(data=df, y='value', x='genome', col='variable', col_wrap=2, kind='violin', sharex=True,
                                sharey=True, row_order=ordered_genomes, cut=0)
@@ -160,12 +162,13 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
                                        sharey=True, row_order=ordered_genomes, cut=0)
                 adjust_plot(g, this_title)
                 multipage_close(pdf, tight_layout=False)
+    af.move_to_final_destination()
 
 
 def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_tgt):
     """transMap paralogy plots"""
     for key, tgt in [['Paralogy', para_tgt], ['UnfilteredParalogy', unfiltered_para_tgt]]:
-        legend_labels = ['= 1', '= 2', '= 3', u'\u2265 4']
+        legend_labels = ['= 1', '= 2', '= 3', '\u2265 4']
         title_string = 'Proportion of transcripts that have multiple alignments'
         biotype_title_string = 'Proportion of {} transcripts that have multiple alignments'
         df = json_biotype_nested_counter_to_df(tm_data, key)
@@ -179,14 +182,15 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_t
         for biotype, biotype_df in df.groupby('biotype'):
             for genome, genome_df in biotype_df.groupby('genome'):
                 high_para = genome_df[genome_df[key] >= 4]['count'].sum()
-                counts = dict(zip(genome_df[key], genome_df['count']))
+                counts = dict(list(zip(genome_df[key], genome_df['count'])))
                 r.append([biotype, genome, counts.get(1, 0), counts.get(2, 0), counts.get(3, 0), high_para])
-        df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', u'\u2265 4'])
+        df = pd.DataFrame(r, columns=['biotype', 'genome', '1', '2', '3', '\u2265 4'])
         sum_df = df.groupby('genome', sort=False).aggregate(sum).T
 
         plot_fn = generic_unstacked_barplot if len(df.columns) <= 5 else generic_stacked_barplot
         box_label = 'Number of\nalignments'
-        with tgt.open('w') as outf, PdfPages(outf) as pdf:
+        af = luigi.local_target.atomic_file(tgt.path)
+        with PdfPages(af.tmp_path) as pdf:
             plot_fn(sum_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes, box_label)
             for biotype in biotypes:
                 biotype_df = biotype_filter(df, biotype)
@@ -195,6 +199,7 @@ def tm_para_plot(tm_data, ordered_genomes, biotypes, para_tgt, unfiltered_para_t
                     title_string = biotype_title_string.format(biotype)
                     plot_fn(biotype_df, pdf, title_string, legend_labels, 'Number of transcripts', ordered_genomes,
                             box_label)
+        af.move_to_final_destination()
 
 
 def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
@@ -202,14 +207,15 @@ def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
     try:
         df = json_biotype_nested_counter_to_df(tm_data, 'Gene Family Collapse')
     except ValueError:  # no gene family collapse. probably the test set.
-        with gene_family_tgt.open('w') as outf:
+        with gene_family_tgt.open('wb') as outf:
             pass
         return
     df['Gene Family Collapse'] = pd.to_numeric(df['Gene Family Collapse'])
     tot_df = df[['Gene Family Collapse', 'genome', 'count']].\
         groupby(['genome', 'Gene Family Collapse']).aggregate(sum).reset_index()
     tot_df = tot_df.sort_values('Gene Family Collapse')
-    with gene_family_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(gene_family_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         g = sns.factorplot(y='count', col='genome', x='Gene Family Collapse', data=tot_df, kind='bar',
                            col_order=ordered_genomes, col_wrap=4)
         g.fig.suptitle('Number of genes collapsed during gene family collapse')
@@ -229,6 +235,7 @@ def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
             g.set_ylabels('Number of genes')
             g.fig.subplots_adjust(top=0.9)
             multipage_close(pdf, tight_layout=False)
+    af.move_to_final_destination()
 
 
 def missing_rate_plot(consensus_data, ordered_genomes, biotypes, missing_plot_tgt):
@@ -241,7 +248,8 @@ def missing_rate_plot(consensus_data, ordered_genomes, biotypes, missing_plot_tg
     df = transcript_missing_df.merge(gene_missing_df, on=['genome', 'biotype'])
     df = pd.melt(df, id_vars=['biotype', 'genome'])
     ylabel = 'Number of genes or transcripts'
-    with missing_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(missing_plot_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         tot_df = df.groupby(['genome', 'biotype', 'variable']).aggregate(sum).reset_index()
         generic_barplot(tot_df, pdf, '', ylabel, base_title, x='genome', y='value',
                         col='variable', row_order=ordered_genomes)
@@ -253,11 +261,12 @@ def missing_rate_plot(consensus_data, ordered_genomes, biotypes, missing_plot_tg
             title = base_title + ' for biotype {}'.format(biotype)
             generic_barplot(biotype_df, pdf, '', ylabel, title, x='genome', y='value',
                             col='variable', row_order=ordered_genomes)
+    af.move_to_final_destination()
 
 
 def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
     ordered_groups = ['transMap', 'transMap+TM', 'transMap+TMR', 'transMap+TM+TMR', 'TM', 'TMR', 'TM+TMR', 'CGP', 'PB',
-                      'Other']
+                      'exRef', 'other']
     ordered_groups = OrderedDict([[frozenset(x.split('+')), x] for x in ordered_groups])
 
     def split_fn(s):
@@ -267,8 +276,9 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
     df = modes_df.pivot(index='genome', columns='Transcript Modes').transpose().reset_index()
     df['Modes'] = df.apply(split_fn, axis=1)
     df = df[['Modes'] + ordered_genomes]
-    ordered_values = [x for x in ordered_groups.itervalues() if x in set(df['Modes'])]
-    with tx_mode_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    ordered_values = [x for x in ordered_groups.values() if x in set(df['Modes'])]
+    af = luigi.local_target.atomic_file(tx_mode_plot_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         title_string = 'Transcript modes in protein coding consensus gene set'
         ylabel = 'Number of transcripts'
         if len(ordered_genomes) > 1:
@@ -282,10 +292,12 @@ def tx_modes_plot(consensus_data, ordered_genomes, tx_mode_plot_tgt):
         else:
             generic_barplot(pd.melt(df, id_vars='Modes'), pdf, 'Transcript mode(s)', ylabel, title_string, x='Modes',
                             y='value', order=ordered_values)
+    af.move_to_final_destination()
 
 
 def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
-    with denovo_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(denovo_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         try:
             df = json_biotype_nested_counter_to_df(consensus_data, 'denovo')
         except ValueError:
@@ -311,10 +323,12 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
         ax.fig.suptitle('Incorporation of de-novo predictions')
         ax.fig.subplots_adjust(top=0.9)
         multipage_close(pdf, tight_layout=False)
+    af.move_to_final_destination()
 
 
 def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
-    with split_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(split_plot_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         df = json_biotype_counter_to_df(tm_data, 'Split Genes')
         df.columns = ['category', 'count', 'genome']
         title = 'Split genes'
@@ -325,10 +339,12 @@ def split_genes_plot(tm_data, ordered_genomes, split_plot_tgt):
         else:
             g = generic_barplot(pdf=pdf, data=df, x='category', y='count', ylabel='Number of transcripts or genes',
                                 title=title, xlabel='Category')
+    af.move_to_final_destination()
 
 
 def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt):
-    with pb_support_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(pb_support_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         pb_genomes = [x for x in ordered_genomes if x in pb_genomes]  # fix order
         df = json_biotype_counter_to_df(consensus_data, 'IsoSeq Transcript Validation')
         if len(df) == 0:
@@ -340,6 +356,7 @@ def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt)
         ax.set_xticklabels(rotation=90)
         ax.fig.suptitle('Isoforms validated by at least one IsoSeq read')
         multipage_close(pdf, tight_layout=False)
+    af.move_to_final_destination()
 
 
 def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_plot_tgt, gene_biotype_map,
@@ -353,7 +370,8 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
             ax.spines['top'].set_linestyle('dashed')
 
     df = json_grouped_biotype_nested_counter_to_df(consensus_data, 'Completeness')
-    with completeness_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(completeness_plot_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         tot_df = df.groupby(by=['genome', 'category']).aggregate(np.sum).reset_index()
         tot_df = sort_long_df(tot_df, ordered_genomes)
         title = 'Number of comparative genes/transcripts present'
@@ -366,8 +384,8 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
                 biotype_df = sort_long_df(biotype_df, ordered_genomes)
-                gene_biotype_count = len({i for i, b in gene_biotype_map.iteritems() if b == biotype})
-                tx_biotype_count = len({i for i, b in transcript_biotype_map.iteritems() if b == biotype})
+                gene_biotype_count = len({i for i, b in gene_biotype_map.items() if b == biotype})
+                tx_biotype_count = len({i for i, b in transcript_biotype_map.items() if b == biotype})
                 title = 'Number of comparative genes/transcripts present for biotype {}'.format(biotype)
                 g = generic_barplot(pdf=pdf, data=biotype_df, x='genome', y='count', col='category', xlabel='',
                                     sharey=False, ylabel='Number of genes/transcripts',
@@ -375,6 +393,7 @@ def completeness_plot(consensus_data, ordered_genomes, biotypes, completeness_pl
                                     palette=choose_palette(ordered_genomes))
                 adjust_plot(g, gene_biotype_count, tx_biotype_count)
                 multipage_close(pdf, tight_layout=False)
+    af.move_to_final_destination()
 
 
 def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
@@ -386,7 +405,8 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
             logger.warning('Unable to do a KDE fit to AUGUSTUS improvement.')
             pass
 
-    with improvement_tgt.open('w') as outf, PdfPages(outf) as pdf, sns.axes_style("whitegrid"):
+    af = luigi.local_target.atomic_file(improvement_tgt.path)
+    with PdfPages(af.tmp_path) as pdf, sns.axes_style("whitegrid"):
         for genome in ordered_genomes:
             data = pd.DataFrame(consensus_data[genome]['Evaluation Improvement']['changes'])
             unchanged = consensus_data[genome]['Evaluation Improvement']['unchanged']
@@ -419,19 +439,20 @@ def improvement_plot(consensus_data, ordered_genomes, improvement_tgt):
             do_kdeplot(data['transMap alignment goodness'], data['Alignment goodness'], ax4, n_levels=20, bw=1)
             sns.regplot(x=data['transMap alignment goodness'], y=data['Alignment goodness'], ax=ax4,
                         color='#A9B36F', scatter_kws={"s": 3, 'alpha': 0.7, 'rasterized': True}, fit_reg=False)
-            
 
             fig.suptitle('AUGUSTUS metric improvements for {:,} transcripts in {}.\n'
                          '{:,} transMap transcripts were chosen.'.format(len(data), genome, unchanged))
             
             for ax in [ax1, ax2, ax3, ax4]:
-                ax.set(adjustable='box-forced', aspect='equal')
+                ax.set(adjustable='box', aspect='equal')
             fig.subplots_adjust(hspace=0.3)
             multipage_close(pdf, tight_layout=False)
+    af.move_to_final_destination()
 
 
 def indel_plot(consensus_data, ordered_genomes, indel_plot_tgt):
-    with indel_plot_tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(indel_plot_tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         tm_df = pd.concat([pd.DataFrame.from_dict(consensus_data[genome]['transMap Indels'], orient='index').T
                            for genome in ordered_genomes])
         try:  # this is a hack to deal with weird small input datasets
@@ -454,6 +475,7 @@ def indel_plot(consensus_data, ordered_genomes, indel_plot_tgt):
         g.fig.subplots_adjust(top=.8)
         g.fig.suptitle('Coding indels')
         multipage_close(pdf, tight_layout=False)
+    af.move_to_final_destination()
 
 
 ###
@@ -465,7 +487,8 @@ def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xla
     """violin plots for coverage and identity."""
     if xlabel is None:
         xlabel = 'Percent {}'.format(mode)
-    with tgt.open('w') as outf, PdfPages(outf) as pdf:
+    af = luigi.local_target.atomic_file(tgt.path)
+    with PdfPages(af.tmp_path) as pdf:
         title = 'Overall {}'.format(mode)
         xmin = int(min(df[mode]))
         horizontal_violin_plot(df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=(xmin, 100))
@@ -475,7 +498,7 @@ def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xla
                 title = '{} for biotype {}'.format(mode, biotype)
                 xmin = int(min(df[mode]))
                 horizontal_violin_plot(biotype_df, ordered_genomes, title, xlabel, pdf, x=x, y=y, xlim=(xmin, 100))
-
+    af.move_to_final_destination()
 
 ###
 # generic plotting functions
@@ -560,7 +583,7 @@ def generic_stacked_barplot(df, pdf, title_string, legend_labels, ylabel, names,
 def json_flat_to_df(consensus_data, key):
     """converts cases where we have exactly genome:value pairs"""
     r = []
-    for genome, d in consensus_data.iteritems():
+    for genome, d in consensus_data.items():
         r.append([genome, d[key]])
     return pd.DataFrame(r)
 
@@ -568,8 +591,8 @@ def json_flat_to_df(consensus_data, key):
 def json_to_df_with_biotype(consensus_data, key):
     """converts JSON entries with many transcripts, such as those for coverage/identity"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
-        for biotype, vals in d[key].iteritems():
+    for genome, d in consensus_data.items():
+        for biotype, vals in d[key].items():
             df = pd.DataFrame(vals)
             if len(df) > 0:
                 df.columns = [key]
@@ -581,10 +604,10 @@ def json_to_df_with_biotype(consensus_data, key):
 def json_biotype_nested_counter_to_df(consensus_data, key):
     """converts the JSON entries with nested counts. Expects the first level keys to be biotypes"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
+    for genome, d in consensus_data.items():
         if key in d:
-            for biotype, vals in d[key].iteritems():
-                df = pd.DataFrame(vals.items())
+            for biotype, vals in d[key].items():
+                df = pd.DataFrame(list(vals.items()))
                 if len(df) > 0:
                     df.columns = [key, 'count']
                     df = df.assign(biotype=[biotype] * len(df), genome=[genome] * len(df))
@@ -595,9 +618,9 @@ def json_biotype_nested_counter_to_df(consensus_data, key):
 def json_grouped_biotype_nested_counter_to_df(consensus_data, key):
     """converts the JSON entries with nested counts. Expects the second level keys to be biotypes"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
-        for group, vals in d[key].iteritems():
-            df = pd.DataFrame(vals.items())
+    for genome, d in consensus_data.items():
+        for group, vals in d[key].items():
+            df = pd.DataFrame(list(vals.items()))
             if len(df) > 0:
                 df.columns = ['biotype', 'count']
                 df = df.assign(category=[group] * len(df), genome=[genome] * len(df))
@@ -608,9 +631,9 @@ def json_grouped_biotype_nested_counter_to_df(consensus_data, key):
 def json_biotype_counter_to_df(consensus_data, key):
     """converts the JSON entries with nested counts. Expects the first level keys to be biotypes"""
     dfs = []
-    for genome, d in consensus_data.iteritems():
+    for genome, d in consensus_data.items():
         vals = consensus_data[genome][key]
-        df = pd.DataFrame(vals.items())
+        df = pd.DataFrame(list(vals.items()))
         if len(df) > 0:
             df.columns = [key, 'count']
             df = df.assign(genome=[genome] * len(df))
@@ -619,7 +642,7 @@ def json_biotype_counter_to_df(consensus_data, key):
 
 
 def dict_to_df_with_biotype(data, transcript_biotype_map):
-    df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in data.iteritems()]))
+    df = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in data.items()]))
     try:
         df['biotype'] = [transcript_biotype_map[tx] for tx in df.index]
     except KeyError:
@@ -661,7 +684,7 @@ def set_ticks(names, ax, nbins=10.0):
 
 def sort_long_df(df, ordered_genomes):
     """sorts a long form dataframe by ordered genomes"""
-    ordered_index = dict(zip(ordered_genomes, range(len(ordered_genomes))))
+    ordered_index = dict(list(zip(ordered_genomes, list(range(len(ordered_genomes))))))
     df['order'] = df['genome'].map(ordered_index)
     df = df.sort_values('order')
     return df.drop('order', axis=1)

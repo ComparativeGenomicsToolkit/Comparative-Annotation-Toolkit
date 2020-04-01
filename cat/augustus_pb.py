@@ -1,11 +1,14 @@
 """
 Runs AugustusPB on a target genome
 """
+import os
 import argparse
 import collections
-import os
 
-from toil.fileStore import FileID
+try:
+    from toil.fileStores import FileID
+except ImportError:
+    from toil.fileStore import FileID
 from toil.common import Toil
 from toil.job import Job
 
@@ -76,11 +79,11 @@ def setup(job, args, input_file_ids):
     intervals = collections.defaultdict(list)
     for chrom in genome_fasta:
         chrom_size = len(genome_fasta[chrom])
-        for start in xrange(0, chrom_size, args.chunksize - args.overlap):
+        for start in range(0, chrom_size, args.chunksize - args.overlap):
             stop = min(start + args.chunksize, chrom_size)
             intervals[chrom].append([start, stop])
 
-    for chrom, interval_list in intervals.iteritems():
+    for chrom, interval_list in intervals.items():
         if len(interval_list) < 2:
             continue
         last_start, last_stop = interval_list[-1]
@@ -89,7 +92,7 @@ def setup(job, args, input_file_ids):
             interval_list[-1][-1] = last_stop
 
     predictions = []
-    for chrom, interval_list in intervals.iteritems():
+    for chrom, interval_list in intervals.items():
         for start, stop in interval_list:
             hints = [h for h in hints_by_chrom[chrom] if h[3] >= start and h[4] <= stop]
             if len(hints) == 0:
@@ -142,19 +145,28 @@ def join_genes(job, gff_chunks):
     """
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
+    files = []
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
         for chunk in gff_chunks:
             local_path = job.fileStore.readGlobalFile(chunk)
+            files.append(os.path.basename(local_path))
             fofn_handle.write(local_path + '\n')
             for line in open(local_path):
                 raw_handle.write(line)
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
-    cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
-           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
-           ['sed', ' s/jg/augPB-/g']]
-    tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    # TODO: figure out why this fails on certain filesystems
+    try:
+        cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
+               ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+               ['sed', ' s/jg/augPB-/g']]
+        tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    except:
+        cmd = [['joingenes', '-g', ','.join(files), '-o', '/dev/stdout'],
+               ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+               ['sed', ' s/jg/augPB-/g']]
+        tools.procOps.run_proc(cmd, stdout=join_genes_file)
 
     # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
     cmd = ['gtfToGenePred', '-genePredExt', join_genes_file, join_genes_gp]

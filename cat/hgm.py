@@ -48,13 +48,13 @@ def hgm(args):
 
     with tools.fileOps.TemporaryFilePath() as gtf_fofn, tools.fileOps.TemporaryDirectoryPath() as temp_dir:
         with open(gtf_fofn, 'w') as outf:
-            for genome, gtf in args.in_gtf.iteritems():
+            for genome, gtf in args.in_gtf.items():
                 if genome != args.ref_genome:
                     supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
                 else:
                     supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
                 if os.environ.get('CAT_BINARY_MODE') == 'singularity':
-                    tools.fileOps.print_row(outf, [genome] + map(tools.procOps.singularify_arg, [gtf, supplementary_gff]))
+                    tools.fileOps.print_row(outf, [genome] + list(map(tools.procOps.singularify_arg, [gtf, supplementary_gff])))
                 else:
                     tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
                 supplementary_gffs.append(supplementary_gff)
@@ -64,7 +64,7 @@ def hgm(args):
                 supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
                                                              args.annotation_gp)
                 if os.environ.get('CAT_BINARY_MODE') == 'singularity':
-                    tools.fileOps.print_row(outf, [args.ref_genome] + map(tools.procOps.singularify_arg, [dummy_gtf, supplementary_gff]))
+                    tools.fileOps.print_row(outf, [args.ref_genome] + list(map(tools.procOps.singularify_arg, [dummy_gtf, supplementary_gff])))
                 else:
                     tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
                 supplementary_gffs.append(supplementary_gff)

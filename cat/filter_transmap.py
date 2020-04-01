@@ -39,7 +39,8 @@ import tools.sqlInterface
 pd.options.mode.chained_assignment = None
 
 
-def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes, json_tgt):
+def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes,
+                    overlapping_gene_distance, json_tgt):
     """
     Entry point for transMap filtering.
     :param tm_psl: input PSL
@@ -49,6 +50,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     :param psl_tgt: luigi.LocalTarget() object for PSL output
     :param global_near_best: globalNearBest value to pass to PslCDnaFilter
     :param filter_overlapping_genes: Should we filter out overlapping genes?
+    :param overlapping_gene_distance: How much overlap will we allow when filtering?
     :param json_tgt: luigi.localTarget() object for JSON output
     :return:
     """
@@ -61,7 +63,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     size_filtered, num_too_long = ref_span(unfiltered, ref_psl_dict)
     tmp_size_filtered = tools.fileOps.get_tmp_file()
     with open(tmp_size_filtered, 'w') as outf:
-        for aln in size_filtered.itervalues():
+        for aln in size_filtered.values():
             tools.fileOps.print_row(outf, aln.psl_string())
 
     # get transcript -> gene map
@@ -71,28 +73,28 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(db_path)
     # get annotation information for common names
     annotation_df = tools.sqlInterface.load_annotation(db_path)
-    gene_name_map = dict(zip(annotation_df.GeneId, annotation_df.GeneName))
+    gene_name_map = dict(list(zip(annotation_df.GeneId, annotation_df.GeneName)))
 
     # Construct a hash of alignment metrics to alignment IDs
     # The reason for this is that pslCDnaFilter rearranges them internally, so we lose order information
 
     def hash_aln(aln, aln_id):
         """Hacky way to hash an alignment"""
-        m = hashlib.sha1()
+        m = hashlib.sha256()
         for l in [aln.t_name, aln.t_start, aln.t_end, aln.matches, aln.mismatches, aln.block_count,
                   tuple(aln.t_starts), tuple(aln.q_starts), tuple(aln.block_sizes), aln_id]:
-            m.update(str(l))
+            m.update(str(l).encode('utf-8'))
         return m.hexdigest()
 
     unfiltered_hash_table = {}
-    for aln_id, aln in size_filtered.iteritems():
+    for aln_id, aln in size_filtered.items():
         stripped_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         unfiltered_hash_table[hash_aln(aln, stripped_id)] = aln_id
     assert len(unfiltered_hash_table) == len(size_filtered)
 
     with tools.fileOps.TemporaryFilePath() as local_tmp, tools.fileOps.TemporaryFilePath() as strip_tmp:
         with open(strip_tmp, 'w') as outf:
-            for rec in size_filtered.itervalues():
+            for rec in size_filtered.values():
                 rec = deepcopy(rec)
                 rec.q_name = tools.nameConversions.strip_alignment_numbers(rec.q_name)
                 tools.fileOps.print_row(outf, rec.psl_string())
@@ -109,11 +111,11 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     # report counts by biotype
     grouped = tools.psl.group_alignments_by_qname(global_best)
-    unfiltered_grouped = tools.psl.group_alignments_by_qname(unfiltered.itervalues())
+    unfiltered_grouped = tools.psl.group_alignments_by_qname(iter(unfiltered.values()))
     metrics = {'Paralogy': collections.defaultdict(lambda: collections.Counter()),
                'UnfilteredParalogy': collections.defaultdict(lambda: collections.Counter())}
     paralogy_df = []
-    for tx_id, alns in grouped.iteritems():
+    for tx_id, alns in grouped.items():
         biotype = transcript_biotype_map[tx_id]
         putative_paralogs = ','.join(sorted([x.q_name for x in alns if x.q_name not in global_best_ids]))
         all_alns = ','.join(sorted([x.q_name for x in unfiltered_grouped[tx_id] if x.q_name not in global_best_ids]))
@@ -135,7 +137,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     # identify all genes that are non-coding. Non-coding is defined as genes who have no ORFs
     global_best_by_gene = tools.transcripts.group_transcripts_by_name2(global_best_txs)
-    coding_genes = {gene_id for gene_id, tx_list in global_best_by_gene.iteritems()
+    coding_genes = {gene_id for gene_id, tx_list in global_best_by_gene.items()
                     if any(x.cds_size > 0 for x in tx_list)}
 
     with tools.fileOps.TemporaryFilePath() as coding_tmp, tools.fileOps.TemporaryFilePath() as noncoding_tmp, \
@@ -146,9 +148,11 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
                     tools.fileOps.print_row(out_coding, tx.get_gene_pred())
                 else:
                     tools.fileOps.print_row(out_noncoding, tx.get_gene_pred())
-        cmd = ['clusterGenes', '-cds', coding_tmp, 'no', coding_clusters]
+        cmd = ['clusterGenes', '-cds', f'-minOverlappingBases={overlapping_gene_distance}',
+               coding_tmp, 'no', coding_clusters]
         tools.procOps.run_proc(cmd)
-        cmd = ['clusterGenes', noncoding_tmp, 'no', noncoding_clusters]
+        cmd = ['clusterGenes', f'-minOverlappingBases={overlapping_gene_distance}',
+               noncoding_tmp, 'no', noncoding_clusters]
         tools.procOps.run_proc(cmd)
         coding_clustered = pd.read_csv(coding_tmp, sep='\t')
         noncoding_clustered = pd.read_csv(noncoding_tmp, sep='\t')
@@ -170,9 +174,9 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
 
     # first, group the putative rescue transcripts by gene ID. Require that they exist in scores because otherwise
     # that means they are weirdly overlapping
-    high_cov_ids = {x.q_name for x in unfiltered.itervalues() if x.coverage > 0.5 and x.q_name in scores}
+    high_cov_ids = {x.q_name for x in unfiltered.values() if x.coverage > 0.5 and x.q_name in scores}
     high_cov_ids -= set(merged_collapse_filtered.gene)  # gene is alignment ID
-    putative_rescue_txs = {tx for aln_id, tx in unfiltered_tx_dict.iteritems() if aln_id in high_cov_ids}
+    putative_rescue_txs = {tx for aln_id, tx in unfiltered_tx_dict.items() if aln_id in high_cov_ids}
     unfiltered_by_gene = tools.transcripts.group_transcripts_by_name2(putative_rescue_txs)
 
     rescued_txs = []
@@ -235,11 +239,11 @@ def ref_span(aln_dict, ref_aln_dict, max_span=5):
     """
     # group by name
     grouped = collections.defaultdict(list)
-    for aln_id, aln in aln_dict.iteritems():
+    for aln_id, aln in aln_dict.items():
         grouped[tools.nameConversions.strip_alignment_numbers(aln_id)].append(aln)
 
     r = collections.OrderedDict()
-    for tx_id, aln_list in grouped.iteritems():
+    for tx_id, aln_list in grouped.items():
         ref_aln = ref_aln_dict[tx_id]
         ref_size = ref_aln.t_end - ref_aln.t_start
         ref_cutoff = ref_size * max_span
@@ -302,7 +306,7 @@ def construct_alt_loci(group, best_cluster):
         if cluster_id != best_cluster:
             intervals[x.chrom].append(tools.intervals.ChromosomeInterval(x.chrom, x.txStart, x.txEnd, '.'))
     merged_intervals = []
-    for chrom, i in intervals.iteritems():
+    for chrom, i in intervals.items():
         merged_intervals.extend(tools.intervals.gap_merge_intervals(i, 1000))
     return ','.join('{}:{}-{}'.format(x.chromosome, x.start, x.stop) for x in merged_intervals)
 
@@ -360,19 +364,19 @@ def find_split_genes(gene_id, g, resolved_interval, split_gene_data):
                                                    aln.q_start, aln.q_end, '.')
         tgt_i = tools.intervals.ChromosomeInterval(aln.t_name, aln.t_start, aln.t_end, aln.strand)
         intervals[ref_i].append(tgt_i)
-    merged_intervals = tools.intervals.union_of_intervals(intervals.keys())
+    merged_intervals = tools.intervals.union_of_intervals(list(intervals.keys()))
     if len(merged_intervals) > 1:
         alt_intervals = collections.defaultdict(list)
-        for interval_list in intervals.itervalues():
+        for interval_list in intervals.values():
             for i in interval_list:
                 if not i.overlap(resolved_interval):
                     alt_intervals[i.chromosome].append(i)
         # merge by chromosome
         r = []
-        for chrom, interval_list in alt_intervals.iteritems():
+        for chrom, interval_list in alt_intervals.items():
             r.extend(tools.intervals.gap_merge_intervals(interval_list, 0))
         # write metrics
-        if len(alt_intervals) == 1 and alt_intervals.keys()[0] == resolved_interval.chromosome:
+        if len(alt_intervals) == 1 and list(alt_intervals.keys())[0] == resolved_interval.chromosome:
             split_gene_data['intra'].add(gene_id)
         else:
             split_gene_data['contig'].add(gene_id)
@@ -410,7 +414,7 @@ def resolve_split_genes(tmp_size_filtered, transcript_gene_map, resolved_df, unf
     split_r = []
     # keep track of transcripts which have to be resolved and if they are on the same contig or different contigs
     split_gene_data = {'contig': set(), 'intra': set()}
-    for tx_id, g in grouped.iteritems():
+    for tx_id, g in grouped.items():
         gene_id = transcript_gene_map[tx_id]
         split_r.append([tx_id, find_split_genes(gene_id, g, tx_intervals[tx_id], split_gene_data)])
     split_df = pd.DataFrame(split_r, columns=['TranscriptId', 'PossibleSplitGeneLocations'])

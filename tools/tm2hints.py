@@ -8,7 +8,7 @@ chromosomal target.
 This process also uses a larger fuzz distance under the idea that more wiggle room is allowed here before we provide
 Augustus a chance at fixing the problem. We are more stringent when evaluating the results.
 """
-import procOps
+from . import procOps
 
 cmd = ['transMap2hints.pl', '--ep_cutoff=0', '--ep_margin=12', '--min_intron_len=50', '--start_stop_radius=5',
        '--tss_tts_radius=10', '--utrend_cutoff=10', '--in=/dev/stdin', '--out=/dev/stdout']
@@ -39,7 +39,7 @@ def fix_ref_q_starts(ref_psl):
     """
     if ref_psl.strand == '-':
         ref_starts = [ref_psl.q_size - (ref_psl.q_starts[i] + ref_psl.block_sizes[i]) for i in
-                      xrange(len(ref_psl.q_starts))]
+                      range(len(ref_psl.q_starts))]
     else:
         ref_starts = ref_psl.q_starts
     return ref_starts

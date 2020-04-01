@@ -1,7 +1,7 @@
 """
 Functions to interface with the sqlite databases produced by various steps of the annotation pipeline
 """
-import transcripts
+from . import transcripts
 
 import pandas as pd
 from sqlalchemy import Column, Integer, Text, Float, Boolean, func, create_engine
@@ -25,6 +25,7 @@ class Annotation(Base):
     GeneName = Column(Text)
     GeneBiotype = Column(Text)
     TranscriptBiotype = Column(Text)
+    ExtraTags = Column(Text)
 
 
 class Bed12(object):
@@ -180,6 +181,11 @@ class AugPbIntronSupport(HgmColumns, Base):
     __tablename__ = 'augPB_Hgm'
 
 
+class ExRefIntronSupport(HgmColumns, Base):
+    """Table for intron support of External reference transcripts from homGeneMapping"""
+    __tablename__ = 'ExRef_Hgm'
+
+
 class AlternativeGeneIdColumns(object):
     """mixin class for AlternativeGenes"""
     TranscriptId = Column(Text, primary_key=True)
@@ -196,6 +202,11 @@ class AugCgpAlternativeGenes(AlternativeGeneIdColumns, Base):
 class AugPbAlternativeGenes(AlternativeGeneIdColumns, Base):
     """Table for recording a list of alternative parental genes for IsoSeq"""
     __tablename__ = 'augPB_AlternativeGenes'
+
+
+class ExRefAlternativeGenes(AlternativeGeneIdColumns, Base):
+    """Table for recording a list of alternative parental genes for external references"""
+    __tablename__ = 'ExRef_AlternativeGenes'
 
 
 class IsoSeqExonStructures(Bed12, Base):
@@ -223,13 +234,16 @@ def start_session(db_path):
 
 tables = {'hgm': {'augCGP': AugCgpIntronSupport, 'augTM': AugTmIntronSupport,
                   'augTMR': AugTmrIntronSupport, 'transMap': TmIntronSupport,
-                  'augPB': AugPbIntronSupport},
+                  'augPB': AugPbIntronSupport, 'exRef': ExRefIntronSupport},
           'CDS': {'augTM': {'metrics': CdsAugTmMetrics, 'evaluation': CdsAugTmEval},
                   'augTMR': {'metrics': CdsAugTmrMetrics, 'evaluation': CdsAugTmrEval},
                   'transMap': {'metrics': CdsTmMetrics, 'evaluation': CdsTmEval}},
           'mRNA': {'augTM': {'metrics': MrnaAugTmMetrics, 'evaluation': MrnaAugTmEval},
                    'augTMR': {'metrics': MrnaAugTmrMetrics, 'evaluation': MrnaAugTmrEval},
-                   'transMap': {'metrics': MrnaTmMetrics, 'evaluation': MrnaTmEval}}}
+                   'transMap': {'metrics': MrnaTmMetrics, 'evaluation': MrnaTmEval}},
+          'alt_names': {'exRef': ExRefAlternativeGenes,
+                        'augPB': AugPbAlternativeGenes,
+                        'augCGP': AugCgpAlternativeGenes}}
 
 
 ###
@@ -258,7 +272,7 @@ def get_transcript_gene_map(db_path, table=Annotation.__tablename__, index_col='
     :return: dictionary {tx_id: GeneId}
     """
     df = read_attrs(db_path, table, index_col)
-    return dict(zip(df.index, df.GeneId))
+    return dict(list(zip(df.index, df.GeneId)))
 
 
 def get_gene_transcript_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
@@ -285,7 +299,7 @@ def get_transcript_biotype_map(db_path, table=Annotation.__tablename__, index_co
     :return: dictionary {tx_id: tx_biotype}
     """
     df = read_attrs(db_path, table, index_col)
-    return dict(zip(df.index, df.TranscriptBiotype))
+    return dict(list(zip(df.index, df.TranscriptBiotype)))
 
 
 def get_gene_biotype_map(db_path, table=Annotation.__tablename__, index_col='TranscriptId'):
@@ -297,7 +311,7 @@ def get_gene_biotype_map(db_path, table=Annotation.__tablename__, index_col='Tra
     :return: dictionary {tx_id: tx_biotype}
     """
     df = read_attrs(db_path, table, index_col)
-    return dict(zip(df.GeneId, df.GeneBiotype))
+    return dict(list(zip(df.GeneId, df.GeneBiotype)))
 
 
 def get_transcript_biotypes(db_path, table=Annotation):
@@ -409,7 +423,7 @@ def load_intron_vector(table, session):
     :return: DataFrame
     """
     assert any(table == cls for cls in (TmIntronSupport, AugCgpIntronSupport, AugTmIntronSupport, AugPbIntronSupport,
-                                        AugTmrIntronSupport))
+                                        AugTmrIntronSupport, ExRefIntronSupport))
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
 
@@ -421,7 +435,7 @@ def load_alternatives(table, session):
     :param session: Active sqlalchemy session.
     :return: DataFrame
     """
-    assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes
+    assert table == AugCgpAlternativeGenes or table == AugPbAlternativeGenes or table == ExRefAlternativeGenes
     query = session.query(table)
     return pd.read_sql(query.statement, session.bind)
 

@@ -5,7 +5,6 @@ import string
 import random
 import datetime
 import collections
-import itertools
 import logging
 import os
 import shutil
@@ -13,7 +12,7 @@ import json
 from collections import OrderedDict
 from frozendict import frozendict
 from configobj import ConfigObj
-from subprocess import check_call
+from subprocess import check_call, DEVNULL
 
 import luigi
 import luigi.contrib.sqla
@@ -37,20 +36,20 @@ import tools.hintsDatabaseInterface
 import tools.transcripts
 import tools.gff3
 from tools.luigiAddons import multiple_requires, IndexTarget
-from align_transcripts import align_transcripts
-from augustus import augustus
-from augustus_cgp import augustus_cgp
-from augustus_pb import augustus_pb
-from chaining import chaining
-from classify import classify
-from consensus import generate_consensus, load_alt_names, load_hgm_vectors
-from filter_transmap import filter_transmap
-from hgm import hgm, parse_hgm_gtf
-from transmap_classify import transmap_classify
-from plots import generate_plots
-from hints_db import hints_db
-from parent_gene_assignment import assign_parents
-from exceptions import *
+from .align_transcripts import align_transcripts
+from .augustus import augustus
+from .augustus_cgp import augustus_cgp
+from .augustus_pb import augustus_pb
+from .chaining import chaining
+from .classify import classify
+from .consensus import generate_consensus, load_alt_names, load_hgm_vectors
+from .filter_transmap import filter_transmap
+from .hgm import hgm, parse_hgm_gtf
+from .transmap_classify import transmap_classify
+from .plots import generate_plots
+from .hints_db import hints_db
+from .parent_gene_assignment import assign_parents
+from .exceptions import *
 
 logger = logging.getLogger('cat')
 
@@ -106,6 +105,7 @@ class PipelineTask(luigi.Task):
     # Paralogy detection options
     global_near_best = luigi.FloatParameter(default=0.15, significant=False)
     filter_overlapping_genes = luigi.BoolParameter(default=False, significant=True)
+    overlapping_gene_distance = luigi.IntParameter(default=1, significant=True)
     # consensus options
     intron_rnaseq_support = luigi.IntParameter(default=0, significant=False)
     exon_rnaseq_support = luigi.IntParameter(default=0, significant=False)
@@ -115,6 +115,11 @@ class PipelineTask(luigi.Task):
     denovo_num_introns = luigi.IntParameter(default=0, significant=False)
     denovo_splice_support = luigi.IntParameter(default=0, significant=False)
     denovo_exon_support = luigi.IntParameter(default=0, significant=False)
+    denovo_ignore_novel_genes = luigi.BoolParameter(default=False, significant=False)
+    denovo_only_novel_genes = luigi.BoolParameter(default=False, significant=False)
+    denovo_novel_end_distance = luigi.IntParameter(default=0, significant=False)
+    denovo_allow_unsupported = luigi.BoolParameter(default=False, significant=False)
+    denovo_allow_bad_annot_or_tm = luigi.BoolParameter(default=False, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
     in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
     rebuild_consensus = luigi.BoolParameter(default=False, significant=True)
@@ -131,7 +136,7 @@ class PipelineTask(luigi.Task):
     nodeTypes = luigi.Parameter(default=None, significant=False)
     maxNodes = luigi.Parameter(default=None, significant=False)
     minNode = luigi.Parameter(default=None, significant=False)
-    metrices = luigi.Parameter(default=None, significant=False)
+    metrics = luigi.Parameter(default=None, significant=False)
     zone = luigi.Parameter(default=None, significant=False)
 
     def __repr__(self):
@@ -145,11 +150,6 @@ class PipelineTask(luigi.Task):
 
     def get_pipeline_args(self):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
-        # We use this environment variable as a bit of global state,
-        # to avoid threading this through in each of the hundreds of
-        # command invocations.
-        os.environ['CAT_BINARY_MODE'] = self.binary_mode
-
         args = tools.misc.PipelineNamespace()
         args.set('binary_mode', self.binary_mode, False)
         args.set('hal', os.path.abspath(self.hal), True)
@@ -181,6 +181,7 @@ class PipelineTask(luigi.Task):
         # user flags for paralog resolution
         args.set('global_near_best', self.global_near_best, True)
         args.set('filter_overlapping_genes', self.filter_overlapping_genes, True)
+        args.set('overlapping_gene_distance', self.overlapping_gene_distance, True)
         
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
@@ -191,6 +192,11 @@ class PipelineTask(luigi.Task):
         args.set('denovo_num_introns', self.denovo_num_introns, False)
         args.set('denovo_splice_support', self.denovo_splice_support, False)
         args.set('denovo_exon_support', self.denovo_exon_support, False)
+        args.set('denovo_ignore_novel_genes', self.denovo_ignore_novel_genes, False)
+        args.set('denovo_only_novel_genes', self.denovo_only_novel_genes, False)
+        args.set('denovo_novel_end_distance', self.denovo_novel_end_distance, False)
+        args.set('denovo_allow_unsupported', self.denovo_allow_unsupported, False)
+        args.set('denovo_allow_bad_annot_or_tm', self.denovo_allow_bad_annot_or_tm, False)
         args.set('require_pacbio_support', self.require_pacbio_support, False)
         args.set('in_species_rna_support_only', self.in_species_rna_support_only, False)
         args.set('rebuild_consensus', self.rebuild_consensus, False)
@@ -205,22 +211,6 @@ class PipelineTask(luigi.Task):
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
 
-        # get the Docker/Singularity image set up, if applicable, because we
-        # will need it to run halStats.
-        if args.binary_mode == 'docker':
-            if not tools.misc.is_exec('docker'):
-                raise ToolMissingException('docker binary not found. Either install it or use a different option for --binary-mode.')
-            # Update docker container
-            check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
-        elif args.binary_mode == 'singularity':
-            if not tools.misc.is_exec('singularity'):
-                raise ToolMissingException('singularity binary not found. Either install it or use a different option for --binary-mode.')
-            os.environ['SINGULARITY_PULLFOLDER'] = args.work_dir
-            os.environ['SINGULARITY_CACHEDIR'] = args.work_dir
-            if not os.path.isfile(os.path.join(args.work_dir, 'cat.img')):
-                check_call(['singularity', 'pull', '--name', 'cat.img',
-                    'docker://quay.io/ucsc_cgl/cat:latest'])
-
         # halStats is run below, before any validate() methods are called.
         if not tools.misc.is_exec('halStats'):
             raise ToolMissingException('halStats from the HAL tools package not in global path')
@@ -229,15 +219,15 @@ class PipelineTask(luigi.Task):
         target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
         target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
         args.set('target_genomes', target_genomes, True)
-
         args.set('cfg', self.parse_cfg(), True)
         args.set('dbs', PipelineTask.get_databases(args), True)
         args.set('annotation', args.cfg['ANNOTATION'][args.ref_genome], True)
         args.set('hints_db', os.path.join(args.work_dir, 'hints_database', 'hints.db'), True)
         args.set('rnaseq_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) | set(args.cfg['BAM'].keys())), True)
         args.set('intron_only_genomes', frozenset(set(args.cfg['INTRONBAM'].keys()) - set(args.cfg['BAM'].keys())), True)
-        args.set('isoseq_genomes', frozenset(args.cfg['ISO_SEQ_BAM'].keys()), True)
-        args.set('annotation_genomes', frozenset(args.cfg['ANNOTATION'].keys()), True)
+        args.set('isoseq_genomes', frozenset(list(args.cfg['ISO_SEQ_BAM'].keys())), True)
+        args.set('annotation_genomes', frozenset(list(args.cfg['ANNOTATION'].keys())), True)
+        args.set('external_ref_genomes', args.annotation_genomes - {args.ref_genome}, True)
         args.set('modes', self.get_modes(args), True)
         args.set('augustus_tmr', True if 'augTMR' in args.modes else False, True)
 
@@ -282,6 +272,9 @@ class PipelineTask(luigi.Task):
                       '[ISO_SEQ_BAM]', '__many__ = list',
                       '[PROTEIN_FASTA]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
+        for key in parser:
+            if key not in ['ANNOTATION', 'INTRONBAM', 'BAM', 'ISO_SEQ_BAM', 'PROTEIN_FASTA']:
+                raise InvalidInputException('Invalid field {} in config file'.format(key))
 
         # convert the config into a new dict, parsing the fofns
         cfg = collections.defaultdict(dict)
@@ -289,7 +282,7 @@ class PipelineTask(luigi.Task):
             if dtype not in parser:
                 cfg[dtype] = {}
             else:
-                for genome, annot in parser[dtype].iteritems():
+                for genome, annot in parser[dtype].items():
                     annot = os.path.abspath(annot)
                     if not os.path.exists(annot):
                         raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
@@ -319,7 +312,7 @@ class PipelineTask(luigi.Task):
 
         # return a hashable version
         return frozendict((key, frozendict((ikey, tuple(ival) if isinstance(ival, list) else ival)
-                                           for ikey, ival in val.iteritems())) for key, val in cfg.iteritems())
+                                           for ikey, ival in val.items())) for key, val in cfg.items())
 
     def validate_cfg(self, args):
         """Validate the input config file."""
@@ -340,7 +333,7 @@ class PipelineTask(luigi.Task):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
 
         for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
-            for genome, annot in args.cfg[dtype].iteritems():
+            for genome, annot in args.cfg[dtype].items():
                 if not os.path.exists(annot):
                     raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
 
@@ -369,6 +362,8 @@ class PipelineTask(luigi.Task):
                 modes.append('augTMR')
         if args.augustus_pb is True:
             modes.append('augPB')
+        if len(args.annotation_genomes) > 1:
+            modes.append('exRef')
         return tuple(modes)
 
     def get_module_args(self, module, **args):
@@ -378,6 +373,30 @@ class PipelineTask(luigi.Task):
         """
         pipeline_args = self.get_pipeline_args()
         return module.get_args(pipeline_args, **args)
+
+    def load_docker(self):
+        """
+        Download Docker or Singularity container, if applicable
+        """
+        # We use this environment variable as a bit of global state,
+        # to avoid threading this through in each of the hundreds of
+        # command invocations.
+        os.environ['CAT_BINARY_MODE'] = self.binary_mode
+        if self.binary_mode == 'docker':
+            if not tools.misc.is_exec('docker'):
+                raise ToolMissingException('docker binary not found. '
+                                           'Either install it or use a different option for --binary-mode.')
+            # Update docker container
+            check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
+        elif self.binary_mode == 'singularity':
+            if not tools.misc.is_exec('singularity'):
+                raise ToolMissingException('singularity binary not found. '
+                                           'Either install it or use a different option for --binary-mode.')
+            os.environ['SINGULARITY_PULLFOLDER'] = self.work_dir
+            os.environ['SINGULARITY_CACHEDIR'] = self.work_dir
+            if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
+                check_call(['singularity', 'pull', '--name', 'cat.img',
+                            'docker://quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
 
     @staticmethod
     def get_databases(pipeline_args):
@@ -491,7 +510,7 @@ class ToilTask(PipelineTask):
             # this logic tries to determine if we should try and restart an existing jobStore
             if os.path.exists(job_store):
                 try:
-                    root_job = open(os.path.join(job_store, 'rootJobStoreID')).next().rstrip()
+                    root_job = next(open(os.path.join(job_store, 'rootJobStoreID'))).rstrip()
                     if not os.path.exists(os.path.join(job_store, 'tmp', root_job)):
                         shutil.rmtree(job_store)
                     else:
@@ -621,6 +640,7 @@ class RunCat(PipelineWrapperTask):
             raise InvalidInputException('A target genome cannot be the reference genome.')
 
     def requires(self):
+        self.load_docker()
         pipeline_args = self.get_pipeline_args()
         self.validate(pipeline_args)
         yield self.clone(PrepareFiles)
@@ -654,6 +674,7 @@ class PrepareFiles(PipelineWrapperTask):
     def requires(self):
         yield self.clone(GenomeFiles)
         yield self.clone(ReferenceFiles)
+        yield self.clone(ExternalReferenceFiles)
 
 
 class GenomeFiles(PipelineWrapperTask):
@@ -760,6 +781,37 @@ class GenomeFlatFasta(AbstractAtomicFileTask):
         tools.procOps.run_proc(cmd)
 
 
+class ExternalReferenceFiles(PipelineWrapperTask):
+    """
+    WrapperTask for running gff3ToGenePred and genePredToGtf <only> for non-reference annotation files
+    """
+    @staticmethod
+    def get_args(pipeline_args, genome):
+        base_dir = os.path.join(pipeline_args.work_dir, 'reference')
+        args = tools.misc.HashableNamespace()
+        args.genome = genome
+        args.annotation_gff3 = pipeline_args.cfg['ANNOTATION'][genome]
+        args.annotation_gp = os.path.join(base_dir, genome + '.external_reference.gp')
+        args.annotation_gtf = os.path.join(base_dir, genome + '.external_reference.gtf')
+        args.annotation_attrs = os.path.join(base_dir, genome + '.external_reference.gp_attrs')
+        args.duplicates = os.path.join(base_dir, genome + '.external_reference.duplicates.txt')
+        return args
+
+    def validate(self):
+        for tool in ['gff3ToGenePred', 'genePredToBed']:
+            if not tools.misc.is_exec(tool):
+                raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
+
+    def requires(self):
+        self.validate()
+        pipeline_args = self.get_pipeline_args()
+        for genome in pipeline_args.external_ref_genomes:
+            args = self.get_args(pipeline_args, genome)
+            yield self.clone(Gff3ToGenePred, **vars(args))
+            yield self.clone(TranscriptGtf, **vars(args))
+            yield self.clone(Gff3ToAttrs, **vars(args))
+
+
 class ReferenceFiles(PipelineWrapperTask):
     """
     WrapperTask for producing annotation files.
@@ -773,6 +825,7 @@ class ReferenceFiles(PipelineWrapperTask):
         base_dir = os.path.join(pipeline_args.work_dir, 'reference')
         annotation = os.path.splitext(os.path.basename(pipeline_args.annotation))[0]
         args = tools.misc.HashableNamespace()
+        args.annotation_gff3 = pipeline_args.annotation
         args.annotation_gp = os.path.join(base_dir, annotation + '.gp')
         args.annotation_attrs = os.path.join(base_dir, annotation + '.gp_attrs')
         args.annotation_gtf = os.path.join(base_dir, annotation + '.gtf')
@@ -781,13 +834,14 @@ class ReferenceFiles(PipelineWrapperTask):
         args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
         args.duplicates = os.path.join(base_dir, annotation + '.duplicates.txt')
         args.ref_psl = os.path.join(base_dir, annotation + '.psl')
+        args.genome = pipeline_args.ref_genome
         args.__dict__.update(**vars(GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)))
         return args
 
     def validate(self):
         for tool in ['gff3ToGenePred', 'genePredToBed', 'genePredToFakePsl']:
             if not tools.misc.is_exec(tool):
-                    raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
+                raise ToolMissingException('{} from the Kent tools package not in global path'.format(tool))
 
     def requires(self):
         self.validate()
@@ -802,23 +856,26 @@ class ReferenceFiles(PipelineWrapperTask):
         yield self.clone(FakePsl, **vars(args))
 
 
-class Gff3ToGenePred(AbstractAtomicFileTask):
+class Gff3ToGenePred(PipelineTask):
     """
     Generates a genePred from a gff3 file.
     """
+    genome = luigi.Parameter()
+    annotation_gff3 = luigi.Parameter()
     annotation_gp = luigi.Parameter()
     annotation_attrs = luigi.Parameter()
     duplicates = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.annotation_gp)
+        return luigi.LocalTarget(self.annotation_gp), luigi.LocalTarget(self.annotation_attrs)
 
     def validate(self):
         c = collections.Counter()
-        for l in open(self.output().path):
+        annotation_gp, annotation_attrs = self.output()
+        for l in open(annotation_gp.path):
             l = l.split()
             c[l[0]] += 1
-        duplicates = {x for x, y in c.iteritems() if y > 1}
+        duplicates = {x for x, y in c.items() if y > 1}
         if len(duplicates) > 0:
             with open(self.duplicates, 'w') as outf:
                 for l in duplicates:
@@ -829,10 +886,26 @@ class Gff3ToGenePred(AbstractAtomicFileTask):
                                         '{}'.format(len(duplicates), self.duplicates))
 
     def run(self):
-        pipeline_args = self.get_pipeline_args()
         logger.info('Converting annotation gff3 to genePred.')
-        cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, pipeline_args.annotation)
-        self.run_cmd(cmd)
+        if self.genome == self.ref_genome:
+            cmd = tools.gff3.convert_gff3_cmd(self.annotation_attrs, self.annotation_gff3)
+            annotation_gp, annotation_attrs = self.output()
+            with annotation_gp.open('w') as outf:
+                tools.procOps.run_proc(cmd, stdout=outf)
+        else:
+            annotation_gp, annotation_attrs = self.output()
+            with tools.fileOps.TemporaryFilePath() as tmp_attrs, tools.fileOps.TemporaryFilePath() as tmp_gp:
+                cmd = tools.gff3.convert_gff3_cmd(tmp_attrs, self.annotation_gff3)
+                tools.procOps.run_proc(cmd, stdout=tmp_gp)
+                recs = tools.transcripts.get_gene_pred_dict(tmp_gp)
+                for rec in recs.values():
+                    rec.name = f'exRef-{rec.name}'
+                    rec.name2 = f'exRef-{rec.name2}'
+                with annotation_gp.open('w') as outf:
+                    for rec in recs.values():
+                        tools.fileOps.print_row(outf, rec.get_gene_pred())
+                with annotation_attrs.open('w') as outf:
+                    tools.procOps.run_proc(['sed', 's/^/exRef-/'], stdin=tmp_attrs, stdout=outf)
         self.validate()
 
 
@@ -845,35 +918,27 @@ class Gff3ToAttrs(PipelineTask):
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
-        database = pipeline_args.dbs[pipeline_args.ref_genome]
+        database = pipeline_args.dbs[self.genome]
         tools.fileOps.ensure_file_dir(database)
         conn_str = 'sqlite:///{}'.format(database)
-        digest = tools.fileOps.hashfile(pipeline_args.annotation)
+        digest = tools.fileOps.hashfile(pipeline_args.cfg['ANNOTATION'][self.genome])
         attrs_table = luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                           target_table=self.table,
-                                                          update_id='_'.join([self.table, digest]))
+                                                          update_id='_'.join([self.table, str(digest)]))
         return attrs_table
-
-    def requires(self):
-        pipeline_args = self.get_pipeline_args()
-        return self.clone(Gff3ToGenePred, annotation_gp=ReferenceFiles.get_args(pipeline_args).annotation_gp)
 
     def run(self):
         logger.info('Extracting gff3 attributes to sqlite database.')
         pipeline_args = self.get_pipeline_args()
-        df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp)
+        df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp, self.genome != self.ref_genome)
         if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
-            if pipeline_args.augustus:
-                raise InvalidInputException('No protein_coding annotations found. This will cause problems for '
-                                            'AugustusTMR. Please check your GFF3 input.')
-            else:
-                logger.critical('No protein_coding annotations found!')
+            logger.critical('No protein_coding annotations found!')
         # validate number parsed
         tot_genes = len(open(self.annotation_gp).readlines())
         if tot_genes != len(df):
             raise InvalidInputException('The number of genes parsed from the attrs file is not the same number as '
                                         'in the genePred. This is a parser failure. Contact Ian and make him fix it.')
-        database = pipeline_args.dbs[pipeline_args.ref_genome]
+        database = pipeline_args.dbs[self.genome]
         with tools.sqlite.ExclusiveSqlConnection(database) as engine:
             df.to_sql(self.table, engine, if_exists='replace')
         self.output().touch()
@@ -911,7 +976,7 @@ class TranscriptFasta(AbstractAtomicFileTask):
         seq_dict = tools.bio.get_sequence_dict(self.fasta, upper=False)
         seqs = {tx.name: tx.get_mrna(seq_dict) for tx in tools.transcripts.transcript_iterator(self.transcript_bed)}
         with self.output().open('w') as outf:
-            for name, seq in seqs.iteritems():
+            for name, seq in seqs.items():
                 tools.bio.write_fasta(outf, name, seq)
 
 
@@ -979,7 +1044,12 @@ class BuildDb(PipelineTask):
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
         args.hal = pipeline_args.hal
         args.cfg = pipeline_args.cfg
-        args.annotation = pipeline_args.cfg['ANNOTATION'].get(genome, None)
+        if genome == pipeline_args.ref_genome:
+            args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        elif genome in pipeline_args.external_ref_genomes:
+            args.annotation_gp = ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
+        else:
+            args.annotation_gp = None
         args.protein_fasta = pipeline_args.cfg['PROTEIN_FASTA'].get(genome, None)
         args.hints_path = os.path.join(base_dir, genome + '.extrinsic_hints.gff')
         return args
@@ -987,7 +1057,8 @@ class BuildDb(PipelineTask):
     def validate(self):
         tools.misc.samtools_version()  # validate samtools version
         for tool in ['load2sqlitedb', 'samtools', 'filterBam', 'bam2hints', 'bam2wig', 'wig2hints.pl', 'bam2hints',
-                     'bamToPsl', 'blat2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl', 'sambamba']:
+                     'bamToPsl', 'exonerate2hints.pl', 'gff3ToGenePred', 'join_mult_hints.pl', 'sambamba',
+                     'exonerate']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Auxiliary program {} not found on path.'.format(tool))
 
@@ -1041,7 +1112,8 @@ class GenerateHints(ToilTask):
         for tool in ['gff3ToGenePred', 'bamToPsl']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
-        for tool in ['join_mult_hints.pl', 'blat2hints.pl', 'wig2hints.pl', 'bam2wig', 'bam2hints', 'filterBam']:
+        for tool in ['join_mult_hints.pl', 'exonerate2hints.pl', 'blat2hints.pl',
+                     'wig2hints.pl', 'bam2wig', 'bam2hints', 'filterBam']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('{} from the augustus tool package not in global path.'.format(tool))
 
@@ -1079,7 +1151,7 @@ class Chaining(ToilTask):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         chain_args = self.get_args(pipeline_args)
-        for path in chain_args.chain_files.itervalues():
+        for path in chain_args.chain_files.values():
             yield luigi.LocalTarget(path)
 
     def validate(self):
@@ -1127,6 +1199,7 @@ class TransMap(PipelineWrapperTask):
         args.db_path = pipeline_args.dbs[genome]
         args.global_near_best = pipeline_args.global_near_best
         args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes
+        args.overlapping_gene_distance = pipeline_args.overlapping_gene_distance
         return args
 
     def validate(self):
@@ -1145,7 +1218,7 @@ class TransMap(PipelineWrapperTask):
 
 class TransMapPsl(PipelineTask):
     """
-    Runs transMap. Requires Kent tools pslMap, pslMapPostChain, pslRecalcMatch
+    Runs transMap. Requires Kent tools pslMap, pslMapPostChain, pslRecalcMatch, transMapPslToGenePred
     """
     genome = luigi.Parameter()
 
@@ -1204,7 +1277,8 @@ class FilterTransMap(PipelineTask):
         table_target, psl_target, json_target, gp_target = self.output()
         resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp,
                                       tm_args.ref_db_path, psl_target, tm_args.global_near_best,
-                                      tm_args.filter_overlapping_genes, json_target)
+                                      tm_args.filter_overlapping_genes, tm_args.overlapping_gene_distance,
+                                      json_target)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
@@ -1235,7 +1309,7 @@ class TransMapGtf(PipelineTask):
 
 class EvaluateTransMap(PipelineWrapperTask):
     """
-    Evaluates transMap alignments.
+    Evaluates transMap derived transcripts (cat/classify.py)
     """
     @staticmethod
     def get_args(pipeline_args, genome):
@@ -1265,7 +1339,7 @@ class EvaluateTransMap(PipelineWrapperTask):
 
 class EvaluateTransMapDriverTask(PipelineTask):
     """
-    Task for per-genome launching of a toil pipeline for aligning transcripts to their parent.
+    Task for per-genome analysis of transMap derived transcripts (cat/classify.py)
     """
     genome = luigi.Parameter()
     tm_eval_args = luigi.Parameter()
@@ -1418,7 +1492,7 @@ class AugustusCgp(ToilTask):
         pipeline_args = self.get_pipeline_args()
         cgp_args = self.get_args(pipeline_args)
         for path_dict in [cgp_args.augustus_cgp_gp, cgp_args.augustus_cgp_gtf, cgp_args.augustus_cgp_raw_gtf]:
-            for path in path_dict.itervalues():
+            for path in path_dict.values():
                 yield luigi.LocalTarget(path)
 
     def validate(self):
@@ -1565,6 +1639,21 @@ class FindDenovoParents(PipelineTask):
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
+        elif mode == 'exRef':
+            args.tablename = tools.sqlInterface.ExRefAlternativeGenes.__tablename__
+            args.gps = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
+                        for genome in pipeline_args.external_ref_genomes}
+            filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
+                                    for genome in pipeline_args.external_ref_genomes}
+            unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
+                                      for genome in pipeline_args.external_ref_genomes}
+            # add the reference annotation as a pseudo-transMap to assign parents in reference
+            filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            args.filtered_tm_gps = filtered_tm_gp_files
+            args.unfiltered_tm_gps = unfiltered_tm_gp_files
+            args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
+                                for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         return args
@@ -1574,6 +1663,8 @@ class FindDenovoParents(PipelineTask):
             yield self.clone(AugustusPb)
         elif self.mode == 'augCGP':
             yield self.clone(AugustusCgp)
+        elif self.mode == 'exRef':
+            yield self.clone(PrepareFiles)
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         yield self.clone(TransMap)
@@ -1595,7 +1686,7 @@ class FindDenovoParents(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         denovo_args = FindDenovoParents.get_args(pipeline_args, self.mode)
-        for genome, denovo_gp in denovo_args.gps.iteritems():
+        for genome, denovo_gp in denovo_args.gps.items():
             table_target = self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
             filtered_tm_gp = denovo_args.filtered_tm_gps[genome]
             unfiltered_tm_gp = denovo_args.unfiltered_tm_gps[genome]
@@ -1610,7 +1701,7 @@ class FindDenovoParents(PipelineTask):
             assigned_str = '{}: {:,}'.format('assigned', counts[None])
             log_msg = log_msg.format(genome, denovo_args.tablename, assigned_str)
             result_str = ', '.join(['{}: {:,}'.format(name, val)
-                                    for name, val in sorted(counts.iteritems()) if name is not None])
+                                    for name, val in counts.items() if name is not None])
             if len(result_str) > 0:
                 log_msg += ', ' + result_str + '.'
             logger.info(log_msg)
@@ -1647,6 +1738,10 @@ class Hgm(PipelineWrapperTask):
         elif mode == 'transMap':
             tgt_genomes = pipeline_args.target_genomes
             gtf_in_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gtf
+                            for genome in tgt_genomes}
+        elif mode == 'exRef':
+            tgt_genomes = pipeline_args.external_ref_genomes
+            gtf_in_files = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gtf
                             for genome in tgt_genomes}
         else:
             raise UserException('Invalid mode was passed to Hgm module: {}.'.format(mode))
@@ -1699,7 +1794,7 @@ class HgmDriverTask(PipelineTask):
             yield luigi.contrib.sqla.SQLAlchemyTarget(connection_string=conn_str,
                                                       target_table=tablename,
                                                       update_id='_'.join([tablename, str(hash(pipeline_args))]))
-        for f in hgm_args.gtf_out_files.itervalues():
+        for f in hgm_args.gtf_out_files.values():
             yield luigi.LocalTarget(f)
 
     def requires(self):
@@ -1713,6 +1808,8 @@ class HgmDriverTask(PipelineTask):
         elif self.mode == 'augPB':
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
+        elif self.mode == 'exRef':
+            yield self.clone(FindDenovoParents, mode='exRef')
         else:
             raise UserException('Invalid mode passed to HgmDriverTask: {}.'.format(self.mode))
         yield self.clone(BuildDb)
@@ -1726,7 +1823,7 @@ class HgmDriverTask(PipelineTask):
         # convert the output to a dataframe and write to the genome database
         databases = self.__class__.get_databases(pipeline_args)
         tablename = tools.sqlInterface.tables['hgm'][self.mode].__tablename__
-        for genome, sqla_target in itertools.izip(*[hgm_args.genomes, self.output()]):
+        for genome, sqla_target in zip(*[hgm_args.genomes, self.output()]):
             df = parse_hgm_gtf(hgm_args.gtf_out_files[genome], genome)
             with tools.sqlite.ExclusiveSqlConnection(databases[genome]) as engine:
                 df.to_sql(tablename, engine, if_exists='replace')
@@ -1796,7 +1893,7 @@ class IsoSeqTranscriptsDriverTask(PipelineTask):
         # we also need to keep track of every interval for downstream processing
         i = 0
         interval_flat_list = []
-        for grp, intervals in groups.iteritems():
+        for grp, intervals in groups.items():
             for chrom, start, stop in intervals:
                 interval_flat_list.append([chrom, start, stop])
                 cluster_trees[chrom][grp].insert(start, stop, i)
@@ -1805,7 +1902,7 @@ class IsoSeqTranscriptsDriverTask(PipelineTask):
         # for each cluster, convert to a transcript object
         txs = []
         for chrom in cluster_trees:
-            for grp, cluster_tree in cluster_trees[chrom].iteritems():
+            for grp, cluster_tree in cluster_trees[chrom].items():
                 for start, end, interval_indices in cluster_tree.getregions():
                     intervals = [interval_flat_list[i] for i in interval_indices]
                     intervals = {tools.intervals.ChromosomeInterval(chrom, start, stop, '.')
@@ -1857,13 +1954,7 @@ class AlignTranscripts(PipelineWrapperTask):
                                                'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
         return args
 
-    def validate(self):
-        for tool in ['blat', 'pslCheck']:
-            if not tools.misc.is_exec(tool):
-                raise ToolMissingException('Tool {} not in global path.'.format(tool))
-
     def requires(self):
-        self.validate()
         pipeline_args = self.get_pipeline_args()
         for target_genome in pipeline_args.target_genomes:
             yield self.clone(AlignTranscriptDriverTask, genome=target_genome)
@@ -1880,7 +1971,7 @@ class AlignTranscriptDriverTask(ToilTask):
 
     def output(self):
         alignment_args = self.get_module_args(AlignTranscripts, genome=self.genome)
-        for mode, paths in alignment_args.transcript_modes.iteritems():
+        for mode, paths in alignment_args.transcript_modes.items():
             for aln_type in ['CDS', 'mRNA']:
                 yield luigi.LocalTarget(paths[aln_type])
 
@@ -1940,19 +2031,19 @@ class EvaluateDriverTask(PipelineTask):
         """construct table names based on input arguments"""
         tables = []
         for aln_mode in ['mRNA', 'CDS']:
-            for tx_mode in eval_args.transcript_modes.iterkeys():
-                names = [x.__tablename__ for x in tools.sqlInterface.tables[aln_mode][tx_mode].values()]
+            for tx_mode in eval_args.transcript_modes.keys():
+                names = [x.__tablename__ for x in list(tools.sqlInterface.tables[aln_mode][tx_mode].values())]
                 tables.extend(names)
         return tables
 
     def pair_table_output(self, eval_args):
         """return dict of {table_name: SQLAlchemyTarget} for final writing"""
-        return dict(zip(*[self.build_table_names(eval_args), self.output()]))
+        return dict(list(zip(*[self.build_table_names(eval_args), self.output()])))
 
     def write_to_sql(self, results, eval_args):
         """Load the results into the SQLite database"""
         with tools.sqlite.ExclusiveSqlConnection(eval_args.db_path) as engine:
-            for table, target in self.pair_table_output(eval_args).iteritems():
+            for table, target in self.pair_table_output(eval_args).items():
                 df = results[table]
                 df.to_sql(table, engine, if_exists='replace')
                 target.touch()
@@ -2003,9 +2094,12 @@ class Consensus(PipelineWrapperTask):
         if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
             args.denovo_tx_modes.append('augPB')
+        if genome in pipeline_args.external_ref_genomes:
+            gp_list.append(ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
+            args.denovo_tx_modes.append('exRef')
         args.gp_list = gp_list
         args.genome = genome
-        args.transcript_modes = AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys()
+        args.transcript_modes = list(AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys())
         args.augustus_cgp = pipeline_args.augustus_cgp
         args.db_path = pipeline_args.dbs[genome]
         args.ref_db_path = PipelineTask.get_database(pipeline_args, pipeline_args.ref_genome)
@@ -2027,9 +2121,15 @@ class Consensus(PipelineWrapperTask):
         args.denovo_num_introns = pipeline_args.denovo_num_introns
         args.denovo_splice_support = pipeline_args.denovo_splice_support
         args.denovo_exon_support = pipeline_args.denovo_exon_support
+        args.denovo_ignore_novel_genes = pipeline_args.denovo_ignore_novel_genes
+        args.denovo_only_novel_genes = pipeline_args.denovo_only_novel_genes
+        args.denovo_novel_end_distance = pipeline_args.denovo_novel_end_distance
+        args.denovo_allow_unsupported = pipeline_args.denovo_allow_unsupported
+        args.denovo_allow_bad_annot_or_tm = pipeline_args.denovo_allow_bad_annot_or_tm
         args.require_pacbio_support = pipeline_args.require_pacbio_support
         args.in_species_rna_support_only = pipeline_args.in_species_rna_support_only
         args.filter_overlapping_genes = pipeline_args.filter_overlapping_genes
+        args.overlapping_gene_distance = pipeline_args.overlapping_gene_distance
         return args
 
     def validate(self):
@@ -2073,12 +2173,14 @@ class ConsensusDriverTask(RebuildableTask):
         if pipeline_args.augustus_cgp:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
+        if self.genome in pipeline_args.external_ref_genomes:
+            yield self.clone(FindDenovoParents, mode='exRef')
 
     def run(self):
         consensus_args = self.get_module_args(Consensus, genome=self.genome)
         logger.info('Generating consensus gene set for {}.'.format(self.genome))
         metrics_dict = generate_consensus(consensus_args)
-        metrics_json = self.output().next()
+        metrics_json = next(self.output())
         PipelineTask.write_metrics(metrics_dict, metrics_json)
 
 
@@ -2089,6 +2191,7 @@ class Plots(RebuildableTask):
     @staticmethod
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
+        tools.fileOps.ensure_dir(base_dir)
         ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
                                                        pipeline_args.target_genomes,
                                                        pipeline_args.annotate_ancestors)
@@ -2133,7 +2236,7 @@ class Plots(RebuildableTask):
     def output(self):
         pipeline_args = self.get_pipeline_args()
         args = Plots.get_args(pipeline_args)
-        return [p for p in args.__dict__.itervalues() if isinstance(p, luigi.LocalTarget)]
+        return [p for p in args.__dict__.values() if isinstance(p, luigi.LocalTarget)]
 
     def requires(self):
         yield self.clone(Consensus)
@@ -2229,7 +2332,7 @@ class CreateDirectoryStructure(RebuildableTask):
         sizes = {}
         twobits = {}
         trackdbs = {}
-        for genome, genome_file in genome_files.iteritems():
+        for genome, genome_file in genome_files.items():
             sizes[genome] = (genome_file.sizes, os.path.join(args.out_dir, genome, 'chrom.sizes'))
             twobits[genome] = (genome_file.two_bit, os.path.join(args.out_dir, genome, '{}.2bit'.format(genome)))
             trackdbs[genome] = os.path.join(args.out_dir, genome, 'trackDb.txt')
@@ -2255,9 +2358,9 @@ class CreateDirectoryStructure(RebuildableTask):
         yield luigi.LocalTarget(args.genomes_txt)
         yield luigi.LocalTarget(args.groups_txt)
         yield luigi.LocalTarget(args.hal)
-        for local_path, hub_path in args.sizes.itervalues():
+        for local_path, hub_path in args.sizes.values():
             yield luigi.LocalTarget(hub_path)
-        for local_path, hub_path in args.twobits.itervalues():
+        for local_path, hub_path in args.twobits.values():
             yield luigi.LocalTarget(hub_path)
 
     def run(self):
@@ -2276,14 +2379,14 @@ class CreateDirectoryStructure(RebuildableTask):
 
         # write the genomes.txt file, construct a dir
         with luigi.LocalTarget(args.genomes_txt).open('w') as outf:
-            for genome, (sizes_local_path, sizes_hub_path) in args.sizes.iteritems():
+            for genome, (sizes_local_path, sizes_hub_path) in args.sizes.items():
                 outf.write(genome_str.format(genome=genome, default_pos=find_default_pos(sizes_local_path)))
 
         # link the hal
         shutil.copy(pipeline_args.hal, args.hal)
 
         # construct a directory for each genome
-        for genome, (sizes_local_path, sizes_hub_path) in args.sizes.iteritems():
+        for genome, (sizes_local_path, sizes_hub_path) in args.sizes.items():
             tools.fileOps.ensure_file_dir(sizes_hub_path)
             shutil.copy(sizes_local_path, sizes_hub_path)
             twobit_local_path, twobit_hub_path = args.twobits[genome]
@@ -2328,13 +2431,18 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_pb.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
-        # TODO: allow non-reference annotations
-        #if self.genome in pipeline_args.annotation_genomes:
-        if self.genome == pipeline_args.ref_genome:
-            annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+        if self.genome in pipeline_args.annotation_genomes:
+            if self.genome == pipeline_args.ref_genome:
+                annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
+                annotation_genome = pipeline_args.ref_genome
+            else:
+                annotation_gp = ExternalReferenceFiles.get_args(pipeline_args, self.genome).annotation_gp
+                annotation_genome = self.genome
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'annotation.bb'),
                              trackdb_path=os.path.join(out_dir, 'annotation.txt'),
-                             genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0])
+                             genepred_path=annotation_gp, label=os.path.splitext(os.path.basename(annotation_gp))[0],
+                             annotation_genome=annotation_genome,
+                             mode='annot')
 
         if self.genome in pipeline_args.target_genomes:
             yield self.clone(ConsensusTrack, track_path=os.path.join(out_dir, 'consensus.bb'),
@@ -2354,7 +2462,9 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'transmap.txt'))
             yield self.clone(BgpTrack, track_path=os.path.join(out_dir, 'filtered_transmap.bb'),
                              trackdb_path=os.path.join(out_dir, 'filtered_transmap.txt'),
-                             genepred_path=tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide')
+                             genepred_path=tm_args.filtered_tm_gp, label='Filtered transMap', visibility='hide',
+                             annotation_genome=pipeline_args.ref_genome,
+                             mode='tm')
 
             if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
@@ -2459,7 +2569,7 @@ class DenovoTrack(TrackTask):
 
         with tmp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(augustus_gp):
-                s = denovo_df.ix[tx.name]
+                s = denovo_df.loc[tx.name]
                 alternative_gene_ids = 'N/A' if s.AlternativeGeneIds is None else s.AlternativeGeneIds
                 intron_rna = ','.join(map(str, s.IntronRnaSupport))
                 exon_rna = ','.join(map(str, s.ExonRnaSupport))
@@ -2500,7 +2610,9 @@ class BgpTrack(TrackTask):
     """Constructs a standard modified bigGenePred track"""
     genepred_path = luigi.Parameter()
     label = luigi.Parameter()
+    annotation_genome = luigi.Parameter()
     visibility = luigi.Parameter(default='pack')
+    mode = luigi.Parameter()
 
     def run(self):
         def find_rgb(info):
@@ -2509,17 +2621,10 @@ class BgpTrack(TrackTask):
                 return '76,85,212'
             return '85,212,76'
 
-        def convert_case(snake_str):
-            components = snake_str.split('_')
-            return ''.join(x.title() for x in components)
-
         pipeline_args = self.get_pipeline_args()
         track, trackdb = self.output()
         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
-        annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[pipeline_args.ref_genome])
-        # hacky way to make columns consistent
-        if 'transcript_id' in annotation_info.columns:
-            annotation_info.columns = [convert_case(c) for c in annotation_info.columns]
+        annotation_info = tools.sqlInterface.load_annotation(pipeline_args.dbs[self.annotation_genome])
         annotation_info = annotation_info.set_index('TranscriptId')
 
         tmp = luigi.LocalTarget(is_tmp=True)
@@ -2530,7 +2635,10 @@ class BgpTrack(TrackTask):
 
         with tmp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(self.genepred_path):
-                s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                if self.mode == 'tm':
+                    s = annotation_info.loc[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                else:
+                    s = annotation_info.loc[tx.name]
                 block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                        tx.thick_stop, find_rgb(s), tx.block_count, block_sizes, block_starts,
@@ -2578,7 +2686,7 @@ class ConsensusTrack(TrackTask):
 
         with tmp_gp.open('w') as outf:
             for tx in tools.transcripts.gene_pred_iterator(consensus_args.consensus_gp):
-                info = consensus_gp_info.ix[tx.name]
+                info = consensus_gp_info.loc[tx.name]
                 block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                 tx_name = info.source_transcript_name if info.source_transcript_name != 'N/A' else tx.name
                 row = [tx.chromosome, tx.start, tx.stop, tx_name, tx.score, tx.strand,
@@ -2586,7 +2694,8 @@ class ConsensusTrack(TrackTask):
                        info.source_gene_common_name, tx.cds_start_stat, tx.cds_end_stat, exon_frames,
                        tx.name, info.transcript_biotype, tx.name2, info.gene_biotype, info.source_gene,
                        info.source_transcript, info.alignment_id, info.alternative_source_transcripts,
-                       info.paralogy, info.unfiltered_paralogy, info.get('collapsed_gene_ids'), info.get('collapsed_gene_names'),
+                       info.paralogy, info.unfiltered_paralogy,
+                       info.get('collapsed_gene_ids'), info.get('collapsed_gene_names'),
                        info.frameshift, info.exon_annotation_support,
                        info.intron_annotation_support, info.transcript_class, info.transcript_modes,
                        info.valid_start, info.valid_stop, info.proper_orf]
@@ -2732,7 +2841,7 @@ class AugustusTrack(TrackTask):
                         continue
                     gp = tools.transcripts.gene_pred_iterator(gp)
                     for tx in gp:
-                        s = annotation_info.ix[tools.nameConversions.strip_alignment_numbers(tx.name)]
+                        s = annotation_info.loc[tools.nameConversions.strip_alignment_numbers(tx.name)]
                         block_starts, block_sizes, exon_frames = tools.transcripts.create_bed_info_gp(tx)
                         row = [tx.chromosome, tx.start, tx.stop, s.TranscriptName, tx.score, tx.strand, tx.thick_start,
                                tx.thick_stop, color, tx.block_count, block_sizes, block_starts,
@@ -2874,7 +2983,7 @@ def find_default_pos(chrom_sizes, window_size=200000):
     :return: string
     """
     sizes = [x.split() for x in open(chrom_sizes)]
-    sorted_sizes = sorted(sizes, key=lambda (chrom, size): -int(size))
+    sorted_sizes = sorted(sizes, key=lambda chrom_size: -int(chrom_size[1]))
     return '{}:{}-{}'.format(sorted_sizes[0][0], 1, window_size)
 
 

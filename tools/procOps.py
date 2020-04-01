@@ -3,14 +3,14 @@
 Wrapper for pipeline.py. Provides a simple interface for compli'cat'ed unix-style process pipes.
 """
 import os
-import pipeline
-import pipes
+from . import pipeline
 import sys
 import subprocess
 import logging
 import time
 
 logger = logging.getLogger(__name__)
+
 
 def cmdLists(cmd):
     """
@@ -21,18 +21,19 @@ def cmdLists(cmd):
         if isinstance(cmd[0],list):
             docList = []
             for e in cmd:
-                docList.append(getDockerCommand('quay.io/ucsc_cgl/cat',e))
+                docList.append(getDockerCommand('quay.io/ucsc_cgl/cat', e))
             return docList
         else:
-            return getDockerCommand('quay.io/ucsc_cgl/cat',cmd)
+            return getDockerCommand('quay.io/ucsc_cgl/cat', cmd)
     elif os.environ.get('CAT_BINARY_MODE') == 'singularity':
         img = os.path.join(os.environ.get('SINGULARITY_PULLFOLDER'), 'cat.img')
         if isinstance(cmd[0], list):
-            return list(map(lambda c: getSingularityCommand(img, c), cmd))
+            return list([get_singularity_command(img, c) for c in cmd])
         else:
-            return getSingularityCommand(img, cmd)
+            return get_singularity_command(img, cmd)
     else:
         return cmd
+
 
 def call_proc(cmd, keepLastNewLine=False):
     """call a process and return stdout, exception with stderr in message.
@@ -90,11 +91,11 @@ def popen_catch(command, stdin=None):
     """
     command = cmdLists(command)
     if stdin is not None:
-        process = subprocess.Popen(command,
+        process = subprocess.Popen(command, encoding='utf-8',
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
         output, nothing = process.communicate(stdin)
     else:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
+        process = subprocess.Popen(command, encoding='utf-8', stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
         output, nothing = process.communicate()
     sts = process.wait()
     if sts != 0:
@@ -118,7 +119,7 @@ def mrca_path(path1, path2):
             path1 = os.path.dirname(path1)
         else:
             path2 = os.path.dirname(path2)
-    raise RuntimeError('something weird happened: the two paths %s and %s had no common prefix.' % (path1, path2))
+
 
 def add_to_work_dirs(dirname, work_dirs):
     """
@@ -152,6 +153,7 @@ def add_to_work_dirs(dirname, work_dirs):
                 # Mergable. Replace this entry with the MRCA.
                 work_dirs[i] = mrca
 
+
 def getDockerCommand(image, cmd):
     """
     Takes in a command (as a list of arguments like ['halStats',
@@ -180,7 +182,8 @@ def getDockerCommand(image, cmd):
         dockerPreamble += ['-v', work_dir + ':' + work_dir]
     return dockerPreamble + [image] + cmd
 
-def getSingularityCommand(image, cmd):
+
+def get_singularity_command(image, cmd):
     """
     Takes a command and turns it into a Singularity command
     that will run the original command inside a container.
@@ -212,6 +215,7 @@ def getSingularityCommand(image, cmd):
 
     return singularity_cmd
 
+
 def singularify_arg(arg, singularity_mount_point='/mnt'):
     """
     Check to see if 'arg' is a path; if it is, modify it to
@@ -232,7 +236,7 @@ def singularify_arg(arg, singularity_mount_point='/mnt'):
         # '/' of the outside to '/mnt' of the container
         # (os.path.join() cannot be used to prepend
         # like this)
-        arg = '/mnt/' + os.path.abspath(arg)
+        arg = os.path.join(singularity_mount_point, + os.path.abspath(arg))
 
     return arg
 
