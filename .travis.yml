@@ -43,6 +43,7 @@ jobs:
         - pip install --upgrade pip
         - pip install cython wheel setuptools pycparser
         - pip install .
+        - which python
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
         - sed -i "s/maxDisk = self.physicalDisk/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
