@@ -1,9 +1,6 @@
 sudo: required
 
-language: go
-
-go:
-    - "1.11"
+language: python
 
 python:
     - "3.7"
@@ -53,7 +50,14 @@ jobs:
     - stage: test
       script:
         - set ex
-        - sudo apt install singularity-container
+        - sudo add-apt-repository ppa:gophers/archive
+        - sudo apt update
+        - sudo apt install golang-1.11-go
+        - >
+          export VERSION=3.5.2 && # adjust this as necessary
+          wget https://github.com/sylabs/singularity/releases/download/v${VERSION}/singularity-${VERSION}.tar.gz &&
+          tar -xzf singularity-${VERSION}.tar.gz &&
+          cd singularity && ./mconfig && make -C builddir && sudo make -C builddir install
         - pip install .
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
