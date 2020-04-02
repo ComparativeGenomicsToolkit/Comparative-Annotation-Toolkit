@@ -18,6 +18,7 @@ import luigi
 import luigi.contrib.sqla
 from luigi.util import requires
 from toil.job import Job
+from toil.lib.memoize import memoize
 import pandas as pd
 from bx.intervals.cluster import ClusterTree
 
@@ -376,6 +377,7 @@ class PipelineTask(luigi.Task):
         pipeline_args = self.get_pipeline_args()
         return module.get_args(pipeline_args, **args)
 
+    @memoize
     def load_docker(self):
         """
         Download Docker or Singularity container, if applicable
@@ -389,7 +391,7 @@ class PipelineTask(luigi.Task):
                 raise ToolMissingException('docker binary not found. '
                                            'Either install it or use a different option for --binary-mode.')
             # Update docker container
-            check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
+            tools.procOps.run_proc(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
         elif self.binary_mode == 'singularity':
             if not tools.misc.is_exec('singularity'):
                 raise ToolMissingException('singularity binary not found. '
@@ -397,8 +399,8 @@ class PipelineTask(luigi.Task):
             os.environ['SINGULARITY_PULLFOLDER'] = self.work_dir
             os.environ['SINGULARITY_CACHEDIR'] = self.work_dir
             if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
-                check_call(['singularity', 'pull', '--name', 'cat.img',
-                            'docker://quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
+                tools.procOps.run_proc(['singularity', 'pull', '--name', 'cat.img',
+                                        'docker://quay.io/ucsc_cgl/cat:latest'])
 
     @staticmethod
     def get_databases(pipeline_args):

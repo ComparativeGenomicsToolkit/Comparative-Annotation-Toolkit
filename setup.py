@@ -21,8 +21,7 @@ setup(
         'bx-python>=0.7.1',
         'parasail',
         'bcbio-gff',
-        'biopython',
-        'cython'
+        'biopython'
     ],
     scripts=['programs/cat_to_ncbi_submit', 'programs/translate_gene_pred',
              'programs/validate_gff3', 'programs/cat_parse_ncbi_genbank',

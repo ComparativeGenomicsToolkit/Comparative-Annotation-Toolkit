@@ -18,7 +18,7 @@ def cmdLists(cmd):
     single command or a list of commands.
     """
     if os.environ.get('CAT_BINARY_MODE') == 'docker':
-        if isinstance(cmd[0],list):
+        if isinstance(cmd[0], list):
             docList = []
             for e in cmd:
                 docList.append(getDockerCommand('quay.io/ucsc_cgl/cat', e))
