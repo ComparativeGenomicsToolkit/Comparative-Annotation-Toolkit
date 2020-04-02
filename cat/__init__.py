@@ -20,6 +20,7 @@ from luigi.util import requires
 from toil.job import Job
 import pandas as pd
 from bx.intervals.cluster import ClusterTree
+from toil.lib.memoize import memoize
 
 import tools.bio
 import tools.fileOps
@@ -376,6 +377,7 @@ class PipelineTask(luigi.Task):
         pipeline_args = self.get_pipeline_args()
         return module.get_args(pipeline_args, **args)
 
+    @memoize
     def load_docker(self):
         """
         Download Docker or Singularity container, if applicable
@@ -400,6 +402,7 @@ class PipelineTask(luigi.Task):
             if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
                 subprocess.check_call(['singularity', 'pull', '--name', 'cat.img',
                                        'docker://quay.io/ucsc_cgl/cat:latest'])
+                assert os.path.exists(os.path.join(self.work_dir, 'cat.img'))
 
     @staticmethod
     def get_databases(pipeline_args):
