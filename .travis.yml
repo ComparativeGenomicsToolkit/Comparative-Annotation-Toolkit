@@ -2,8 +2,10 @@ os: linux
 
 language: generic
 
-python: "3.7"
+python: 3.7.1
 go: "1.11"
+
+dist: xenial
 
 services:
   - docker
@@ -26,6 +28,7 @@ addons:
       - libgpgme11-dev
       - libseccomp-dev
       - liblzo2-dev
+      - python3-dev
     update: true
 
 jobs:
