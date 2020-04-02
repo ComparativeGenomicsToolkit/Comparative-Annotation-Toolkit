@@ -139,6 +139,7 @@ class PipelineTask(luigi.Task):
     minNode = luigi.Parameter(default=None, significant=False)
     metrics = luigi.Parameter(default=None, significant=False)
     zone = luigi.Parameter(default=None, significant=False)
+    logLevel = luigi.ChoiceParameter(default="INFO", choices=["INFO", "DEBUG", "ERROR", "WARNING"], significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -543,7 +544,7 @@ class ToilTask(PipelineTask):
         parser = Job.Runner.getDefaultArgumentParser()
         namespace = parser.parse_args([''])  # empty jobStore attribute
         namespace.jobStore = None  # jobStore attribute will be updated per-batch
-        namespace.logLevel = self.log_level
+        namespace.logLevel = self.logLevel
         return namespace
 
 
@@ -641,7 +642,7 @@ class RunCat(PipelineWrapperTask):
 
     def requires(self):
         self.load_docker()
-        logger.setLevel(self.log_level)
+        logger.setLevel(self.logLevel)
         pipeline_args = self.get_pipeline_args()
         self.validate(pipeline_args)
         yield self.clone(PrepareFiles)
