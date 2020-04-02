@@ -69,3 +69,4 @@ jobs:
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
           --augustus --augustus-cgp --augustus-pb --assembly-hub --binary-mode singularity --log-level DEBUG
+          
