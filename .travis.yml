@@ -54,13 +54,11 @@ jobs:
           --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG
     - stage: test
       script:
-        - go --version
-        - which go
+        - sudo chmod u+x .travis/*.sh
+        - /bin/bash .travis/setup.sh
         - pyenv shell 3.7.1
         - pip install --upgrade pip
         - pip install cython wheel setuptools pycparser
-        - sudo chmod u+x .travis/*.sh
-        - /bin/bash .travis/setup.sh
         - pip install .
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
