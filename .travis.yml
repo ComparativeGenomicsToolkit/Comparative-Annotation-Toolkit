@@ -1,8 +1,12 @@
 sudo: required
 
-language: python
+language: go
 
-python: 3.7
+go:
+    - "1.11"
+
+python:
+    - "3.7"
 
 services:
   - docker
@@ -25,9 +29,6 @@ addons:
       - libgpgme11-dev
       - libseccomp-dev
       - liblzo2-dev
-  homebrew:
-    packages:
-      - squashfs
     update: true
 
 jobs:
@@ -52,9 +53,7 @@ jobs:
     - stage: test
       script:
         - set ex
-        - sudo chmod u+x .travis/*.sh
-        - /bin/bash .travis/setup.sh
-        - /bin/bash .travis/build.sh Singularity
+        - sudo apt install singularity-container
         - pip install .
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
