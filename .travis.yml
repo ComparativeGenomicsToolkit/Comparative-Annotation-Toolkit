@@ -43,18 +43,19 @@ jobs:
         - pip install --upgrade pip
         - pip install cython wheel setuptools pycparser
         - pip install .
-        - python -c "import toil; print(toil.__path__)"
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
-        - sed -i "s/maxDisk = self.physicalDisk/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxMemory = self.physicalMemory/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxDisk = self.physicalDisk/pass/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxMemory = self.physicalMemory/pass/g" $/opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
         - >
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
           --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG
     - stage: test
       script:
+        - go --version
+        - which go
         - pyenv shell 3.7.1
         - pip install --upgrade pip
         - pip install cython wheel setuptools pycparser
@@ -63,9 +64,9 @@ jobs:
         - pip install .
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
-        - sed -i "s/maxDisk = self.physicalDisk/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxMemory = self.physicalMemory/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxDisk = self.physicalDisk/pass/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxMemory = self.physicalMemory/pass/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
         - >
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
