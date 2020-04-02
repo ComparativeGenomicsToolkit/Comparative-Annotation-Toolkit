@@ -40,6 +40,7 @@ jobs:
     - stage: test
       script:
         - pyenv shell 3.7.1
+        - pip install cython
         - pip install .
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
@@ -53,6 +54,7 @@ jobs:
     - stage: test
       script:
         - pyenv shell 3.7.1
+        - pip install cython
         - sudo chmod u+x .travis/*.sh
         - /bin/bash .travis/setup.sh
         - pip install .
