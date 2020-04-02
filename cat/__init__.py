@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import json
+import subprocess
 from collections import OrderedDict
 from frozendict import frozendict
 from configobj import ConfigObj
@@ -388,7 +389,7 @@ class PipelineTask(luigi.Task):
                 raise ToolMissingException('docker binary not found. '
                                            'Either install it or use a different option for --binary-mode.')
             # Update docker container
-            tools.procOps.run_proc(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
+            subprocess.check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
         elif self.binary_mode == 'singularity':
             if not tools.misc.is_exec('singularity'):
                 raise ToolMissingException('singularity binary not found. '
@@ -397,8 +398,8 @@ class PipelineTask(luigi.Task):
             os.environ['SINGULARITY_CACHEDIR'] = self.work_dir
             tools.fileOps.ensure_dir(self.work_dir)
             if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
-                tools.procOps.run_proc(['singularity', 'pull', '--name', 'cat.img',
-                                        'docker://quay.io/ucsc_cgl/cat:latest'])
+                subprocess.check_call(['singularity', 'pull', '--name', 'cat.img',
+                                       'docker://quay.io/ucsc_cgl/cat:latest'])
 
     @staticmethod
     def get_databases(pipeline_args):
