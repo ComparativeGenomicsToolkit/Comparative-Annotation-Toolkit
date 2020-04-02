@@ -3,7 +3,7 @@
 sudo sed -i -e 's/^Defaults\tsecure_path.*$//' /etc/sudoers
 
 echo "GO Version:"
-go --version
+go version
 
 echo "Python Version:"
 python --version

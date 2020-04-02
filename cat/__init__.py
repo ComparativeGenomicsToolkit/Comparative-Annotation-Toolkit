@@ -641,7 +641,7 @@ class RunCat(PipelineWrapperTask):
 
     def requires(self):
         self.load_docker()
-        logger.setLevel(self.logLevel)
+        logger.setLevel(self.log_level)
         pipeline_args = self.get_pipeline_args()
         self.validate(pipeline_args)
         yield self.clone(PrepareFiles)
