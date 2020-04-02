@@ -1,12 +1,35 @@
 sudo: required
+
 language: python
+
 python: 3.7
+
 services:
   - docker
 stages:
   - name: docker-build
     if: branch = master
   - name: test
+
+addons:
+  apt:
+    packages:
+      - flawfinder
+      - squashfs-tools
+      - uuid-dev
+      - libuuid1
+      - libffi-dev
+      - libssl-dev
+      - libssl1.0.0
+      - libarchive-dev
+      - libgpgme11-dev
+      - libseccomp-dev
+      - liblzo2-dev
+  homebrew:
+    packages:
+      - squashfs
+    update: true
+
 jobs:
   include:
     - stage: docker-build
@@ -16,18 +39,29 @@ jobs:
     - stage: test
       script:
         - set ex
-        # Enable logging
-        - "sed -i 's/level: .*/level: DEBUG/g' logging.cfg"
-        - sudo apt-get -qq update
-        - sudo apt-get install liblzo2-dev
         - pip install .
         # Have to screw with toil's settings to get the jobs to
         # actually run properly on such a small VM.
         - sed -i "s/maxDisk = self.physicalDisk/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
         - sed -i "s/maxMemory = self.physicalMemory/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
-        # Just go through the test set and make sure it doesn't crash. It's not much, but it's better than nothing.
         - >
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
-          --augustus --augustus-cgp --augustus-pb --assembly-hub
+          --augustus --augustus-cgp --augustus-pb --assembly-hub --logLevel DEBUG
+    - stage: test
+      script:
+        - set ex
+        - sudo chmod u+x .travis/*.sh
+        - /bin/bash .travis/setup.sh
+        - /bin/bash .travis/build.sh Singularity
+        - pip install .
+        # Have to screw with toil's settings to get the jobs to
+        # actually run properly on such a small VM.
+        - sed -i "s/maxDisk = self.physicalDisk/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
+        - sed -i "s/maxMemory = self.physicalMemory/pass/g" $VIRTUAL_ENV/lib/*/site-packages/toil/batchSystems/singleMachine.py
+        - >
+          luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
+          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
+          --augustus --augustus-cgp --augustus-pb --assembly-hub --binary-mode singularity

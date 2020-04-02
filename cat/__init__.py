@@ -52,6 +52,7 @@ from .parent_gene_assignment import assign_parents
 from .exceptions import *
 
 logger = logging.getLogger('cat')
+logger.setLevel('INFO')
 
 
 ###
@@ -138,6 +139,7 @@ class PipelineTask(luigi.Task):
     minNode = luigi.Parameter(default=None, significant=False)
     metrics = luigi.Parameter(default=None, significant=False)
     zone = luigi.Parameter(default=None, significant=False)
+    logLevel = luigi.ChoiceParameter(default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -517,8 +519,6 @@ class ToilTask(PipelineTask):
                         toil_args.restart = True
                 except OSError:
                     toil_args.restart = True
-                except IOError:
-                    shutil.rmtree(job_store)
 
         if tools.misc.running_in_container():
             # Caching doesn't work in containers, because the
@@ -641,6 +641,7 @@ class RunCat(PipelineWrapperTask):
 
     def requires(self):
         self.load_docker()
+        logger.setLevel(self.logLevel)
         pipeline_args = self.get_pipeline_args()
         self.validate(pipeline_args)
         yield self.clone(PrepareFiles)

@@ -9,7 +9,7 @@ import subprocess
 import logging
 import time
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('cat')
 
 
 def cmdLists(cmd):
@@ -236,7 +236,7 @@ def singularify_arg(arg, singularity_mount_point='/mnt'):
         # '/' of the outside to '/mnt' of the container
         # (os.path.join() cannot be used to prepend
         # like this)
-        arg = os.path.join(singularity_mount_point, + os.path.abspath(arg))
+        arg = str(singularity_mount_point) + str(os.path.abspath(arg))
 
     return arg
 
