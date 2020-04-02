@@ -12,13 +12,11 @@ import json
 from collections import OrderedDict
 from frozendict import frozendict
 from configobj import ConfigObj
-from subprocess import check_call, DEVNULL
 
 import luigi
 import luigi.contrib.sqla
 from luigi.util import requires
 from toil.job import Job
-from toil.lib.memoize import memoize
 import pandas as pd
 from bx.intervals.cluster import ClusterTree
 
@@ -377,7 +375,6 @@ class PipelineTask(luigi.Task):
         pipeline_args = self.get_pipeline_args()
         return module.get_args(pipeline_args, **args)
 
-    @memoize
     def load_docker(self):
         """
         Download Docker or Singularity container, if applicable
@@ -398,6 +395,7 @@ class PipelineTask(luigi.Task):
                                            'Either install it or use a different option for --binary-mode.')
             os.environ['SINGULARITY_PULLFOLDER'] = self.work_dir
             os.environ['SINGULARITY_CACHEDIR'] = self.work_dir
+            tools.fileOps.ensure_dir(self.work_dir)
             if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
                 tools.procOps.run_proc(['singularity', 'pull', '--name', 'cat.img',
                                         'docker://quay.io/ucsc_cgl/cat:latest'])
