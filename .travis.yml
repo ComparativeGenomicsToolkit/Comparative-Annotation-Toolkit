@@ -51,8 +51,8 @@ jobs:
       script:
         - set ex
         - sudo add-apt-repository ppa:gophers/archive
-        - sudo apt update
-        - sudo apt install golang-1.11-go
+        - sudo apt-get update -qq -y
+        - sudo apt-get install -qq -y golang-1.11-go
         - >
           export VERSION=3.5.2 && # adjust this as necessary
           wget https://github.com/sylabs/singularity/releases/download/v${VERSION}/singularity-${VERSION}.tar.gz &&
