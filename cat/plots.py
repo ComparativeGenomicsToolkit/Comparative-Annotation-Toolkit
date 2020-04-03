@@ -21,7 +21,7 @@ import tools.psl
 import tools.sqlInterface
 import tools.nameConversions
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('cat')
 
 # suppress all warnings to make logging cleaner. The only warnings should be the chained assignment warning from pandas
 # as well as the bottom == top when plots have no data.

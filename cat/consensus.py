@@ -37,7 +37,7 @@ import tools.nameConversions
 import tools.procOps
 from tools.defaultOrderedDict import DefaultOrderedDict
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('cat')
 
 id_template = '{genome:.10}_{tag_type}{unique_id:07d}'
 

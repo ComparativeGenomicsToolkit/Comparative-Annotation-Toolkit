@@ -26,7 +26,7 @@ import tools.transcripts
 import tools.bio
 from .exceptions import UserException
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('cat')
 
 
 def hints_db(hints_args, toil_options):
@@ -160,7 +160,8 @@ def namesort_bam(job, bam_file_id, bai_file_id, reference_subset, disk_usage, nu
     job.fileStore.readGlobalFile(bai_file_id, bam_path + '.bai')
     name_sorted = tools.fileOps.get_tmp_toil_file(suffix='name_sorted.bam')
     cmd = [['samtools', 'view', '-b', bam_path] + list(reference_subset),
-           ['sambamba', 'sort', '-t', '4', '-m', '15G', '-o', '/dev/stdout', '-n', '/dev/stdin']]
+           ['sambamba', 'sort', '--tmpdir={}'.format(job.fileStore.getLocalTempDir()),
+            '-t', '4', '-m', '15G', '-o', '/dev/stdout', '-n', '/dev/stdin']]
     tools.procOps.run_proc(cmd, stdout=name_sorted)
     ns_handle = pysam.Samfile(name_sorted)
     # this group may come up empty -- check to see if we have at least one mapped read

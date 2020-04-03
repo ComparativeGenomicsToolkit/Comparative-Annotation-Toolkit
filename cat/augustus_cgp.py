@@ -294,15 +294,21 @@ def join_genes(job, gff_chunks):
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
     useful_lines = 0
+    files = []
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
         for (chrom, start, chunksize), chunk in gff_chunks.items():
             local_path = job.fileStore.readGlobalFile(chunk)
-            fofn_handle.write(local_path + '\n')
             raw_handle.write('## BEGIN CHUNK chrom: {} start: {} chunksize: {}\n'.format(chrom, start, chunksize))
             for line in open(local_path):
                 if not line.startswith('#'):
                     useful_lines += 1
                 raw_handle.write(line)
+            if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                local_path = tools.procOps.singularify_arg(local_path)
+                files.append(local_path)
+            else:
+                files.append(os.path.basename(local_path))
+            fofn_handle.write(local_path + '\n')
 
     # make sure CGP didn't fail entirely
     if useful_lines == 0:
@@ -312,10 +318,17 @@ def join_genes(job, gff_chunks):
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
-    cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
-           ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
-           ['sed', ' s/jg/augCGP-/g']]
-    tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    # TODO: figure out why this fails on certain filesystems
+    try:
+        cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
+               ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+               ['sed', ' s/jg/augCGP-/g']]
+        tools.procOps.run_proc(cmd, stdout=join_genes_file)
+    except:
+        cmd = [['joingenes', '-g', ','.join(files), '-o', '/dev/stdout'],
+               ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
+               ['sed', ' s/jg/augCGP-/g']]
+        tools.procOps.run_proc(cmd, stdout=join_genes_file)
 
     # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
     cmd = ['gtfToGenePred', '-genePredExt', join_genes_file, join_genes_gp]

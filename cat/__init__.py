@@ -9,10 +9,10 @@ import logging
 import os
 import shutil
 import json
+import subprocess
 from collections import OrderedDict
 from frozendict import frozendict
 from configobj import ConfigObj
-from subprocess import check_call, DEVNULL
 
 import luigi
 import luigi.contrib.sqla
@@ -20,6 +20,7 @@ from luigi.util import requires
 from toil.job import Job
 import pandas as pd
 from bx.intervals.cluster import ClusterTree
+from toil.lib.memoize import memoize
 
 import tools.bio
 import tools.fileOps
@@ -52,6 +53,7 @@ from .parent_gene_assignment import assign_parents
 from .exceptions import *
 
 logger = logging.getLogger('cat')
+logger.setLevel('INFO')
 
 
 ###
@@ -138,6 +140,7 @@ class PipelineTask(luigi.Task):
     minNode = luigi.Parameter(default=None, significant=False)
     metrics = luigi.Parameter(default=None, significant=False)
     zone = luigi.Parameter(default=None, significant=False)
+    logLevel = luigi.ChoiceParameter(default="INFO", choices=["INFO", "DEBUG", "ERROR", "WARNING"], significant=False)
 
     def __repr__(self):
         """override the repr to make logging cleaner"""
@@ -374,6 +377,7 @@ class PipelineTask(luigi.Task):
         pipeline_args = self.get_pipeline_args()
         return module.get_args(pipeline_args, **args)
 
+    @memoize
     def load_docker(self):
         """
         Download Docker or Singularity container, if applicable
@@ -387,16 +391,18 @@ class PipelineTask(luigi.Task):
                 raise ToolMissingException('docker binary not found. '
                                            'Either install it or use a different option for --binary-mode.')
             # Update docker container
-            check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
+            subprocess.check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
         elif self.binary_mode == 'singularity':
             if not tools.misc.is_exec('singularity'):
                 raise ToolMissingException('singularity binary not found. '
                                            'Either install it or use a different option for --binary-mode.')
-            os.environ['SINGULARITY_PULLFOLDER'] = self.work_dir
-            os.environ['SINGULARITY_CACHEDIR'] = self.work_dir
+            os.environ['SINGULARITY_PULLFOLDER'] = os.path.abspath(self.work_dir)
+            os.environ['SINGULARITY_CACHEDIR'] = os.path.abspath(self.work_dir)
+            tools.fileOps.ensure_dir(self.work_dir)
             if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
-                check_call(['singularity', 'pull', '--name', 'cat.img',
-                            'docker://quay.io/ucsc_cgl/cat:latest'], stdout=DEVNULL, stderr=DEVNULL)
+                subprocess.check_call(['singularity', 'pull', '--name', 'cat.img',
+                                       'docker://quay.io/ucsc_cgl/cat:latest'])
+                assert os.path.exists(os.path.join(self.work_dir, 'cat.img'))
 
     @staticmethod
     def get_databases(pipeline_args):
@@ -517,8 +523,6 @@ class ToilTask(PipelineTask):
                         toil_args.restart = True
                 except OSError:
                     toil_args.restart = True
-                except IOError:
-                    shutil.rmtree(job_store)
 
         if tools.misc.running_in_container():
             # Caching doesn't work in containers, because the
@@ -544,6 +548,7 @@ class ToilTask(PipelineTask):
         parser = Job.Runner.getDefaultArgumentParser()
         namespace = parser.parse_args([''])  # empty jobStore attribute
         namespace.jobStore = None  # jobStore attribute will be updated per-batch
+        namespace.logLevel = self.logLevel
         return namespace
 
 
@@ -641,6 +646,7 @@ class RunCat(PipelineWrapperTask):
 
     def requires(self):
         self.load_docker()
+        logger.setLevel(self.logLevel)
         pipeline_args = self.get_pipeline_args()
         self.validate(pipeline_args)
         yield self.clone(PrepareFiles)

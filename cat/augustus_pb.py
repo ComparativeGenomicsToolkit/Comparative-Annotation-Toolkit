@@ -149,10 +149,14 @@ def join_genes(job, gff_chunks):
     with open(raw_gtf_file, 'w') as raw_handle, open(raw_gtf_fofn, 'w') as fofn_handle:
         for chunk in gff_chunks:
             local_path = job.fileStore.readGlobalFile(chunk)
-            files.append(os.path.basename(local_path))
-            fofn_handle.write(local_path + '\n')
             for line in open(local_path):
                 raw_handle.write(line)
+            if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                local_path = tools.procOps.singularify_arg(local_path)
+                files.append(local_path)
+            else:
+                files.append(os.path.basename(local_path))
+            fofn_handle.write(local_path + '\n')
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()

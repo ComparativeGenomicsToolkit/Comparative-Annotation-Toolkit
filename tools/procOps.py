@@ -9,7 +9,7 @@ import subprocess
 import logging
 import time
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('cat')
 
 
 def cmdLists(cmd):
@@ -18,7 +18,7 @@ def cmdLists(cmd):
     single command or a list of commands.
     """
     if os.environ.get('CAT_BINARY_MODE') == 'docker':
-        if isinstance(cmd[0],list):
+        if isinstance(cmd[0], list):
             docList = []
             for e in cmd:
                 docList.append(getDockerCommand('quay.io/ucsc_cgl/cat', e))
@@ -26,7 +26,8 @@ def cmdLists(cmd):
         else:
             return getDockerCommand('quay.io/ucsc_cgl/cat', cmd)
     elif os.environ.get('CAT_BINARY_MODE') == 'singularity':
-        img = os.path.join(os.environ.get('SINGULARITY_PULLFOLDER'), 'cat.img')
+        img = os.path.join(os.environ['SINGULARITY_PULLFOLDER'], 'cat.img')
+        assert os.path.exists(img)
         if isinstance(cmd[0], list):
             return list([get_singularity_command(img, c) for c in cmd])
         else:
@@ -236,7 +237,7 @@ def singularify_arg(arg, singularity_mount_point='/mnt'):
         # '/' of the outside to '/mnt' of the container
         # (os.path.join() cannot be used to prepend
         # like this)
-        arg = os.path.join(singularity_mount_point, + os.path.abspath(arg))
+        arg = str(singularity_mount_point) + str(os.path.abspath(arg))
 
     return arg
 
