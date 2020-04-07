@@ -4,15 +4,15 @@
           for cross-species comparison of gene sets. HomGeneMapping uses
           the intron hints from the database to retrieve on a per-transcript
           basis information, which introns have RNA-Seq splice junctions (SJ) supported in which of the
-          input genomes. It essentially adds the "hgm_info" string to the last column of the gtf, 
+          input genomes. It essentially adds the "hgm_info" string to the last column of the gtf,
 
           hgm_info "16E-27,0E-13,1,2E-13,3E-1,4,5,6E-48,7E-30,8E-1,9,10E-1,11,12E-19,13E-27,14E-46,15E-6,17E-4";
-          
+
           that encodes genome name, type of evidence and multiplicity, e.g.
           in the example above, the intron has RNA-Seq SJ support in species 16 (with mult=26),
           in species 0 (with mult=13), in species 2 (with mult=13), in species 3 (with mult=1), etc.
           The header in the gtf, gives a list of species numbers and corresponding names, e.g.
-          
+
           # 0     129S1_SvImJ
           # 1     AKR_J
           # 2     A_J
@@ -45,40 +45,41 @@ def hgm(args):
     tools.fileOps.ensure_dir(args.gtf_out_dir)
     # keep track of the GTFs we are generating to remove later
     supplementary_gffs = []
+    gtf_fofn = os.path.join(args.gtf_out_dir, 'fofn')
+    temp_dir = os.path.join(args.gtf_out_dir, 'tmp')
 
-    with tools.fileOps.TemporaryFilePath() as gtf_fofn, tools.fileOps.TemporaryDirectoryPath() as temp_dir:
-        with open(gtf_fofn, 'w') as outf:
-            for genome, gtf in args.in_gtf.iteritems():
-                if genome != args.ref_genome:
-                    supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
-                else:
-                    supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
-                if os.environ.get('CAT_BINARY_MODE') == 'singularity':
-                    tools.fileOps.print_row(outf, [genome] + map(tools.procOps.singularify_arg, [gtf, supplementary_gff]))
-                else:
-                    tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
-                supplementary_gffs.append(supplementary_gff)
-            if args.ref_genome not in args.in_gtf:  # we are not running CGP, and so have no GTF for the reference
-                dummy_gtf = tools.fileOps.get_tmp_file()
-                tools.fileOps.touch(dummy_gtf)
-                supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
-                                                             args.annotation_gp)
-                if os.environ.get('CAT_BINARY_MODE') == 'singularity':
-                    tools.fileOps.print_row(outf, [args.ref_genome] + map(tools.procOps.singularify_arg, [dummy_gtf, supplementary_gff]))
-                else:
-                    tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
-                supplementary_gffs.append(supplementary_gff)
+    with open(gtf_fofn, 'w') as outf:
+        for genome, gtf in args.in_gtf.iteritems():
+            if genome != args.ref_genome:
+                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome)
             else:
-                dummy_gtf = None
+                supplementary_gff = create_supplementary_gff(args.hints_db, gtf, genome, args.annotation_gp)
+            if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                tools.fileOps.print_row(outf, [genome] + map(tools.procOps.singularify_arg, [gtf, supplementary_gff]))
+            else:
+                tools.fileOps.print_row(outf, [genome, gtf, supplementary_gff])
+            supplementary_gffs.append(supplementary_gff)
+        if args.ref_genome not in args.in_gtf:  # we are not running CGP, and so have no GTF for the reference
+            dummy_gtf = tools.fileOps.get_tmp_file()
+            tools.fileOps.touch(dummy_gtf)
+            supplementary_gff = create_supplementary_gff(args.hints_db, args.annotation_gtf, args.ref_genome,
+                                                         args.annotation_gp)
+            if os.environ.get('CAT_BINARY_MODE') == 'singularity':
+                tools.fileOps.print_row(outf, [args.ref_genome] + map(tools.procOps.singularify_arg, [dummy_gtf, supplementary_gff]))
+            else:
+                tools.fileOps.print_row(outf, [args.ref_genome, dummy_gtf, supplementary_gff])
+            supplementary_gffs.append(supplementary_gff)
+        else:
+            dummy_gtf = None
 
-        cmd = ['homGeneMapping',
-               '--halfile={}'.format(args.hal),
-               '--dbaccess={}'.format(args.hints_db),
-               '--gtfs={}'.format(gtf_fofn),
-               '--outdir={}'.format(args.gtf_out_dir),
-               '--tmpdir={}'.format(temp_dir),
-               '--cpu={}'.format(args.hgm_cpu)]
-        tools.procOps.run_proc(cmd, stdout='/dev/null')
+    cmd = ['homGeneMapping',
+           '--halfile={}'.format(args.hal),
+           '--dbaccess={}'.format(args.hints_db),
+           '--gtfs={}'.format(gtf_fofn),
+           '--outdir={}'.format(args.gtf_out_dir),
+           '--tmpdir={}'.format(temp_dir),
+           '--cpu={}'.format(args.hgm_cpu)]
+    tools.procOps.run_proc(cmd, stdout='/dev/null')
 
     # cleanup
     for gff in supplementary_gffs:
