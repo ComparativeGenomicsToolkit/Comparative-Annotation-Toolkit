@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+
+"""
+This tool tries to massage a GenBank GFF3. Current features:
+
+1. Moves biotype from gene level to children.
+2. Makes transcript_id and transcript_id unique, and based off the gene_id
+"""
+
+import argparse
+from BCBio import GFF
+from collections import OrderedDict
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input_gff3', help='GenBank GFF3 file')
+    parser.add_argument('output_gff3', help='Output GFF3')
+    return parser.parse_args()
+
+
+def add_tags_to_parent(gene_feature):
+    # top level feature is always gene
+    try:
+        gene_feature.qualifiers['gene_name'] = gene_feature.qualifiers['gene']
+    except KeyError:
+        raise KeyError(gene_feature)
+    gene_feature.qualifiers['gene_id'] = gene_feature.qualifiers['gene']
+    if gene_feature.type == 'pseudogene':
+        # pseudogene lacks tx feature
+        gene_feature.qualifiers['transcript_id'] = gene_feature.qualifiers['gene_id']
+        gene_feature.qualifiers['transcript_name'] = gene_feature.qualifiers['gene_id']
+        gene_feature.qualifiers['transcript_biotype'] = gene_feature.qualifiers['gene_biotype']
+
+
+def add_tags_to_feature(feature, gene_feature):
+    feature.qualifiers['gene_name'] = gene_feature.qualifiers['gene_name']
+    feature.qualifiers['gene_id'] = gene_feature.qualifiers['gene_id']
+    feature.qualifiers['gene_biotype'] = gene_feature.qualifiers['gene_biotype']
+    if 'transcript_id' in gene_feature.qualifiers:
+        feature.qualifiers['transcript_id'] = gene_feature.qualifiers['transcript_id']
+        feature.qualifiers['transcript_name'] = gene_feature.qualifiers['transcript_name']
+        feature.qualifiers['transcript_biotype'] = gene_feature.qualifiers['gene_biotype']
+    else:
+        feature.qualifiers['transcript_id'] = [feature.qualifiers['ID'][0].replace('ID-', '')]
+        feature.qualifiers['transcript_name'] = [feature.qualifiers['ID'][0].replace('ID-', '')]
+        feature.qualifiers['transcript_biotype'] = gene_feature.qualifiers['gene_biotype']
+
+
+def construct_new_qualifiers(feature):
+    new_qualifiers = OrderedDict()
+    for key, val in feature.qualifiers.items():
+        # no upper case keys unless it is ID or Parent or Name
+        if key not in ['ID', 'Parent', 'Name']:
+            key = key.lower()
+        # collapse to a single item
+        # replace all semicolons
+        if len(val) > 1:
+            val = [' '.join([x.replace(';', '%3B') for x in val])]
+        new_qualifiers[key] = val
+    # clean up and make parseable
+    for key, val in new_qualifiers.items():
+        if sum(len(x) for x in val) == 0:
+            new_qualifiers[key] = 'True'
+    return new_qualifiers
+
+
+def feature_traversal(feature):
+    yield feature
+    for sub_feature in feature.sub_features:
+        yield from feature_traversal(sub_feature)
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    records = list(GFF.parse(args.input_gff3))
+    for seqrecord in records:
+        for parent_feature in seqrecord.features:
+            if parent_feature.type not in {'gene', 'pseudogene'}:
+                continue
+            add_tags_to_parent(parent_feature)
+            for feature in feature_traversal(parent_feature):
+                if feature == parent_feature:
+                    continue
+                try:
+                    add_tags_to_feature(feature, parent_feature)
+                except KeyError:
+                    assert False, feature.qualifiers
+                new_qualifiers = construct_new_qualifiers(feature)
+                feature.qualifiers = new_qualifiers
+
+    with open(args.output_gff3, 'w') as fh:
+        GFF.write(records, fh)
