@@ -317,7 +317,10 @@ def tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
     for psl in psl_iter:
         # this psl is target-referenced
         ref_tx = ref_tx_dict[psl.t_name]
-        tx = tx_dict[psl.q_name]
+        try:
+            tx = tx_dict[psl.q_name]
+        except KeyError:
+            continue
         biotype = tx_biotype_map[psl.t_name]
         yield ref_tx, tx, psl, biotype
 
