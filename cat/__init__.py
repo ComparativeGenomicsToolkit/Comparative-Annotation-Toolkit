@@ -3184,7 +3184,7 @@ defaultIsClosed 0
 '''
 
 
-snake_composite = '''track hubCentral
+snake_composite = '''track cactus
 compositeTrack on
 shortLabel Cactus
 longLabel Cactus Alignment Tracks
@@ -3199,11 +3199,11 @@ centerLabelsDense on
 visibility full
 type bigBed 3
 
-    track hubCentralAlignments
+    track cactusAlignments
     shortLabel Alignments
     view Alignments
     visibility full
-    subTrack hubCentral
+    subTrack cactus
 
 '''
 
@@ -3212,7 +3212,7 @@ snake_template = '''        track snake{genome}
         shortLabel {genome}
         otherSpecies {genome}
         visibility {visibility}
-        parent hubCentralAlignments off
+        parent cactusAlignments off
         priority 3
         bigDataUrl {hal_path}
         type halSnake
