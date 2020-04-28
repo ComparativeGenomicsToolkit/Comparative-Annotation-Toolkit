@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+import argparse
+from tools.fileOps import TemporaryFilePath, print_row
+from tools.transcripts import gene_pred_iterator, group_transcripts_by_name2
+from tools.procOps import run_proc
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('cupcake_gff', help='Cupcake GFF file')
+    parser.add_argument('gff3', help='Output GFF3')
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    with TemporaryFilePath() as tmp_gp:
+        cmd = ['gtfToGenePred', '-genePredExt', args.cupcake_gff, tmp_gp]
+        run_proc(cmd)
+        d = group_transcripts_by_name2(gene_pred_iterator(tmp_gp))
+    with open(args.gff3, "w") as fh:
+        fh.write('##gff-version 3\n')
+        for gene_id, tx_list in d.items():
+            for tx in tx_list:
+                attrs = {'transcript_id': tx.name, 'gene_id': gene_id, 'gene_type': 'IsoSeq_Cupcake',
+                         'transcript_type': 'IsoSeq_Cupcake'}
+                attrs['gene_name'] = attrs['gene_id']
+                attrs['transcript_name'] = attrs['transcript_id']
+                attrs['ID'] = attrs['transcript_id']
+                # first write transcript line
+                tx_l = [tx.chromosome, 'PacBio', 'transcript', tx.start + 1, tx.stop, '.', tx.strand, '.',
+                        ';'.join(['='.join([x, y]) for x, y in attrs.items()])]
+                print_row(fh, tx_l)
+                # exon lines
+                for e in tx.exon_intervals:
+                    attrs['Parent'] = attrs['transcript_id']
+                    attrs['ID'] = 'exon:{}'.format(attrs['transcript_id'])
+                    ex_l = [e.chromosome, 'PacBio', 'exon', e.start + 1, e.stop, '.', e.strand, '.',
+                            ';'.join(['='.join([x, y]) for x, y in attrs.items()])]
+                    print_row(fh, ex_l)
