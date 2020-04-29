@@ -39,10 +39,11 @@ def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
         tx_name = d['transcript_name']
         extra_tags = ';'.join(['{}={}'.format(x, y.replace(';', '%3B').replace('=', '%3D'))
                                for x, y in d.items() if x not in reserved_keys])
-        try:
-            misc.parse_gff_attr_line(extra_tags)
-        except:
-            raise Exception(f'Error parsing extra tags in input GFF3 {extra_tags}')
+        if len(extra_tags) > 0:
+            try:
+                misc.parse_gff_attr_line(extra_tags)
+            except:
+                raise Exception(f'Error parsing extra tags in input GFF3 {extra_tags}')
         if is_external_reference is True:
             # hack to fix names
             gene_id = f'exRef-{gene_id}'
