@@ -29,8 +29,8 @@ def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
     results = []
     for tx_id, gene_id in tx_name_map.items():
         d = attrs_dict[tx_id]
-        gene_biotype = d['gene_biotype']
-        tx_biotype = d['transcript_biotype']
+        gene_biotype = d.get('gene_biotype', d['gene_type'])
+        tx_biotype = d.get('transcript_biotype', d['transcript_type'])
         gene_name = d['gene_name']
         gene_id = d['gene_id']
         tx_id = d['transcript_id']
