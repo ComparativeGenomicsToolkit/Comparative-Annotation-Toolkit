@@ -7,6 +7,8 @@ from . import misc
 
 reserved_keys = ['gene_biotype',
                  'transcript_biotype',
+                 'gene_type',
+                 'transcript_type',
                  'gene_name',
                  'gene_id',
                  'transcript_id',
