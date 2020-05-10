@@ -66,13 +66,12 @@ def feature_traversal(feature):
 
 if __name__ == '__main__':
     args = parse_args()
-    lt_counts = Counter()
     records = list(GFF.parse(args.input_gff3))
     for seqrecord in records:
         for parent_feature in seqrecord.features:
             for feature in feature_traversal(parent_feature):
                 try:
-                    add_tags_to_feature(feature, lt_counts)
+                    add_tags_to_feature(feature)
                 except KeyError:
                     assert False, feature.qualifiers
                 new_qualifiers = construct_new_qualifiers(feature)
