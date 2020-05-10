@@ -911,7 +911,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         # don't include the support vectors in the string, they will be placed in their respective places
         attrs_str = ['='.join([key, str(val).replace('=', '_')]) for key, val in sorted(attrs.items()) if 'support' not in key]
         # explicitly escape any semicolons that may exist in the input strings
-        attrs_str = [x.replace(';', '%3B') for x in attrs_str]
+        attrs_str = [x.replace(';', '%3B').replace('=', '%3D') for x in attrs_str]
         return score, ';'.join(attrs_str)
 
     def find_feature_support(attrs, feature, i):
@@ -929,7 +929,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             for attrs in attrs_list:
                 tx_modes.update(attrs['transcript_modes'].split(','))
             return ','.join(tx_modes)
-        
+
         intervals = set()
         for tx in tx_objs:
             intervals.update(tx.exon_intervals)
