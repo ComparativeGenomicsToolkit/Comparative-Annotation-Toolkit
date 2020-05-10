@@ -33,7 +33,7 @@ def add_tags_to_feature(feature):
         gene_biotype = transcript_biotype = ['protein_coding']
     elif feature.type == 'primary_transcript':
         gene_biotype = ['miRNA']
-        transcript_biotype = feature.type
+        transcript_biotype = [feature.type]
     else:
         gene_biotype = transcript_biotype = [feature.type]
     feature.qualifiers['gene_biotype'] = gene_biotype
