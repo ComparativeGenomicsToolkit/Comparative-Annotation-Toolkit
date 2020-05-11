@@ -4,6 +4,9 @@ import argparse
 from BCBio import GFF
 from collections import Counter, OrderedDict
 
+noid_count = 1
+global noid_count
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -18,7 +21,14 @@ def add_tags_to_feature(feature):
                    'J_gene_segment', 'V_gene_segment',
                    'primary_transcript', 'miRNA', 'transcript', 'CDS', 'exon', 'gene']:
         return
-    ids = dict([x.split(':', 1) for x in feature.qualifiers.get('dbxref', feature.qualifiers['Dbxref'])])
+    if 'dbxref' in feature.qualifiers:
+        xref = feature.qualifiers['dbxref']
+    elif 'Dbxref' in feature.qualifiers:
+        xref = feature.qualifiers['Dbxref']
+    else:  # hacky fix
+        ids = {'GeneID': 'NoID-{}'.format(noid_count)}
+        noid_count += 1
+    ids = dict([x.split(':', 1) for x in xref])
     if feature.type == 'gene':
         feature.qualifiers['gene_id'] = [ids['GeneID']]
         return
