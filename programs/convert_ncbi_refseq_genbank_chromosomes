@@ -18,7 +18,7 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    df = pd.read_csv(args.conversion_table, sep='\t', comment='#', na_rep='na', header=None)
+    df = pd.read_csv(args.conversion_table, sep='\t', comment='#', na_values='na', header=None)
     df.columns = header
     if args.refseq_to_genbank:
         m = dict(zip(df['RefSeq-Accn'], df['GenBank-Accn']))
