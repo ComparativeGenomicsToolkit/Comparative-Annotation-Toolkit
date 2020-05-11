@@ -20,15 +20,17 @@ if __name__ == "__main__":
     args = parse_args()
     df = pd.read_csv(args.conversion_table, sep='\t', comment='#', na_values='na', header=None)
     df.columns = header
+    filt_df = df[~(df['RefSeq-Accn'].isnull()) & ~(df['GenBank-Accn'].isnull())]
+    print("Threw out {} contigs due to no mapping".format(len(df) - len(filt_df)))
     if args.refseq_to_genbank:
-        m = dict(zip(df['RefSeq-Accn'], df['GenBank-Accn']))
+        m = dict(zip(map(str, filt_df['RefSeq-Accn']), map(str, filt_df['GenBank-Accn'])))
     else:
-        m = dict(zip(df['GenBank-Accn'], df['RefSeq-Accn']))
+        m = dict(zip(map(str, filt_df['GenBank-Accn']), map(str, filt_df['RefSeq-Accn'])))
     with open(args.output_gff3, 'w') as fh:
         for row in open(args.input_gff3):
-            if row.startswith('##gff'):
-                fh.write(row)
-            elif row.startswith('#'):
+            if row.startswith('#'):
+                if row.startswith('##gff'):
+                    fh.write(row)
                 continue
             row = row.split('\t')
             if row[0] in m:
