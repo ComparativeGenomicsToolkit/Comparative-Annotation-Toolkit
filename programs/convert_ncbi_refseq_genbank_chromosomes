@@ -12,13 +12,13 @@ def parse_args():
     parser.add_argument('input_gff3', help='RefSeq GFF3 file')
     parser.add_argument('conversion_table', help='Conversion table')
     parser.add_argument('output_gff3', help='Output GFF3')
-    parser.add_argument('--refseq-to-genbank', type=bool, default=True, help='Set this to flip direction to RefSeq -> GenBank')
+    parser.add_argument('--refseq-to-genbank', action='store_true', help='Set this to flip direction to RefSeq -> GenBank')
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-    df = pd.read_csv(args.conversion_table, sep='\t', comment='#')
+    df = pd.read_csv(args.conversion_table, sep='\t', comment='#', na_rep='na', header=None)
     df.columns = header
     if args.refseq_to_genbank:
         m = dict(zip(df['RefSeq-Accn'], df['GenBank-Accn']))
