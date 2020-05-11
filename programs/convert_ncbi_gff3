@@ -18,7 +18,7 @@ def add_tags_to_feature(feature):
                    'J_gene_segment', 'V_gene_segment',
                    'primary_transcript', 'miRNA', 'transcript', 'CDS', 'exon', 'gene']:
         return
-    ids = dict([x.split(':') for x in feature.qualifiers.get('dbxref', feature.qualifiers['Dbxref'])])
+    ids = dict([x.split(':', 1) for x in feature.qualifiers.get('dbxref', feature.qualifiers['Dbxref'])])
     if feature.type == 'gene':
         feature.qualifiers['gene_id'] = [ids['GeneID']]
         return
