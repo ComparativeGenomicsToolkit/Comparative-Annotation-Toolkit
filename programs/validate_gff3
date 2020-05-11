@@ -27,39 +27,39 @@ if __name__ == '__main__':
         for l in open(gp):
             l = l.split()
             c[l[0]] += 1
-        duplicates = {x for x, y in c.iteritems() if y > 1}
+        duplicates = {x for x, y in c.items() if y > 1}
         assert len(duplicates) == 0, 'Found {} duplicate transcript IDs: {}'.format(len(duplicates), '\n'.join(duplicates))
         df = tools.gff3.parse_gff3(attrs, gp)
         tx_dict = tools.transcripts.get_gene_pred_dict(gp)
     assert len(tx_dict) == len(df)
-    exons = {len(x.exon_intervals) for x in tx_dict.itervalues()}
+    exons = {len(x.exon_intervals) for x in tx_dict.values()}
     if len(exons) == 1:
-        print 'WARNING: no multi-exonic transcripts found'
-    assert tx_dict.viewkeys() == set(df.index)
-    genes = {x.name2 for x in tx_dict.itervalues()}
+        print('WARNING: no multi-exonic transcripts found')
+    assert tx_dict.keys() == set(df.index)
+    genes = {x.name2 for x in tx_dict.values()}
     assert genes == set(df.GeneId)
-    print 'Found {} transcripts and {} genes'.format(len(tx_dict), len(genes))
+    print('Found {} transcripts and {} genes'.format(len(tx_dict), len(genes)))
     tmp = df.groupby('GeneId').first()
-    print 'Found the following gene biotypes: {}'.format(collections.Counter(tmp.GeneBiotype))
-    print 'Found the following transcript biotypes: {}'.format(collections.Counter(df.TranscriptBiotype))
-    print 'Some example database rows:'
-    print df.head(20)
-    print 'Some example gene rows:'
-    print tmp.head(10)
+    print('Found the following gene biotypes: {}'.format(collections.Counter(tmp.GeneBiotype)))
+    print('Found the following transcript biotypes: {}'.format(collections.Counter(df.TranscriptBiotype)))
+    print('Some example database rows:')
+    print(df.head(20))
+    print('Some example gene rows:')
+    print(tmp.head(10))
     # validate one-to-one mappings for reference
     mixed_genes = {}
     for gene_id, d in df.groupby('GeneId'):
         if len(set(d.GeneName)) != 1:
             mixed_genes[gene_id] = ','.join(set(d.GeneName))
     if len(mixed_genes) > 0:
-        print 'Found {} genes where one gene ID maps to multiple gene names:'.format(len(mixed_genes))
-        for x, y in mixed_genes.iteritems():
-            print '{}: {}'.format(x, y)
+        print('Found {} genes where one gene ID maps to multiple gene names:'.format(len(mixed_genes)))
+        for x, y in mixed_genes.items():
+            print('{}: {}'.format(x, y))
     mixed_genes = {}
     for gene_id, d in df.groupby('GeneName'):
         if len(set(d.GeneId)) != 1:
             mixed_genes[gene_id] = ','.join(set(d.GeneId))
     if len(mixed_genes) > 0:
-        print 'Found {} genes where one gene name maps to multiple gene IDs:'.format(len(mixed_genes))
-        for x, y in mixed_genes.iteritems():
-            print '{}: {}'.format(x, y)
+        print('Found {} genes where one gene name maps to multiple gene IDs:'.format(len(mixed_genes)))
+        for x, y in mixed_genes.items():
+            print('{}: {}'.format(x, y))
