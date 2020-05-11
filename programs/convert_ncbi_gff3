@@ -23,7 +23,7 @@ def add_tags_to_feature(feature, noid_count):
     elif 'Dbxref' in feature.qualifiers:
         xref = feature.qualifiers['Dbxref']
     else:  # hacky fix
-        ids = {'GeneID': 'NoID-{}'.format(noid_count)}
+        xref = {'GeneID': 'NoID-{}'.format(noid_count)}
         noid_count += 1
     ids = dict([x.split(':', 1) for x in xref])
     if feature.type == 'gene':
