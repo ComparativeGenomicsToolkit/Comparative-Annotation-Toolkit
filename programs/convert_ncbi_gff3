@@ -4,9 +4,6 @@ import argparse
 from BCBio import GFF
 from collections import Counter, OrderedDict
 
-global noid_count
-noid_count = 1
-
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -15,7 +12,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def add_tags_to_feature(feature):
+def add_tags_to_feature(feature, noid_count):
     if feature.type not in ['ncRNA', 'tRNA', 'rRNA', 'pseudogene', 'lnc_RNA',
                    'rRNA', 'mRNA', 'C_gene_segment',
                    'J_gene_segment', 'V_gene_segment',
@@ -76,12 +73,13 @@ def feature_traversal(feature):
 
 if __name__ == '__main__':
     args = parse_args()
+    noid_count = 1
     records = list(GFF.parse(args.input_gff3))
     for seqrecord in records:
         for parent_feature in seqrecord.features:
             for feature in feature_traversal(parent_feature):
                 try:
-                    add_tags_to_feature(feature)
+                    add_tags_to_feature(feature, noid_count)
                 except KeyError:
                     assert False, feature.qualifiers
                 new_qualifiers = construct_new_qualifiers(feature)
