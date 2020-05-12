@@ -67,6 +67,8 @@ if __name__ == "__main__":
                 continue
             else:
                 t = f
+        if f == t:
+            continue
         m[f] = t
 
     with open(args.output_table, 'w') as fh:
