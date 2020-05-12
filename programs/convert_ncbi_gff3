@@ -43,7 +43,7 @@ def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feat
         assert 'gene_biotype' in feature.qualifiers
         return
     feature.qualifiers['gene_id'] = [get_unique_id(ids['GeneID'], gene_counts, update_id=False)]
-    feature.qualifiers['gene_name'] = feature.qualifiers.get('gene', feature.qualifiers['gene_id'])
+    feature.qualifiers['gene_name'] = feature.qualifiers.get('gene', feature.qualifiers.get('product', feature.qualifiers['gene_id']))
     tx_id = feature.qualifiers.get('transcript_id', feature.qualifiers['ID'])[0]
     if '-' in tx_id:
         tx_id = tx_id.split('-', 1)[1]
@@ -54,6 +54,13 @@ def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feat
         tx_id = get_unique_id(tx_id, tx_counts, update_id=False)
     feature.qualifiers['transcript_id'] = [tx_id]
     feature.qualifiers['transcript_name'] = feature.qualifiers.get('Name', feature.qualifiers['transcript_id'])
+    # figure out gene biotype
+    if 'gene_biotype' in parent_feature.qualifiers:
+        gene_biotype = parent_feature.qualifiers['gene_biotype']
+    else:
+        gene_biotype = [feature.type]
+
+    # figure out transcript biotype
     if feature.type == 'primary_transcript':
         transcript_biotype = ['miRNA']
     elif 'segment' in feature.type:
@@ -63,8 +70,8 @@ def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feat
         feature.type = 'lncRNA'
         transcript_biotype = [feature.type]
     else:
-        transcript_biotype = parent_feature.qualifiers['gene_biotype']
-    feature.qualifiers['gene_biotype'] = parent_feature.qualifiers['gene_biotype']
+        transcript_biotype = gene_biotype
+    feature.qualifiers['gene_biotype'] = gene_biotype
     feature.qualifiers['transcript_biotype'] = transcript_biotype
 
 
