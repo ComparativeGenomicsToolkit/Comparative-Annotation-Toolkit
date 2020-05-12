@@ -2,6 +2,7 @@
 """Convert RefSeq to GenBank or vice versa"""
 import argparse
 import pandas as pd
+import numpy as np
 from tools.fileOps import print_row
 
 header = ['Sequence-Name', 'Sequence-Role', 'Assigned-Molecule', 'Assigned-Molecule-Location/Type',
@@ -57,11 +58,11 @@ if __name__ == "__main__":
     tgt_is_na = 0
     m = {}
     for f, t in zip(df[from_col], df[to_col]):
-        if f is None:
+        if not isinstance(f, str) and np.isnan(f):
             # if source is NA, we have no hope here
             source_is_na += 1
             continue
-        elif t is None:
+        elif not isinstance(t, str) and np.isnan(t):
             tgt_is_na += 1
             if args.retain_na:
                 t = f
