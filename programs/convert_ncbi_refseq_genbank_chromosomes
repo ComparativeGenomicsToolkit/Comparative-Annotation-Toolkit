@@ -2,6 +2,7 @@
 """Convert RefSeq to GenBank or vice versa"""
 import argparse
 import pandas as pd
+from tools.fileOps import print_row
 
 header = ['Sequence-Name', 'Sequence-Role', 'Assigned-Molecule', 'Assigned-Molecule-Location/Type',
 'GenBank-Accn', 'Relationship', 'RefSeq-Accn', 'Assembly-Unit', 'Sequence-Length', 'UCSC-style-name']
@@ -79,4 +80,4 @@ if __name__ == "__main__":
                 row[0] = m[row[0]]
             else:
                 print('Row unparseable: {}'.format(row))
-            fh.write('\t'.join(row))
+            print_row(fh, row)
