@@ -61,5 +61,6 @@ def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
 
 def convert_gff3_cmd(annotation_attrs, annotation):
     cmd = ['gff3ToGenePred', '-rnaNameAttr=transcript_id', '-geneNameAttr=gene_id', '-honorStartStopCodons',
+            '-refseqHacks',
            '-attrsOut={}'.format(annotation_attrs), annotation, '/dev/stdout']
     return cmd
