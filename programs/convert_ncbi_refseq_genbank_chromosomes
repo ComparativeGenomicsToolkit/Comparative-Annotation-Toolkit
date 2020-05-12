@@ -12,20 +12,62 @@ def parse_args():
     parser.add_argument('input_gff3', help='RefSeq GFF3 file')
     parser.add_argument('conversion_table', help='Conversion table')
     parser.add_argument('output_gff3', help='Output GFF3')
-    parser.add_argument('--refseq-to-genbank', action='store_true', help='Set this to flip direction to RefSeq -> GenBank')
+    e = parser.add_mutually_exclusive_group(required=True)
+    e.add_argument('--refseq-to-genbank', action='store_true', help='Set this to convert RefSeq -> GenBank')
+    e.add_argument('--genbank-to-refseq', action='store_true', help='Set this to convert GenBank -> RefSeq')
+    e.add_argument('--refseq-to-ucsc', action='store_true', help='Set this to convert RefSeq -> UCSC')
+    e.add_argument('--genbank-to-ucsc', action='store_true', help='Set this to convert GenBank -> UCSC')
+    e.add_argument('--ucsc-to-genbank', action='store_true', help='Set this to convert UCSC -> GenBank')
+    e.add_argument('--ucsc-to-refseq', action='store_true', help='Set this to convert UCSC -> RefSeq')
+    parser.add_argument('--retain-na', action='store_true', help='Default is to drop NA targets; retain them instead?')
     return parser.parse_args()
+
+
+column_map = {'refseq': 'RefSeq-Accn',
+              'genbank': 'GenBank-Accn',
+              'ucsc': 'UCSC-style-name'}
 
 
 if __name__ == "__main__":
     args = parse_args()
     df = pd.read_csv(args.conversion_table, sep='\t', comment='#', na_values='na', header=None)
     df.columns = header
-    filt_df = df[~(df['RefSeq-Accn'].isnull()) & ~(df['GenBank-Accn'].isnull())]
-    print("Threw out {} contigs due to no mapping".format(len(df) - len(filt_df)))
+
     if args.refseq_to_genbank:
-        m = dict(zip(map(str, filt_df['RefSeq-Accn']), map(str, filt_df['GenBank-Accn'])))
+        from_col = column_map['refseq']
+        to_col = column_map['genbank']
+    elif args.genbank_to_refseq:
+        from_col = column_map['genbank']
+        to_col = column_map['refseq']
+    elif args.refseq_to_ucsc:
+        from_col = column_map['refseq']
+        to_col = column_map['ucsc']
+    elif args.genbank_to_ucsc:
+        from_col = column_map['genbank']
+        to_col = column_map['ucsc']
+    elif ucsc_to_genbank:
+        from_col = column_map['ucsc']
+        to_col = column_map['genbank']
     else:
-        m = dict(zip(map(str, filt_df['GenBank-Accn']), map(str, filt_df['RefSeq-Accn'])))
+        from_col = column_map['ucsc']
+        to_col = column_map['refseq']
+
+    source_is_na = 0
+    tgt_is_na = 0
+    m = {}
+    for f, t in zip(df[from_col], df[to_col]):
+        if f is None:
+            # if source is NA, we have no hope here
+            source_is_na += 1
+            continue
+        elif t is None:
+            tgt_is_na += 1
+            if args.retain_na:
+                t = f
+            else:
+                continue
+        m[f] = t
+
     with open(args.output_gff3, 'w') as fh:
         for row in open(args.input_gff3):
             if row.startswith('#'):

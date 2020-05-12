@@ -12,7 +12,18 @@ def parse_args():
     return parser.parse_args()
 
 
-def add_tags_to_feature(feature, noid_count):
+def get_unique_id(i, c, update_id=True):
+    if i not in c:
+        c[i] = 0
+        return i
+    if update_id is True:
+        c[i] += 1
+    if c[i] > 0:
+        return f"{i}.{c[i]}"
+    return i
+
+
+def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts):
     if feature.type not in ['ncRNA', 'tRNA', 'rRNA', 'pseudogene', 'lnc_RNA',
                    'rRNA', 'mRNA', 'C_gene_segment',
                    'J_gene_segment', 'V_gene_segment',
@@ -27,13 +38,18 @@ def add_tags_to_feature(feature, noid_count):
         noid_count += 1
     ids = dict([x.split(':', 1) for x in xref])
     if feature.type == 'gene':
-        feature.qualifiers['gene_id'] = [ids['GeneID']]
+        feature.qualifiers['gene_id'] = [get_unique_id(ids['GeneID'], gene_counts)]
         return
-    feature.qualifiers['gene_id'] = [ids['GeneID']]
+    feature.qualifiers['gene_id'] = [get_unique_id(ids['GeneID'], gene_counts, update_id=False)]
     feature.qualifiers['gene_name'] = feature.qualifiers.get('gene', feature.qualifiers['gene_id'])
     tx_id = feature.qualifiers.get('transcript_id', feature.qualifiers['ID'])[0]
     if '-' in tx_id:
         tx_id = tx_id.split('-', 1)[1]
+    if feature.type not in ['CDS', 'exon']:
+        # is a transcript; check for uniqueness
+        tx_id = get_unique_id(tx_id, tx_counts)
+    else:
+        tx_id = get_unique_id(tx_id, tx_counts, update_id=False)
     feature.qualifiers['transcript_id'] = [tx_id]
     feature.qualifiers['transcript_name'] = feature.qualifiers.get('Name', feature.qualifiers['transcript_id'])
     if feature.type in ['mRNA', 'CDS']:
@@ -74,12 +90,14 @@ def feature_traversal(feature):
 if __name__ == '__main__':
     args = parse_args()
     noid_count = 1
+    tx_counts = Counter()
+    gene_counts = Counter()
     records = list(GFF.parse(args.input_gff3))
     for seqrecord in records:
         for parent_feature in seqrecord.features:
             for feature in feature_traversal(parent_feature):
                 try:
-                    add_tags_to_feature(feature, noid_count)
+                    add_tags_to_feature(feature, noid_count, tx_counts, gene_counts)
                 except KeyError:
                     assert False, feature.qualifiers
                 new_qualifiers = construct_new_qualifiers(feature)
