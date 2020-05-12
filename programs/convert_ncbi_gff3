@@ -23,7 +23,7 @@ def get_unique_id(i, c, update_id=True):
     return i
 
 
-def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts):
+def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feature=None):
     if feature.type not in ['ncRNA', 'tRNA', 'rRNA', 'pseudogene', 'lnc_RNA',
                    'rRNA', 'mRNA', 'C_gene_segment',
                    'J_gene_segment', 'V_gene_segment',
@@ -38,7 +38,9 @@ def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts):
         noid_count += 1
     ids = dict([x.split(':', 1) for x in xref])
     if feature.type == 'gene':
+        assert feature == parent_feature
         feature.qualifiers['gene_id'] = [get_unique_id(ids['GeneID'], gene_counts)]
+        assert 'gene_biotype' in feature.qualifiers
         return
     feature.qualifiers['gene_id'] = [get_unique_id(ids['GeneID'], gene_counts, update_id=False)]
     feature.qualifiers['gene_name'] = feature.qualifiers.get('gene', feature.qualifiers['gene_id'])
@@ -52,14 +54,17 @@ def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts):
         tx_id = get_unique_id(tx_id, tx_counts, update_id=False)
     feature.qualifiers['transcript_id'] = [tx_id]
     feature.qualifiers['transcript_name'] = feature.qualifiers.get('Name', feature.qualifiers['transcript_id'])
-    if feature.type in ['mRNA', 'CDS']:
-        gene_biotype = transcript_biotype = ['protein_coding']
-    elif feature.type == 'primary_transcript':
-        gene_biotype = ['miRNA']
+    if feature.type == 'primary_transcript':
+        transcript_biotype = ['miRNA']
+    elif 'segment' in feature.type:
+        transcript_biotype = [feature.type]
+        feature.type = 'ncRNA'
+    elif feature.type == 'lnc_RNA':
+        feature.type = 'lncRNA'
         transcript_biotype = [feature.type]
     else:
-        gene_biotype = transcript_biotype = [feature.type]
-    feature.qualifiers['gene_biotype'] = gene_biotype
+        transcript_biotype = parent_feature.qualifiers['gene_biotype']
+    feature.qualifiers['gene_biotype'] = parent_feature.qualifiers['gene_biotype']
     feature.qualifiers['transcript_biotype'] = transcript_biotype
 
 
@@ -97,7 +102,7 @@ if __name__ == '__main__':
         for parent_feature in seqrecord.features:
             for feature in feature_traversal(parent_feature):
                 try:
-                    add_tags_to_feature(feature, noid_count, tx_counts, gene_counts)
+                    add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feature)
                 except KeyError:
                     assert False, feature.qualifiers
                 new_qualifiers = construct_new_qualifiers(feature)
