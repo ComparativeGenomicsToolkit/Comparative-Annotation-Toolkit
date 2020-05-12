@@ -12,6 +12,7 @@ header = ['Sequence-Name', 'Sequence-Role', 'Assigned-Molecule', 'Assigned-Molec
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('conversion_table', help='Conversion table')
+    parser.add_argument('input_gff3', help='Input GFF3')
     parser.add_argument('output_gff3', help='Output GFF3')
     e = parser.add_mutually_exclusive_group(required=True)
     e.add_argument('--refseq-to-genbank', action='store_true', help='Set this to convert RefSeq -> GenBank')
