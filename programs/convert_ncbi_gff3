@@ -25,8 +25,8 @@ def get_unique_id(i, c, update_id=True):
 
 def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feature=None):
     if feature.type not in ['ncRNA', 'tRNA', 'rRNA', 'pseudogene', 'lnc_RNA',
-                   'rRNA', 'mRNA', 'C_gene_segment',
-                   'J_gene_segment', 'V_gene_segment',
+                   'rRNA', 'mRNA', 'snRNA', 'snoRNA', 'scRNA', 'antisense_RNA', 'guide_RNA',
+                   'C_gene_segment', 'J_gene_segment', 'V_gene_segment',
                    'primary_transcript', 'miRNA', 'transcript', 'CDS', 'exon', 'gene']:
         return
     if 'dbxref' in feature.qualifiers:
