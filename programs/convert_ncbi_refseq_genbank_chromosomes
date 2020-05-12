@@ -11,7 +11,6 @@ header = ['Sequence-Name', 'Sequence-Role', 'Assigned-Molecule', 'Assigned-Molec
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('input_gff3', help='RefSeq GFF3 file')
     parser.add_argument('conversion_table', help='Conversion table')
     parser.add_argument('output_gff3', help='Output GFF3')
     e = parser.add_mutually_exclusive_group(required=True)
@@ -21,7 +20,7 @@ def parse_args():
     e.add_argument('--genbank-to-ucsc', action='store_true', help='Set this to convert GenBank -> UCSC')
     e.add_argument('--ucsc-to-genbank', action='store_true', help='Set this to convert UCSC -> GenBank')
     e.add_argument('--ucsc-to-refseq', action='store_true', help='Set this to convert UCSC -> RefSeq')
-    parser.add_argument('--retain-na', action='store_true', help='Default is to drop NA targets; retain them instead?')
+    parser.add_argument('--no-retain-na', action='store_true', help='Default is to retain NA targets; drop them instead?')
     return parser.parse_args()
 
 
@@ -64,10 +63,10 @@ if __name__ == "__main__":
             continue
         elif not isinstance(t, str) and np.isnan(t):
             tgt_is_na += 1
-            if args.retain_na:
-                t = f
-            else:
+            if args.no_retain_na:
                 continue
+            else:
+                t = f
         m[f] = t
 
     with open(args.output_gff3, 'w') as fh:
