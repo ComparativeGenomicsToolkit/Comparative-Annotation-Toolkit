@@ -75,7 +75,7 @@ if __name__ == "__main__":
                 if row.startswith('##gff'):
                     fh.write(row)
                 continue
-            row = row.split('\t')
+            row = row.rstrip().split('\t')
             if row[0] in m:
                 row[0] = m[row[0]]
             else:
