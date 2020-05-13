@@ -296,8 +296,8 @@ def find_indels(tx, psl, aln_mode):
                 left_pos = q_start - q_offset
                 right_pos = q_start
             else:
-                left_pos = aln.q_size - q_start
-                right_pos = aln.q_size - q_start + q_offset
+                left_pos = psl.q_size - q_start
+                right_pos = psl.q_size - q_start + q_offset
             row = parse_indel(left_pos, right_pos, coordinate_fn, tx, q_offset, 'Insertion')
             if row is not None:
                 r.append(row)
