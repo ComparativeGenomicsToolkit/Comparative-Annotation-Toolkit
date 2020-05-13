@@ -263,9 +263,6 @@ def find_indels(tx, psl, aln_mode):
         """Converts either an insertion or a deletion into a output transcript"""
         left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn,
                                                                             tx.strand)
-        if left_chrom_pos is None or right_chrom_pos is None:
-            assert aln_mode == 'CDS'
-            return None
 
         if left_chrom_pos > tx.thick_start and right_chrom_pos < tx.thick_stop:
             indel_type = 'CodingMult3' if offset % 3 == 0 else 'Coding'
@@ -295,8 +292,12 @@ def find_indels(tx, psl, aln_mode):
         t_offset = t_start - block_size - t_pos
         assert (q_offset >= 0 and t_offset >= 0)
         if q_offset != 0:  # query insertion -> insertion in target sequence
-            left_pos = q_start - q_offset
-            right_pos = q_start
+            if tx.strand == '+':
+                left_pos = q_start - q_offset
+                right_pos = q_start
+            else:
+                left_pos = aln.q_size - q_start
+                right_pos = aln.q_size - q_start + q_offset
             row = parse_indel(left_pos, right_pos, coordinate_fn, tx, q_offset, 'Insertion')
             if row is not None:
                 r.append(row)
