@@ -244,9 +244,14 @@ def find_indels(tx, psl, aln_mode):
     """
     def convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn, strand):
         """convert alignment coordinates to target chromosome coordinates, inverting if negative strand"""
-        if strand == '+':
+        # this is a deletion, and we don't need to adjust
+        if left_pos == right_pos:
+            left_chrom_pos = right_chrom_pos = coordinate_fn(left_pos)
+            # for + strand insertion, just translate
+        elif strand == '+':
             right_chrom_pos = coordinate_fn(right_pos)
             left_chrom_pos = coordinate_fn(left_pos)
+        # for - strand insertion, translate but move outwards
         else:
             right_chrom_pos = coordinate_fn(left_pos) + 1
             left_chrom_pos = coordinate_fn(right_pos - 1)
