@@ -40,6 +40,7 @@ def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feat
     if feature.type == 'gene':
         assert feature == parent_feature
         feature.qualifiers['gene_id'] = [get_unique_id(ids['GeneID'], gene_counts)]
+        feature.qualifiers['gene_name'] = feature.qualifiers.get('gene', feature.qualifiers.get('product', feature.qualifiers['gene_id']))
         assert 'gene_biotype' in feature.qualifiers
         return
     feature.qualifiers['gene_id'] = [get_unique_id(ids['GeneID'], gene_counts, update_id=False)]
