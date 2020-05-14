@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-​
+
 import collections
 import pandas as pd
-​
+
 import tools.intervals
 import tools.misc
 import tools.mathOps
@@ -13,7 +13,7 @@ import tools.nameConversions
 import tools.procOps
 from cat.consensus import *
 from argparse import ArgumentParser
-​
+
 def get_df(db_path, ref_db_path, chrXOnly=False):
     tm_eval_df = load_transmap_evals(db_path)
     ref_df = tools.sqlInterface.load_annotation(ref_db_path)
@@ -22,8 +22,8 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
     cds_metrics_df = pd.concat([load_metrics_from_db(db_path, tx_mode, 'CDS') for tx_mode in tx_modes])
     eval_df = pd.concat([load_evaluations_from_db(db_path, tx_mode) for tx_mode in tx_modes]).reset_index()
     hgm_df = pd.concat([load_hgm_vectors(db_path, tx_mode) for tx_mode in tx_modes])
-​
-​
+
+
     # if chrXOnly:
     #     cmd = [['grep', 'chrX', 'gencode.v30.annotation.gp'], ['cut', '-f', '1']]
     #     chrx_txs = set(tools.procOps.call_proc_lines(cmd))
@@ -33,15 +33,15 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
     #     cmd = [['grep', 'chrY', 'gencode.v30.annotation.gp'], ['cut', '-f', '1']]
     #     chry_txs = set(tools.procOps.call_proc_lines(cmd))
     #     ref_df = ref_df[~ref_df.TranscriptId.isin(chry_txs)]
-​
-​
+
+
     num_txs = len(set(ref_df[ref_df.TranscriptBiotype == 'protein_coding'].TranscriptId))
     num_genes = len(set(ref_df[ref_df.TranscriptBiotype == 'protein_coding'].GeneId))
-​
-​
+
+
     ## code below is from the consensus module. I ripped out from the combine_and_filter_dfs method
     ## because it needs the genePred, but the info is also present elsewhere.
-​
+
     #add the reference information to gain biotype information
     hgm_ref_df = pd.merge(hgm_df, ref_df, on=['GeneId', 'TranscriptId'])
     # combine in homGeneMapping results
@@ -58,8 +58,8 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
     coding_df['OriginalIntronsPercent_mRNA'] = coding_df.OriginalIntronsPercent_mRNA.fillna(100)
     coding_df['OriginalIntronsPercent_CDS'] = coding_df.OriginalIntronsPercent_CDS.fillna(100)
     non_coding_df['TransMapOriginalIntronsPercent'] = non_coding_df.TransMapOriginalIntronsPercent.fillna(100)
-​
-​
+
+
     # rawest counts. homGeneMapping was ran on the unfiltered dataset, so use that
     # do this only on coding transcripts for now
     unique_genes = 0
@@ -74,7 +74,7 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
         for tx_id, dd in d.groupby('TranscriptId'):
             if len(dd) == 1:
                 unique_txs += 1
-​
+
     data = {}
     data['GenesFound'] = num_coding_genes
     data['GenesFoundPercent'] = 100.0 * num_coding_genes / num_genes
@@ -84,7 +84,7 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
     data['TranscriptsFoundPercent'] = 100.0 * num_coding_txs / num_txs
     data['TranscriptsMultiplyMapping'] = num_txs - unique_txs
     data['TranscriptsMultiplyMappingPercent'] = 100.0 * (num_txs - unique_txs) / num_txs
-​
+
     # full coverage
     full_cov_mrna = len(coding_df[coding_df.AlnCoverage_mRNA == 100])
     full_cov_cds = len(coding_df[coding_df.AlnCoverage_CDS == 100])
@@ -92,7 +92,7 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
     data['FullmRNACoveragePercent'] = 100.0 * full_cov_mrna / num_txs
     data['FullCDSCoverage'] = full_cov_cds
     data['FullCDSCoveragePercent'] = 100.0 * full_cov_cds / num_txs
-​
+
     # construct a stringent filter that requires the following:
     # 1) Has all original introns
     # 2) Full CDS Coverage
@@ -115,7 +115,7 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
     data['TranscriptsWithFullCDSCoverageAndNoFrameshiftsPercent'] = 100.0 * cov_frameshift / num_txs
     data['TranscriptsWithFullCDSCoverageAndNoFrameshiftsAndOriginalIntrons'] = cov_frameshift_original_introns
     data['TranscriptsWithFullCDSCoverageAndNoFrameshiftsAndOriginalIntronsPercent'] = 100.0 * cov_frameshift_original_introns / num_txs
-​
+
     # naive gene level
     frameshift = len(set(coding_df[coding_df.Frameshift == True].GeneId))
     original_introns = len(set(coding_df[coding_df.OriginalIntronsPercent_mRNA == 100].GeneId))
@@ -141,16 +141,16 @@ def get_df(db_path, ref_db_path, chrXOnly=False):
     data['GenesWithFullCDSCoverageAndNoFrameshiftsPercent'] = 100.0 * cov_frameshift / num_genes
     data['GenesWithFullCDSCoverageAndNoFrameshiftsAndOriginalIntrons'] = cov_frameshift_original_introns
     data['GenesWithFullCDSCoverageAndNoFrameshiftsAndOriginalIntronsPercent'] = 100.0 * cov_frameshift_original_introns / num_genes
-​
+
     missing = set(ref_df[ref_df.TranscriptBiotype == 'protein_coding'].GeneId) - set(tmp.GeneId)
-​
+
     data['MissingGenes'] = len(missing)
     data['MissingGenesPercent'] = (100.0 * len(missing)) / num_genes
-​
+
     data['Name'] = db_path.replace('.db', '')
-​
+
     return data
-​
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('ref_db')
