@@ -53,7 +53,6 @@ from .parent_gene_assignment import assign_parents
 from .exceptions import *
 
 logger = logging.getLogger('cat')
-logger.setLevel('INFO')
 
 
 ###
@@ -185,7 +184,7 @@ class PipelineTask(luigi.Task):
         args.set('global_near_best', self.global_near_best, True)
         args.set('filter_overlapping_genes', self.filter_overlapping_genes, True)
         args.set('overlapping_gene_distance', self.overlapping_gene_distance, True)
-        
+
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
         args.set('exon_rnaseq_support', self.exon_rnaseq_support, False)
@@ -565,7 +564,7 @@ def success(task):
             os.remove(os.path.abspath(task.job_store))
         except OSError:
             pass
-    else: 
+    else:
         cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
     raw = tools.procOps.call_proc(cmd)
     parsed = raw[raw.index('{'):raw.rfind('}') + 1]
@@ -2298,7 +2297,7 @@ class ReportStats(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
-        
+
         try:
             toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
         except ValueError:
