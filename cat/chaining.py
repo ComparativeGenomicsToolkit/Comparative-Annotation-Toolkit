@@ -1,5 +1,8 @@
 """"
-Toil program to generate UCSC chains and nets between two genomes in a HAL file.
+Toil program to generate UCSC chains and nets between one reference genome and N target genomes in a HAL file.
+
+The reference genome is split up by contig/chromosome, and those are chained against all the things they align to
+in each genome specified.
 """
 import argparse
 import collections
