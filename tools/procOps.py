@@ -107,7 +107,7 @@ def popen_catch(command, stdin=None):
 def mrca_path(path1, path2):
     """
     Gives the Most Recent Common Ancestor directory that contains both paths.
-    
+
     >>> mrca_path('/usr/lib/python2.7', '/usr/bin/python')
     '/usr'
     >>> mrca_path('/usr/', '/usr/')
@@ -165,6 +165,10 @@ def getDockerCommand(image, cmd):
     cmd: list of arguments
     """
     dockerPreamble = ['docker', 'run', '-i', '--rm', '-u', "%s:%s" % (os.getuid(), os.getgid())]
+    if "TMPDIR" in os.environ:
+        tmpdir = os.environ["TMPDIR"]
+        dockerPreamble.extend(["--env", "TMPDIR={}".format(tmpdir)])
+        dockerPreamble.extend(['-v', tmpdir + ':' + tmpdir])
     work_dirs = []
     for i, arg in enumerate(cmd):
         if arg.startswith('-') and '=' in arg:
