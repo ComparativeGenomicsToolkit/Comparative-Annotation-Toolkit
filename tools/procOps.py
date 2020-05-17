@@ -26,7 +26,10 @@ def cmdLists(cmd):
         else:
             return getDockerCommand('quay.io/ucsc_cgl/cat', cmd)
     elif os.environ.get('CAT_BINARY_MODE') == 'singularity':
-        img = os.path.join(os.environ['SINGULARITY_PULLFOLDER'], 'cat.img')
+        if os.environ.get('SINGULARITY_IMAGE'):
+            img = os.environ['SINGULARITY_IMAGE']
+        else:
+            img = os.path.join(os.environ['SINGULARITY_PULLFOLDER'], 'cat.img')
         assert os.path.exists(img)
         if isinstance(cmd[0], list):
             return list([get_singularity_command(img, c) for c in cmd])
