@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """
 This script allows you to test your GFF3 for compatibility with CAT before running the pipeline.
-
 """
 
 import argparse
@@ -29,7 +28,7 @@ if __name__ == '__main__':
             l = l.split()
             c[l[0]] += 1
         duplicates = {x for x, y in c.items() if y > 1}
-        assert len(duplicates) == 0, 'Found {} duplicate genes: {}'.format(len(duplicates), '\n'.join(duplicates))
+        assert len(duplicates) == 0, 'Found {} duplicate transcript IDs: {}'.format(len(duplicates), '\n'.join(duplicates))
         df = tools.gff3.parse_gff3(attrs, gp)
         tx_dict = tools.transcripts.get_gene_pred_dict(gp)
     assert len(tx_dict) == len(df)

@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+"""Convert RefSeq to GenBank or vice versa"""
+import argparse
+import pandas as pd
+import numpy as np
+from tools.fileOps import print_rows
+
+header = ['Sequence-Name', 'Sequence-Role', 'Assigned-Molecule', 'Assigned-Molecule-Location/Type',
+'GenBank-Accn', 'Relationship', 'RefSeq-Accn', 'Assembly-Unit', 'Sequence-Length', 'UCSC-style-name']
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('conversion_table', help='Conversion table')
+    parser.add_argument('output_table', help='Output table for halRenameSequences')
+    e = parser.add_mutually_exclusive_group(required=True)
+    e.add_argument('--refseq-to-genbank', action='store_true', help='Set this to convert RefSeq -> GenBank')
+    e.add_argument('--genbank-to-refseq', action='store_true', help='Set this to convert GenBank -> RefSeq')
+    e.add_argument('--refseq-to-ucsc', action='store_true', help='Set this to convert RefSeq -> UCSC')
+    e.add_argument('--genbank-to-ucsc', action='store_true', help='Set this to convert GenBank -> UCSC')
+    e.add_argument('--ucsc-to-genbank', action='store_true', help='Set this to convert UCSC -> GenBank')
+    e.add_argument('--ucsc-to-refseq', action='store_true', help='Set this to convert UCSC -> RefSeq')
+    parser.add_argument('--no-retain-na', action='store_true', help='Default is to retain NA targets; drop them instead?')
+    return parser.parse_args()
+
+
+column_map = {'refseq': 'RefSeq-Accn',
+              'genbank': 'GenBank-Accn',
+              'ucsc': 'UCSC-style-name'}
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    df = pd.read_csv(args.conversion_table, sep='\t', comment='#', na_values='na', header=None)
+    df.columns = header
+
+    if args.refseq_to_genbank:
+        from_col = column_map['refseq']
+        to_col = column_map['genbank']
+    elif args.genbank_to_refseq:
+        from_col = column_map['genbank']
+        to_col = column_map['refseq']
+    elif args.refseq_to_ucsc:
+        from_col = column_map['refseq']
+        to_col = column_map['ucsc']
+    elif args.genbank_to_ucsc:
+        from_col = column_map['genbank']
+        to_col = column_map['ucsc']
+    elif ucsc_to_genbank:
+        from_col = column_map['ucsc']
+        to_col = column_map['genbank']
+    else:
+        from_col = column_map['ucsc']
+        to_col = column_map['refseq']
+
+    source_is_na = 0
+    tgt_is_na = 0
+    m = {}
+    for f, t in zip(df[from_col], df[to_col]):
+        if not isinstance(f, str) and np.isnan(f):
+            # if source is NA, we have no hope here
+            source_is_na += 1
+            continue
+        elif not isinstance(t, str) and np.isnan(t):
+            tgt_is_na += 1
+            if args.no_retain_na:
+                continue
+            else:
+                t = f
+        if f == t:
+            continue
+        m[f] = t
+
+    with open(args.output_table, 'w') as fh:
+        print_rows(fh, m.items())
