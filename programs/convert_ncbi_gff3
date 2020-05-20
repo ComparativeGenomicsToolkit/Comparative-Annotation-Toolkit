@@ -114,6 +114,11 @@ if __name__ == '__main__':
                     add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feature)
                 except KeyError:
                     assert False, feature.qualifiers
+                if feature.type == 'CDS' and parent_feature.type == 'gene':
+                    # convert gene into fake transcript; we lack a parent
+                    parent_feature.qualifiers['transcript_biotype'] = ['protein_coding']
+                    parent_feature.qualifiers['transcript_id'] = feature.qualifiers['transcript_id']
+                    parent_feature.qualifiers['transcript_name'] = feature.qualifiers['transcript_name']
                 new_qualifiers = construct_new_qualifiers(feature)
                 feature.qualifiers = new_qualifiers
 
