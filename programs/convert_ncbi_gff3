@@ -28,7 +28,7 @@ def add_tags_to_feature(feature, noid_count, tx_counts, gene_counts, parent_feat
                    'rRNA', 'mRNA', 'snRNA', 'snoRNA', 'scRNA', 'antisense_RNA', 'guide_RNA',
                    'C_gene_segment', 'J_gene_segment', 'V_gene_segment',
                    'primary_transcript', 'miRNA', 'transcript', 'CDS', 'exon', 'gene',
-                   'SRP_RNA']:
+                   'SRP_RNA', 'telomerase_RNA']:
         return
     if 'dbxref' in feature.qualifiers:
         xref = feature.qualifiers['dbxref']
