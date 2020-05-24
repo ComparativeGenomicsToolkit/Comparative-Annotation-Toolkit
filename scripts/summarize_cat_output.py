@@ -167,4 +167,4 @@ if __name__ == '__main__':
     df = pd.DataFrame(columns=columns_w_percent)
     for target_db in opts.target_db:
         df = df.append(get_df(target_db, opts.ref_db, opts.chrXOnly), ignore_index=True)
-    print df.to_csv()
+    print(df.to_csv())
