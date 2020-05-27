@@ -648,9 +648,11 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'source_gene_common_name': s.CommonName}
 
         # bring in extra tags for exRef
-        if 'exRef' in denovo_tx_modes:
-            for key, val in tools.misc.parse_gff_attr_line(exref_annot.loc[aln_id].ExtraTags).items():
-                denovo_tx_dict[aln_id][key] = val
+        if tools.nameConversions.aln_id_is_exref(aln_id):
+            tags = exref_annot.loc[aln_id].ExtraTags
+            if len(tags) > 0:
+                for key, val in tools.misc.parse_gff_attr_line(tags).items():
+                    denovo_tx_dict[aln_id][key] = val
 
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
