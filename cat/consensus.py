@@ -909,10 +909,14 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         else:
             attrs['Name'] = attrs['gene_id']
         # convert empty strings into nan
-        attrs = {x: y if y != '' else 'nan' for x, y in attrs.items()}
-        # don't include the support vectors in the string, they will be placed in their respective places
-        attrs_str = ['='.join([key.replace('=', '%3D').replace(';', '%3B']), str(val).replace('=', '%3D').replace(';', '%3B']) for key, val in sorted(attrs.items()) if 'support' not in key]
-        return score, ';'.join(attrs_str)
+        attrs_str = []
+        for key, val in attrs.items():
+            if len(val) == 0:
+                y = 'nan'
+            val = str(val).replace('=', '%3D').replace(';', '%3B')
+            key = key.replace('=', '%3D').replace(';', '%3B')
+            attrs_str.append(f"{key}={val}")
+        return score, ";".join(attrs_str)
 
     def find_feature_support(attrs, feature, i):
         """Extracts the boolean value from the comma delimited string"""
