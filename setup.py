@@ -4,10 +4,10 @@ setup(
     name='cat',
     version='2.0',
     packages=['cat', 'tools'],
-    python_requires='>=3.7.0',
+    python_requires='>=3.6.0',
     install_requires=[
         'pyfasta>=0.5.2',
-        'toil>=3.5',
+        'toil>=4.1',
         'luigi>=2.5',
         'seaborn>=0.7',
         'pandas>=1.0',
