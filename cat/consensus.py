@@ -911,9 +911,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         # convert empty strings into nan
         attrs = {x: y if y != '' else 'nan' for x, y in attrs.items()}
         # don't include the support vectors in the string, they will be placed in their respective places
-        attrs_str = ['='.join([key, str(val).replace('=', '_')]) for key, val in sorted(attrs.items()) if 'support' not in key]
-        # explicitly escape any semicolons that may exist in the input strings
-        attrs_str = [x.replace(';', '%3B').replace('=', '%3D') for x in attrs_str]
+        attrs_str = ['='.join([key.replace('=', '%3D').replace(';', '%3B']), str(val).replace('=', '%3D').replace(';', '%3B']) for key, val in sorted(attrs.items()) if 'support' not in key]
         return score, ';'.join(attrs_str)
 
     def find_feature_support(attrs, feature, i):
