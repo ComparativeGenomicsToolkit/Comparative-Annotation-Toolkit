@@ -42,8 +42,6 @@ alnMode:
 2) mRNA
 
 """
-import itertools
-
 import pandas as pd
 
 import tools.bio
@@ -298,13 +296,16 @@ def find_indels(tx, psl, aln_mode):
                 left_pos = q_start - q_offset
                 right_pos = q_start
             else:
-                left_pos = psl.q_size - q_start
+                left_pos = psl.q_size - q_start - 1
                 right_pos = psl.q_size - q_start + q_offset
             row = parse_indel(left_pos, right_pos, coordinate_fn, tx, q_offset, 'Insertion')
             if row is not None:
                 r.append(row)
         if t_offset != 0:  # target insertion -> insertion in reference sequence
-            left_pos = right_pos = q_start
+            if tx.strand == '+':
+                left_pos = right_pos = q_start
+            else:
+                left_pos = right_pos = psl.q_size - q_start
             row = parse_indel(left_pos, right_pos, coordinate_fn, tx, t_offset, 'Deletion')
             if row is not None:
                 r.append(row)
