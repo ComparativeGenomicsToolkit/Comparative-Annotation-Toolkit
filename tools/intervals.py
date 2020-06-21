@@ -341,6 +341,22 @@ def calculate_bed12_jaccard(intervals_a, intervals_b):
     return mathOps.format_ratio(intersection, (tot_a + tot_b) - intersection)
 
 
+def calculate_bed12_asymmetric_jaccard(intervals_a, intervals_b):
+    """
+    calculates the Jaccard similarity metric for two iterables of intervals. Will fail if they are not on the same
+    chromosome.
+    length(intersection) / (intervals_a)
+    """
+    intersection = 0
+    tot_a = sum(len(x) for x in intervals_a)
+    for a_interval in intervals_a:
+        for b_interval in intervals_b:
+            ins = a_interval.intersection(b_interval)
+            if ins is not None:
+                intersection += len(ins)
+    return mathOps.format_ratio(intersection, tot_a)
+
+
 def calculate_jaccard(interval_a, interval_b):
     """
     calculates the Jaccard similarity metric for two intervals

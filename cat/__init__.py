@@ -1627,8 +1627,6 @@ class FindDenovoParents(PipelineTask):
                                     for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
                                       for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
-            args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
-                                for genome in pipeline_args.isoseq_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
             args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
@@ -1644,8 +1642,6 @@ class FindDenovoParents(PipelineTask):
             unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             args.filtered_tm_gps = filtered_tm_gp_files
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
-            args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
-                                for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         elif mode == 'exRef':
             args.tablename = tools.sqlInterface.ExRefAlternativeGenes.__tablename__
             args.gps = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
@@ -1659,8 +1655,6 @@ class FindDenovoParents(PipelineTask):
             unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             args.filtered_tm_gps = filtered_tm_gp_files
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
-            args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
-                                for genome in list(pipeline_args.target_genomes) + [pipeline_args.ref_genome]}
         else:
             raise Exception('Invalid mode passed to FindDenovoParents')
         return args
@@ -1697,8 +1691,7 @@ class FindDenovoParents(PipelineTask):
             table_target = self.get_table_targets(genome, denovo_args.tablename, pipeline_args)
             filtered_tm_gp = denovo_args.filtered_tm_gps[genome]
             unfiltered_tm_gp = denovo_args.unfiltered_tm_gps[genome]
-            chrom_sizes = denovo_args.chrom_sizes[genome]
-            df = assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp)
+            df = assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp)
             db = pipeline_args.dbs[genome]
             with tools.sqlite.ExclusiveSqlConnection(db) as engine:
                 df.to_sql(denovo_args.tablename, engine, if_exists='replace')
