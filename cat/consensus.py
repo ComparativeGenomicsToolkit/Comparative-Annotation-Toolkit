@@ -911,8 +911,9 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         # convert empty strings into nan
         attrs_str = []
         for key, val in attrs.items():
+            val = str(val)
             if len(val) == 0:
-                y = 'nan'
+                val = 'nan'
             val = str(val).replace('=', '%3D').replace(';', '%3B')
             key = key.replace('=', '%3D').replace(';', '%3B')
             attrs_str.append(f"{key}={val}")
