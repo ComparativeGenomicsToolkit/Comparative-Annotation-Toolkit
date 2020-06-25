@@ -75,7 +75,7 @@ def aln_id_is_exref(aln_id):
 
 
 def aln_id_is_denovo(aln_id):
-    return aln_id_is_pb(aln_id) or aln_id_is_cgp(aln_id)
+    return aln_id_is_pb(aln_id) or aln_id_is_cgp(aln_id) or aln_id_is_exref(aln_id)
 
 
 def alignment_type(aln_id):

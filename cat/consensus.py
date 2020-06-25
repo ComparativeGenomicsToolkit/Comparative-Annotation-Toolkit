@@ -914,7 +914,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             val = str(val)
             if len(val) == 0:
                 val = 'nan'
-            val = str(val).replace('=', '%3D').replace(';', '%3B')
+            val = val.replace('=', '%3D').replace(';', '%3B')
             key = key.replace('=', '%3D').replace(';', '%3B')
             attrs_str.append(f"{key}={val}")
         return score, ";".join(attrs_str)
