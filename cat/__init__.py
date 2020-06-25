@@ -1621,12 +1621,13 @@ class FindDenovoParents(PipelineTask):
         args = tools.misc.HashableNamespace()
         if mode == 'augPB':
             args.tablename = tools.sqlInterface.AugPbAlternativeGenes.__tablename__
+            pb_genomes = set(pipeline_args.target_genomes) & (pipeline_args.isoseq_genomes - {pipeline_args.ref_genome})
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
-                        for genome in pipeline_args.isoseq_genomes}
+                        for genome in pb_genomes}
             args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in pipeline_args.target_genomes & (pipeline_args.isoseq_genomes - {pipeline_args.ref_genome})}
+                                    for genome in pb_genomes}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in pipeline_args.target_genomes & (pipeline_args.isoseq_genomes - {pipeline_args.ref_genome})}
+                                      for genome in pb_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
             args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
@@ -1643,13 +1644,14 @@ class FindDenovoParents(PipelineTask):
             args.filtered_tm_gps = filtered_tm_gp_files
             args.unfiltered_tm_gps = unfiltered_tm_gp_files
         elif mode == 'exRef':
+            exref_genomes = set(pipeline_args.target_genomes) & set(pipeline_args.external_ref_genomes)
             args.tablename = tools.sqlInterface.ExRefAlternativeGenes.__tablename__
             args.gps = {genome: ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp
-                        for genome in pipeline_args.external_ref_genomes}
+                        for genome in exref_genomes}
             filtered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in pipeline_args.target_genomes & pipeline_args.external_ref_genomes}
+                                    for genome in exref_genomes}
             unfiltered_tm_gp_files = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in pipeline_args.target_genomes & pipeline_args.external_ref_genomes}
+                                      for genome in exref_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
             filtered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             unfiltered_tm_gp_files[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
