@@ -26,7 +26,10 @@ def cmdLists(cmd):
         else:
             return getDockerCommand('quay.io/ucsc_cgl/cat', cmd)
     elif os.environ.get('CAT_BINARY_MODE') == 'singularity':
-        img = os.path.join(os.environ['SINGULARITY_PULLFOLDER'], 'cat.img')
+        if os.environ.get('SINGULARITY_IMAGE'):
+            img = os.environ['SINGULARITY_IMAGE']
+        else:
+            img = os.path.join(os.environ['SINGULARITY_PULLFOLDER'], 'cat.img')
         assert os.path.exists(img)
         if isinstance(cmd[0], list):
             return list([get_singularity_command(img, c) for c in cmd])
@@ -107,7 +110,7 @@ def popen_catch(command, stdin=None):
 def mrca_path(path1, path2):
     """
     Gives the Most Recent Common Ancestor directory that contains both paths.
-    
+
     >>> mrca_path('/usr/lib/python2.7', '/usr/bin/python')
     '/usr'
     >>> mrca_path('/usr/', '/usr/')
@@ -165,6 +168,10 @@ def getDockerCommand(image, cmd):
     cmd: list of arguments
     """
     dockerPreamble = ['docker', 'run', '-i', '--rm', '-u', "%s:%s" % (os.getuid(), os.getgid())]
+    if "TMPDIR" in os.environ:
+        tmpdir = os.environ["TMPDIR"]
+        dockerPreamble.extend(["--env", "TMPDIR={}".format(tmpdir)])
+        dockerPreamble.extend(['-v', tmpdir + ':' + tmpdir])
     work_dirs = []
     for i, arg in enumerate(cmd):
         if arg.startswith('-') and '=' in arg:

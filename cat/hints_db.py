@@ -307,7 +307,7 @@ def run_protein_aln(job, protein_subset, genome_fasta_file_id):
     # perform alignment
     tmp_exonerate = tools.fileOps.get_tmp_toil_file()
     cmd = ['exonerate', '--model', 'protein2genome', '--showvulgar', 'no', '--showalignment', 'no',
-           '--showquerygff', 'yes', genome_fasta, protein_fasta]
+           '--showquerygff', 'yes', protein_fasta, genome_fasta]
     tools.procOps.run_proc(cmd, stdout=tmp_exonerate)
     return job.fileStore.writeGlobalFile(tmp_exonerate)
 
