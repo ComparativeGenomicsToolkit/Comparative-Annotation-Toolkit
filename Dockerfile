@@ -9,7 +9,7 @@ RUN git clone git://github.com/samtools/htslib.git
 RUN cd htslib && make install
 
 # bcftools
-RUN git clone git://github.com/samtools/bcftools.git 
+RUN git clone git://github.com/samtools/bcftools.git
 RUN cd bcftools && make
 
 # samtools
@@ -33,7 +33,7 @@ RUN cd augustus && make
 # HDF5
 RUN wget -q http://www.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.1/src/hdf5-1.10.1.tar.gz
 RUN tar xzf hdf5-1.10.1.tar.gz
-RUN cd hdf5-1.10.1 && ./configure --enable-cxx --prefix=/usr 
+RUN cd hdf5-1.10.1 && ./configure --enable-cxx --prefix=/usr
 RUN cd hdf5-1.10.1 && make && make install
 
 # sonLib
@@ -62,7 +62,7 @@ RUN tar xvjf sambamba_v0.6.7_linux.tar.bz2
 
 FROM ubuntu:18.04
 RUN apt-get update
-RUN apt-get install -y wget bedtools bamtools samtools sqlite3 libgsl0-dev libcolamd2 software-properties-common libcurl4-openssl-dev
+RUN apt-get install -y wget bedtools bamtools samtools sqlite3 libgsl0-dev libcolamd2 software-properties-common libcurl4-openssl-dev exonerate
 RUN add-apt-repository -y ppa:deadsnakes/ppa
 RUN apt-get install -y python3.7 python3-pip
 # Kent

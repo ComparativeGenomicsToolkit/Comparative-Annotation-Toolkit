@@ -648,9 +648,11 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                   'source_gene_common_name': s.CommonName}
 
         # bring in extra tags for exRef
-        if 'exRef' in denovo_tx_modes:
-            for key, val in tools.misc.parse_gff_attr_line(exref_annot.loc[aln_id].ExtraTags).items():
-                denovo_tx_dict[aln_id][key] = val
+        if tools.nameConversions.aln_id_is_exref(aln_id):
+            tags = exref_annot.loc[aln_id].ExtraTags
+            if len(tags) > 0:
+                for key, val in tools.misc.parse_gff_attr_line(tags).items():
+                    denovo_tx_dict[aln_id][key] = val
 
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
@@ -907,12 +909,15 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         else:
             attrs['Name'] = attrs['gene_id']
         # convert empty strings into nan
-        attrs = {x: y if y != '' else 'nan' for x, y in attrs.items()}
-        # don't include the support vectors in the string, they will be placed in their respective places
-        attrs_str = ['='.join([key, str(val).replace('=', '_')]) for key, val in sorted(attrs.items()) if 'support' not in key]
-        # explicitly escape any semicolons that may exist in the input strings
-        attrs_str = [x.replace(';', '%3B') for x in attrs_str]
-        return score, ';'.join(attrs_str)
+        attrs_str = []
+        for key, val in attrs.items():
+            val = str(val)
+            if len(val) == 0:
+                val = 'nan'
+            val = str(val).replace('=', '%3D').replace(';', '%3B')
+            key = key.replace('=', '%3D').replace(';', '%3B')
+            attrs_str.append(f"{key}={val}")
+        return score, ";".join(attrs_str)
 
     def find_feature_support(attrs, feature, i):
         """Extracts the boolean value from the comma delimited string"""
@@ -929,7 +934,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             for attrs in attrs_list:
                 tx_modes.update(attrs['transcript_modes'].split(','))
             return ','.join(tx_modes)
-        
+
         intervals = set()
         for tx in tx_objs:
             intervals.update(tx.exon_intervals)

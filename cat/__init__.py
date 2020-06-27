@@ -398,6 +398,8 @@ class PipelineTask(luigi.Task):
                                            'Either install it or use a different option for --binary-mode.')
             os.environ['SINGULARITY_PULLFOLDER'] = os.path.abspath(self.work_dir)
             os.environ['SINGULARITY_CACHEDIR'] = os.path.abspath(self.work_dir)
+            if os.environ.get('SINGULARITY_IMAGE'):
+                return
             tools.fileOps.ensure_dir(self.work_dir)
             if not os.path.isfile(os.path.join(self.work_dir, 'cat.img')):
                 subprocess.check_call(['singularity', 'pull', '--name', 'cat.img',
