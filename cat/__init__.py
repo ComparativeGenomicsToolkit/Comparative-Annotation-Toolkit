@@ -185,7 +185,7 @@ class PipelineTask(luigi.Task):
         args.set('global_near_best', self.global_near_best, True)
         args.set('filter_overlapping_genes', self.filter_overlapping_genes, True)
         args.set('overlapping_gene_distance', self.overlapping_gene_distance, True)
-        
+
         # user specified flags for consensus finding
         args.set('intron_rnaseq_support', self.intron_rnaseq_support, False)
         args.set('exon_rnaseq_support', self.exon_rnaseq_support, False)
@@ -565,7 +565,7 @@ def success(task):
             os.remove(os.path.abspath(task.job_store))
         except OSError:
             pass
-    else: 
+    else:
         cmd = ['toil', 'stats', '--raw', os.path.abspath(task.job_store)]
     raw = tools.procOps.call_proc(cmd)
     parsed = raw[raw.index('{'):raw.rfind('}') + 1]
@@ -1621,13 +1621,13 @@ class FindDenovoParents(PipelineTask):
         if mode == 'augPB':
             args.tablename = tools.sqlInterface.AugPbAlternativeGenes.__tablename__
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
-                        for genome in pipeline_args.isoseq_genomes}
+                        for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                    for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                      for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
-                                for genome in pipeline_args.isoseq_genomes}
+                                for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
             args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
@@ -2298,7 +2298,7 @@ class ReportStats(PipelineTask):
     def run(self):
         pipeline_args = self.get_pipeline_args()
         luigi_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'stats')
-        
+
         try:
             toil_stats = tools.sqlInterface.load_luigi_stats(pipeline_args.stats_db, 'toil_stats')
         except ValueError:
