@@ -735,7 +735,7 @@ class GenomeFasta(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
+        cmd = ['hal2fasta', '--onlySequenceNames', os.path.abspath(self.hal), self.genome]
         self.run_cmd(cmd)
 
 
@@ -1622,13 +1622,13 @@ class FindDenovoParents(PipelineTask):
         if mode == 'augPB':
             args.tablename = tools.sqlInterface.AugPbAlternativeGenes.__tablename__
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
-                        for genome in pipeline_args.isoseq_genomes}
+                        for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                    for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                      for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
-                                for genome in pipeline_args.isoseq_genomes}
+                                for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             # add the reference annotation as a pseudo-transMap to assign parents in reference
             args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
             args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
