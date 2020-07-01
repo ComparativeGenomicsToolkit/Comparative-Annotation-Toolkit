@@ -1625,14 +1625,17 @@ class FindDenovoParents(PipelineTask):
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
                         for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                    for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                      for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
-            # add the reference annotation as a pseudo-transMap to assign parents in reference
-            args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            if pipeline_args.ref_genome in pipeline_args.isoseq_genomes:
+                # add the reference annotation as a pseudo-transMap to assign parents in reference
+                args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+                args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+                args.chrom_sizes[pipeline_args.ref_genome] = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
+                args.gps[pipeline_args.ref_genome] = AugustusPb.get_args(pipeline_args.ref_genome, genome).augustus_pb_gp
         elif mode == 'augCGP':
             args.tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
             args.gps = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp
