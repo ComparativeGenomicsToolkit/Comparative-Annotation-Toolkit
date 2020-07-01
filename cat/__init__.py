@@ -1635,7 +1635,7 @@ class FindDenovoParents(PipelineTask):
                 args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
                 args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
                 args.chrom_sizes[pipeline_args.ref_genome] = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
-                args.gps[pipeline_args.ref_genome] = AugustusPb.get_args(pipeline_args.ref_genome, pipeline_args.ref_genome).augustus_pb_gp
+                args.gps[pipeline_args.ref_genome] = AugustusPb.get_args(pipeline_args, pipeline_args.ref_genome).augustus_pb_gp
         elif mode == 'augCGP':
             args.tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
             args.gps = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp
