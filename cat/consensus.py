@@ -561,7 +561,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
 
     def has_novel_ends(s):
         """Does this transcript have any novel ends we want to retain? Does not apply to augCGP"""
-        if tools.nameConversions.aln_id_is_cgp(.s.AlignmentId):
+        if tools.nameConversions.aln_id_is_cgp(s.AlignmentId):
             return pd.Series([None, None, s.TranscriptClass])
         denovo_tx_obj = tx_dict[s.AlignmentId]
         five_p = denovo_tx_obj.get_5p_interval()
