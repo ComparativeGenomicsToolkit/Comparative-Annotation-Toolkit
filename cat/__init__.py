@@ -120,7 +120,7 @@ class PipelineTask(luigi.Task):
     denovo_ignore_novel_genes = luigi.BoolParameter(default=False, significant=False)
     denovo_only_novel_genes = luigi.BoolParameter(default=False, significant=False)
     denovo_novel_end_distance = luigi.IntParameter(default=0, significant=False)
-    denovo_ignore_novel_end = luigi.BoolParameter(default=True, significant=False)
+    denovo_ignore_novel_end = luigi.BoolParameter(default=False, significant=False)
     denovo_allow_unsupported = luigi.BoolParameter(default=False, significant=False)
     denovo_allow_bad_annot_or_tm = luigi.BoolParameter(default=False, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
