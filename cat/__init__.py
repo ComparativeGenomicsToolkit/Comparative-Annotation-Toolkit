@@ -198,6 +198,7 @@ class PipelineTask(luigi.Task):
         args.set('denovo_exon_support', self.denovo_exon_support, False)
         args.set('denovo_ignore_novel_genes', self.denovo_ignore_novel_genes, False)
         args.set('denovo_only_novel_genes', self.denovo_only_novel_genes, False)
+        args.set('denovo_ignore_novel_end', self.denovo_ignore_novel_end, False)
         args.set('denovo_novel_end_distance', self.denovo_novel_end_distance, False)
         args.set('denovo_allow_unsupported', self.denovo_allow_unsupported, False)
         args.set('denovo_allow_bad_annot_or_tm', self.denovo_allow_bad_annot_or_tm, False)
