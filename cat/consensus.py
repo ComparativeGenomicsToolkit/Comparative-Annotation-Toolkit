@@ -128,7 +128,7 @@ def generate_consensus(args):
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
                                  args.denovo_ignore_novel_genes, args.denovo_novel_end_distance,
                                  args.denovo_allow_unsupported, args.denovo_allow_bad_annot_or_tm,
-                                 args.denovo_only_novel_genes)
+                                 args.denovo_only_novel_genes, args.denovo_ignore_novel_end)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
@@ -481,7 +481,7 @@ def evaluate_ties(best_rows):
 def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map, denovo_num_introns,
                in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support,
                denovo_ignore_novel_genes, denovo_novel_end_distance, denovo_allow_unsupported,
-               denovo_allow_bad_annot_or_tm, denovo_only_novel_genes):
+               denovo_allow_bad_annot_or_tm, denovo_only_novel_genes, denovo_ignore_novel_end):
     """
     Finds novel loci, builds their attributes. Only calls novel loci if they have sufficient intron and splice support
     as defined by the user.
@@ -617,8 +617,11 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
     # filter out non-novel as well as fusions
-    filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull()) | (denovo_df.Novel5pCap == True)
-                                   | (denovo_df.NovelPolyA == True)]
+    if denovo_ignore_novel_end is True:
+        filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull())]
+    else:
+        filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull()) | (denovo_df.Novel5pCap == True)
+                                       | (denovo_df.NovelPolyA == True)]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
