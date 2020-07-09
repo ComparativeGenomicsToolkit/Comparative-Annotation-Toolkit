@@ -570,7 +570,10 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                                                                    five_p, denovo_novel_end_distance)
         three_p_matches = tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
                                                                                     three_p, denovo_novel_end_distance)
-        tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
+        if denovo_ignore_novel_end is True:
+            tx_class = s.TranscriptClass
+        else:
+            tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
         return pd.Series([five_p_matches, three_p_matches, tx_class])
 
     denovo_hgm_df = pd.concat([load_hgm_vectors(db_path, tx_mode) for tx_mode in denovo_tx_modes])
@@ -617,11 +620,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
     # filter out non-novel as well as fusions
-    if denovo_ignore_novel_end is True:
-        filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull())]
-    else:
-        filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull()) | (denovo_df.Novel5pCap == True)
-                                       | (denovo_df.NovelPolyA == True)]
+    filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull())]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
