@@ -128,7 +128,7 @@ def generate_consensus(args):
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
                                  args.denovo_ignore_novel_genes, args.denovo_novel_end_distance,
                                  args.denovo_allow_unsupported, args.denovo_allow_bad_annot_or_tm,
-                                 args.denovo_only_novel_genes, args.denovo_ignore_novel_end)
+                                 args.denovo_only_novel_genes, args.denovo_allow_novel_ends)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
@@ -481,7 +481,7 @@ def evaluate_ties(best_rows):
 def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map, denovo_num_introns,
                in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support,
                denovo_ignore_novel_genes, denovo_novel_end_distance, denovo_allow_unsupported,
-               denovo_allow_bad_annot_or_tm, denovo_only_novel_genes, denovo_ignore_novel_end):
+               denovo_allow_bad_annot_or_tm, denovo_only_novel_genes, denovo_allow_novel_ends):
     """
     Finds novel loci, builds their attributes. Only calls novel loci if they have sufficient intron and splice support
     as defined by the user.
@@ -570,7 +570,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                                                                    five_p, denovo_novel_end_distance)
         three_p_matches = tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
                                                                                     three_p, denovo_novel_end_distance)
-        if denovo_ignore_novel_end is True:
+        if denovo_allow_novel_ends is False:
             tx_class = s.TranscriptClass
         else:
             tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
