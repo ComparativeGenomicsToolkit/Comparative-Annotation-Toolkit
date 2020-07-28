@@ -736,7 +736,7 @@ class GenomeFasta(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['hal2fasta', '--onlySequenceNames', os.path.abspath(self.hal), self.genome]
+        cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
         self.run_cmd(cmd)
 
 
