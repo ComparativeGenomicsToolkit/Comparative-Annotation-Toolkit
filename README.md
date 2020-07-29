@@ -237,7 +237,9 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--denovo-ignore-novel-genes`: For de-novo predictions, discard any transcripts that are predicted to be novel genes. In other words, only retain putative novel isoforms.
 
-`--denovo-novel-end-distance`: For de-novo predictions, allow transcripts to be included if they provide a novel 5' or 3' end N distance away from any existing ends. Default is 0.
+`--denovo-allow-novel-ends`: For de-novo predictions *not derived from augCGP*, do we allow for novel 5' or 3' ends to be sufficient to be considered a novel isoform?
+
+`--denovo-novel-end-distance`: For de-novo predictions, allow transcripts to be included if they provide a novel 5' or 3' end N distance away from any existing ends. This flag only applies if `--denovo-allow-novel-ends` is set. Default is 0.
 
 `--denovo-allow-unsupported`: For de-novo predictions, allow novel isoforms to be called if they contain splices that are not supported by the reference annotation even if they are also not supported by RNA-seq. Without this flag, novel isoforms will only be called if they have one or more splice that has RNA-seq/IsoSeq support and no reference annotation support.
 
