@@ -3,7 +3,7 @@ os: linux
 language: generic
 
 python: 3.7.1
-go: "1.11"
+#go: "1.5.4"
 
 dist: xenial
 
@@ -39,6 +39,7 @@ jobs:
         - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; docker push quay.io/ucsc_cgl/cat:latest; fi
     - stage: test
       script:
+        - set -ex
         - pyenv shell 3.7.1
         - pip install --upgrade pip
         - pip install cython wheel setuptools pycparser
@@ -52,20 +53,3 @@ jobs:
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
           --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG
-    - stage: test
-      script:
-        - sudo chmod u+x .travis/*.sh
-        - /bin/bash .travis/setup.sh
-        - pyenv shell 3.7.1
-        - pip install --upgrade pip
-        - pip install cython wheel setuptools pycparser
-        - pip install .
-        # Have to screw with toil's settings to get the jobs to
-        # actually run properly on such a small VM.
-        - sed -i "s/maxDisk = self.physicalDisk/pass/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxCores = self.numCores/maxCores = 8/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
-        - sed -i "s/maxMemory = self.physicalMemory/pass/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
-        - >
-          luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
-          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
-          --augustus --augustus-cgp --augustus-pb --assembly-hub --binary-mode singularity --log-level DEBUG
