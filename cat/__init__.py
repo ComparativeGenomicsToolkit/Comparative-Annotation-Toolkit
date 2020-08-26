@@ -119,6 +119,7 @@ class PipelineTask(luigi.Task):
     denovo_ignore_novel_genes = luigi.BoolParameter(default=False, significant=False)
     denovo_only_novel_genes = luigi.BoolParameter(default=False, significant=False)
     denovo_novel_end_distance = luigi.IntParameter(default=0, significant=False)
+    denovo_allow_novel_ends = luigi.BoolParameter(default=False, significant=False)
     denovo_allow_unsupported = luigi.BoolParameter(default=False, significant=False)
     denovo_allow_bad_annot_or_tm = luigi.BoolParameter(default=False, significant=False)
     require_pacbio_support = luigi.BoolParameter(default=False, significant=False)
@@ -196,6 +197,7 @@ class PipelineTask(luigi.Task):
         args.set('denovo_exon_support', self.denovo_exon_support, False)
         args.set('denovo_ignore_novel_genes', self.denovo_ignore_novel_genes, False)
         args.set('denovo_only_novel_genes', self.denovo_only_novel_genes, False)
+        args.set('denovo_allow_novel_ends', self.denovo_allow_novel_ends, False)
         args.set('denovo_novel_end_distance', self.denovo_novel_end_distance, False)
         args.set('denovo_allow_unsupported', self.denovo_allow_unsupported, False)
         args.set('denovo_allow_bad_annot_or_tm', self.denovo_allow_bad_annot_or_tm, False)
@@ -735,7 +737,7 @@ class GenomeFasta(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['hal2fasta', '--onlySequenceNames', os.path.abspath(self.hal), self.genome]
+        cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
         self.run_cmd(cmd)
 
 
@@ -939,7 +941,7 @@ class Gff3ToAttrs(PipelineTask):
         pipeline_args = self.get_pipeline_args()
         df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp, self.genome != self.ref_genome)
         if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
-            logger.critical('No protein_coding annotations found!')
+            raise InvalidInputException('No genes or transcripts with biotype protein_coding found!')
         # validate number parsed
         tot_genes = len(open(self.annotation_gp).readlines())
         if tot_genes != len(df):
@@ -1624,14 +1626,17 @@ class FindDenovoParents(PipelineTask):
             args.gps = {genome: AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp
                         for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.filtered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).filtered_tm_gp
-                                    for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                    for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.unfiltered_tm_gps = {genome: TransMap.get_args(pipeline_args, genome).tm_gp
-                                      for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes - {pipeline_args.ref_genome}}
+                                      for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
             args.chrom_sizes = {genome: GenomeFiles.get_args(pipeline_args, genome).sizes
                                 for genome in set(pipeline_args.target_genomes) & pipeline_args.isoseq_genomes}
-            # add the reference annotation as a pseudo-transMap to assign parents in reference
-            args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
-            args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+            if pipeline_args.ref_genome in pipeline_args.isoseq_genomes:
+                # add the reference annotation as a pseudo-transMap to assign parents in reference
+                args.filtered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+                args.unfiltered_tm_gps[pipeline_args.ref_genome] = ReferenceFiles.get_args(pipeline_args).annotation_gp
+                args.chrom_sizes[pipeline_args.ref_genome] = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
+                args.gps[pipeline_args.ref_genome] = AugustusPb.get_args(pipeline_args, pipeline_args.ref_genome).augustus_pb_gp
         elif mode == 'augCGP':
             args.tablename = tools.sqlInterface.AugCgpAlternativeGenes.__tablename__
             args.gps = AugustusCgp.get_args(pipeline_args).augustus_cgp_gp
@@ -2131,6 +2136,7 @@ class Consensus(PipelineWrapperTask):
         args.denovo_ignore_novel_genes = pipeline_args.denovo_ignore_novel_genes
         args.denovo_only_novel_genes = pipeline_args.denovo_only_novel_genes
         args.denovo_novel_end_distance = pipeline_args.denovo_novel_end_distance
+        args.denovo_allow_novel_ends = pipeline_args.denovo_allow_novel_ends
         args.denovo_allow_unsupported = pipeline_args.denovo_allow_unsupported
         args.denovo_allow_bad_annot_or_tm = pipeline_args.denovo_allow_bad_annot_or_tm
         args.require_pacbio_support = pipeline_args.require_pacbio_support

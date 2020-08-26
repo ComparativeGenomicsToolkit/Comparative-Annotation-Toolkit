@@ -128,7 +128,7 @@ def generate_consensus(args):
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
                                  args.denovo_ignore_novel_genes, args.denovo_novel_end_distance,
                                  args.denovo_allow_unsupported, args.denovo_allow_bad_annot_or_tm,
-                                 args.denovo_only_novel_genes)
+                                 args.denovo_only_novel_genes, args.denovo_allow_novel_ends)
         consensus_dict.update(denovo_dict)
 
     # perform final filtering steps
@@ -481,7 +481,7 @@ def evaluate_ties(best_rows):
 def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map, denovo_num_introns,
                in_species_rna_support_only, denovo_tx_modes, denovo_splice_support, denovo_exon_support,
                denovo_ignore_novel_genes, denovo_novel_end_distance, denovo_allow_unsupported,
-               denovo_allow_bad_annot_or_tm, denovo_only_novel_genes):
+               denovo_allow_bad_annot_or_tm, denovo_only_novel_genes, denovo_allow_novel_ends):
     """
     Finds novel loci, builds their attributes. Only calls novel loci if they have sufficient intron and splice support
     as defined by the user.
@@ -560,7 +560,9 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         return tx_class
 
     def has_novel_ends(s):
-        """Does this transcript have any novel ends we want to retain?"""
+        """Does this transcript have any novel ends we want to retain? Does not apply to augCGP"""
+        if tools.nameConversions.aln_id_is_cgp(s.AlignmentId):
+            return pd.Series([None, None, s.TranscriptClass])
         denovo_tx_obj = tx_dict[s.AlignmentId]
         five_p = denovo_tx_obj.get_5p_interval()
         three_p = denovo_tx_obj.get_3p_interval()
@@ -568,7 +570,10 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                                                                    five_p, denovo_novel_end_distance)
         three_p_matches = tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
                                                                                     three_p, denovo_novel_end_distance)
-        tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
+        if denovo_allow_novel_ends is False:
+            tx_class = s.TranscriptClass
+        else:
+            tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
         return pd.Series([five_p_matches, three_p_matches, tx_class])
 
     denovo_hgm_df = pd.concat([load_hgm_vectors(db_path, tx_mode) for tx_mode in denovo_tx_modes])
@@ -615,8 +620,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
     # filter out non-novel as well as fusions
-    filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull()) | (denovo_df.Novel5pCap == True)
-                                   | (denovo_df.NovelPolyA == True)]
+    filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull())]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
