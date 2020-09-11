@@ -743,6 +743,7 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
     Produce a fasta index file.
     """
     fasta = luigi.Parameter()
+    genome = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.fasta + ".fai")
