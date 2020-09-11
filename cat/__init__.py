@@ -8,6 +8,7 @@ import collections
 import logging
 import os
 import shutil
+import pyfaidx
 import json
 import subprocess
 from collections import OrderedDict
@@ -742,7 +743,9 @@ class GenomeFasta(AbstractAtomicFileTask):
 @requires(GenomeFasta)
 class GenomeFastaIndex(AbstractAtomicFileTask):
     """
-    Produce a fasta index file.
+    Produce a fasta index file. Requires samtools.
+
+    Samtools seems to act very weirdly when the file is piped out of Docker. To avoid this, just use pyfaidx directly.
     """
     fasta = luigi.Parameter()
     genome = luigi.Parameter()
@@ -752,18 +755,16 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Building FASTA index for {}.'.format(self.genome))
-        tmp = tools.fileOps.get_tmp_file()
-        cmd = ['samtools', 'faidx', tmp]
-        tools.procOps.run_proc(cmd)
-        tools.fileOps.atomic_install(tmp, self.output()[0])
-        os.remove(tmp)
+        try:
+            _ = pyfaidx.Faidx(self.fasta)
+        except Exception:
+            self.output()[0].remove()
 
 
 @requires(GenomeFasta)
 class GenomeTwoBit(AbstractAtomicFileTask):
     """
     Produce a 2bit file from a fasta file. Requires kent tool faToTwoBit.
-    Needs to be done BEFORE we flatten.
     """
     two_bit = luigi.Parameter()
 
