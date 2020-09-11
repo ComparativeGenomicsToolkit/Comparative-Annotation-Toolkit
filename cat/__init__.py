@@ -720,7 +720,6 @@ class GenomeFiles(PipelineWrapperTask):
             yield self.clone(GenomeFasta, **vars(args))
             yield self.clone(GenomeTwoBit, **vars(args))
             yield self.clone(GenomeSizes, **vars(args))
-            yield self.clone(GenomeFlatFasta, **vars(args))
 
 
 class GenomeFasta(AbstractAtomicFileTask):
@@ -951,7 +950,7 @@ class TranscriptBed(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@multiple_requires(GenomeFlatFasta, TranscriptBed)
+@requires(TranscriptBed)
 class TranscriptFasta(AbstractAtomicFileTask):
     """
     Produces a fasta for each transcript.
