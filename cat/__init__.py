@@ -739,6 +739,7 @@ class GenomeFasta(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
+@requires(GenomeFasta)
 class GenomeFastaIndex(AbstractAtomicFileTask):
     """
     Produce a fasta index file.
