@@ -949,7 +949,7 @@ class TranscriptBed(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@requires(TranscriptBed)
+@multiple_requires(GenomeFasta, TranscriptBed)
 class TranscriptFasta(AbstractAtomicFileTask):
     """
     Produces a fasta for each transcript.
@@ -961,7 +961,7 @@ class TranscriptFasta(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting reference annotation fasta.')
-        seq_dict = tools.bio.get_sequence_dict(self.transcript_fasta, upper=False)
+        seq_dict = tools.bio.get_sequence_dict(self.fasta, upper=False)
         seqs = {tx.name: tx.get_mrna(seq_dict) for tx in tools.transcripts.transcript_iterator(self.transcript_bed)}
         with self.output().open('w') as outf:
             for name, seq in seqs.items():
