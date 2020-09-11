@@ -752,7 +752,7 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['samtools', 'faidx', self.fasta]
+        cmd = ['samtools', 'faidx', '/dev/stdout']
         self.run_cmd(cmd)
 
 
