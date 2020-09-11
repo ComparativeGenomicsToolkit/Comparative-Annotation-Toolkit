@@ -738,6 +738,21 @@ class GenomeFasta(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
+class GenomeFastaIndex(AbstractAtomicFileTask):
+    """
+    Produce a fasta index file.
+    """
+    fasta = luigi.Parameter()
+
+    def output(self):
+        return luigi.LocalTarget(self.fasta + ".fai")
+
+    def run(self):
+        logger.info('Extracting fasta for {}.'.format(self.genome))
+        cmd = ['samtools', 'faidx', self.fasta]
+        self.run_cmd(cmd)
+
+
 @requires(GenomeFasta)
 class GenomeTwoBit(AbstractAtomicFileTask):
     """
@@ -949,7 +964,7 @@ class TranscriptBed(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@multiple_requires(GenomeFasta, TranscriptBed)
+@multiple_requires(GenomeFasta, GenomeFastaIndex, TranscriptBed)
 class TranscriptFasta(AbstractAtomicFileTask):
     """
     Produces a fasta for each transcript.
