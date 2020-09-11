@@ -389,12 +389,13 @@ class PipelineTask(luigi.Task):
         # to avoid threading this through in each of the hundreds of
         # command invocations.
         os.environ['CAT_BINARY_MODE'] = self.binary_mode
+        docker_image = os.getenv('DOCKER_IMAGE', 'quay.io/ucsc_cgl/cat:latest')
         if self.binary_mode == 'docker':
             if not tools.misc.is_exec('docker'):
                 raise ToolMissingException('docker binary not found. '
                                            'Either install it or use a different option for --binary-mode.')
             # Update docker container
-            subprocess.check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
+            subprocess.check_call(['docker', 'pull', docker_image])
         elif self.binary_mode == 'singularity':
             if not tools.misc.is_exec('singularity'):
                 raise ToolMissingException('singularity binary not found. '

@@ -32,7 +32,7 @@ The docker container for this repository will be automatically pulled from `quay
 Alternatively, you can run CAT entirely self contained using the Docker container, because the container contains the source code as well. This mode of operation is suitable if you are running on a single machine, such as reserving space on a cluster. In this mode, the self-contained binary could be ran like this:
 
 ~~~
-docker run quay.io/ucsc_cgl/cat:latest \
+docker run -v $PWD/test_data/:/test_data/ quay.io/ucsc_cgl/cat:latest \
 luigi \
   --module cat RunCat \
   --hal=test_data/vertebrates.hal \
