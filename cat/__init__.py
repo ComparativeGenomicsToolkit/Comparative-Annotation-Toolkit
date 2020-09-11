@@ -751,9 +751,11 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.fasta + ".fai")
 
     def run(self):
-        logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['samtools', 'faidx', '/dev/stdout']
-        self.run_cmd(cmd)
+        logger.info('Building FASTA index for {}.'.format(self.genome))
+        with tools.fileOps.TemporaryFilePath() as tmp:
+            cmd = ['samtools', 'faidx', tmp]
+            tools.procOps.run_proc(cmd)
+            tools.fileOps.atomic_install(tmp, self.output()[0])
 
 
 @requires(GenomeFasta)
