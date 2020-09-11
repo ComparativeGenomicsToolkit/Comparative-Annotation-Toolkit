@@ -758,8 +758,9 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
         logger.info('Building FASTA index for {}.'.format(self.genome))
         try:
             _ = pyfaidx.Faidx(self.fasta)
-        except Exception:
+        except Exception as e:
             self.output()[0].remove()
+            raise Exception(e)
 
 
 @requires(GenomeFasta)
@@ -980,15 +981,21 @@ class TranscriptFasta(AbstractAtomicFileTask):
     transcript_fasta = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.transcript_fasta)
+        return luigi.LocalTarget(self.transcript_fasta), luigi.LocalTarget(self.transcript_fasta + ".fai")
 
     def run(self):
         logger.info('Extracting reference annotation fasta.')
         seq_dict = tools.bio.get_sequence_dict(self.fasta, upper=False)
         seqs = {tx.name: tx.get_mrna(seq_dict) for tx in tools.transcripts.transcript_iterator(self.transcript_bed)}
-        with self.output().open('w') as outf:
+        fa, fai = self.output()
+        with fa.open('w') as outf:
             for name, seq in seqs.items():
                 tools.bio.write_fasta(outf, name, seq)
+        try:
+            _ = pyfaidx.Faidx(self.transcript_fasta)
+        except Exception as e:
+            fai.remove()
+            raise Exception(e)
 
 
 @requires(Gff3ToGenePred)
