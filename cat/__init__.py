@@ -806,7 +806,7 @@ class ReferenceFiles(PipelineWrapperTask):
     """
     WrapperTask for producing annotation files.
 
-    ReferenceFiles -> Gff3ToGenePred -> TranscriptBed -> TranscriptFasta -> FlatTranscriptFasta
+    ReferenceFiles -> Gff3ToGenePred -> TranscriptBed -> TranscriptFasta
                             V
                          FakePsl, TranscriptGtf
     """
@@ -841,7 +841,6 @@ class ReferenceFiles(PipelineWrapperTask):
         yield self.clone(TranscriptBed, **vars(args))
         yield self.clone(TranscriptFasta, **vars(args))
         yield self.clone(TranscriptGtf, **vars(args))
-        yield self.clone(FlatTranscriptFasta, **vars(args))
         yield self.clone(FakePsl, **vars(args))
 
 
