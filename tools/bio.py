@@ -140,6 +140,6 @@ def get_sequence_dict(file_path, upper=True):
     gdx_path = file_path + ".fai"
     assert os.path.exists(gdx_path), 'Error: FASTA index file {}.fai does not exist'.format(file_path)
     if upper is True:
-        return Fasta(file_path, sequence_always_upper=True)
+        return Fasta(file_path, sequence_always_upper=True, as_raw=True)
     else:
-        return Fasta(file_path)
+        return Fasta(file_path, as_raw=True)
