@@ -752,10 +752,11 @@ class GenomeFastaIndex(AbstractAtomicFileTask):
 
     def run(self):
         logger.info('Building FASTA index for {}.'.format(self.genome))
-        with tools.fileOps.TemporaryFilePath() as tmp:
-            cmd = ['samtools', 'faidx', tmp]
-            tools.procOps.run_proc(cmd)
-            tools.fileOps.atomic_install(tmp, self.output()[0])
+        tmp = tools.fileOps.get_tmp_file()
+        cmd = ['samtools', 'faidx', tmp]
+        tools.procOps.run_proc(cmd)
+        tools.fileOps.atomic_install(tmp, self.output()[0])
+        os.remove(tmp)
 
 
 @requires(GenomeFasta)
