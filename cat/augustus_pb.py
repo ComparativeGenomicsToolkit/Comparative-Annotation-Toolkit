@@ -77,7 +77,7 @@ def setup(job, args, input_file_ids):
 
     # calculate overlapping intervals. If the final interval is small (<= 50% of total interval size), merge it
     intervals = collections.defaultdict(list)
-    for chrom in genome_fasta:
+    for chrom in genome_fasta.keys():
         chrom_size = len(genome_fasta[chrom])
         for start in range(0, chrom_size, args.chunksize - args.overlap):
             stop = min(start + args.chunksize, chrom_size)
