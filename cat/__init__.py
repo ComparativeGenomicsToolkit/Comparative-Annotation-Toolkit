@@ -720,6 +720,7 @@ class GenomeFiles(PipelineWrapperTask):
             yield self.clone(GenomeFasta, **vars(args))
             yield self.clone(GenomeTwoBit, **vars(args))
             yield self.clone(GenomeSizes, **vars(args))
+            yield self.clone(GenomeFastaIndex, **vars(args))
 
 
 class GenomeFasta(AbstractAtomicFileTask):
