@@ -691,7 +691,7 @@ class GenomeFiles(PipelineWrapperTask):
     """
     WrapperTask for producing all genome files.
 
-    GenomeFiles -> GenomeFasta -> GenomeTwoBit -> GenomeFlatFasta -> GenomeFastaIndex
+    GenomeFiles -> GenomeFasta -> GenomeTwoBit -> GenomeFastaIndex
                 -> GenomeSizes
 
     """
@@ -703,7 +703,6 @@ class GenomeFiles(PipelineWrapperTask):
         args.fasta = os.path.join(base_dir, genome + '.fa')
         args.two_bit = os.path.join(base_dir, genome + '.2bit')
         args.sizes = os.path.join(base_dir, genome + '.chrom.sizes')
-        args.flat_fasta = os.path.join(base_dir, genome + '.fa.flat')
         return args
 
     def validate(self):
@@ -712,8 +711,6 @@ class GenomeFiles(PipelineWrapperTask):
                     raise ToolMissingException('{} from the HAL tools package not in global path'.format(haltool))
         if not tools.misc.is_exec('faToTwoBit'):
             raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
-        if not tools.misc.is_exec('pyfasta'):
-            raise ToolMissingException('pyfasta wrapper not found in global path.')
 
     def requires(self):
         self.validate()
@@ -775,22 +772,6 @@ class GenomeSizes(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@requires(GenomeTwoBit)
-class GenomeFlatFasta(AbstractAtomicFileTask):
-    """
-    Flattens a genome fasta in-place using pyfasta. Requires the pyfasta package.
-    """
-    flat_fasta = luigi.Parameter()
-
-    def output(self):
-        return luigi.LocalTarget(self.flat_fasta)
-
-    def run(self):
-        logger.info('Flattening fasta for {}.'.format(self.genome))
-        cmd = ['pyfasta', 'flatten', self.fasta]
-        tools.procOps.run_proc(cmd)
-
-
 class ExternalReferenceFiles(PipelineWrapperTask):
     """
     WrapperTask for running gff3ToGenePred and genePredToGtf <only> for non-reference annotation files
@@ -840,7 +821,6 @@ class ReferenceFiles(PipelineWrapperTask):
         args.annotation_attrs = os.path.join(base_dir, annotation + '.gp_attrs')
         args.annotation_gtf = os.path.join(base_dir, annotation + '.gtf')
         args.transcript_fasta = os.path.join(base_dir, annotation + '.fa')
-        args.transcript_flat_fasta = os.path.join(base_dir, annotation + '.fa.flat')
         args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
         args.duplicates = os.path.join(base_dir, annotation + '.duplicates.txt')
         args.ref_psl = os.path.join(base_dir, annotation + '.psl')
@@ -1004,23 +984,6 @@ class TranscriptGtf(AbstractAtomicFileTask):
     def run(self):
         logger.info('Extracting reference annotation GTF.')
         tools.misc.convert_gp_gtf(self.output(), luigi.LocalTarget(self.annotation_gp))
-
-
-@requires(TranscriptFasta)
-class FlatTranscriptFasta(AbstractAtomicFileTask):
-    """
-    Flattens the transcript fasta for pyfasta.
-    """
-    transcript_fasta = luigi.Parameter()
-    transcript_flat_fasta = luigi.Parameter()
-
-    def output(self):
-        return luigi.LocalTarget(self.transcript_flat_fasta)
-
-    def run(self):
-        logger.info('Flattening reference annotation fasta.')
-        cmd = ['pyfasta', 'flatten', self.transcript_fasta]
-        tools.procOps.run_proc(cmd)
 
 
 @multiple_requires(Gff3ToGenePred, GenomeSizes)

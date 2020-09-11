@@ -1,20 +1,9 @@
 """
 Basic biology related functions
 """
-import string
 import os
-from pyfasta import Fasta, NpyFastaRecord
+from pyfaidx import Fasta
 from .fileOps import opengz
-
-
-class UpperNpyFastaRecord(NpyFastaRecord):
-    """
-    Used when we want only upper case records.
-    If as_string is False, will no longer return a memmap object but instead a list.
-    """
-    def __getitem__(self, islice):
-        d = self.getdata(islice)
-        return d.tostring().decode().upper() if self.as_string else list(map(string.upper, d))
 
 
 def write_fasta(path_or_handle, name, seq, chunk_size=100, validate=None):
@@ -148,13 +137,9 @@ def get_sequence_dict(file_path, upper=True):
     Returns a dictionary of fasta records. If upper is true, all bases will be uppercased.
     """
     assert os.path.exists(file_path), ('Error: FASTA file {} does not exist'.format(file_path))
-    gdx_path = file_path + ".gdx"
-    assert os.path.exists(gdx_path), ("Error: gdx does not exist for this fasta. We need the fasta files to be "
-                                      "flattened in place prior to running the pipeline because of concurrency issues.")
-    flat_path = file_path + '.flat'
-    assert os.path.exists(flat_path), ("Error: flat file does not exist for this fasta. We need the fasta files to be "
-                                       "flattened in place prior to running the pipeline because of concurrency issues.")
+    gdx_path = file_path + ".fai"
+    assert os.path.exists(gdx_path), 'Error: FASTA index file {}.fai does not exist'.format(file_path)
     if upper is True:
-        return Fasta(file_path, record_class=UpperNpyFastaRecord)
+        return Fasta(file_path, sequence_always_upper=True)
     else:
         return Fasta(file_path)

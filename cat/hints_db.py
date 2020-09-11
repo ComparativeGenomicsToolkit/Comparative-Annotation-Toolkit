@@ -6,7 +6,7 @@ import itertools
 import os
 import logging
 
-import pyfasta
+import pyfaidx
 import pysam
 
 try:
@@ -38,7 +38,7 @@ def hints_db(hints_args, toil_options):
         return [FileID.forPath(t.importFile('file://' + bam_path), bam_path),
                 FileID.forPath(t.importFile('file://' + bam_path + '.bai'), bam_path + '.bai')]
 
-    fasta = pyfasta.Fasta(hints_args.fasta)
+    fasta = pyfaidx.Fasta(hints_args.fasta)
     fasta_sequences = {(x.split()[0], len(fasta[x])) for x in fasta.keys()}
     with Toil(toil_options) as t:
         if not t.options.restart:
@@ -282,7 +282,7 @@ def generate_protein_hints(job, protein_fasta_file_id, genome_fasta_file_id):
     """
     disk_usage = tools.toilInterface.find_total_disk_usage(genome_fasta_file_id)
     protein_fasta = job.fileStore.readGlobalFile(protein_fasta_file_id)
-    cmd = ['pyfasta', 'flatten', protein_fasta]
+    cmd = ['samtools', 'faidx', protein_fasta]
     tools.procOps.run_proc(cmd)
     protein_handle = tools.bio.get_sequence_dict(protein_fasta)
     # group up proteins for sub-jobs

@@ -33,15 +33,6 @@ RUN curl -LO http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/{axtChain,bam
 RUN set -o pipefail && curl -L https://github.com/biod/sambamba/releases/download/v0.7.1/sambamba-0.7.1-linux-static.gz \
     | gzip -d > /binaries/sambamba && chmod a+x /binaries/sambamba
 
-# CAT v2.1.0 needs more recent hal2fasta supporting the --onlySequenceNames option
-#RUN set -o pipefail && curl -L https://github.com/ComparativeGenomicsToolkit/cactus/releases/download/v1.0.0/cactus-bin-v1.0.0.tar.gz \
-#    | tar -C /tmp -xzf - \
-#        cactus-bin-v1.0.0/bin/hal2maf \
-#        cactus-bin-v1.0.0/bin/hal2fasta \
-#        cactus-bin-v1.0.0/bin/halLiftover \
-#        cactus-bin-v1.0.0/bin/halStats \
-#  && mv /tmp/cactus-bin-v1.0.0/bin/* /binaries && chmod a+x /binaries/hal*
-
 ########################################
 
 FROM ubuntu:20.04 AS cat-augustus

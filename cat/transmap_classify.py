@@ -110,7 +110,7 @@ def aln_abuts_unknown_bases(tx, fasta):
     Do any exons in this alignment immediately touch Ns?
 
     :param tx: a GenePredTranscript object
-    :param fasta: pyfasta Fasta object for genome
+    :param fasta: pyfaidx Fasta object for genome
     :return: boolean
     """
     chrom = tx.chromosome
