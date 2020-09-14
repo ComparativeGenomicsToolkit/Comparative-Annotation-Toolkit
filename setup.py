@@ -6,7 +6,7 @@ setup(
     packages=['cat', 'tools'],
     python_requires='>=3.7.0',
     install_requires=[
-        'pyfasta>=0.5.2',
+        'pyfaidx',
         'toil>=3.5',
         'luigi>=2.5',
         'seaborn>=0.7',

@@ -1,90 +1,152 @@
-FROM ubuntu:18.04 AS builder
-ARG AUGUSTUS_COMMIT=36ae43d
-RUN apt-get update
-RUN apt-get install -y build-essential libssl-dev libncurses5-dev libcurl4-openssl-dev liblzma-dev libbz2-dev \
-libboost-all-dev sqlite3 libsqlite3-0 libsqlite3-dev libgsl0-dev lp-solve liblpsolve55-dev libbamtools-dev wget git
+# install python dependencies
+FROM ubuntu:20.04 AS cat-python
 
-# htslib
-RUN git clone git://github.com/samtools/htslib.git
-RUN cd htslib && make install
+RUN apt update && apt install -y --no-install-recommends \
+  gcc \
+  python3-dev \
+  python3-pip
 
-# bcftools
-RUN git clone git://github.com/samtools/bcftools.git
-RUN cd bcftools && make
+COPY ./setup.py /
 
-# samtools
-RUN git clone git://github.com/samtools/samtools
-RUN cd samtools && make && make install
+RUN mkdir cat tools \
+  && python3 setup.py egg_info \
+  && pip3 install -r cat.egg-info/requires.txt
 
-# MOVE Directories INTO $HOME/tool
-RUN mkdir /root/tools
-RUN mv samtools /root/tools
-RUN mv htslib /root/tools
-RUN mv bcftools /root/tools
+COPY ./ /cat
 
-# Augustus
-RUN git clone https://github.com/Gaius-Augustus/Augustus augustus
-RUN cd augustus && git reset --hard ${AUGUSTUS_COMMIT}
-RUN echo 'COMPGENEPRED = true' >> augustus/common.mk
-RUN echo 'SQLITE = true' >> augustus/common.mk
-RUN cd augustus/auxprogs/homGeneMapping/src && sed 's/# BOOST = true/BOOST = true/g' -i Makefile && sed 's/# SQLITE = true/SQLITE = true/g' -i Makefile
-RUN cd augustus && make
+RUN cd /cat \
+  && sed -i'' "s#'augustus_cfgs/#'/opt/augustus/config/extrinsic/#g" cat/__init__.py \
+  && python3 setup.py install
 
-# HDF5
-RUN wget -q http://www.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.1/src/hdf5-1.10.1.tar.gz
-RUN tar xzf hdf5-1.10.1.tar.gz
-RUN cd hdf5-1.10.1 && ./configure --enable-cxx --prefix=/usr
-RUN cd hdf5-1.10.1 && make && make install
+########################################
 
-# sonLib
-RUN git clone git://github.com/ComparativeGenomicsToolkit/sonLib.git
+FROM curlimages/curl:7.70.0 AS cat-binaries
 
-# HAL
-RUN git clone git://github.com/ComparativeGenomicsToolkit/hal.git
-RUN cd sonLib && make
-RUN cd hal && make
+USER root
 
-# LibBigWig
-RUN git clone https://github.com/dpryan79/libBigWig.git
-RUN cd libBigWig && make install
+WORKDIR /binaries
 
-# WiggleTools
-RUN git clone https://github.com/dahlo/WiggleTools
-# Their makefile now hardcodes /bin/cc as compiler :(
-RUN ln -s /usr/bin/cc /bin/cc
-RUN cd WiggleTools && make
+# Need >= v395 for clusterGenes -minOverlappingBases option
+RUN curl -LO http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/{axtChain,bamToPsl,bedSort,bedToBigBed,chainMergeSort,clusterGenes,faToTwoBit,genePredToBed,genePredToFakePsl,genePredToGtf,gff3ToGenePred,gtfToGenePred,pslCDnaFilter,pslCheck,pslMap,pslMapPostChain,pslPosTarget,pslRecalcMatch,pslToBigPsl,transMapPslToGenePred,wigToBigWig} \
+  && chmod a+x /binaries/*
 
-# sambamba
-RUN wget -q https://github.com/biod/sambamba/releases/download/v0.6.7/sambamba_v0.6.7_linux.tar.bz2
-RUN tar xvjf sambamba_v0.6.7_linux.tar.bz2
+RUN set -o pipefail && curl -L https://github.com/biod/sambamba/releases/download/v0.7.1/sambamba-0.7.1-linux-static.gz \
+    | gzip -d > /binaries/sambamba && chmod a+x /binaries/sambamba
 
-# Slimmer final Docker image
+########################################
 
-FROM ubuntu:18.04
-RUN apt-get update
-RUN apt-get install -y wget bedtools bamtools samtools sqlite3 libgsl0-dev libcolamd2 software-properties-common libcurl4-openssl-dev exonerate
-RUN add-apt-repository -y ppa:deadsnakes/ppa
-RUN apt-get install -y python3.7 python3-pip
-# Kent
-RUN for i in wigToBigWig faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred \
-pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf bedtools \
-pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed; do \
-wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/$i -O /bin/$i ; chmod +x /bin/$i ; done
+FROM ubuntu:20.04 AS cat-augustus
 
-COPY --from=builder /hal/bin/* /bin/
-COPY --from=builder /sambamba /bin/
-COPY --from=builder /augustus/bin/* /bin/
-COPY --from=builder /augustus/scripts/* /bin/
-COPY --from=builder /WiggleTools/bin/* /bin/
+# Install required packages
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+  autoconf \
+  build-essential \
+  ca-certificates \
+  curl \
+  libbamtools-dev \
+  libboost-iostreams-dev \
+  libgsl-dev \
+  libhts-dev \
+  liblpsolve55-dev \
+  libsqlite3-dev \
+  libsuitesparse-dev \
+  zlib1g-dev \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /augustus
-COPY --from=builder /augustus/config /augustus/config
+# 2020-07-03 snapshot + bam2wig build simplification
+# https://github.com/Gaius-Augustus/Augustus/pull/153
+RUN mkdir /src && cd /src \
+  && curl -L https://github.com/harvardinformatics/Augustus/archive/08b7d320cbee586ebfbee410aeae90d81ce03f1e.tar.gz \
+    | tar --strip-components=1 -xzf - \
+  && make INSTALLDIR=/opt/augustus MYSQL=false HTSLIBS='-lhts' \
+  && make -j install \
+  && mv /opt/augustus-* /opt/augustus \
+  && rm -rf /src
 
-# Python deps
-RUN pip3 install bd2k-python-lib toil[all] pyfasta numpy matplotlib
+########################################
+# https://github.com/Ensembl/WiggleTools/blob/597d84/Dockerfile
 
-# make Python 3 primary python
-RUN rm /usr/bin/python
-RUN ln -s /usr/bin/python3.7 /usr/bin/python
+FROM ubuntu:20.04 AS cat-wiggletools
 
-ENV AUGUSTUS_CONFIG_PATH=/augustus/config/
+RUN apt update && apt install -y --no-install-recommends \
+  ca-certificates \
+  libgsl-dev \
+  libhts-dev \
+  libbigwig-dev \
+  libcurl4-openssl-dev \
+  gcc \
+  python \
+  make
+
+WORKDIR /build
+
+# 2020-06-02 snapshot
+ADD https://github.com/Ensembl/WiggleTools/archive/c1daac89e3775bc8f96376fc1ed7f7e645ce168c.tar.gz wiggletools.tar.gz
+
+RUN tar --strip-components=1 -xzf wiggletools.tar.gz \
+  && make LIBS='-lwiggletools -lBigWig -lcurl -lhts -lgsl  -lgslcblas -lz -lpthread -lm -llzma'
+
+########################################
+
+FROM ubuntu:20.04 AS cat-hal
+
+RUN apt update && apt install -y \
+  libhdf5-dev \
+  g++ \
+  make \
+  zlib1g-dev
+
+WORKDIR /sonLib
+# 2020-06-16 snapshot
+ADD https://github.com/ComparativeGenomicsToolkit/sonLib/archive/ea0b939828ba24d998a7c1aa407ff5a016912f56.tar.gz sonLib.tar.gz
+RUN tar --strip-components=1 -xzf sonLib.tar.gz
+RUN make -j
+
+WORKDIR /hal
+# 2020-07-08 snapshot
+ADD https://github.com/ComparativeGenomicsToolkit/hal/archive/cb7c044731271ec41640db71f5694af53a0ead57.tar.gz hal.tar.gz
+RUN tar --strip-components=1 -xzf hal.tar.gz \
+  && make -j \
+  && mkdir /binaries \
+  && mv bin/hal2fasta bin/hal2maf bin/halStats bin/halLiftover /binaries \
+  && strip /binaries/* \
+  && rm -rf /hal
+
+########################################
+
+FROM ubuntu:20.04 AS final
+
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+  bamtools \
+  bedtools \
+  exonerate \
+  libbamtools2.5.1 \
+  libbigwig0 \
+  libboost-iostreams1.71.0 \
+  libcolamd2 \
+  libcurl4 \
+  libgsl23 \
+  libhts3 \
+  libsqlite3-0 \
+  libsz2 \
+  libsuitesparseconfig5 \
+  python3-pip \
+  samtools \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=cat-python /usr/local /usr/local
+COPY --from=cat-binaries /binaries /usr/local/bin
+COPY --from=cat-hal /binaries /usr/local/bin
+COPY --from=cat-wiggletools /build/bin/wiggletools /usr/local/bin
+COPY --from=cat-augustus /opt/augustus /opt/augustus
+
+# (2020-06-04) augustus_cfgs/log_reg_parameters_default.cfg identical to Augustus config/cgp/log_reg_parameters_default.cfg
+COPY ./augustus_cfgs/*extrinsic*.cfg /opt/augustus/config/extrinsic/
+
+# luigi looks for luigi.cfg in /etc/luigi/luigi.cfg by default
+COPY ./logging.cfg ./luigi.cfg /etc/luigi/
+
+# but need to tell luigi to look for logging.cfg at /etc/luigi/logging.cfg
+RUN sed -i'' '/logging_conf_file/s#.*#logging_conf_file=/etc/luigi/logging.cfg#' /etc/luigi/luigi.cfg
+
+ENV PATH=/opt/augustus/bin:/opt/augustus/scripts:${PATH}

@@ -3,15 +3,16 @@ os: linux
 language: generic
 
 python: 3.7.1
-#go: "1.5.4"
 
 dist: xenial
 
 services:
   - docker
 stages:
-  - name: docker-build
+  - name: docker-build-master
     if: branch = master
+  - name: docker-build-develop
+    if: branch = develop
   - name: test
 
 addons:
@@ -33,10 +34,22 @@ addons:
 
 jobs:
   include:
-    - stage: docker-build
+    - stage: docker-build-master
       script:
-        - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker build -t quay.io/ucsc_cgl/cat:latest .; fi
-        - if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io; docker push quay.io/ucsc_cgl/cat:latest; fi
+        - >
+          if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
+            docker build -t quay.io/ucsc_cgl/cat:latest .
+            docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io
+            docker push quay.io/ucsc_cgl/cat:latest
+          fi
+    - stage: docker-build-develop
+      script:
+        - >
+          if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
+            docker build -t quay.io/ucsc_cgl/cat:develop .
+            docker login --username $QUAY_USERNAME --password $QUAY_PASSWORD quay.io
+            docker push quay.io/ucsc_cgl/cat:develop
+          fi
     - stage: test
       script:
         - set -ex
@@ -52,4 +65,4 @@ jobs:
         - >
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
-          --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG
+          --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG --logLevel DEBUG

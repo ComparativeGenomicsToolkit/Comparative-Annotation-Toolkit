@@ -189,7 +189,7 @@ def in_frame_stop(tx, fasta):
     Finds the first in frame stop of this transcript, if there are any
 
     :param tx: Target GenePredTranscript object
-    :param fasta: pyfasta Fasta object mapping the genome fasta for this analysis
+    :param fasta: pyfaidx Fasta object mapping the genome fasta for this analysis
     :return: A BED string if an in frame stop was found otherwise None
     """
     for start_pos, stop_pos, codon in tx.codon_iterator(fasta):
@@ -207,7 +207,7 @@ def find_adj_start_stop(tx, fasta):
     """
     Finds the adjusted start/stop positions that define the ORF of this transcript, dealing with in-frame stops
     :param tx: Target GenePredTranscript object
-    :param fasta: pyfasta Fasta object mapping the genome fasta for this analysis
+    :param fasta: pyfaidx Fasta object mapping the genome fasta for this analysis
     :return: two integers for start/stop in genomic coordinates
     """
     for start_pos, stop_pos, codon in tx.codon_iterator(fasta):

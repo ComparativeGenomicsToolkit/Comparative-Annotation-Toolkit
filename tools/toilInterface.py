@@ -18,33 +18,31 @@ except ImportError:
 def load_fasta_from_filestore(job, fasta_file_ids, prefix='genome', upper=False):
     """
     Convenience function that will load a fasta from the fileStore and return the local path to it. This works with
-    the pyfasta module to load all of the required files.
+    the pyfaidx module to load all of the required files.
     :param job: current job.
-    :param fasta_file_ids: list of fileStore file ID for the fasta, gdx, and flat file.
+    :param fasta_file_ids: list of fileStore file ID for the fasta and fasta index files.
     :param prefix: local file path prefix
     :param upper: force all entries to upper case
-    :return: open pyfasta Fasta record pointing to the file.
+    :return: open pyfaidx Fasta record pointing to the file.
     """
     fasta_local_path = '{}.fasta'.format(prefix)
-    fasta_file_id, gdx_file_id, flat_file_id = fasta_file_ids
+    fasta_file_id, fai_file_id = fasta_file_ids
     job.fileStore.readGlobalFile(fasta_file_id, fasta_local_path)
-    job.fileStore.readGlobalFile(gdx_file_id, '{}.fasta.gdx'.format(prefix))
-    job.fileStore.readGlobalFile(flat_file_id, '{}.fasta.flat'.format(prefix))
+    job.fileStore.readGlobalFile(fai_file_id, '{}.fasta.fai'.format(prefix))
     return bio.get_sequence_dict(fasta_local_path, upper=upper)
 
 
 def write_fasta_to_filestore(toil, fasta_local_path):
     """
     Convenience function that loads a fasta and its associated gdx/flat file into the fileStore.
-    Assumes that the paths are consistent with the requirements (i.e. $path.gdx and $path.flat)
+    Assumes that the paths are consistent with the requirements (i.e. $path.fai)
     :param toil: Toil context manager
     :param fasta_local_path: Path to local fasta to load.
-    :return: List of fileStore IDs for fasta, fasta_gdx, fasta_flat
+    :return: List of fileStore IDs for fasta, fasta_fai
     """
     fasta_file_id = FileID.forPath(toil.importFile('file:///' + fasta_local_path), fasta_local_path)
-    gdx_file_id = FileID.forPath(toil.importFile('file:///' + fasta_local_path + '.gdx'), fasta_local_path + '.gdx')
-    flat_file_id = FileID.forPath(toil.importFile('file:///' + fasta_local_path + '.flat'), fasta_local_path + '.flat')
-    return fasta_file_id, gdx_file_id, flat_file_id
+    fai_file_id = FileID.forPath(toil.importFile('file:///' + fasta_local_path + '.fai'), fasta_local_path + '.fai')
+    return fasta_file_id, fai_file_id
 
 
 def find_total_disk_usage(input_file_ids, buffer='2G', round='2G'):

@@ -8,6 +8,7 @@ import collections
 import logging
 import os
 import shutil
+import pyfaidx
 import json
 import subprocess
 from collections import OrderedDict
@@ -388,12 +389,13 @@ class PipelineTask(luigi.Task):
         # to avoid threading this through in each of the hundreds of
         # command invocations.
         os.environ['CAT_BINARY_MODE'] = self.binary_mode
+        docker_image = os.getenv('DOCKER_IMAGE', 'quay.io/ucsc_cgl/cat:latest')
         if self.binary_mode == 'docker':
             if not tools.misc.is_exec('docker'):
                 raise ToolMissingException('docker binary not found. '
                                            'Either install it or use a different option for --binary-mode.')
             # Update docker container
-            subprocess.check_call(['docker', 'pull', 'quay.io/ucsc_cgl/cat:latest'])
+            subprocess.check_call(['docker', 'pull', docker_image])
         elif self.binary_mode == 'singularity':
             if not tools.misc.is_exec('singularity'):
                 raise ToolMissingException('singularity binary not found. '
@@ -691,7 +693,7 @@ class GenomeFiles(PipelineWrapperTask):
     """
     WrapperTask for producing all genome files.
 
-    GenomeFiles -> GenomeFasta -> GenomeTwoBit -> GenomeFlatFasta -> GenomeFastaIndex
+    GenomeFiles -> GenomeFasta -> GenomeTwoBit -> GenomeFastaIndex
                 -> GenomeSizes
 
     """
@@ -703,7 +705,6 @@ class GenomeFiles(PipelineWrapperTask):
         args.fasta = os.path.join(base_dir, genome + '.fa')
         args.two_bit = os.path.join(base_dir, genome + '.2bit')
         args.sizes = os.path.join(base_dir, genome + '.chrom.sizes')
-        args.flat_fasta = os.path.join(base_dir, genome + '.fa.flat')
         return args
 
     def validate(self):
@@ -712,8 +713,6 @@ class GenomeFiles(PipelineWrapperTask):
                     raise ToolMissingException('{} from the HAL tools package not in global path'.format(haltool))
         if not tools.misc.is_exec('faToTwoBit'):
             raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
-        if not tools.misc.is_exec('pyfasta'):
-            raise ToolMissingException('pyfasta wrapper not found in global path.')
 
     def requires(self):
         self.validate()
@@ -723,7 +722,7 @@ class GenomeFiles(PipelineWrapperTask):
             yield self.clone(GenomeFasta, **vars(args))
             yield self.clone(GenomeTwoBit, **vars(args))
             yield self.clone(GenomeSizes, **vars(args))
-            yield self.clone(GenomeFlatFasta, **vars(args))
+            yield self.clone(GenomeFastaIndex, **vars(args))
 
 
 class GenomeFasta(AbstractAtomicFileTask):
@@ -743,10 +742,31 @@ class GenomeFasta(AbstractAtomicFileTask):
 
 
 @requires(GenomeFasta)
+class GenomeFastaIndex(AbstractAtomicFileTask):
+    """
+    Produce a fasta index file. Requires samtools.
+
+    Samtools seems to act very weirdly when the file is piped out of Docker. To avoid this, just use pyfaidx directly.
+    """
+    fasta = luigi.Parameter()
+    genome = luigi.Parameter()
+
+    def output(self):
+        return luigi.LocalTarget(self.fasta + ".fai")
+
+    def run(self):
+        logger.info('Building FASTA index for {}.'.format(self.genome))
+        try:
+            _ = pyfaidx.Faidx(self.fasta)
+        except Exception as e:
+            self.output()[0].remove()
+            raise Exception(e)
+
+
+@requires(GenomeFasta)
 class GenomeTwoBit(AbstractAtomicFileTask):
     """
     Produce a 2bit file from a fasta file. Requires kent tool faToTwoBit.
-    Needs to be done BEFORE we flatten.
     """
     two_bit = luigi.Parameter()
 
@@ -773,22 +793,6 @@ class GenomeSizes(AbstractAtomicFileTask):
         logger.info('Extracting chromosome sizes for {}.'.format(self.genome))
         cmd = ['halStats', '--chromSizes', self.genome, os.path.abspath(self.hal)]
         self.run_cmd(cmd)
-
-
-@requires(GenomeTwoBit)
-class GenomeFlatFasta(AbstractAtomicFileTask):
-    """
-    Flattens a genome fasta in-place using pyfasta. Requires the pyfasta package.
-    """
-    flat_fasta = luigi.Parameter()
-
-    def output(self):
-        return luigi.LocalTarget(self.flat_fasta)
-
-    def run(self):
-        logger.info('Flattening fasta for {}.'.format(self.genome))
-        cmd = ['pyfasta', 'flatten', self.fasta]
-        tools.procOps.run_proc(cmd)
 
 
 class ExternalReferenceFiles(PipelineWrapperTask):
@@ -826,7 +830,7 @@ class ReferenceFiles(PipelineWrapperTask):
     """
     WrapperTask for producing annotation files.
 
-    ReferenceFiles -> Gff3ToGenePred -> TranscriptBed -> TranscriptFasta -> FlatTranscriptFasta
+    ReferenceFiles -> Gff3ToGenePred -> TranscriptBed -> TranscriptFasta
                             V
                          FakePsl, TranscriptGtf
     """
@@ -840,7 +844,6 @@ class ReferenceFiles(PipelineWrapperTask):
         args.annotation_attrs = os.path.join(base_dir, annotation + '.gp_attrs')
         args.annotation_gtf = os.path.join(base_dir, annotation + '.gtf')
         args.transcript_fasta = os.path.join(base_dir, annotation + '.fa')
-        args.transcript_flat_fasta = os.path.join(base_dir, annotation + '.fa.flat')
         args.transcript_bed = os.path.join(base_dir, annotation + '.bed')
         args.duplicates = os.path.join(base_dir, annotation + '.duplicates.txt')
         args.ref_psl = os.path.join(base_dir, annotation + '.psl')
@@ -862,7 +865,6 @@ class ReferenceFiles(PipelineWrapperTask):
         yield self.clone(TranscriptBed, **vars(args))
         yield self.clone(TranscriptFasta, **vars(args))
         yield self.clone(TranscriptGtf, **vars(args))
-        yield self.clone(FlatTranscriptFasta, **vars(args))
         yield self.clone(FakePsl, **vars(args))
 
 
@@ -971,7 +973,7 @@ class TranscriptBed(AbstractAtomicFileTask):
         self.run_cmd(cmd)
 
 
-@multiple_requires(GenomeFlatFasta, TranscriptBed)
+@multiple_requires(GenomeFasta, GenomeFastaIndex, TranscriptBed)
 class TranscriptFasta(AbstractAtomicFileTask):
     """
     Produces a fasta for each transcript.
@@ -979,15 +981,21 @@ class TranscriptFasta(AbstractAtomicFileTask):
     transcript_fasta = luigi.Parameter()
 
     def output(self):
-        return luigi.LocalTarget(self.transcript_fasta)
+        return luigi.LocalTarget(self.transcript_fasta), luigi.LocalTarget(self.transcript_fasta + ".fai")
 
     def run(self):
         logger.info('Extracting reference annotation fasta.')
         seq_dict = tools.bio.get_sequence_dict(self.fasta, upper=False)
         seqs = {tx.name: tx.get_mrna(seq_dict) for tx in tools.transcripts.transcript_iterator(self.transcript_bed)}
-        with self.output().open('w') as outf:
+        fa, fai = self.output()
+        with fa.open('w') as outf:
             for name, seq in seqs.items():
                 tools.bio.write_fasta(outf, name, seq)
+        try:
+            _ = pyfaidx.Faidx(self.transcript_fasta)
+        except Exception as e:
+            fai.remove()
+            raise Exception(e)
 
 
 @requires(Gff3ToGenePred)
@@ -1004,23 +1012,6 @@ class TranscriptGtf(AbstractAtomicFileTask):
     def run(self):
         logger.info('Extracting reference annotation GTF.')
         tools.misc.convert_gp_gtf(self.output(), luigi.LocalTarget(self.annotation_gp))
-
-
-@requires(TranscriptFasta)
-class FlatTranscriptFasta(AbstractAtomicFileTask):
-    """
-    Flattens the transcript fasta for pyfasta.
-    """
-    transcript_fasta = luigi.Parameter()
-    transcript_flat_fasta = luigi.Parameter()
-
-    def output(self):
-        return luigi.LocalTarget(self.transcript_flat_fasta)
-
-    def run(self):
-        logger.info('Flattening reference annotation fasta.')
-        cmd = ['pyfasta', 'flatten', self.transcript_fasta]
-        tools.procOps.run_proc(cmd)
 
 
 @multiple_requires(Gff3ToGenePred, GenomeSizes)

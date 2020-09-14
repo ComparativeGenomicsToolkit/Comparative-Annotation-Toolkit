@@ -18,13 +18,14 @@ def cmdLists(cmd):
     single command or a list of commands.
     """
     if os.environ.get('CAT_BINARY_MODE') == 'docker':
+        docker_image = os.getenv('DOCKER_IMAGE', 'quay.io/ucsc_cgl/cat:latest')
         if isinstance(cmd[0], list):
             docList = []
             for e in cmd:
-                docList.append(getDockerCommand('quay.io/ucsc_cgl/cat', e))
+                docList.append(getDockerCommand(docker_image, e))
             return docList
         else:
-            return getDockerCommand('quay.io/ucsc_cgl/cat', cmd)
+            return getDockerCommand(docker_image, cmd)
     elif os.environ.get('CAT_BINARY_MODE') == 'singularity':
         if os.environ.get('SINGULARITY_IMAGE'):
             img = os.environ['SINGULARITY_IMAGE']
