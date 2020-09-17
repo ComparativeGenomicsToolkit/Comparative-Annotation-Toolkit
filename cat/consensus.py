@@ -623,9 +623,10 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     denovo_df[['Novel5pCap', 'NovelPolyA', 'TranscriptClass']] = denovo_df.apply(has_novel_ends, axis=1)
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
-    # filter out non-novel as well as fusions
+    # filter out non-novel, fusions and user filtered
     filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull())]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
+    filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'user_filtered']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
     # filter out novel if requested by user
