@@ -287,7 +287,9 @@ def generate_protein_hints(job, protein_fasta_file_id, genome_fasta_file_id):
     protein_handle = tools.bio.get_sequence_dict(protein_fasta)
     # group up proteins for sub-jobs
     results = []
-    for chunk in tools.dataOps.grouper(protein_handle.items(), 100):
+    for chunk in tools.dataOps.grouper(protein_handle.items(), 500):
+        # make pickleable
+        chunk = [[name, str(seq)] for name, seq in chunk]
         j = job.addChildJobFn(run_protein_aln, chunk, genome_fasta_file_id, disk=disk_usage, memory='8G')
         results.append(j.rv())
     # return merged results
