@@ -104,7 +104,7 @@ RUN make -j
 
 WORKDIR /hal
 # 2020-07-08 snapshot
-ADD https://github.com/ComparativeGenomicsToolkit/hal/archive/cb7c044731271ec41640db71f5694af53a0ead57.tar.gz hal.tar.gz
+ADD https://github.com/ComparativeGenomicsToolkit/hal/archive/f8f3fa2dada4751b642f0089b2bf30769967e68a.tar.gz hal.tar.gz
 RUN tar --strip-components=1 -xzf hal.tar.gz \
   && make -j \
   && mkdir /binaries \
