@@ -342,6 +342,8 @@ class PipelineTask(luigi.Task):
             for genome, annot in args.cfg[dtype].items():
                 if not os.path.exists(annot):
                     raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
+                if annot.endswith("gz"):
+                    raise InvalidInputException('Cannot use gzipped annotation/FASTA files.')
 
         if all(g in args.hal_genomes for g in args.target_genomes) is False:
             bad_genomes = set(args.hal_genomes) - set(args.target_genomes)
@@ -896,6 +898,15 @@ class Gff3ToGenePred(PipelineTask):
                                         'Please check your input. One possible cause is the lack of a transcript-level '
                                         'identifier on a gene record. Duplicate IDs have been written to: '
                                         '{}'.format(len(duplicates), self.duplicates))
+        grouped_genes = tools.transcripts.group_transcripts_by_name2(annotation_gp.values())
+        multi_chrom_genes = []
+        for gene_id, txs in grouped_genes.items():
+            if len({x.chromosome for x in txs}) != 1:
+                multi_chrom_genes.append(gene_id)
+        if len(multi_chrom_genes) > 0:
+            raise InvalidInputException('Found {:,} genes on multiple chromosomes. '
+                                        'This is not allowed.'.format(len(multi_chrom_genes)))
+
 
     def run(self):
         logger.info('Converting annotation gff3 to genePred.')

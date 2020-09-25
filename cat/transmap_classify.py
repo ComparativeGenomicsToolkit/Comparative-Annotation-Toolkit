@@ -29,6 +29,7 @@ import tools.toilInterface
 import tools.procOps
 import tools.tm2hints
 import tools.mathOps
+import tools.intervals
 
 
 def transmap_classify(tm_eval_args):
