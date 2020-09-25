@@ -216,9 +216,9 @@ class ChromosomeInterval(object):
         :param stranded: Should we reverse complement negative strand sequences?
         :return: A sequence string.
         """
-        if stranded is False or self.strand is '+':
+        if stranded is False or self.strand == '+':
             return seq_dict[self.chromosome][self.start: self.stop]
-        elif self.strand is '-':
+        elif self.strand == '-':
             return reverse_complement(seq_dict[self.chromosome][self.start: self.stop])
 
     def get_protein_sequence(self, seq_dict, frame, truncate=True):
