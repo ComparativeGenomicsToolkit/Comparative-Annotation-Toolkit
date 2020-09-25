@@ -52,7 +52,7 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min
                 resolved_name = resolution_method = None  # we have no matches, which means putative novel
             # find only genes for the unfiltered set that are not present in the filtered set
             alternative_gene_ids = {tx.name2 for tx in unfiltered_overlapping_tm_txs} - {resolved_name}
-            alternative_gene_ids = ','.join(alternative_gene_ids) if len(alternative_gene_ids) > 0 else None
+            alternative_gene_ids = ','.join(sorted(alternative_gene_ids)) if len(alternative_gene_ids) > 0 else None
             r.append([denovo_tx.name, resolved_name, alternative_gene_ids, resolution_method])
 
     combined_alternatives = pd.DataFrame(r, columns=['TranscriptId', 'AssignedGeneId', 'AlternativeGeneIds',
