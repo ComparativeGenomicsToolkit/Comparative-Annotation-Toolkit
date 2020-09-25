@@ -19,6 +19,7 @@ setup(
         'numpy>=1.10',
         'scipy>=0.18.1',
         'bx-python>=0.7.1',
+        'pytest>=pytest-6.0',
         'parasail',
         'bcbio-gff',
         'biopython',
