@@ -64,7 +64,7 @@ class PositiveStrandTranscriptTests(unittest.TestCase):
         """
         cds_result = [None, None, None, None, 0, 1, None, 2, 3, 4, None, None, 5, None, None, None]
         mrna_result = [None, None, 0, 1, 2, 3, None, 4, 5, 6, None, None, 7, 8, 9, None]
-        for i in xrange(16):
+        for i in range(16):
             self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
             self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
 
@@ -74,7 +74,7 @@ class PositiveStrandTranscriptTests(unittest.TestCase):
         """
         chrom_result = [2, 3, 4, 5, 7, 8, 9, 12, 13, 14, None]
         cds_result = [None, None, 0, 1, 2, 3, 4, 5, None, None, None]
-        for i in xrange(11):
+        for i in range(11):
             self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
 
@@ -84,7 +84,7 @@ class PositiveStrandTranscriptTests(unittest.TestCase):
         """
         chrom_result = [4, 5, 7, 8, 9, 12]
         mrna_result = [2, 3, 4, 5, 6, 7]
-        for i in xrange(6):
+        for i in range(6):
             self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
@@ -92,7 +92,7 @@ class PositiveStrandTranscriptTests(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in xrange(16):
+        for i in range(16):
             tmp = self.t.chromosome_coordinate_to_mrna(i)
             # can't have reciprocal connection once None appears
             if tmp is not None:
@@ -191,7 +191,7 @@ class NegativeStrandTranscriptTests(unittest.TestCase):
         """
         cds_result = [None, None, None, None, 5, 4, None, 3, 2, 1, None, None, 0, None, None, None]
         mrna_result = [None, None, 9, 8, 7, 6, None, 5, 4, 3, None, None, 2, 1, 0, None]
-        for i in xrange(16):
+        for i in range(16):
             self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
             self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
 
@@ -201,7 +201,7 @@ class NegativeStrandTranscriptTests(unittest.TestCase):
         """
         chrom_result = [14, 13, 12, 9, 8, 7, 5, 4, 3, 2, None]
         cds_result = [None, None, 0, 1, 2, 3, 4, 5, None, None, None]
-        for i in xrange(11):
+        for i in range(11):
             self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
 
@@ -211,7 +211,7 @@ class NegativeStrandTranscriptTests(unittest.TestCase):
         """
         chrom_result = [12, 9, 8, 7, 5, 4]
         mrna_result = [2, 3, 4, 5, 6, 7]
-        for i in xrange(6):
+        for i in range(6):
             self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
@@ -219,7 +219,7 @@ class NegativeStrandTranscriptTests(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in xrange(16):
+        for i in range(16):
             tmp = self.t.chromosome_coordinate_to_mrna(i)
             # can't have reciprocal connection once None appears
             if tmp is not None:
@@ -290,7 +290,7 @@ class ComplicatedTranscript1(unittest.TestCase):
         """
         cds_result = [None, None, None, None, None, None, None, None, 0, 1, None, None, None, 2, 3, 4, None, None, None, None, None]
         mrna_result = [None, 0, 1, 2, None, None, 3, 4, 5, 6, None, None, None, 7, 8, 9, None, 10, 11, 12, None]
-        for i in xrange(21):
+        for i in range(21):
             self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
             self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
 
@@ -300,7 +300,7 @@ class ComplicatedTranscript1(unittest.TestCase):
         """
         chrom_result = [1, 2, 3, 6, 7, 8, 9, 13, 14, 15, 17, 18, 19]
         cds_result = [None, None, None, None, None, 0, 1, 2, 3, 4, None, None, None]
-        for i in xrange(13):
+        for i in range(13):
             self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
 
@@ -310,7 +310,7 @@ class ComplicatedTranscript1(unittest.TestCase):
         """
         chrom_result = [8, 9, 13, 14, 15]
         mrna_result = [5, 6, 7, 8, 9]
-        for i in xrange(5):
+        for i in range(5):
             self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
@@ -318,7 +318,7 @@ class ComplicatedTranscript1(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in xrange(-1, 12):
+        for i in range(-1, 12):
             tmp = self.t.chromosome_coordinate_to_mrna(i)
             # can't have reciprocal connection once None appears
             if tmp is not None:
@@ -407,7 +407,7 @@ class ComplicatedTranscript2(unittest.TestCase):
         """
         cds_result = [None, None, None, None, None, None, None, 5, 4, 3, None, None, None, 2, 1, 0, None, None, None, None, None]
         mrna_result = [None, 12, 11, 10, None, None, 9, 8, 7, 6, None, None, None, 5, 4, 3, None, 2, 1, 0, None]
-        for i in xrange(21):
+        for i in range(21):
             self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
             self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
 
@@ -417,7 +417,7 @@ class ComplicatedTranscript2(unittest.TestCase):
         """
         chrom_result = [19, 18, 17, 15, 14, 13, 9, 8, 7, 6, 3, 2, 1]
         cds_result = [None, None, None, 0, 1, 2, 3, 4, 5, None, None, None, None]
-        for i in xrange(13):
+        for i in range(13):
             self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
 
@@ -427,7 +427,7 @@ class ComplicatedTranscript2(unittest.TestCase):
         """
         chrom_result = [15, 14, 13, 9, 8, 7]
         mrna_result = [3, 4, 5, 6, 7, 8]
-        for i in xrange(5):
+        for i in range(5):
             self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
@@ -435,7 +435,7 @@ class ComplicatedTranscript2(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in xrange(-1, 12):
+        for i in range(-1, 12):
             tmp = self.t.chromosome_coordinate_to_mrna(i)
             # can't have reciprocal connection once None appears
             if tmp is not None:
@@ -541,7 +541,7 @@ class SingleExonTranscript1(unittest.TestCase):
         """
         cds_result = [None, 0, 1, 2, None, None, None]
         mrna_result = [0, 1, 2, 3, 4, 5, None]
-        for i in xrange(6):
+        for i in range(6):
             self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
             self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
 
@@ -551,7 +551,7 @@ class SingleExonTranscript1(unittest.TestCase):
         """
         chrom_result = [0, 1, 2, 3, 4, 5, None]
         cds_result = [None, 0, 1, 2, None, None, None]
-        for i in xrange(6):
+        for i in range(6):
             self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
 
@@ -561,7 +561,7 @@ class SingleExonTranscript1(unittest.TestCase):
         """
         chrom_result = [1, 2, 3, None]
         mrna_result = [1, 2, 3, None]
-        for i in xrange(4):
+        for i in range(4):
             self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
@@ -569,7 +569,7 @@ class SingleExonTranscript1(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in xrange(-1, 7):
+        for i in range(-1, 7):
             tmp = self.t.chromosome_coordinate_to_mrna(i)
             # can't have reciprocal connection once None appears
             if tmp is not None:
@@ -646,7 +646,7 @@ class SingleExonTranscript2(unittest.TestCase):
         Check all possible chromosome translations for correct result
         """
         cds_result = mrna_result = [0, 1, 2, 3, 4, 5, None]
-        for i in xrange(6):
+        for i in range(6):
             self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
             self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
 
@@ -655,7 +655,7 @@ class SingleExonTranscript2(unittest.TestCase):
         Check all possible mrna translations for correct result
         """
         chrom_result = cds_result = [0, 1, 2, 3, 4, 5, None]
-        for i in xrange(6):
+        for i in range(6):
             self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
 
@@ -664,7 +664,7 @@ class SingleExonTranscript2(unittest.TestCase):
         Check all possible mrna translations for correct result
         """
         chrom_result = mrna_result = [0, 1, 2, 3, 4, 5, None]
-        for i in xrange(6):
+        for i in range(6):
             self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
@@ -672,7 +672,7 @@ class SingleExonTranscript2(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in xrange(-1, 7):
+        for i in range(-1, 7):
             tmp = self.t.chromosome_coordinate_to_mrna(i)
             # can't have reciprocal connection once None appears
             if tmp is not None:
@@ -749,7 +749,7 @@ class NoncodingTranscript(unittest.TestCase):
         """
         cds_result = [None] * 12
         mrna_result = [0, 1, 2, 3, None, None, 4, None, 5, 6, 7, None]
-        for i in xrange(12):
+        for i in range(12):
             self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
             self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
 
@@ -759,7 +759,7 @@ class NoncodingTranscript(unittest.TestCase):
         """
         chrom_result = [0, 1, 2, 3, 6, 8, 9, 10, None]
         cds_result = [None] * 9
-        for i in xrange(9):
+        for i in range(9):
             self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
 
@@ -768,7 +768,7 @@ class NoncodingTranscript(unittest.TestCase):
         Check all possible mrna translations for correct result
         """
         chrom_result = mrna_result = [None] * 10
-        for i in xrange(10):
+        for i in range(10):
             self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
             self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
@@ -776,7 +776,7 @@ class NoncodingTranscript(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in xrange(-1, 12):
+        for i in range(-1, 12):
             tmp = self.t.chromosome_coordinate_to_mrna(i)
             # can't have reciprocal connection once None appears
             if tmp is not None:

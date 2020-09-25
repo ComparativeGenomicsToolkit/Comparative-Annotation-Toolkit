@@ -64,6 +64,6 @@ jobs:
         - sed -i "s/maxMemory = self.physicalMemory/pass/g" /opt/pyenv/versions/3.7.1/lib/python3.7/site-packages/toil/batchSystems/singleMachine.py
         - >
           DOCKER_IMAGE=quay.io/ucsc_cgl/cat:develop
-          luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
-          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
+          luigi --module cat RunCat --hal=tests/data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
+          --workers=2 --config=tests/data/test.config --work-dir test_install --out-dir test_install --local-scheduler
           --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG --logLevel DEBUG

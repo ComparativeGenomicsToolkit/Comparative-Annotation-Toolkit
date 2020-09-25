@@ -32,13 +32,13 @@ The docker container for this repository will be automatically pulled from `quay
 Alternatively, you can run CAT entirely self contained using the Docker container, because the container contains the source code as well. This mode of operation is suitable if you are running on a single machine, such as reserving space on a cluster. In this mode, the self-contained binary could be ran like this:
 
 ~~~
-docker run -v $PWD/test_data/:/test_data/ quay.io/ucsc_cgl/cat:latest \
+docker run -v $PWD/tests/data/:/tests/data/ quay.io/ucsc_cgl/cat:latest \
 luigi \
   --module cat RunCat \
-  --hal=test_data/vertebrates.hal \
+  --hal=tests/data/vertebrates.hal \
   --ref-genome=mm10 \
   --workers=10 \
-  --config=test_data/test.config \
+  --config=tests/data/test.config \
   --local-scheduler \
   --binary-mode local \
   --augustus \
@@ -58,10 +58,10 @@ The Singularity container can also be used in a self-contained fashion, by doing
 singularity exec --cleanenv cat_v2.1.0.sif \
 luigi \
   --module cat RunCat \
-  --hal=test_data/vertebrates.hal \
+  --hal=tests/data/vertebrates.hal \
   --ref-genome=mm10 \
   --workers=10 \
-  --config=test_data/test.config \
+  --config=tests/data/test.config \
   --local-scheduler \
   --binary-mode local \
   --augustus \
@@ -131,7 +131,7 @@ If you don't want to use the daemon, *which is highly recommended* add the flag 
 
 To run the test data, change directories to the CAT installation folder and do the following:
 
-`luigi --module cat RunCat --hal=test_data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=test_data/test.config \
+`luigi --module cat RunCat --hal=tests/data/vertebrates.hal --ref-genome=mm10 --workers=10 --config=tests/data/test.config \
 --work-dir test_install --out-dir test_install --local-scheduler --augustus  --augustus-cgp --augustus-pb --assembly-hub > log.txt`
 
 The test should take around 30 minutes to execute. You can track progress in the log file.
@@ -289,7 +289,7 @@ A major component of producing high quality comparative annotations is making us
 
 If the genetic distances in your alignment are high (say maybe an average identity in the 70s-80s), then you may derive great benefit from using a protein reference, if possible. This will be particularly useful for `augustusCGP`.
 
-A template for the config file is below. At a minimum, your config file must have the annotation section. A example config file is provided in the `test_data` folder.
+A template for the config file is below. At a minimum, your config file must have the annotation section. A example config file is provided in the `tests/data` folder.
 
 **BAM files must be indexed!**
 

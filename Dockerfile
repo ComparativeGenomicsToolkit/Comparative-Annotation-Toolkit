@@ -149,4 +149,7 @@ COPY ./logging.cfg ./luigi.cfg /etc/luigi/
 # but need to tell luigi to look for logging.cfg at /etc/luigi/logging.cfg
 RUN sed -i'' '/logging_conf_file/s#.*#logging_conf_file=/etc/luigi/logging.cfg#' /etc/luigi/luigi.cfg
 
+# test data mount point
+RUN mkdir /tests
+
 ENV PATH=/opt/augustus/bin:/opt/augustus/scripts:${PATH}
