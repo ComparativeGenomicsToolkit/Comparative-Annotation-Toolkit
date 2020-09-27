@@ -3,47 +3,47 @@ from tools.transcripts import Transcript, GenePredTranscript
 from tools.bio import reverse_complement
 
 
-def _check_reciprocal_translations(test, t, start, end):
+def _check_reciprocal_translations(test, trans, start, end):
     """
     Test reciprocal translations between coordinate spaces
     """
     for i in range(start, end):
-        tmp = t.chromosome_coordinate_to_mrna(i)
+        tmp = trans.chromosome_coordinate_to_mrna(i)
         # can't have reciprocal connection once None appears
         if tmp is not None:
-            test.assertEqual(t.mrna_coordinate_to_chromosome(tmp), i)
+            testrans.assertEqual(trans.mrna_coordinate_to_chromosome(tmp), i)
 
-        tmp = t.chromosome_coordinate_to_cds(i)
+        tmp = trans.chromosome_coordinate_to_cds(i)
         if tmp is not None:
-            test.assertEqual(t.cds_coordinate_to_chromosome(tmp), i)
+            testrans.assertEqual(trans.cds_coordinate_to_chromosome(tmp), i)
 
-        tmp = t.mrna_coordinate_to_chromosome(i)
+        tmp = trans.mrna_coordinate_to_chromosome(i)
         if tmp is not None:
-            test.assertEqual(t.chromosome_coordinate_to_mrna(tmp), i)
+            testrans.assertEqual(trans.chromosome_coordinate_to_mrna(tmp), i)
 
-        tmp = t.mrna_coordinate_to_cds(i)
+        tmp = trans.mrna_coordinate_to_cds(i)
         if tmp is not None:
-            test.assertEqual(t.cds_coordinate_to_mrna(tmp), i)
+            testrans.assertEqual(trans.cds_coordinate_to_mrna(tmp), i)
 
-        tmp = t.cds_coordinate_to_mrna(i)
+        tmp = trans.cds_coordinate_to_mrna(i)
         if tmp is not None:
-            test.assertEqual(t.mrna_coordinate_to_cds(tmp), i)
+            testrans.assertEqual(trans.mrna_coordinate_to_cds(tmp), i)
 
-        tmp = t.chromosome_coordinate_to_mrna(i)
+        tmp = trans.chromosome_coordinate_to_mrna(i)
         if tmp is not None:
-            tmp = t.mrna_coordinate_to_cds(tmp)
+            tmp = trans.mrna_coordinate_to_cds(tmp)
             if tmp is not None:
-                test.assertEqual(t.cds_coordinate_to_chromosome(tmp), i)
+                testrans.assertEqual(trans.cds_coordinate_to_chromosome(tmp), i)
 
-        tmp = t.cds_coordinate_to_chromosome(i)
+        tmp = trans.cds_coordinate_to_chromosome(i)
         if tmp is not None:
-            tmp = t.chromosome_coordinate_to_mrna(tmp)
-            test.assertEqual(t.mrna_coordinate_to_cds(tmp), i)
+            tmp = trans.chromosome_coordinate_to_mrna(tmp)
+            testrans.assertEqual(trans.mrna_coordinate_to_cds(tmp), i)
 
-        tmp = t.mrna_coordinate_to_cds(i)
+        tmp = trans.mrna_coordinate_to_cds(i)
         if tmp is not None:
-            tmp = t.cds_coordinate_to_chromosome(tmp)
-            test.assertEqual(t.chromosome_coordinate_to_mrna(tmp), i)
+            tmp = trans.cds_coordinate_to_chromosome(tmp)
+            testrans.assertEqual(trans.chromosome_coordinate_to_mrna(tmp), i)
 
 
 class PositiveStrandTranscriptTests(unittest.TestCase):
