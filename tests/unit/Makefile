@@ -1,9 +1,7 @@
 
 
-test: parent_gene_tests
-
-parent_gene_tests:
-	pytest -s test_parent_gene.py 
+test:
+	pytest -s .
 
 clean:
 	rm -rf output __pycache__

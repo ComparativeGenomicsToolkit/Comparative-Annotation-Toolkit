@@ -1,5 +1,6 @@
 import unittest
 from tools.transcripts import Transcript, GenePredTranscript
+from tools.bio import reverse_complement
 
 
 class PositiveStrandTranscriptTests(unittest.TestCase):
@@ -125,8 +126,9 @@ class PositiveStrandTranscriptTests(unittest.TestCase):
                 tmp = self.t.chromosome_coordinate_to_mrna(tmp)
                 self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
 
-            tmp = self.t.cds_coordinate_to_chromosome(self.t.mrna_coordinate_to_cds(i))
+            tmp = self.t.mrna_coordinate_to_cds(i)
             if tmp is not None:
+                tmp = self.t.cds_coordinate_to_chromosome(tmp)
                 self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
 
     def test_sequences(self):
@@ -252,9 +254,11 @@ class NegativeStrandTranscriptTests(unittest.TestCase):
                 tmp = self.t.chromosome_coordinate_to_mrna(tmp)
                 self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
 
-            tmp = self.t.cds_coordinate_to_chromosome(self.t.mrna_coordinate_to_cds(i))
+            tmp = self.t.mrna_coordinate_to_cds(i)
             if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+                tmp = self.t.cds_coordinate_to_chromosome(tmp)
+                if tmp is not None:
+                    self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
 
 
 class ComplicatedTranscript1(unittest.TestCase):
@@ -351,8 +355,9 @@ class ComplicatedTranscript1(unittest.TestCase):
                 tmp = self.t.chromosome_coordinate_to_mrna(tmp)
                 self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
 
-            tmp = self.t.cds_coordinate_to_chromosome(self.t.mrna_coordinate_to_cds(i))
+            tmp = self.t.mrna_coordinate_to_cds(i)
             if tmp is not None:
+                tmp = self.t.cds_coordinate_to_chromosome(tmp)
                 self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
 
     def test_sequences(self):
@@ -368,7 +373,7 @@ class ComplicatedTranscript1(unittest.TestCase):
         self.assertEqual(self.t.get_bed(new_start=1, new_stop=12),
                          ['chr1', '1', '10', 'A', '0', '+', '8', '10', '0,128,0', '2', '3,4', '0,5'])
         self.assertEqual(self.t.get_bed(new_start=19, new_stop=19),
-                         ['chr1', '19', '19', 'A', '0', '+', '0', '0', '0,128,0', '1', '0', '0'])
+                         ['chr1', '19', '19', 'A', '0', '+', '19', '19', '0,128,0', '1', '0', '0'])
         self.assertEqual(self.t.get_bed(new_start=1, new_stop=4),
                          ['chr1', '1', '4', 'A', '0', '+', '0', '0', '0,128,0', '1', '3', '0'])
 
@@ -468,8 +473,9 @@ class ComplicatedTranscript2(unittest.TestCase):
                 tmp = self.t.chromosome_coordinate_to_mrna(tmp)
                 self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
 
-            tmp = self.t.cds_coordinate_to_chromosome(self.t.mrna_coordinate_to_cds(i))
+            tmp = self.t.mrna_coordinate_to_cds(i)
             if tmp is not None:
+                tmp = self.t.cds_coordinate_to_chromosome(tmp)
                 self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
 
     def test_sequences(self):
@@ -602,8 +608,9 @@ class SingleExonTranscript1(unittest.TestCase):
                 tmp = self.t.chromosome_coordinate_to_mrna(tmp)
                 self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
 
-            tmp = self.t.cds_coordinate_to_chromosome(self.t.mrna_coordinate_to_cds(i))
+            tmp = self.t.mrna_coordinate_to_cds(i)
             if tmp is not None:
+                tmp = self.t.cds_coordinate_to_chromosome(tmp)
                 self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
 
     def test_sequences(self):
@@ -705,8 +712,9 @@ class SingleExonTranscript2(unittest.TestCase):
                 tmp = self.t.chromosome_coordinate_to_mrna(tmp)
                 self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
 
-            tmp = self.t.cds_coordinate_to_chromosome(self.t.mrna_coordinate_to_cds(i))
+            tmp = self.t.mrna_coordinate_to_cds(i)
             if tmp is not None:
+                tmp = self.t.cds_coordinate_to_chromosome(tmp)
                 self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
 
     def test_sequences(self):
@@ -809,8 +817,9 @@ class NoncodingTranscript(unittest.TestCase):
                 tmp = self.t.chromosome_coordinate_to_mrna(tmp)
                 self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
 
-            tmp = self.t.cds_coordinate_to_chromosome(self.t.mrna_coordinate_to_cds(i))
+            tmp = self.t.mrna_coordinate_to_cds(i)
             if tmp is not None:
+                tmp = self.t.cds_coordinate_to_chromosome(tmp)
                 self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
 
     def test_sequences(self):
@@ -839,7 +848,7 @@ class PositiveStrandGenePredTranscript(PositiveStrandTranscriptTests):
         self.t = GenePredTranscript(self.tokens)
         self.transcript_seq = 'ATTCTGGCTA'
         self.cds_seq = 'TCTGGC'
-        self.amino_acid = 'L'  # this transcript has a offset of 2, so the first in-frame codon is TGG
+        self.amino_acid = 'LA'  # this transcript has a offset of 2, so the first in-frame codon is TGG
         self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sequences(self):
@@ -853,7 +862,6 @@ class PositiveStrandGenePredTranscript(PositiveStrandTranscriptTests):
     def test_get_gp(self):
         self.assertEqual(self.t.get_gene_pred(), self.tokens)
 
-
 class NegativeStrandGenePredTranscript(NegativeStrandTranscriptTests):
     """
     Tests the Transcript functionality part of sequence_lib.
@@ -866,12 +874,12 @@ class NegativeStrandGenePredTranscript(NegativeStrandTranscriptTests):
     """
 
     def setUp(self):
-        self.tokens = ['A', 'chr1', '-', '2', '15', '4', '13', '3', '2,7,12', '6,10,15', '1',
+        self.tokens = ['A', 'chr1', '-', '2', '15', '5', '13', '3', '2,7,12', '6,10,15', '1',
                                     'q2', 'cmpl', 'cmpl', '2,2,1']
         self.t = GenePredTranscript(self.tokens)
         self.transcript_seq = 'TAGCCAGAAT'
-        self.cds_seq = 'GCCAGA'
-        self.amino_acid = 'Q'  # this transcript has a offset of 1, so the first in-frame codon is CAG
+        self.cds_seq = 'GGCCAG'
+        self.amino_acid = 'Q'  # this transcript has a offset of 1, so the first in-frame codon is CAA
         self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sequences(self):
@@ -881,6 +889,36 @@ class NegativeStrandGenePredTranscript(NegativeStrandTranscriptTests):
         self.assertEqual(self.t.get_mrna(self.chrom_seq), self.transcript_seq)
         self.assertEqual(self.t.get_cds(self.chrom_seq), self.cds_seq)
         self.assertEqual(self.t.get_protein_sequence(self.chrom_seq), self.amino_acid)
+
+    def test_chromosome_coordinate_translations(self):
+        """
+        Check all possible chromosome translations for correct result
+        """
+        cds_result = [None, None, None, None, None, 4, None, 3, 2, 1, None, None, 0, None, None, None]
+        mrna_result = [None, None, 9, 8, 7, 6, None, 5, 4, 3, None, None, 2, 1, 0, None]
+        for i in range(16):
+            self.assertEqual(self.t.chromosome_coordinate_to_cds(i), cds_result[i])
+            self.assertEqual(self.t.chromosome_coordinate_to_mrna(i), mrna_result[i])
+
+    def test_mrna_coordinate_translations(self):
+        """
+        Check all possible mrna translations for correct result
+        """
+        chrom_result = [14, 13, 12, 9, 8, 7, 5, 4, 3, 2, None]
+        cds_result = [None, None, 0, 1, 2, 3, 4, None, None, None, None]
+        for i in range(11):
+            self.assertEqual(self.t.mrna_coordinate_to_chromosome(i), chrom_result[i])
+            self.assertEqual(self.t.mrna_coordinate_to_cds(i), cds_result[i])
+
+    def test_cds_coordinate_translations(self):
+        """
+        Check all possible mrna translations for correct result
+        """
+        chrom_result = [12, 9, 8, 7, 5, None]
+        mrna_result = [2, 3, 4, 5, 6, None]
+        for i in range(6):
+            self.assertEqual(self.t.cds_coordinate_to_chromosome(i), chrom_result[i])
+            self.assertEqual(self.t.cds_coordinate_to_mrna(i), mrna_result[i])
 
     def test_get_gp(self):
         self.assertEqual(self.t.get_gene_pred(), self.tokens)
