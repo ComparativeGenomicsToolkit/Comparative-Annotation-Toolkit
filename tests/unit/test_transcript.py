@@ -57,13 +57,12 @@ class PositiveStrandTranscriptTests(unittest.TestCase):
     cds.pos              0  1     2  3  4        5
     """
 
-    def setUp(self):
-        self.tokens = ['chr1', '2', '15', 'test', '0', '+', '4', '13', '0,128,0', '3', '4,3,3', '0,5,10']
-        self.t = Transcript(self.tokens)
-        self.transcript_seq = 'ATTCTGGCTA'
-        self.cds_seq = 'TCTGGC'
-        self.amino_acid = 'SG'
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
+    tokens = ['chr1', '2', '15', 'test', '0', '+', '4', '13', '0,128,0', '3', '4,3,3', '0,5,10']
+    t = Transcript(tokens)
+    transcript_seq = 'ATTCTGGCTA'
+    cds_seq = 'TCTGGC'
+    amino_acid = 'SG'
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sizes(self):
         """
@@ -158,12 +157,12 @@ class NegativeStrandTranscriptTests(unittest.TestCase):
     cds.pos              5  4     3  2  1        0
     """
 
-    def setUp(self):
-        self.t = Transcript(['chr1', '2', '15', 'A', '0', '-', '4', '13', '0,128,0', '3', '4,3,3', '0,5,10'])
-        self.transcript_seq = 'TAGCCAGAAT'
-        self.cds_seq = 'GCCAGA'
-        self.amino_acid = 'AR'
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
+    tokens = ['chr1', '2', '15', 'A', '0', '-', '4', '13', '0,128,0', '3', '4,3,3', '0,5,10']
+    t = Transcript(tokens)
+    transcript_seq = 'TAGCCAGAAT'
+    cds_seq = 'GCCAGA'
+    amino_acid = 'AR'
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_chromosome_invalid_coordinates(self):
         """
@@ -242,13 +241,12 @@ class ComplicatedTranscript1(unittest.TestCase):
     cds.pos                          0  1           2  3  4
     """
 
-    def setUp(self):
-        self.tokens = ['chr1', '1', '20', 'A', '0', '+', '8', '16', '0,128,0', '4', '3,4,3,3', '0,5,12,16']
-        self.t = Transcript(self.tokens)
-        self.transcript_seq = 'TATTTGGTAACCT'
-        self.cds_seq = 'GGTAA'
-        self.amino_acid = 'G'
-        self.chrom_seq = {'chr1':'GTATTCTTGGACCTAAGCCTG'}
+    tokens = ['chr1', '1', '20', 'A', '0', '+', '8', '16', '0,128,0', '4', '3,4,3,3', '0,5,12,16']
+    t = Transcript(tokens)
+    transcript_seq = 'TATTTGGTAACCT'
+    cds_seq = 'GGTAA'
+    amino_acid = 'G'
+    chrom_seq = {'chr1':'GTATTCTTGGACCTAAGCCTG'}
 
     def test_sizes(self):
         """
@@ -323,13 +321,12 @@ class ComplicatedTranscript2(unittest.TestCase):
     cds.pos                       5  4  3           2  1  0
     """
 
-    def setUp(self):
-        self.tokens = ['chr1', '1', '20', 'A', '0', '-', '7', '16', '0,128,0', '4', '3,4,3,3', '0,5,12,16']
-        self.t = Transcript(self.tokens)
-        self.transcript_seq = 'AGGTTACCAAATA'
-        self.cds_seq = 'TTACCA'
-        self.amino_acid = 'LP'
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAAGCCTG'}
+    tokens = ['chr1', '1', '20', 'A', '0', '-', '7', '16', '0,128,0', '4', '3,4,3,3', '0,5,12,16']
+    t = Transcript(tokens)
+    transcript_seq = 'AGGTTACCAAATA'
+    cds_seq = 'TTACCA'
+    amino_acid = 'LP'
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAAGCCTG'}
 
     def test_sizes(self):
         """
@@ -405,12 +402,12 @@ class SingleExonTranscript1(unittest.TestCase):
     cds.pos     0  1  2
     """
 
-    def setUp(self):
-        self.t = Transcript(['chr1', '0', '6', 'A', '0', '+', '1', '4', '0,128,0', '1', '6', '0'])
-        self.transcript_seq = 'GTATTC'
-        self.cds_seq = 'TAT'
-        self.amino_acid = 'Y'
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
+    tokens = ['chr1', '0', '6', 'A', '0', '+', '1', '4', '0,128,0', '1', '6', '0']
+    t = Transcript(tokens)
+    transcript_seq = 'GTATTC'
+    cds_seq = 'TAT'
+    amino_acid = 'Y'
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sizes(self):
         """
@@ -495,12 +492,12 @@ class SingleExonTranscript2(unittest.TestCase):
     cds.pos  0  1  2  3  4  5
     """
 
-    def setUp(self):
-        self.t = Transcript(['chr1', '0', '6', 'A', '0', '+', '0', '6', '0,128,0', '1', '6', '0'])
-        self.transcript_seq = 'GTATTC'
-        self.cds_seq = self.transcript_seq
-        self.amino_acid = 'VF'
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
+    tokens = ['chr1', '0', '6', 'A', '0', '+', '0', '6', '0,128,0', '1', '6', '0']
+    t = Transcript(tokens)
+    transcript_seq = 'GTATTC'
+    cds_seq = transcript_seq
+    amino_acid = 'VF'
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sizes(self):
         """
@@ -562,12 +559,12 @@ class NoncodingTranscript(unittest.TestCase):
     tx.pos   0  1  2  3        4     5  6  7
     """
 
-    def setUp(self):
-        self.t = Transcript(['chr1', '0', '11', 'A', '0', '+', '0', '0', '0,128,0', '3', '4,1,3', '0,6,8'])
-        self.transcript_seq = 'GTATTGGA'
-        self.cds_seq = ''
-        self.amino_acid = ''
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
+    tokens = ['chr1', '0', '11', 'A', '0', '+', '0', '0', '0,128,0', '3', '4,1,3', '0,6,8']
+    t = Transcript(tokens)
+    transcript_seq = 'GTATTGGA'
+    cds_seq = ''
+    amino_acid = ''
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sizes(self):
         """
@@ -632,14 +629,13 @@ class PositiveStrandGenePredTranscript(PositiveStrandTranscriptTests):
     cds.pos              0  1     2  3  4        5
     """
 
-    def setUp(self):
-        self.tokens = ['A', 'chr1', '+', '2', '15', '4', '13', '3', '2,7,12', '6,10,15', '1',
-                       'q2', 'cmpl', 'cmpl', '2,1,1']
-        self.t = GenePredTranscript(self.tokens)
-        self.transcript_seq = 'ATTCTGGCTA'
-        self.cds_seq = 'TCTGGC'
-        self.amino_acid = 'LA'  # this transcript has a offset of 2, so the first in-frame codon is TGG
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
+    tokens = ['A', 'chr1', '+', '2', '15', '4', '13', '3', '2,7,12', '6,10,15', '1',
+              'q2', 'cmpl', 'cmpl', '2,1,1']
+    t = GenePredTranscript(tokens)
+    transcript_seq = 'ATTCTGGCTA'
+    cds_seq = 'TCTGGC'
+    amino_acid = 'LA'  # this transcript has a offset of 2, so the first in-frame codon is TGG
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sequences(self):
         """
@@ -663,14 +659,13 @@ class NegativeStrandGenePredTranscript(NegativeStrandTranscriptTests):
     cds.pos              0  1     2  3  4        5
     """
 
-    def setUp(self):
-        self.tokens = ['A', 'chr1', '-', '2', '15', '5', '13', '3', '2,7,12', '6,10,15', '1',
-                                    'q2', 'cmpl', 'cmpl', '2,2,1']
-        self.t = GenePredTranscript(self.tokens)
-        self.transcript_seq = 'TAGCCAGAAT'
-        self.cds_seq = 'GGCCAG'
-        self.amino_acid = 'Q'  # this transcript has a offset of 1, so the first in-frame codon is CAA
-        self.chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
+    tokens = ['A', 'chr1', '-', '2', '15', '5', '13', '3', '2,7,12', '6,10,15', '1',
+                           'q2', 'cmpl', 'cmpl', '2,2,1']
+    t = GenePredTranscript(tokens)
+    transcript_seq = 'TAGCCAGAAT'
+    cds_seq = 'GGCCAG'
+    amino_acid = 'Q'  # this transcript has a offset of 1, so the first in-frame codon is CAA
+    chrom_seq = {'chr1': 'GTATTCTTGGACCTAA'}
 
     def test_sequences(self):
         """
