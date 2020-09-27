@@ -3,6 +3,49 @@ from tools.transcripts import Transcript, GenePredTranscript
 from tools.bio import reverse_complement
 
 
+def _check_reciprocal_translations(test, t, start, end):
+    """
+    Test reciprocal translations between coordinate spaces
+    """
+    for i in range(start, end):
+        tmp = t.chromosome_coordinate_to_mrna(i)
+        # can't have reciprocal connection once None appears
+        if tmp is not None:
+            test.assertEqual(t.mrna_coordinate_to_chromosome(tmp), i)
+
+        tmp = t.chromosome_coordinate_to_cds(i)
+        if tmp is not None:
+            test.assertEqual(t.cds_coordinate_to_chromosome(tmp), i)
+
+        tmp = t.mrna_coordinate_to_chromosome(i)
+        if tmp is not None:
+            test.assertEqual(t.chromosome_coordinate_to_mrna(tmp), i)
+
+        tmp = t.mrna_coordinate_to_cds(i)
+        if tmp is not None:
+            test.assertEqual(t.cds_coordinate_to_mrna(tmp), i)
+
+        tmp = t.cds_coordinate_to_mrna(i)
+        if tmp is not None:
+            test.assertEqual(t.mrna_coordinate_to_cds(tmp), i)
+
+        tmp = t.chromosome_coordinate_to_mrna(i)
+        if tmp is not None:
+            tmp = t.mrna_coordinate_to_cds(tmp)
+            if tmp is not None:
+                test.assertEqual(t.cds_coordinate_to_chromosome(tmp), i)
+
+        tmp = t.cds_coordinate_to_chromosome(i)
+        if tmp is not None:
+            tmp = t.chromosome_coordinate_to_mrna(tmp)
+            test.assertEqual(t.mrna_coordinate_to_cds(tmp), i)
+
+        tmp = t.mrna_coordinate_to_cds(i)
+        if tmp is not None:
+            tmp = t.cds_coordinate_to_chromosome(tmp)
+            test.assertEqual(t.chromosome_coordinate_to_mrna(tmp), i)
+
+
 class PositiveStrandTranscriptTests(unittest.TestCase):
     """
     Tests the Transcript functionality part of sequence_lib.
@@ -93,43 +136,7 @@ class PositiveStrandTranscriptTests(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in range(16):
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            # can't have reciprocal connection once None appears
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_chromosome(i)
-            if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_mrna(i)
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            if tmp is not None:
-                tmp = self.t.mrna_coordinate_to_cds(tmp)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_chromosome(i)
-            if tmp is not None:
-                tmp = self.t.chromosome_coordinate_to_mrna(tmp)
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                tmp = self.t.cds_coordinate_to_chromosome(tmp)
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+        _check_reciprocal_translations(self, self.t, 0, 16)
 
     def test_sequences(self):
         """
@@ -221,44 +228,7 @@ class NegativeStrandTranscriptTests(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in range(16):
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            # can't have reciprocal connection once None appears
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_chromosome(i)
-            if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_mrna(i)
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            if tmp is not None:
-                tmp = self.t.mrna_coordinate_to_cds(tmp)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_chromosome(i)
-            if tmp is not None:
-                tmp = self.t.chromosome_coordinate_to_mrna(tmp)
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                tmp = self.t.cds_coordinate_to_chromosome(tmp)
-                if tmp is not None:
-                    self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+        _check_reciprocal_translations(self, self.t, 0, 16)
 
 
 class ComplicatedTranscript1(unittest.TestCase):
@@ -322,43 +292,7 @@ class ComplicatedTranscript1(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in range(-1, 12):
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            # can't have reciprocal connection once None appears
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_chromosome(i)
-            if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_mrna(i)
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            if tmp is not None:
-                tmp = self.t.mrna_coordinate_to_cds(tmp)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_chromosome(i)
-            if tmp is not None:
-                tmp = self.t.chromosome_coordinate_to_mrna(tmp)
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                tmp = self.t.cds_coordinate_to_chromosome(tmp)
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+        _check_reciprocal_translations(self, self.t, -1, 12)
 
     def test_sequences(self):
         """
@@ -440,43 +374,7 @@ class ComplicatedTranscript2(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in range(-1, 12):
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            # can't have reciprocal connection once None appears
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_chromosome(i)
-            if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_mrna(i)
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            if tmp is not None:
-                tmp = self.t.mrna_coordinate_to_cds(tmp)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_chromosome(i)
-            if tmp is not None:
-                tmp = self.t.chromosome_coordinate_to_mrna(tmp)
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                tmp = self.t.cds_coordinate_to_chromosome(tmp)
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+        _check_reciprocal_translations(self, self.t, -1, 12)
 
     def test_sequences(self):
         """
@@ -575,43 +473,7 @@ class SingleExonTranscript1(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in range(-1, 7):
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            # can't have reciprocal connection once None appears
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_chromosome(i)
-            if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_mrna(i)
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            if tmp is not None:
-                tmp = self.t.mrna_coordinate_to_cds(tmp)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_chromosome(i)
-            if tmp is not None:
-                tmp = self.t.chromosome_coordinate_to_mrna(tmp)
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                tmp = self.t.cds_coordinate_to_chromosome(tmp)
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+        _check_reciprocal_translations(self, self.t, -1, 7)
 
     def test_sequences(self):
         """
@@ -679,43 +541,7 @@ class SingleExonTranscript2(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in range(-1, 7):
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            # can't have reciprocal connection once None appears
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_chromosome(i)
-            if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_mrna(i)
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            if tmp is not None:
-                tmp = self.t.mrna_coordinate_to_cds(tmp)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_chromosome(i)
-            if tmp is not None:
-                tmp = self.t.chromosome_coordinate_to_mrna(tmp)
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                tmp = self.t.cds_coordinate_to_chromosome(tmp)
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+        _check_reciprocal_translations(self, self.t, -1, 7)
 
     def test_sequences(self):
         """
@@ -784,43 +610,7 @@ class NoncodingTranscript(unittest.TestCase):
         """
         Test reciprocal translations between coordinate spaces
         """
-        for i in range(-1, 12):
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            # can't have reciprocal connection once None appears
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_chromosome(i)
-            if tmp is not None:
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_mrna(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_mrna(i)
-            if tmp is not None:
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.chromosome_coordinate_to_mrna(i)
-            if tmp is not None:
-                tmp = self.t.mrna_coordinate_to_cds(tmp)
-            if tmp is not None:
-                self.assertEqual(self.t.cds_coordinate_to_chromosome(tmp), i)
-
-            tmp = self.t.cds_coordinate_to_chromosome(i)
-            if tmp is not None:
-                tmp = self.t.chromosome_coordinate_to_mrna(tmp)
-                self.assertEqual(self.t.mrna_coordinate_to_cds(tmp), i)
-
-            tmp = self.t.mrna_coordinate_to_cds(i)
-            if tmp is not None:
-                tmp = self.t.cds_coordinate_to_chromosome(tmp)
-                self.assertEqual(self.t.chromosome_coordinate_to_mrna(tmp), i)
+        _check_reciprocal_translations(self, self.t, -1, 12)
 
     def test_sequences(self):
         """
