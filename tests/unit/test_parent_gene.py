@@ -7,7 +7,7 @@ from cat_test import get_input_file, get_output_file, diff_expected
 from cat.parent_gene_assignment import assign_parents
 
 
-@pytest.mark.parametrize("gene_set", ["HIGD1B", "DHX8", "TBCE", "PRR5-ARHGAP8"])
+@pytest.mark.parametrize("gene_set", ["HIGD1B", "DHX8", "TBCE", "PRR5-ARHGAP8", "INS-IGF2", "novel-cen16", "LINC01409"])
 def test_parent(gene_set):
     """parent assignment cases from T2T CHM13 20200727 assembly"""
 
