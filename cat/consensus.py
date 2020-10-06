@@ -497,21 +497,33 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     Also finds novel splice junctions in CGP/PB transcripts. A novel splice junction is defined as a splice which
     homGeneMapping did not map over and which is supported by RNA-seq.
     """
+    def is_user_filtered(s):
+        """
+        Should this be filtered out based on user flags?
+        """
+        denovo_tx_obj = tx_dict[s.AlignmentId]
+        if len(denovo_tx_obj.intron_intervals) < denovo_num_introns:
+            return True
+        elif in_species_rna_support_only and s.ExonRnaSupportPercent <= denovo_exon_support or \
+                        s.IntronRnaSupportPercent <= denovo_splice_support:
+            return True
+        elif in_species_rna_support_only is False and s.AllSpeciesExonRnaSupportPercent <= denovo_exon_support or \
+                        s.AllSpeciesIntronRnaSupportPercent <= denovo_splice_support:
+            return True
+        return False
+
     def is_novel(s):
         """
         Determine if this transcript is possibly novel. If it is assigned a gene ID, pass this off to
          is_novel_supported()
         """
+        if is_user_filtered(s):
+            return "user_filtered"
         if s.AssignedGeneId is not None:
             return is_novel_supported(s)
         if denovo_allow_bad_annot_or_tm is False and s.ResolutionMethod == 'badAnnotOrTm':
             return None
         elif s.ResolutionMethod == 'ambiguousOrFusion' and s.IntronRnaSupportPercent != 100:
-            return None
-        # validate the support level
-        intron = s.IntronRnaSupportPercent if in_species_rna_support_only else s.AllSpeciesIntronRnaSupportPercent
-        exon = s.ExonRnaSupportPercent if in_species_rna_support_only else s.AllSpeciesExonRnaSupportPercent
-        if intron < denovo_splice_support or exon < denovo_exon_support:
             return None
         # if we previously flagged this as ambiguousOrFusion, propagate this tag
         if s.ResolutionMethod == 'ambiguousOrFusion':
@@ -521,7 +533,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         # if we have alternatives, this is not novel but could be a gene family expansion
         elif s.AlternativeGeneIds is not None:
             return 'possible_paralog'
-        # this may be a poor mapping
+        # this may be a poor mapping; transMap and homGeneMapping disagree here
         elif bool(s.ExonAnnotSupportPercent > 0 or s.CdsAnnotSupportPercent > 0 or s.IntronAnnotSupportPercent > 0):
             return 'poor_alignment'
         # this is looking pretty novel, could still be a mapping problem in a complex region though
@@ -531,14 +543,6 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     def is_novel_supported(s):
         """Is this CGP/PB transcript with an assigned gene ID supported and have a novel splice?"""
         denovo_tx_obj = tx_dict[s.AlignmentId]
-        if len(denovo_tx_obj.intron_intervals) < denovo_num_introns:
-            return None
-        elif in_species_rna_support_only and s.ExonRnaSupportPercent <= denovo_exon_support or \
-                        s.IntronRnaSupportPercent <= denovo_splice_support:
-            return None
-        elif in_species_rna_support_only is False and s.AllSpeciesExonRnaSupportPercent <= denovo_exon_support or \
-                        s.AllSpeciesIntronRnaSupportPercent <= denovo_splice_support:
-            return None
         # look for splices that are not supported by the reference annotation
         # these splices may or may not be supported by RNA-seq based on the denovo_allow_unsupported flag
         new_supported_splices = set()
@@ -619,9 +623,10 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     denovo_df[['Novel5pCap', 'NovelPolyA', 'TranscriptClass']] = denovo_df.apply(has_novel_ends, axis=1)
     # types of transcripts for later
     denovo_df['TranscriptMode'] = [tools.nameConversions.alignment_type(aln_id) for aln_id in denovo_df.AlignmentId]
-    # filter out non-novel as well as fusions
+    # filter out non-novel, fusions and user filtered
     filtered_denovo_df = denovo_df[(~denovo_df.TranscriptClass.isnull())]
     filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'possible_fusion']
+    filtered_denovo_df = filtered_denovo_df[filtered_denovo_df.TranscriptClass != 'user_filtered']
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
     # filter out novel if requested by user
