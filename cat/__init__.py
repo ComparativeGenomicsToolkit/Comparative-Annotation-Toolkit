@@ -898,7 +898,8 @@ class Gff3ToGenePred(PipelineTask):
                                         'Please check your input. One possible cause is the lack of a transcript-level '
                                         'identifier on a gene record. Duplicate IDs have been written to: '
                                         '{}'.format(len(duplicates), self.duplicates))
-        grouped_genes = tools.transcripts.group_transcripts_by_name2(annotation_gp.values())
+        tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp.path)
+        grouped_genes = tools.transcripts.group_transcripts_by_name2(tx_dict.values())
         multi_chrom_genes = []
         for gene_id, txs in grouped_genes.items():
             if len({x.chromosome for x in txs}) != 1:
