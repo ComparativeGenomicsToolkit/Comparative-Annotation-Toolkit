@@ -40,7 +40,7 @@ if __name__ == '__main__':
         if len({x.chromosome for x in txs}) != 1:
             multi_chrom_genes.append(gene_id)
     if len(multi_chrom_genes) > 0:
-        raise Exception('Found {:,} genes on multiple chromosomes. '
+        raise Exception('Found {} genes on multiple chromosomes. '
                         'This is not allowed. Genes: {}'.format(len(multi_chrom_genes)), ",".join(multi_chrom_genes))
 
     assert len(tx_dict) == len(df)
