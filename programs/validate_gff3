@@ -34,7 +34,7 @@ if __name__ == '__main__':
         df = tools.gff3.parse_gff3(attrs, gp)
         tx_dict = tools.transcripts.get_gene_pred_dict(gp)
 
-    grouped_genes = tools.transcripts.group_transcripts_by_name2(tx_dict)
+    grouped_genes = tools.transcripts.group_transcripts_by_name2(tx_dict.values())
     multi_chrom_genes = []
     for gene_id, txs in grouped_genes.items():
         if len({x.chromosome for x in txs}) != 1:
