@@ -43,8 +43,9 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min
             # extract only gene names for the filtered set
             filtered_gene_ids = {tx.name2 for tx in filtered_overlapping_tm_txs}
             if len(filtered_gene_ids) > 1:  # we have more than one match, so resolve it
-                resolved_name, resolution_method = resolve_multiple_genes(denovo_tx, filtered_overlapping_tm_txs,
-                                                                          min_distance)
+                resolved_name, resolution_method = resolve_multiple_genes(
+                    denovo_tx, filtered_overlapping_tm_txs, min_distance
+                )
             elif len(filtered_gene_ids) == 1:  # yay, we have exactly one match
                 resolved_name = list(filtered_gene_ids)[0]
                 resolution_method = None
@@ -52,12 +53,13 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, chrom_sizes, denovo_gp, min
                 resolved_name = resolution_method = None  # we have no matches, which means putative novel
             # find only genes for the unfiltered set that are not present in the filtered set
             alternative_gene_ids = {tx.name2 for tx in unfiltered_overlapping_tm_txs} - {resolved_name}
-            alternative_gene_ids = ','.join(alternative_gene_ids) if len(alternative_gene_ids) > 0 else None
+            alternative_gene_ids = ",".join(alternative_gene_ids) if len(alternative_gene_ids) > 0 else None
             r.append([denovo_tx.name, resolved_name, alternative_gene_ids, resolution_method])
 
-    combined_alternatives = pd.DataFrame(r, columns=['TranscriptId', 'AssignedGeneId', 'AlternativeGeneIds',
-                                                     'ResolutionMethod'])
-    combined_alternatives = combined_alternatives.set_index('TranscriptId')
+    combined_alternatives = pd.DataFrame(
+        r, columns=["TranscriptId", "AssignedGeneId", "AlternativeGeneIds", "ResolutionMethod"]
+    )
+    combined_alternatives = combined_alternatives.set_index("TranscriptId")
     return combined_alternatives
 
 
@@ -95,7 +97,7 @@ def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance):
     tm_txs_by_gene = tools.transcripts.group_transcripts_by_name2(overlapping_tm_txs)
     tm_jaccards = [find_highest_gene_jaccard(x, y) for x, y in itertools.combinations(list(tm_txs_by_gene.values()), 2)]
     if any(x > 0.001 for x in tm_jaccards):
-        return None, 'badAnnotOrTm'
+        return None, "badAnnotOrTm"
     # calculate asymmetric difference for this prediction
     scores = collections.defaultdict(list)
     for tx in overlapping_tm_txs:
@@ -104,9 +106,9 @@ def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance):
     high_score = max(best_scores.values())
     if all(high_score - x >= min_distance for x in best_scores.values() if x != high_score):
         best = sorted(iter(best_scores.items()), key=lambda gene_id_score: gene_id_score[1])[-1][0]
-        return best, 'rescued'
+        return best, "rescued"
     else:
-        return None, 'ambiguousOrFusion'
+        return None, "ambiguousOrFusion"
 
 
 def find_highest_gene_jaccard(gene_list_a, gene_list_b):
@@ -114,6 +116,7 @@ def find_highest_gene_jaccard(gene_list_a, gene_list_b):
     Calculates the overall distance between two sets of transcripts by finding their distinct exonic intervals and then
     measuring the Jaccard distance.
     """
+
     def find_interval(gene_list):
         gene_intervals = set()
         for tx in gene_list:

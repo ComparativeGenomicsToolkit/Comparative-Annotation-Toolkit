@@ -9,7 +9,7 @@ import subprocess
 import logging
 import time
 
-logger = logging.getLogger('cat')
+logger = logging.getLogger("cat")
 
 
 def cmdLists(cmd):
@@ -17,8 +17,8 @@ def cmdLists(cmd):
     creates docker or singularity command(s) from either a
     single command or a list of commands.
     """
-    if os.environ.get('CAT_BINARY_MODE') == 'docker':
-        docker_image = os.getenv('DOCKER_IMAGE', 'quay.io/ucsc_cgl/cat:latest')
+    if os.environ.get("CAT_BINARY_MODE") == "docker":
+        docker_image = os.getenv("DOCKER_IMAGE", "quay.io/ucsc_cgl/cat:latest")
         if isinstance(cmd[0], list):
             docList = []
             for e in cmd:
@@ -26,11 +26,11 @@ def cmdLists(cmd):
             return docList
         else:
             return getDockerCommand(docker_image, cmd)
-    elif os.environ.get('CAT_BINARY_MODE') == 'singularity':
-        if os.environ.get('SINGULARITY_IMAGE'):
-            img = os.environ['SINGULARITY_IMAGE']
+    elif os.environ.get("CAT_BINARY_MODE") == "singularity":
+        if os.environ.get("SINGULARITY_IMAGE"):
+            img = os.environ["SINGULARITY_IMAGE"]
         else:
-            img = os.path.join(os.environ['SINGULARITY_PULLFOLDER'], 'cat.img')
+            img = os.path.join(os.environ["SINGULARITY_PULLFOLDER"], "cat.img")
         assert os.path.exists(img)
         if isinstance(cmd[0], list):
             return list([get_singularity_command(img, c) for c in cmd])
@@ -46,11 +46,11 @@ def call_proc(cmd, keepLastNewLine=False):
     a list of lists of commands and arguments."""
     stdout = pipeline.DataReader()
     cmd = cmdLists(cmd)
-    logger.debug('About to run command: %s' % cmd)
+    logger.debug("About to run command: %s" % cmd)
     now = time.time()
     pl = pipeline.Procline(cmd, stdin="/dev/null", stdout=stdout)
     pl.wait()
-    logger.debug('Command %s took %s seconds.' % (cmd, time.time() - now))
+    logger.debug("Command %s took %s seconds." % (cmd, time.time() - now))
     out = stdout.get()
     if (not keepLastNewLine) and (len(out) > 0) and (out[-1] == "\n"):
         out = out[0:-1]
@@ -96,11 +96,12 @@ def popen_catch(command, stdin=None):
     """
     command = cmdLists(command)
     if stdin is not None:
-        process = subprocess.Popen(command, encoding='utf-8',
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
+        process = subprocess.Popen(
+            command, encoding="utf-8", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1
+        )
         output, nothing = process.communicate(stdin)
     else:
-        process = subprocess.Popen(command, encoding='utf-8', stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
+        process = subprocess.Popen(command, encoding="utf-8", stdout=subprocess.PIPE, stderr=sys.stderr, bufsize=-1)
         output, nothing = process.communicate()
     sts = process.wait()
     if sts != 0:
@@ -149,7 +150,7 @@ def add_to_work_dirs(dirname, work_dirs):
         # override the existing filesystem within the container.)
         for i, work_dir in enumerate(work_dirs):
             mrca = mrca_path(dirname, work_dir)
-            if mrca == '/':
+            if mrca == "/":
                 # Avoid bind-mounting the root dir.
                 if i == len(work_dirs) - 1:
                     # No mergeable directories.
@@ -168,27 +169,27 @@ def getDockerCommand(image, cmd):
     image: the Docker image to use, e.g. 'quay.io/comparative-genomics-toolkit/cactus:latest'
     cmd: list of arguments
     """
-    dockerPreamble = ['docker', 'run', '-i', '--rm', '-u', "%s:%s" % (os.getuid(), os.getgid())]
+    dockerPreamble = ["docker", "run", "-i", "--rm", "-u", "%s:%s" % (os.getuid(), os.getgid())]
     if "TMPDIR" in os.environ:
         tmpdir = os.environ["TMPDIR"]
         dockerPreamble.extend(["--env", "TMPDIR={}".format(tmpdir)])
-        dockerPreamble.extend(['-v', tmpdir + ':' + tmpdir])
+        dockerPreamble.extend(["-v", tmpdir + ":" + tmpdir])
     work_dirs = []
     for i, arg in enumerate(cmd):
-        if arg.startswith('-') and '=' in arg:
+        if arg.startswith("-") and "=" in arg:
             # We assume this is -option=value syntax. Special-case
             # this to check if the value is a path.
-            arg = arg.split('=')[1]
+            arg = arg.split("=")[1]
         dirname = os.path.dirname(arg)
         if os.path.exists(dirname):
             # The dirname exists, so we will try to mount it.
             arg = os.path.abspath(arg)
-            if arg.startswith('/dev'):
+            if arg.startswith("/dev"):
                 continue
             add_to_work_dirs(dirname, work_dirs)
     for work_dir in work_dirs:
         work_dir = os.path.abspath(work_dir)
-        dockerPreamble += ['-v', work_dir + ':' + work_dir]
+        dockerPreamble += ["-v", work_dir + ":" + work_dir]
     return dockerPreamble + [image] + cmd
 
 
@@ -210,13 +211,13 @@ def get_singularity_command(image, cmd):
     # getDockerCommand, we mount the entire root of the
     # outside file system in '/mnt' of the container, and
     # then prepend '/mnt' to all file paths in the command.
-    singularity_cmd = ['singularity', 'exec', '-B', '/:/mnt', image]
+    singularity_cmd = ["singularity", "exec", "-B", "/:/mnt", image]
     for arg in cmd:
-        if arg.startswith('-') and len(arg.split('=')) == 2:
+        if arg.startswith("-") and len(arg.split("=")) == 2:
             # We assume this is -option=value syntax. Special-case
             # this to check if the value is a path.
-            option, value = arg.split('=')
-            singularified_arg = '='.join([option, singularify_arg(value)])
+            option, value = arg.split("=")
+            singularified_arg = "=".join([option, singularify_arg(value)])
         else:
             singularified_arg = singularify_arg(arg)
 
@@ -225,7 +226,7 @@ def get_singularity_command(image, cmd):
     return singularity_cmd
 
 
-def singularify_arg(arg, singularity_mount_point='/mnt'):
+def singularify_arg(arg, singularity_mount_point="/mnt"):
     """
     Check to see if 'arg' is a path; if it is, modify it to
     be accessible from inside the singularity container.
@@ -248,4 +249,3 @@ def singularify_arg(arg, singularity_mount_point='/mnt'):
         arg = str(singularity_mount_point) + str(os.path.abspath(arg))
 
     return arg
-

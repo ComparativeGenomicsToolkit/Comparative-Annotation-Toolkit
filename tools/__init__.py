@@ -12,6 +12,7 @@ class PycbioException(Exception):
        except Exception as ex:
           raise PycbioException("more stuff", ex)
     """
+
     def __init__(self, msg, cause=None):
         """Constructor."""
         if (cause is not None) and (not isinstance(cause, PycbioException)):
@@ -28,7 +29,7 @@ class PycbioException(Exception):
         "recursively construct message for chained exception"
         desc = self.msg
         if self.cause is not None:
-            desc += ",\n    caused by: " + self.cause.__class__.__name__ + ": " +  str(self.cause)
+            desc += ",\n    caused by: " + self.cause.__class__.__name__ + ": " + str(self.cause)
         return desc
 
     def format(self):
@@ -44,7 +45,7 @@ class PycbioException(Exception):
         if isinstance(ex, PycbioException):
             desc += ex.msg + "\n"
         else:
-            desc +=  str(ex) +  "\n"
+            desc += str(ex) + "\n"
         st = getattr(ex, "stackTrace", None)
         if st is not None:
             if doneStacks is None:

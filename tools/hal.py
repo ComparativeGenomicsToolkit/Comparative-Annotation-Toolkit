@@ -13,7 +13,7 @@ def get_tree(hal):
     :param hal: HAL file.
     :return: Tree object
     """
-    cmd = ['halStats', '--tree', hal]
+    cmd = ["halStats", "--tree", hal]
     newick = call_proc_lines(cmd)[0]
     return ete3.Tree(newick, format=1)
 
@@ -57,7 +57,9 @@ def extract_genomes(hal, include_ancestors=False, target_genomes=None):
             return tuple(x.name for x in t.get_descendants())
         else:
             anc = t.get_common_ancestor(target_genomes)
-            return tuple(x.name for x in anc.get_descendants() if len(x.get_descendants()) != 0 or x.name in target_genomes)
+            return tuple(
+                x.name for x in anc.get_descendants() if len(x.get_descendants()) != 0 or x.name in target_genomes
+            )
     else:
         if target_genomes is None:
             return tuple(t.get_leaf_names())

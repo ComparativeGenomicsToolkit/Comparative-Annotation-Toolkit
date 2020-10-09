@@ -42,18 +42,25 @@ def augustus(args, coding_gp, toil_options):
         if not t.options.restart:
             input_file_ids = argparse.Namespace()
             input_file_ids.genome_fasta = tools.toilInterface.write_fasta_to_filestore(t, args.genome_fasta)
-            input_file_ids.tm_cfg = FileID.forPath(t.importFile('file://' + args.tm_cfg), args.tm_cfg)
-            input_file_ids.coding_gp = FileID.forPath(t.importFile('file://' + coding_gp), coding_gp)
-            input_file_ids.ref_psl = FileID.forPath(t.importFile('file://' + args.ref_psl), args.ref_psl)
-            input_file_ids.tm_psl = FileID.forPath(t.importFile('file://' + args.filtered_tm_psl), args.filtered_tm_psl)
-            input_file_ids.annotation_gp = FileID.forPath(t.importFile('file://' + args.annotation_gp),
-                                                          args.annotation_gp)
-            file_ids = [input_file_ids.genome_fasta, input_file_ids.coding_gp, input_file_ids.ref_psl,
-                        input_file_ids.tm_psl, input_file_ids.annotation_gp]
+            input_file_ids.tm_cfg = FileID.forPath(t.importFile("file://" + args.tm_cfg), args.tm_cfg)
+            input_file_ids.coding_gp = FileID.forPath(t.importFile("file://" + coding_gp), coding_gp)
+            input_file_ids.ref_psl = FileID.forPath(t.importFile("file://" + args.ref_psl), args.ref_psl)
+            input_file_ids.tm_psl = FileID.forPath(t.importFile("file://" + args.filtered_tm_psl), args.filtered_tm_psl)
+            input_file_ids.annotation_gp = FileID.forPath(
+                t.importFile("file://" + args.annotation_gp), args.annotation_gp
+            )
+            file_ids = [
+                input_file_ids.genome_fasta,
+                input_file_ids.coding_gp,
+                input_file_ids.ref_psl,
+                input_file_ids.tm_psl,
+                input_file_ids.annotation_gp,
+            ]
             if args.augustus_tmr:
-                input_file_ids.augustus_hints_db = FileID.forPath(t.importFile('file://' + args.augustus_hints_db),
-                                                                  args.augustus_hints_db)
-                input_file_ids.tmr_cfg = FileID.forPath(t.importFile('file://' + args.tmr_cfg), args.tmr_cfg)
+                input_file_ids.augustus_hints_db = FileID.forPath(
+                    t.importFile("file://" + args.augustus_hints_db), args.augustus_hints_db
+                )
+                input_file_ids.tmr_cfg = FileID.forPath(t.importFile("file://" + args.tmr_cfg), args.tmr_cfg)
                 file_ids.append(args.augustus_hints_db)
             disk_usage = tools.toilInterface.find_total_disk_usage(file_ids)
             job = Job.wrapJobFn(setup, args, input_file_ids, disk_usage, disk=disk_usage)
@@ -61,10 +68,10 @@ def augustus(args, coding_gp, toil_options):
         else:
             tm_file_id, tmr_file_id = t.restart()
         tools.fileOps.ensure_file_dir(args.augustus_tm_gtf)
-        t.exportFile(tm_file_id, 'file://' + args.augustus_tm_gtf)
+        t.exportFile(tm_file_id, "file://" + args.augustus_tm_gtf)
         if tmr_file_id is not None:
             tools.fileOps.ensure_file_dir(args.augustus_tmr_gtf)
-            t.exportFile(tmr_file_id, 'file://' + args.augustus_tmr_gtf)
+            t.exportFile(tmr_file_id, "file://" + args.augustus_tmr_gtf)
 
 
 def setup(job, args, input_file_ids, disk_usage):
@@ -76,20 +83,25 @@ def setup(job, args, input_file_ids, disk_usage):
     :param disk_usage: Disk Usage to pass along to AUGUSTUS jobs. Important when a hints DB is involved.
     :return: completed GTF format results for all jobs
     """
+
     def start_jobs(mode, chunk_size, cfg_file_id):
         """loop wrapper that starts jobs for both TM and TMR modes"""
         results = []
         for chunk in tools.dataOps.grouper(iter(tx_dict.items()), chunk_size):
             grouped_recs = {}
             for tx_id, tx in chunk:
-                grouped_recs[tx_id] = [tx,
-                                       ref_tx_dict[tools.nameConversions.remove_alignment_number(tx_id)],
-                                       tm_psl_dict[tx_id],
-                                       ref_psl_dict[tools.nameConversions.remove_alignment_number(tx_id)]]
-            j = job.addChildJobFn(run_augustus_chunk, args, grouped_recs, input_file_ids, mode, cfg_file_id,
-                                  disk=disk_usage)
+                grouped_recs[tx_id] = [
+                    tx,
+                    ref_tx_dict[tools.nameConversions.remove_alignment_number(tx_id)],
+                    tm_psl_dict[tx_id],
+                    ref_psl_dict[tools.nameConversions.remove_alignment_number(tx_id)],
+                ]
+            j = job.addChildJobFn(
+                run_augustus_chunk, args, grouped_recs, input_file_ids, mode, cfg_file_id, disk=disk_usage
+            )
             results.append(j.rv())
         return results
+
     # load all fileStore files necessary
     ref_psl = job.fileStore.readGlobalFile(input_file_ids.ref_psl)
     tm_psl = job.fileStore.readGlobalFile(input_file_ids.tm_psl)
@@ -100,9 +112,9 @@ def setup(job, args, input_file_ids, disk_usage):
     tm_psl_dict = tools.psl.get_alignment_dict(tm_psl)
     ref_tx_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
     tx_dict = tools.transcripts.get_gene_pred_dict(coding_gp)
-    tm_results = start_jobs('TM', 25, input_file_ids.tm_cfg)
+    tm_results = start_jobs("TM", 25, input_file_ids.tm_cfg)
     if args.augustus_tmr:
-        tmr_results = start_jobs('TMR', 15, input_file_ids.tmr_cfg)
+        tmr_results = start_jobs("TMR", 15, input_file_ids.tmr_cfg)
     else:
         tmr_results = None
     return job.addFollowOnJobFn(merge, tm_results, tmr_results).rv()
@@ -119,8 +131,9 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
     :param cfg_file_id: File ID for the Augustus cfg file based on if we are in TM or TMR mode
     :return: Augustus output for this chunk
     """
-    genome_fasta = tools.toilInterface.load_fasta_from_filestore(job, input_file_ids.genome_fasta,
-                                                                 prefix='genome', upper=False)
+    genome_fasta = tools.toilInterface.load_fasta_from_filestore(
+        job, input_file_ids.genome_fasta, prefix="genome", upper=False
+    )
     cfg_file = job.fileStore.readGlobalFile(cfg_file_id)
     if args.augustus_tmr:
         hints_db_file = job.fileStore.readGlobalFile(input_file_ids.augustus_hints_db)
@@ -135,13 +148,15 @@ def run_augustus_chunk(job, args, grouped_recs, input_file_ids, mode, cfg_file_i
         stop = min(tm_tx.stop + padding, len(genome_fasta[chromosome]))
         tm_hints = tools.tm2hints.tm_to_hints(tm_tx, tm_psl, ref_psl)
         if args.augustus_tmr:
-            rnaseq_hints = get_rnaseq_hints(args.genome, chromosome, start, stop, speciesnames, seqnames, hints,
-                                            featuretypes, session)
-            hint = ''.join([tm_hints, rnaseq_hints])
+            rnaseq_hints = get_rnaseq_hints(
+                args.genome, chromosome, start, stop, speciesnames, seqnames, hints, featuretypes, session
+            )
+            hint = "".join([tm_hints, rnaseq_hints])
         else:
             hint = tm_hints
-        transcript = run_augustus(hint, genome_fasta, tm_tx, cfg_file, start, stop, args.augustus_species, mode,
-                                  args.utr)
+        transcript = run_augustus(
+            hint, genome_fasta, tm_tx, cfg_file, start, stop, args.augustus_species, mode, args.utr
+        )
         if transcript is not None:
             results.extend(transcript)
     if args.augustus_tmr:
@@ -164,12 +179,23 @@ def run_augustus(hint, fasta, tm_tx, cfg_file, start, stop, species, mode, utr):
     tmp_fasta = tools.fileOps.get_tmp_toil_file()
     tools.bio.write_fasta(tmp_fasta, tm_tx.chromosome, fasta[tm_tx.chromosome][start:stop])
     hints_out = tools.fileOps.get_tmp_toil_file()
-    with open(hints_out, 'w') as outf:
+    with open(hints_out, "w") as outf:
         outf.write(hint)
-    cmd = ['augustus', tmp_fasta, '--predictionStart=-{}'.format(start), '--predictionEnd=-{}'.format(start),
-           '--extrinsicCfgFile={}'.format(cfg_file), '--hintsfile={}'.format(hints_out), '--UTR={}'.format(int(utr)),
-           '--alternatives-from-evidence=0', '--species={}'.format(species), '--allow_hinted_splicesites=atac',
-           '--protein=0', '--softmasking=1', '--/augustus/verbosity=0']
+    cmd = [
+        "augustus",
+        tmp_fasta,
+        "--predictionStart=-{}".format(start),
+        "--predictionEnd=-{}".format(start),
+        "--extrinsicCfgFile={}".format(cfg_file),
+        "--hintsfile={}".format(hints_out),
+        "--UTR={}".format(int(utr)),
+        "--alternatives-from-evidence=0",
+        "--species={}".format(species),
+        "--allow_hinted_splicesites=atac",
+        "--protein=0",
+        "--softmasking=1",
+        "--/augustus/verbosity=0",
+    ]
     aug_output = tools.procOps.call_proc_lines(cmd)
     transcript = munge_augustus_output(aug_output, mode, tm_tx)
     return transcript
@@ -204,13 +230,14 @@ def munge_augustus_output(aug_output, mode, tm_tx):
     # extract the transcript lines
     tx_entries = [x.split() for x in aug_output if "\ttranscript\t" in x]
     # filter out transcripts that do not overlap the alignment range
-    valid_txs = [x[-1] for x in tx_entries if tm_tx.interval.overlap(tools.intervals.ChromosomeInterval(x[0], x[3],
-                                                                                                        x[4], x[6]))]
+    valid_txs = [
+        x[-1] for x in tx_entries if tm_tx.interval.overlap(tools.intervals.ChromosomeInterval(x[0], x[3], x[4], x[6]))
+    ]
     if len(valid_txs) != 1:
         return None
     valid_tx = valid_txs[0]
-    tx_id = 'aug{}-{}'.format(mode, tm_tx.name)
-    tx_lines = [x.split('\t') for x in aug_output if valid_tx in x and not x.startswith('#')]
+    tx_id = "aug{}-{}".format(mode, tm_tx.name)
+    tx_lines = [x.split("\t") for x in aug_output if valid_tx in x and not x.startswith("#")]
     features = {"exon", "CDS", "start_codon", "stop_codon", "tts", "tss"}
     gtf = []
     for chrom, source, feature, start, stop, score, strand, frame, attributes in tx_lines:

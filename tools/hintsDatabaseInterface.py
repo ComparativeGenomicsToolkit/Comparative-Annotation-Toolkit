@@ -17,7 +17,7 @@ def reflect_hints_db(db_path):
     :param db_path: path to hints sqlite database
     :return: sqlalchemy.MetaData object, sqlalchemy.orm.Session object
     """
-    engine = sqlalchemy.create_engine('sqlite:///{}'.format(db_path), poolclass=NullPool)
+    engine = sqlalchemy.create_engine("sqlite:///{}".format(db_path), poolclass=NullPool)
     metadata = sqlalchemy.MetaData()
     metadata.reflect(bind=engine)
     Base = automap_base(metadata=metadata)
@@ -47,23 +47,24 @@ def get_rnaseq_hints(genome, chromosome, start, stop, speciesnames, seqnames, hi
     """
     speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
     seqnr = session.query(seqnames.seqnr).filter(
-        sqlalchemy.and_(
-            seqnames.speciesid.in_(speciesid),
-            (seqnames.seqname == chromosome)))
+        sqlalchemy.and_(seqnames.speciesid.in_(speciesid), (seqnames.seqname == chromosome))
+    )
     query = session.query(hints, featuretypes).filter(
-            sqlalchemy.and_(
-                hints.speciesid.in_(speciesid),
-                hints.seqnr.in_(seqnr),
-                hints.start >= start,
-                hints.end <= stop,
-                featuretypes.typeid == hints.type))
+        sqlalchemy.and_(
+            hints.speciesid.in_(speciesid),
+            hints.seqnr.in_(seqnr),
+            hints.start >= start,
+            hints.end <= stop,
+            featuretypes.typeid == hints.type,
+        )
+    )
     hints = []
     for h, f in query:
-        tags = 'pri=3;src={};mult={}'.format(h.esource, h.mult)
+        tags = "pri=3;src={};mult={}".format(h.esource, h.mult)
         # add 1 to both start and end to shift to 1-based
-        l = [chromosome, h.source, f.typename, h.start + 1, h.end + 1, h.score, '.', '.', tags]
-        hints.append('\t'.join(map(str, l)) + '\n')
-    return ''.join(hints)
+        l = [chromosome, h.source, f.typename, h.start + 1, h.end + 1, h.score, ".", ".", tags]
+        hints.append("\t".join(map(str, l)) + "\n")
+    return "".join(hints)
 
 
 def get_wiggle_hints(genome, speciesnames, seqnames, hints, session):
@@ -81,7 +82,8 @@ def get_wiggle_hints(genome, speciesnames, seqnames, hints, session):
     # chunk up the genome to reduce memory usage
     for seqnr, seqname in seqs.items():
         query = session.query(hints.start, hints.end, hints.score).filter(
-                sqlalchemy.and_(hints.speciesid.in_(speciesid), hints.source == 'w2h', hints.seqnr == seqnr))
+            sqlalchemy.and_(hints.speciesid.in_(speciesid), hints.source == "w2h", hints.seqnr == seqnr)
+        )
         for start, end, score in query:
             # add 1 to end to convert to half-open interval
             yield seqname, start, end + 1, score
@@ -95,7 +97,7 @@ def hints_db_has_rnaseq(db_path, genome=None):
     :return: boolean
     """
     speciesnames, seqnames, hints, featuretypes, session = reflect_hints_db(db_path)
-    query = session.query(hints).filter(sqlalchemy.or_(hints.source == 'w2h', hints.source == 'b2h'))
+    query = session.query(hints).filter(sqlalchemy.or_(hints.source == "w2h", hints.source == "b2h"))
     if genome is not None:
         speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
         query = query.filter(hints.speciesid == speciesid)
@@ -112,7 +114,7 @@ def genome_has_no_wiggle_hints(db_path, genome):
     :return: boolean
     """
     speciesnames, seqnames, hints, featuretypes, session = reflect_hints_db(db_path)
-    query = session.query(hints).filter(hints.source == 'w2h')
+    query = session.query(hints).filter(hints.source == "w2h")
     speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
     query = query.filter(hints.speciesid == speciesid)
     r = query.first() is None
@@ -128,7 +130,7 @@ def hints_db_has_annotation(db_path, genome=None):
     :return: boolean
     """
     speciesnames, seqnames, hints, featuretypes, session = reflect_hints_db(db_path)
-    query = session.query(hints).filter(hints.source == 'a2h')
+    query = session.query(hints).filter(hints.source == "a2h")
     if genome is not None:
         speciesid = session.query(speciesnames.speciesid).filter_by(speciesname=genome)
         query = query.filter(hints.speciesid == speciesid)

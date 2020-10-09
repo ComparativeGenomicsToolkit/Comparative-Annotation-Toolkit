@@ -51,6 +51,7 @@ class multiple_inherits(object):
                 for additional_task in tasks_to_inherit[1:]:
                     task = task.clone(cls=additional_task, **args)
                 return task
+
         return Wrapped
 
 
@@ -73,6 +74,7 @@ class multiple_requires(object):
         class Wrapped(task_that_requires):
             def requires(self):
                 return (self.clone(x) for x in tasks_to_require)
+
         return Wrapped
 
 
@@ -80,6 +82,7 @@ class IndexTarget(luigi.Target):
     """
     luigi target that determines if the indices have been built on a hints database.
     """
+
     def __init__(self, db):
         self.db = db
 
@@ -87,7 +90,7 @@ class IndexTarget(luigi.Target):
         con = sqlite3.connect(self.db, timeout=timeout)
         cur = con.cursor()
         r = []
-        for idx in ['gidx', 'hidx']:
+        for idx in ["gidx", "hidx"]:
             query = 'PRAGMA index_info("{}")'.format(idx)
             try:
                 v = cur.execute(query).fetchall()

@@ -51,27 +51,31 @@ def aln_id_is_transmap(aln_id):
     :param aln_id: name string
     :return: boolean
     """
-    return True if remove_augustus_alignment_number(aln_id) == aln_id and remove_alignment_number(aln_id) != aln_id else False
+    return (
+        True
+        if remove_augustus_alignment_number(aln_id) == aln_id and remove_alignment_number(aln_id) != aln_id
+        else False
+    )
 
 
 def aln_id_is_augustus_tm(aln_id):
-    return aln_id.startswith('augTM-')
+    return aln_id.startswith("augTM-")
 
 
 def aln_id_is_augustus_tmr(aln_id):
-    return aln_id.startswith('augTMR-')
+    return aln_id.startswith("augTMR-")
 
 
 def aln_id_is_cgp(aln_id):
-    return aln_id.startswith('augCGP-')
+    return aln_id.startswith("augCGP-")
 
 
 def aln_id_is_pb(aln_id):
-    return aln_id.startswith('augPB-')
+    return aln_id.startswith("augPB-")
 
 
 def aln_id_is_exref(aln_id):
-    return aln_id.startswith('exRef-')
+    return aln_id.startswith("exRef-")
 
 
 def aln_id_is_denovo(aln_id):
@@ -81,15 +85,15 @@ def aln_id_is_denovo(aln_id):
 def alignment_type(aln_id):
     """returns what type of alignment this ID is"""
     if aln_id_is_augustus_tmr(aln_id):
-        return 'augTMR'
+        return "augTMR"
     elif aln_id_is_augustus_tm(aln_id):
-        return 'augTM'
+        return "augTM"
     elif aln_id_is_cgp(aln_id):
-        return 'augCGP'
+        return "augCGP"
     elif aln_id_is_pb(aln_id):
-        return 'augPB'
+        return "augPB"
     elif aln_id_is_exref(aln_id):
-        return 'exRef'
+        return "exRef"
     elif aln_id_is_transmap(aln_id):
-        return 'transMap'
+        return "transMap"
     assert False

@@ -18,7 +18,8 @@ def _getSigName(num):
     for key in vars(signal):
         if (getattr(signal, key) == num) and key.startswith("SIG") and (key.find("_") < 0):
             return key
-    return "signal"+str(num)
+    return "signal" + str(num)
+
 
 def _setPgid(pid, pgid):
     """set pgid of a process, ignored exception caused by race condition
@@ -28,16 +29,17 @@ def _setPgid(pid, pgid):
     # or EPERM.  To handle this is a straight-forward way, just check that the
     # change has been made.  However, in some cases the change didn't take,
     # retrying seems to make the problem go away.
-    for i in range(0,5):
+    for i in range(0, 5):
         try:
             os.setpgid(pid, pgid)
             return
         except OSError:
             if os.getpgid(pid) == pgid:
                 return
-            time.sleep(0.25) # sleep for retry
+            time.sleep(0.25)  # sleep for retry
     # last try, let it return an error
     os.setpgid(pid, pgid)
+
 
 # FIXME: why not use pipes.quote?
 def _quoteStr(a):
@@ -47,14 +49,16 @@ def _quoteStr(a):
         a = '"' + a + '"'
     return a
 
+
 class ProcException(PycbioException):
     "Process error exception.  A None returncode indicates a exec failure."
+
     def __init__(self, procDesc, returncode=None, stderr=None, cause=None):
         self.returncode = returncode
         self.stderr = stderr
         if returncode is None:
             msg = "exec failed"
-        elif (returncode < 0):
+        elif returncode < 0:
             msg = "process signaled: " + _getSigName(-returncode)
         else:
             msg = "process exited " + str(returncode)
@@ -64,25 +68,30 @@ class ProcException(PycbioException):
             msg += ":\n" + stderr
         PycbioException.__init__(self, msg, cause=cause)
 
+
 class ProcDagException(PycbioException):
     "Exception not associate with process execution"
+
     def __init__(self, msg, cause=None):
         PycbioException.__init__(self, msg, cause)
+
 
 def nonBlockClear(fd):
     "clear the non-blocking flag on a fd"
     flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, flags&~os.O_NONBLOCK)
+    fcntl.fcntl(fd, fcntl.F_SETFL, flags & ~os.O_NONBLOCK)
+
 
 class _StatusPipe(object):
     """Used to communicate from child to parent.  Child is close-on-exec,
     so this can be used to get the status of an exec."""
+
     __slots__ = ("rfd", "wfd")
 
     def __init__(self):
         self.rfd, self.wfd = os.pipe()
         flags = fcntl.fcntl(self.wfd, fcntl.F_GETFD)
-        fcntl.fcntl(self.wfd, fcntl.F_SETFD, flags|fcntl.FD_CLOEXEC)
+        fcntl.fcntl(self.wfd, fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
 
     def postForkParent(self):
         "post fork handling in parent"
@@ -107,15 +116,17 @@ class _StatusPipe(object):
         """read status from child, return exception if received, otherwise
         None or True"""
         # FIXME add read loop, or read through pickle??
-        data = os.read(self.rfd, 1024*1024)
+        data = os.read(self.rfd, 1024 * 1024)
         os.close(self.rfd)
         if len(data) > 0:
             return pickle.loads(data)
         else:
-            return None 
+            return None
+
 
 class PInOut(object):
     """base class for PIn and POut"""
+
     def __init__(self, dev, argPrefix=None):
         self.dev = dev
         self.argPrefix = argPrefix
@@ -125,19 +136,19 @@ class PInOut(object):
 
     def __radd__(self, argPrefix):
         "string concatiation operator that sets the argPrefix"
-        assert(self.argPrefix is None)
+        assert self.argPrefix is None
         self.argPrefix = argPrefix
         return self
 
     def assocByPath(self, proc):
         "associate Dev with a Proc that will access it by path"
-        assert(self.proc is None)
+        assert self.proc is None
         self.proc = proc
         self.named = True
 
     def assocByFd(self, proc):
         "associate Dev with a Proc that will access it by file descriptor"
-        assert(self.proc is None)
+        assert self.proc is None
         self.proc = proc
         self.named = False
 
@@ -154,14 +165,14 @@ class PInOut(object):
 
     def getFd(self):
         "get file descriptor for this object"
-        assert(not self.named)
+        assert not self.named
         return self.dev.getFd(self)
-        
+
     def getFh(self):
         "get file object for this object, or error if not supported by Dev"
-        assert(not self.named)
+        assert not self.named
         return self.dev.getFh(self)
-        
+
     def getPath(self):
         "get path for this object"
         return self.dev.getPath(self)
@@ -176,7 +187,7 @@ class PInOut(object):
     def close(self):
         "terminate association with device"
         self.dev.close(self)
-        
+
     def __str__(self):
         """return input file argument"""
         if not self.named:
@@ -206,6 +217,7 @@ class PInOut(object):
         else:
             return False
 
+
 class PIn(PInOut):
     """Process input object that links Dev object as input to a process,
     either as stdin or as a command line argument.  That is, it's output
@@ -215,8 +227,10 @@ class PIn(PInOut):
     option-equals is prepended to the file (--in=fname).  The argPrefix can be
     specified as an option to the constructor, or in a string concatination
     ("--in="+PIn(d))."""
+
     def __init__(self, dev, argPrefix=None):
         PInOut.__init__(self, dev, argPrefix)
+
 
 class POut(PInOut):
     """Process output object that links Dev object as output from a process,
@@ -230,9 +244,11 @@ class POut(PInOut):
 
     If append is True, file is opened with append access, if approriate.
     """
+
     def __init__(self, dev, argPrefix=None, append=False):
         PInOut.__init__(self, dev, argPrefix)
         self.append = append  # FIXME: not implemented
+
 
 class Dev(object):
     """Base class for objects specifiying process input or output.  Usually
@@ -241,7 +257,7 @@ class Dev(object):
     processes by PIn or POut objects. """
 
     def __init__(self):
-        self.pin = None   # dev output/process input
+        self.pin = None  # dev output/process input
         self.pout = None  # dev input/process output
 
     def _addPio(self, pio):
@@ -259,8 +275,7 @@ class Dev(object):
 
     def needNamed(self):
         """does this device need a named pipe?"""
-        return (((self.pin is not None) and (self.pin.named))
-                or ((self.pout is not None) and (self.pout.named)))
+        return ((self.pin is not None) and (self.pin.named)) or ((self.pout is not None) and (self.pout.named))
 
     def preFork(self):
         """pre-fork setup."""
@@ -269,7 +284,7 @@ class Dev(object):
     def postExecParent(self):
         "called do any post-exec handling in the parent"
         pass
-        
+
     def close(self, pio):
         """remove association of process with device; PInOut association remains
         for debugging purposes"""
@@ -286,11 +301,12 @@ class Dev(object):
     def getFh(self, pio):
         "get file object for given PInOut object, or error if not supported"
         raise AttributeError("getFh not supported for this Dev: " + str(self.__class__))
-        
+
     def getPath(self, pio):
         "get path for given PInOut object"
         raise AttributeError("getPath not implemented")
-        
+
+
 class DataReader(Dev):
     """Object to read data from process into memory via a pipe."""
 
@@ -306,11 +322,13 @@ class DataReader(Dev):
         if self.thread is not None:
             try:
                 self.thread.join()
-            except: pass
+            except:
+                pass
         if self.fifo is not None:
             try:
                 self.fifo.close()
-            except: pass
+            except:
+                pass
 
     def __str__(self):
         return "[DataWriter]"
@@ -327,7 +345,7 @@ class DataReader(Dev):
             self.fifo.wclose()
         self.thread = threading.Thread(target=self.__reader)
         self.thread.start()
-        
+
     def finish(self):
         "called in parent when processing is complete"
         if self.fifo is not None:
@@ -348,14 +366,15 @@ class DataReader(Dev):
 
     def getFd(self, pio):
         "get file descriptor for given PInOut object"
-        assert(pio == self.pout)
+        assert pio == self.pout
         return self.fifo.wfd
-        
+
     def getPath(self, pio):
         "get path for given PInOut object"
-        assert(pio == self.pout)
+        assert pio == self.pout
         return self.fifo.wpath
-        
+
+
 class DataWriter(Dev):
     """Object to write data from memory to process via a pipe."""
 
@@ -370,11 +389,13 @@ class DataWriter(Dev):
         if self.thread is not None:
             try:
                 self.thread.join()
-            except: pass
+            except:
+                pass
         if self.fifo is not None:
             try:
                 self.fifo.close()
-            except: pass
+            except:
+                pass
 
     def __str__(self):
         return "[DataWriter]"
@@ -391,7 +412,7 @@ class DataWriter(Dev):
             self.fifo.rclose()
         self.thread = threading.Thread(target=self.__writer)
         self.thread.start()
-        
+
     def finish(self):
         "called in parent when processing is complete"
         if self.thread is not None:
@@ -411,14 +432,15 @@ class DataWriter(Dev):
 
     def getFd(self, pio):
         "get file descriptor for given PInOut object"
-        assert(pio == self.pin)
+        assert pio == self.pin
         return self.fifo.rfd
-        
+
     def getPath(self, pio):
         "get path for given PInOut object"
-        assert(pio == self.pin)
+        assert pio == self.pin
         return self.fifo.rpath
-        
+
+
 class Pipe(Dev):
     """Interprocess communication between two Procs, either by named or
     anonymous pipes.  One end can also be attached to read/write
@@ -433,7 +455,8 @@ class Pipe(Dev):
         if self.fifo is not None:
             try:
                 self.fifo.close()
-            except: pass
+            except:
+                pass
 
     def __str__(self):
         return "[Pipe]"
@@ -450,7 +473,7 @@ class Pipe(Dev):
             self.fifo.wclose()
         if (not self.pin.named) and (self.pin.proc is not None):
             self.fifo.rclose()
-        
+
     def close(self, pio):
         """remove association of process with device; PInOut association remains
         for debugging purposes"""
@@ -459,7 +482,7 @@ class Pipe(Dev):
         elif pio == self.pout:
             self.fifo.wclose()
         else:
-            assert(False)
+            assert False
 
     def finish(self):
         "called in parent when processing is complete"
@@ -472,7 +495,7 @@ class Pipe(Dev):
             return self.fifo.rfd
         else:
             return self.fifo.wfd
-        
+
     def getFh(self, pio):
         "get file object for given PInOut object"
         if pio == self.pin:
@@ -486,7 +509,8 @@ class Pipe(Dev):
             return self.fifo.rpath
         else:
             return self.fifo.wpath
-        
+
+
 class File(Dev):
     """A file path for input or output, used for specifying stdio associated
     with files. Proc wraps these around string arguments automatically"""
@@ -507,14 +531,15 @@ class File(Dev):
             if isinstance(pio, PIn):
                 self.fd = os.open(self.path, os.O_RDONLY)
             elif self.append:
-                self.fd = os.open(self.path, os.O_WRONLY|os.O_CREAT|os.O_APPEND, 0o666)
+                self.fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o666)
             else:
-                self.fd = os.open(self.path, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o666)
+                self.fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666)
         return self.fd
-        
+
     def getPath(self, pio):
         "get path for given PInOut object"
         return self.path
+
 
 class Proc(object):
     """A process, represented as a node in a DAG of Proc objects, connected by
@@ -553,10 +578,10 @@ class Proc(object):
         self.pid = None
         self.statusPipe = None
         self.returncode = None  # exit code, or -signal
-        self.exceptInfo = None # (exception, value, traceback)
+        self.exceptInfo = None  # (exception, value, traceback)
         self.started = False
         self.finished = False
-        self.forced = False    # force termination during ProcDag cleanup
+        self.forced = False  # force termination during ProcDag cleanup
 
     @staticmethod
     def __devStr(dev):
@@ -580,7 +605,7 @@ class Proc(object):
 
     def getPios(self):
         "get set of associated PIn and POut objects"
-        return self.pins|self.pouts
+        return self.pins | self.pouts
 
     def __stdioAssoc(self, spec, mode):
         """check a stdio spec validity and associate if PInOut or Dev"""
@@ -644,7 +669,7 @@ class Proc(object):
             if stdfd == 0:  # stdin?
                 fd = os.open(spec, os.O_RDONLY)
             else:
-                fd = os.open(spec, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0o666)
+                fd = os.open(spec, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666)
         elif isinstance(spec, int):
             fd = spec
         if (fd is not None) and (fd != stdfd):
@@ -654,11 +679,12 @@ class Proc(object):
     def __closeFiles(self):
         "clone non-stdio files"
         keepOpen = set([self.statusPipe.wfd]) | trace.getActiveTraceFds()
-        for fd in range(3, MAXFD+1):
+        for fd in range(3, MAXFD + 1):
             try:
                 if not fd in keepOpen:
                     os.close(fd)
-            except: pass
+            except:
+                pass
 
     def __doChildStart(self):
         "guts of start child process"
@@ -671,7 +697,7 @@ class Proc(object):
         self.__closeFiles()
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
         os.execvp(cmd[0], cmd)
-            
+
     def __childStart(self):
         "start in child process"
         try:
@@ -681,7 +707,7 @@ class Proc(object):
             if type(ex) != ProcException:
                 ex = ProcException(str(self), cause=ex)
             self.statusPipe.sendExcept(ex)
-            
+
     def __parentStart(self):
         "start in parent process"
         # first process is process leader.
@@ -690,7 +716,7 @@ class Proc(object):
         try:
             _setPgid(self.pid, self.dag.pgid)
         except OSError:
-            pass # igore error if child has already come and gone
+            pass  # igore error if child has already come and gone
         self.statusPipe.postForkParent()
 
     def __start(self):
@@ -702,7 +728,7 @@ class Proc(object):
             try:
                 self.__childStart()
             finally:
-                os.abort() # should never make it here
+                os.abort()  # should never make it here
         else:
             self.__parentStart()
 
@@ -755,12 +781,12 @@ class Proc(object):
             stderr = self.stderr.dev.get()
         # FIXME: shouldn't save if we killed it
         self.exceptInfo = (ProcException(str(self), self.returncode, stderr), None, None)
-        
+
     def _handleExit(self, waitStat):
         """Handle process exiting, saving status   Call close on all PInOut objects
         to disassociate """
         self.finished = True
-        assert(os.WIFEXITED(waitStat) or os.WIFSIGNALED(waitStat))
+        assert os.WIFEXITED(waitStat) or os.WIFSIGNALED(waitStat)
         self.returncode = os.WEXITSTATUS(waitStat) if os.WIFEXITED(waitStat) else -os.WTERMSIG(waitStat)
         if not ((self.returncode == 0) or (self.returncode == -signal.SIGPIPE)):
             self.__handleErrExit()
@@ -777,7 +803,7 @@ class Proc(object):
         w = os.waitpid(self.pid, os.WNOHANG)
         if w[0] != 0:
             self._handleExit(w[1])
-        return (w[0] != 0)
+        return w[0] != 0
 
     def _forceFinish(self):
         """Forced termination of process.  The forced flag is set, as an
@@ -793,14 +819,16 @@ class Proc(object):
 
     def failed(self):
         "check if process failed, call after poll() or wait()"
-        return (self.exceptInfo is not None)
+        return self.exceptInfo is not None
+
 
 class _ProcDagDesc(object):
     """Generate a description of a ProcDag for debugging purposes."""
+
     def __init__(self, dag):
         self.dag = dag
         self.procsSeen = set()
-        self.piosSeen = set()   # avoid cycles
+        self.piosSeen = set()  # avoid cycles
 
     @staticmethod
     def __isPipelinePipe(spec):
@@ -814,7 +842,7 @@ class _ProcDagDesc(object):
 
     def __findPipelineStart(self, proc):
         "starting at a proc, walk back stdin->stdout pipeline to process"
-        seen = set() # don't hang on cycles
+        seen = set()  # don't hang on cycles
         while self.__isPipelinePipe(proc.stdin) and (not proc in seen):
             seen.add(proc)
             proc = proc.stdin.dev.pout.proc
@@ -886,9 +914,9 @@ class _ProcDagDesc(object):
             else:
                 return ""  # default, so display nothing
         elif isinstance(spec, PInOut):
-            return  " " + sym + str(spec.dev)
+            return " " + sym + str(spec.dev)
         else:
-            return  " " + sym + str(spec)
+            return " " + sym + str(spec)
 
     def __descProc(self, proc):
         """describe a single process in a pipeline, recursively handling args
@@ -904,7 +932,7 @@ class _ProcDagDesc(object):
                 strs.append(self.__descPInOutArg(a))
             else:
                 strs.append(_quoteStr(a))
-        desc = " " .join(strs)
+        desc = " ".join(strs)
         # stdin
         if not PInOut.pIsPipe(proc.stdin):
             desc += self.__nonPipeStdioDesc(proc.stdin, 0, "<")
@@ -934,7 +962,7 @@ class _ProcDagDesc(object):
         """get a string more or less describing the DAG"""
         # find sub-pipelines not connected as args or stderr and start
         # formatting these
-        (notConn, areConn)= self.__partPipelines()
+        (notConn, areConn) = self.__partPipelines()
         notConn.sort()  # consistent test results
         areConn.sort()
         descs = []
@@ -951,16 +979,18 @@ class _ProcDagDesc(object):
             descs.sort()  # reproducible
             desc += "{CYCLE}: " + " ; ".join(descs)
         return desc
-        
+
+
 class ProcDag(object):
     """Process DAG. Controls creation and management of process graph."""
+
     def __init__(self):
         self.procs = set()
         self.devs = set()
-        self.pgid = None      # process group leader
-        self.byPid = dict()   # indexed by pid
+        self.pgid = None  # process group leader
+        self.byPid = dict()  # indexed by pid
         self.started = False  # have procs been started
-        self.finished = False # have all procs finished
+        self.finished = False  # have all procs finished
 
     def __str__(self):
         """get a string more or less describing the DAG"""
@@ -1046,16 +1076,16 @@ class ProcDag(object):
         except Exception as ex:
             # FIXME: make optional, or record, or something
             exi = sys.exc_info()
-            stack = "" if exi is None else "".join(traceback.format_list(traceback.extract_tb(exi[2])))+"\n"
-            sys.stderr.write("ProcDag dev cleanup exception: " +str(ex)+"\n"+stack)
+            stack = "" if exi is None else "".join(traceback.format_list(traceback.extract_tb(exi[2]))) + "\n"
+            sys.stderr.write("ProcDag dev cleanup exception: " + str(ex) + "\n" + stack)
 
     def __cleanupProc(self, proc):
         try:
             proc._forceFinish()
         except Exception as ex:
             # FIXME: make optional
-            sys.stderr.write("ProcDag proc cleanup exception: " +str(ex)+"\n")
-        
+            sys.stderr.write("ProcDag proc cleanup exception: " + str(ex) + "\n")
+
     def __cleanup(self):
         """forced cleanup of child processed after failure"""
         self.finished = True
@@ -1136,9 +1166,11 @@ class ProcDag(object):
     def kill(self, sig=signal.SIGTERM):
         "send a signal to the process"
         os.kill(-self.pgid, sig)
-        
+
+
 class Procline(ProcDag):
     """Process pipeline"""
+
     def __init__(self, cmds, stdin=None, stdout=None, stderr=None):
         """cmds is either a list of arguments for a single process, or a list
         of such lists for a pipeline. If the stdin/out/err arguments are none,
@@ -1155,24 +1187,25 @@ class Procline(ProcDag):
         if isinstance(cmds[0], str):
             cmds = [cmds]  # one-process pipeline
         prevPipe = None
-        lastCmd = cmds[len(cmds)-1]
+        lastCmd = cmds[len(cmds) - 1]
         for cmd in cmds:
-            prevPipe = self._createProc(cmd, prevPipe, (cmd==lastCmd), stdin, stdout, stderr)
-        
+            prevPipe = self._createProc(cmd, prevPipe, (cmd == lastCmd), stdin, stdout, stderr)
+
     def _createProc(self, cmd, prevPipe, isLastCmd, stdinFirst, stdoutLast, stderr):
         """create one process"""
-        if (prevPipe is None):
+        if prevPipe is None:
             stdin = stdinFirst  # first process in pipeline
         else:
             stdin = PIn(prevPipe)
-        if (isLastCmd):
+        if isLastCmd:
             outPipe = None
-            stdout = stdoutLast # last process in pipeline
+            stdout = stdoutLast  # last process in pipeline
         else:
             outPipe = Pipe()
             stdout = POut(outPipe)
         self.create(cmd, stdin=stdin, stdout=stdout, stderr=stderr)
         return outPipe
+
 
 class Pipeline(Procline):
     """Object to create and manage a pipeline of processes. It can either run
@@ -1182,7 +1215,7 @@ class Pipeline(Procline):
     """
 
     # FIXME: change otherEnd stdio, or stdin/stdout, match with mode
-    def __init__(self, cmds, mode='r', otherEnd=None):
+    def __init__(self, cmds, mode="r", otherEnd=None):
         """cmds is either a list of arguments for a single process, or
         a list of such lists for a pipeline.  Mode is 'r' for a pipeline
         who's output will be read, or 'w' for a pipeline to that is to
@@ -1234,7 +1267,7 @@ class Pipeline(Procline):
             otherFh = None
             closeOther = False
         elif isinstance(self.otherEnd, str):
-            if self.mode == 'r':
+            if self.mode == "r":
                 otherFh = PIn(File(self.otherEnd))
             else:
                 otherFh = POut(File(self.otherEnd))
@@ -1250,7 +1283,7 @@ class Pipeline(Procline):
 
     def __next__(self):
         return next(self.fh)
-  
+
     def flush(self):
         "Flush the internal I/O buffer."
         self.fh.flush()
@@ -1258,7 +1291,7 @@ class Pipeline(Procline):
     def fileno(self):
         "get the integer OS-dependent file handle"
         return self.fh.fileno()
-  
+
     def write(self, str):
         "Write string str to file."
         self.fh.write(str)
@@ -1295,6 +1328,18 @@ class Pipeline(Procline):
         if not self.finished:
             self.wait()
 
-__all__ = [ProcException.__name__, PIn.__name__, POut.__name__, Dev.__name__,
-           DataReader.__name__, DataWriter.__name__, Pipe.__name__, File.__name__,
-           Proc.__name__, ProcDag.__name__, Procline.__name__, Pipeline.__name__]
+
+__all__ = [
+    ProcException.__name__,
+    PIn.__name__,
+    POut.__name__,
+    Dev.__name__,
+    DataReader.__name__,
+    DataWriter.__name__,
+    Pipe.__name__,
+    File.__name__,
+    Proc.__name__,
+    ProcDag.__name__,
+    Procline.__name__,
+    Pipeline.__name__,
+]

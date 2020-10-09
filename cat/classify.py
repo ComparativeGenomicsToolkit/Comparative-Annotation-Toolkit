@@ -75,14 +75,14 @@ def classify(eval_args):
     # results stores the final dataframes
     results = {}
     for tx_mode, path_dict in eval_args.transcript_modes.items():
-        tx_dict = tools.transcripts.get_gene_pred_dict(path_dict['gp'])
-        aln_modes = ['CDS', 'mRNA'] if tx_mode != 'augCGP' else ['CDS']
+        tx_dict = tools.transcripts.get_gene_pred_dict(path_dict["gp"])
+        aln_modes = ["CDS", "mRNA"] if tx_mode != "augCGP" else ["CDS"]
         for aln_mode in aln_modes:
             psl_iter = list(tools.psl.psl_iterator(path_dict[aln_mode]))
             mc_df = metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict)
             ec_df = evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, seq_dict)
-            results[tools.sqlInterface.tables[aln_mode][tx_mode]['metrics'].__tablename__] = mc_df
-            results[tools.sqlInterface.tables[aln_mode][tx_mode]['evaluation'].__tablename__] = ec_df
+            results[tools.sqlInterface.tables[aln_mode][tx_mode]["metrics"].__tablename__] = mc_df
+            results[tools.sqlInterface.tables[aln_mode][tx_mode]["evaluation"].__tablename__] = ec_df
     return results
 
 
@@ -95,20 +95,20 @@ def metrics_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter, s
     for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         original_intron_vector = calculate_original_intron_vector(ref_tx, tx, psl, aln_mode)
         adj_start, adj_stop = find_adj_start_stop(tx, seq_dict)
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnCoverage', 100 * psl.target_coverage])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnIdentity', 100 * psl.identity])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AlnGoodness', 100 * (1 - psl.badness)])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'PercentUnknownBases', psl.percent_n])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'OriginalIntrons', original_intron_vector])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'ValidStart', tools.transcripts.has_start_codon(seq_dict, tx)])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'ValidStop', tools.transcripts.has_stop_codon(seq_dict, tx)])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'ProperOrf', tx.cds_size % 3 == 0])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AdjStart', adj_start])
-        r.append([ref_tx.name2, ref_tx.name, tx.name, 'AdjStop', adj_stop])
-    columns = ['GeneId', 'TranscriptId', 'AlignmentId', 'classifier', 'value']
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "AlnCoverage", 100 * psl.target_coverage])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "AlnIdentity", 100 * psl.identity])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "AlnGoodness", 100 * (1 - psl.badness)])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "PercentUnknownBases", psl.percent_n])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "OriginalIntrons", original_intron_vector])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "ValidStart", tools.transcripts.has_start_codon(seq_dict, tx)])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "ValidStop", tools.transcripts.has_stop_codon(seq_dict, tx)])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "ProperOrf", tx.cds_size % 3 == 0])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "AdjStart", adj_start])
+        r.append([ref_tx.name2, ref_tx.name, tx.name, "AdjStop", adj_stop])
+    columns = ["GeneId", "TranscriptId", "AlignmentId", "classifier", "value"]
     df = pd.DataFrame(r, columns=columns)
     df = df.sort_values(columns)
-    df = df.set_index('AlignmentId')
+    df = df.set_index("AlignmentId")
     assert len(r) == len(df)
     return df
 
@@ -121,15 +121,28 @@ def evaluation_classify(aln_mode, ref_tx_dict, tx_dict, tx_biotype_map, psl_iter
     r = []
     for ref_tx, tx, psl, biotype in tx_iter(psl_iter, ref_tx_dict, tx_dict, tx_biotype_map):
         r.extend(find_indels(tx, psl, aln_mode))
-        if biotype == 'protein_coding':
+        if biotype == "protein_coding":
             line = in_frame_stop(tx, seq_dict)
             if line is not None:
                 r.append(line)
-    columns = ['AlignmentId', 'chromosome', 'start', 'stop', 'name', 'score', 'strand', 'thickStart',
-               'thickStop', 'rgb', 'blockCount', 'blockSizes', 'blockStarts']
+    columns = [
+        "AlignmentId",
+        "chromosome",
+        "start",
+        "stop",
+        "name",
+        "score",
+        "strand",
+        "thickStart",
+        "thickStop",
+        "rgb",
+        "blockCount",
+        "blockSizes",
+        "blockStarts",
+    ]
     df = pd.DataFrame(r, columns=columns)
     df = df.sort_values(columns)
-    df = df.set_index('AlignmentId')
+    df = df.set_index("AlignmentId")
     assert len(r) == len(df)
     return df
 
@@ -171,7 +184,7 @@ def calculate_original_intron_vector(ref_tx, tx, psl, aln_mode):
 
     # if we lost all introns due to CDS filtering, return a vector of all 0s
     if len(tgt_introns) == 0:
-        return ','.join(['0'] * len(ref_tx.intron_intervals))
+        return ",".join(["0"] * len(ref_tx.intron_intervals))
 
     # count the number of introns within wiggle distance of each other
     intron_vector = []
@@ -181,7 +194,7 @@ def calculate_original_intron_vector(ref_tx, tx, psl, aln_mode):
             intron_vector.append(1)
         else:
             intron_vector.append(0)
-    return ','.join(map(str, intron_vector))
+    return ",".join(map(str, intron_vector))
 
 
 def in_frame_stop(tx, fasta):
@@ -193,8 +206,8 @@ def in_frame_stop(tx, fasta):
     :return: A BED string if an in frame stop was found otherwise None
     """
     for start_pos, stop_pos, codon in tx.codon_iterator(fasta):
-        if tools.bio.translate_sequence(codon) == '*':
-            bed = tx.get_bed(new_start=start_pos, new_stop=stop_pos, rgb='135,78,191', name='InFrameStop')
+        if tools.bio.translate_sequence(codon) == "*":
+            bed = tx.get_bed(new_start=start_pos, new_stop=stop_pos, rgb="135,78,191", name="InFrameStop")
             return [tx.name] + bed
 
 
@@ -211,8 +224,8 @@ def find_adj_start_stop(tx, fasta):
     :return: two integers for start/stop in genomic coordinates
     """
     for start_pos, stop_pos, codon in tx.codon_iterator(fasta):
-        if tools.bio.translate_sequence(codon) == '*':
-            if tx.strand == '-':
+        if tools.bio.translate_sequence(codon) == "*":
+            if tx.strand == "-":
                 start = start_pos
                 stop = tx.thick_stop
             else:
@@ -242,6 +255,7 @@ def find_indels(tx, psl, aln_mode):
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: list of bed12-format lists
     """
+
     def convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn, strand):
         """convert alignment coordinates to target chromosome coordinates, inverting if negative strand"""
         left_chrom_pos = coordinate_fn(left_pos)
@@ -249,36 +263,38 @@ def find_indels(tx, psl, aln_mode):
         right_chrom_pos = coordinate_fn(right_pos)
         if right_chrom_pos is None:
             right_chrom_pos = coordinate_fn(right_pos - 1)
-            if strand == '-':
+            if strand == "-":
                 left_chrom_pos += 1
             else:
                 left_chrom_pos -= 1
         assert right_chrom_pos is not None
-        if strand == '-':
+        if strand == "-":
             left_chrom_pos, right_chrom_pos = right_chrom_pos, left_chrom_pos
         assert right_chrom_pos >= left_chrom_pos
         return left_chrom_pos, right_chrom_pos
 
     def parse_indel(left_pos, right_pos, coordinate_fn, tx, offset, gap_type):
         """Converts either an insertion or a deletion into a output transcript"""
-        left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn,
-                                                                            tx.strand)
+        left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(
+            left_pos, right_pos, coordinate_fn, tx.strand
+        )
         if left_chrom_pos is None or right_chrom_pos is None:
-            assert aln_mode == 'CDS'
+            assert aln_mode == "CDS"
             return None
 
         if left_chrom_pos > tx.thick_start and right_chrom_pos < tx.thick_stop:
-            indel_type = 'CodingMult3' if offset % 3 == 0 else 'Coding'
+            indel_type = "CodingMult3" if offset % 3 == 0 else "Coding"
         else:
-            indel_type = 'NonCoding'
+            indel_type = "NonCoding"
 
-        new_bed = tx.get_bed(new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=offset,
-                             name=''.join([indel_type, gap_type]))
+        new_bed = tx.get_bed(
+            new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=offset, name="".join([indel_type, gap_type])
+        )
         return [tx.name] + new_bed
 
     # depending on mode, we convert the coordinates from either CDS or mRNA
     # we also have a different position cutoff to make sure we are not evaluating terminal gaps
-    if aln_mode == 'CDS':
+    if aln_mode == "CDS":
         coordinate_fn = tx.cds_coordinate_to_chromosome
     else:
         coordinate_fn = tx.mrna_coordinate_to_chromosome
@@ -293,16 +309,16 @@ def find_indels(tx, psl, aln_mode):
     for block_size, q_start, t_start in zip(*[psl.block_sizes, psl.q_starts[1:], psl.t_starts[1:]]):
         q_offset = q_start - block_size - q_pos
         t_offset = t_start - block_size - t_pos
-        assert (q_offset >= 0 and t_offset >= 0)
+        assert q_offset >= 0 and t_offset >= 0
         if q_offset != 0:  # query insertion -> insertion in target sequence
             left_pos = q_start - q_offset
             right_pos = q_start
-            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, q_offset, 'Insertion')
+            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, q_offset, "Insertion")
             if row is not None:
                 r.append(row)
         if t_offset != 0:  # target insertion -> insertion in reference sequence
             left_pos = right_pos = q_start
-            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, t_offset, 'Deletion')
+            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, t_offset, "Deletion")
             if row is not None:
                 r.append(row)
         q_pos = q_start
@@ -337,7 +353,7 @@ def convert_cds_frames(ref_tx, tx, aln_mode):
     :param aln_mode: If we are in CDS mode, we need to convert the transcripts to a CDS-framed object.
     :return: tuple of GenePredTranscript objects (ref_tx, tx)
     """
-    if aln_mode == 'CDS':
+    if aln_mode == "CDS":
         if ref_tx.offset != 0:
             ref_tx = convert_cds_frame(ref_tx)
         if tx.offset != 0:
@@ -355,7 +371,7 @@ def convert_cds_frame(tx):
     """
     offset = tx.offset
     mod3 = (tx.cds_size - offset) % 3
-    if tx.strand == '+':
+    if tx.strand == "+":
         b = tx.get_bed(new_start=tx.thick_start + offset, new_stop=tx.thick_stop - mod3)
     else:
         b = tx.get_bed(new_start=tx.thick_start + mod3, new_stop=tx.thick_stop - offset)
@@ -370,7 +386,7 @@ def get_intron_coordinates(tx, aln_mode):
     :param aln_mode: One of ('CDS', 'mRNA'). Used to determine if we aligned in CDS space or mRNA space
     :return: list of integers
     """
-    if aln_mode == 'CDS':
+    if aln_mode == "CDS":
         tx = convert_cds_frame(tx)
         introns = [tx.chromosome_coordinate_to_cds(tx.start + x) for x in tx.block_starts[1:]]
     else:
@@ -390,14 +406,14 @@ def get_exon_intervals(tx, aln_mode):
     :param aln_mode: One of ('CDS', 'mRNA'). Used to determine if we aligned in CDS space or mRNA space
     :return: dict of ChromosomeInterval objects {reference:converted}
     """
-    if aln_mode == 'CDS':
+    if aln_mode == "CDS":
         tx = convert_cds_frame(tx)
     exons = {}
     for exon in tx.exon_intervals:
         start = tx.chromosome_coordinate_to_mrna(exon.start)
         stop = tx.chromosome_coordinate_to_mrna(exon.stop - 1)  # zero based, half open
-        if tx.strand == '-':
+        if tx.strand == "-":
             start, stop = stop, start
-        i = tools.intervals.ChromosomeInterval(None, start, stop + 1, '.')
+        i = tools.intervals.ChromosomeInterval(None, start, stop + 1, ".")
         exons[exon] = i
     return exons

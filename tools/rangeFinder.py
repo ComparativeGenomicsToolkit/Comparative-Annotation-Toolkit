@@ -16,7 +16,6 @@ generating SQL where clauses to restrict by bin."""
 # will fit in.
 
 
-
 class RemoveValueError(Exception):
     pass
 
@@ -24,17 +23,11 @@ class RemoveValueError(Exception):
 class Binner(object):
     "functions to translate ranges to bin numbers"
 
-    binOffsetsBasic = (512 + 64 + 8 + 1,
-                       64 + 8 + 1,
-                       8 + 1,
-                       1, 0)
-    binOffsetsExtended = (4096 + 512 + 64 + 8 + 1,
-                          512 + 64 + 8 + 1,
-                          64 + 8 + 1, 8 + 1,
-                          1, 0)
+    binOffsetsBasic = (512 + 64 + 8 + 1, 64 + 8 + 1, 8 + 1, 1, 0)
+    binOffsetsExtended = (4096 + 512 + 64 + 8 + 1, 512 + 64 + 8 + 1, 64 + 8 + 1, 8 + 1, 1, 0)
 
     binFirstShift = 17  # How much to shift to get to finest bin.
-    binNextShift = 3    # How much to shift to get to next larger bin.
+    binNextShift = 3  # How much to shift to get to next larger bin.
 
     binBasicMaxEnd = 512 * 1024 * 1024
     binOffsetToExtended = 4681
@@ -45,7 +38,7 @@ class Binner(object):
         startBin = start >> Binner.binFirstShift
         endBin = (end - 1) >> Binner.binFirstShift
         for binOff in offsets:
-            if (startBin == endBin):
+            if startBin == endBin:
                 return baseOffset + binOff + startBin
             startBin >>= Binner.binNextShift
             endBin >>= Binner.binNextShift
@@ -80,9 +73,13 @@ class Binner(object):
         else:
             if start < Binner.binBasicMaxEnd:
                 # overlapping both basic and extended
-                for bins in Binner.__getOverlappingBinsForOffsets(start, Binner.binBasicMaxEnd, 0, Binner.binOffsetsBasic):
+                for bins in Binner.__getOverlappingBinsForOffsets(
+                    start, Binner.binBasicMaxEnd, 0, Binner.binOffsetsBasic
+                ):
                     yield bins
-            for bins in Binner.__getOverlappingBinsForOffsets(start, end, Binner.binOffsetToExtended, Binner.binOffsetsExtended):
+            for bins in Binner.__getOverlappingBinsForOffsets(
+                start, end, Binner.binOffsetToExtended, Binner.binOffsetsExtended
+            ):
                 yield bins
 
     @staticmethod
@@ -95,7 +92,9 @@ class Binner(object):
                 parts.append("({}={})".format(binCol, bins[0]))
             else:
                 parts.append("({}>={} and {}<={})".format(binCol, bins[0], binCol, bins[1]))
-        return "(({}=\"{}\") and ({}<{}) and ({}>{}) and ({}))".format(seqCol, seq, startCol, end, endCol, start, " or ".join(parts))
+        return '(({}="{}") and ({}<{}) and ({}>{}) and ({}))'.format(
+            seqCol, seq, startCol, end, endCol, start, " or ".join(parts)
+        )
 
 
 class Entry(object):
@@ -119,6 +118,7 @@ class RangeBins(object):
     """Range indexed container for a single sequence.  This using a binning
     scheme that implements spacial indexing. Based on UCSC hg browser binRange
     C module.  """
+
     __slots__ = ("seqId", "strand", "bins")
 
     def __init__(self, seqId, strand):
@@ -129,17 +129,17 @@ class RangeBins(object):
     def add(self, start, end, value):
         bin = Binner.calcBin(start, end)
         entries = self.bins.get(bin)
-        if (entries is None):
+        if entries is None:
             self.bins[bin] = entries = []
         entries.append(Entry(start, end, value))
 
     def overlapping(self, start, end):
         "generator over values overlapping the specified range"
-        if (start < end):
+        if start < end:
             for bins in Binner.getOverlappingBins(start, end):
                 for j in range(bins[0], bins[1] + 1):
                     bin = self.bins.get(j)
-                    if (bin is not None):
+                    if bin is not None:
                         for entry in bin:
                             if entry.overlaps(start, end):
                                 yield entry.value
@@ -173,6 +173,7 @@ class RangeFinder(object):
     have strand.  A query without strand will find all overlapping
     entries on either strand if strand was specified when adding entries.
     """
+
     validStrands = set((None, "+", "-"))
 
     def __init__(self):
@@ -182,7 +183,7 @@ class RangeFinder(object):
     def add(self, seqId, start, end, value, strand=None):
         "add an entry for a sequence and range, and optional strand"
         if self.haveStrand is None:
-            self.haveStrand = (strand is not None)
+            self.haveStrand = strand is not None
         elif self.haveStrand != (strand is not None):
             raise Exception("all RangeFinder entries must either have strand or not have strand")
         if strand not in self.validStrands:
@@ -230,9 +231,9 @@ class RangeFinder(object):
 
     def __removeBothStrands(self, seqId, start, end, value):
         "remove an entry, checking both strands"
-        removed = self.__removeIfExists(seqId, start, end, value, '+')
+        removed = self.__removeIfExists(seqId, start, end, value, "+")
         if not removed:
-            removed = self.__removeIfExists(seqId, start, end, value, '-')
+            removed = self.__removeIfExists(seqId, start, end, value, "-")
             if bins is not None:
                 removed = bins.removeIfExists(seqId, start, end, value)
         if not removed:
