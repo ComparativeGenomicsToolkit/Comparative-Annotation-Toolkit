@@ -8,9 +8,11 @@ import sys, os, types, linecache, threading
 # used to detect traces that are currently open to prevent closing
 _activeTraceFds = set()
 
+
 def getActiveTraceFds():
     "return snapshot of currently active traces"
     return frozenset(_activeTraceFds)
+
 
 class Trace(object):
     """Trace object, associate with an open trace file.  File is flushed after
@@ -33,7 +35,7 @@ class Trace(object):
 
     def enable(self):
         """enable logging on all threads."""
-        assert(self.fh is not None)
+        assert self.fh is not None
         sys.settrace(self.__callback)
         threading.settrace(self.__callback)
 
@@ -70,27 +72,29 @@ class Trace(object):
         except IOError as ex:
             pass
 
-    __indentStrs = {} # cache of spaces for identation, indexed by depth
+    __indentStrs = {}  # cache of spaces for identation, indexed by depth
+
     def __getIndent(self):
         "get indentation string"
         if not self.callIndent:
             return ""
         i = Trace.__indentStrs.get(self.depth)
         if i is None:
-            i = Trace.__indentStrs[self.depth] = "".ljust(4*self.depth)
+            i = Trace.__indentStrs[self.depth] = "".ljust(4 * self.depth)
         return i
 
     def __logLine(self, frame, event):
         "log a code line"
         lineno = frame.f_lineno
         fname = frame.f_globals["__file__"]
-        if (fname.endswith(".pyc") or fname.endswith(".pyo")):
+        if fname.endswith(".pyc") or fname.endswith(".pyo"):
             fname = fname[:-1]
         name = frame.f_globals["__name__"]
         line = linecache.getline(fname, lineno)
         self.log(name, ":", lineno, self.__getIndent(), line.rstrip())
 
     __logEvents = frozenset(["call", "line"])
+
     def __callback(self, frame, event, arg):
         "trace event callback"
         if frame.f_globals["__name__"] not in self.ignoreMods:
@@ -100,9 +104,10 @@ class Trace(object):
                 self.depth -= 1
                 if self.depth < 0:
                     self.depth = 0
-            
+
             if event in Trace.__logEvents:
                 self.__logLine(frame, event)
         return self.__callback
+
 
 __all__ = (getActiveTraceFds.__name__, Trace.__name__)

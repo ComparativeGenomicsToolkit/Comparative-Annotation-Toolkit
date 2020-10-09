@@ -8,6 +8,7 @@ __author__ = "Ian Fiddes"
 
 class ExclusiveSqlConnection(object):
     """Context manager for an exclusive SQL connection"""
+
     def __init__(self, path, timeout=6000):
         self.path = path
         self.timeout = timeout

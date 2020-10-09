@@ -5,7 +5,7 @@ import hashlib
 from . import mathOps
 from .bio import reverse_complement, translate_sequence
 
-__author__ = 'Ian Fiddes'
+__author__ = "Ian Fiddes"
 
 
 class ChromosomeInterval(object):
@@ -13,14 +13,15 @@ class ChromosomeInterval(object):
     Represents a continuous genomic interval.
     interval arithmetic adapted from http://code.activestate.com/recipes/576816-interval/
     """
-    __slots__ = ('chromosome', 'start', 'stop', 'strand', 'data')
+
+    __slots__ = ("chromosome", "start", "stop", "strand", "data")
 
     def __init__(self, chromosome, start, stop, strand, data=None):
         self.chromosome = str(chromosome)
-        self.start = int(start)    # 0 based
-        self.stop = int(stop)      # exclusive
+        self.start = int(start)  # 0 based
+        self.stop = int(stop)  # exclusive
         assert self.start <= self.stop, "start > stop {}:{}-{} ({})".format(chromosome, start, stop, strand)
-        self.strand = strand       # + or -
+        self.strand = strand  # + or -
         self.data = data
 
     def __len__(self):
@@ -29,32 +30,47 @@ class ChromosomeInterval(object):
     def __hash__(self):
         m = hashlib.sha256()
         for key in self.__slots__:
-            m.update(str(self.__getattribute__(key)).encode('utf-8'))
+            m.update(str(self.__getattribute__(key)).encode("utf-8"))
         return int(m.hexdigest(), 16) % 10 ** 12
 
     def __eq__(self, other):
-        return (isinstance(other, type(self)) and
-                (self.chromosome, self.start, self.stop, self.strand) ==
-                (other.chromosome, other.start, other.stop, other.strand))
+        return isinstance(other, type(self)) and (self.chromosome, self.start, self.stop, self.strand) == (
+            other.chromosome,
+            other.start,
+            other.stop,
+            other.strand,
+        )
 
     def __ne__(self, other):
         return not self == other
 
     def __gt__(self, other):
-        return (isinstance(other, type(self)) and self.chromosome == other.chromosome and
-                (self.start, self.stop) > (other.start, other.stop))
+        return (
+            isinstance(other, type(self))
+            and self.chromosome == other.chromosome
+            and (self.start, self.stop) > (other.start, other.stop)
+        )
 
     def __ge__(self, other):
-        return (isinstance(other, type(self)) and self.chromosome == other.chromosome and
-                (self.start, self.stop) >= (other.start, other.stop))
+        return (
+            isinstance(other, type(self))
+            and self.chromosome == other.chromosome
+            and (self.start, self.stop) >= (other.start, other.stop)
+        )
 
     def __lt__(self, other):
-        return (isinstance(other, type(self)) and self.chromosome == other.chromosome and
-                (self.start, self.stop) < (other.start, other.stop))
+        return (
+            isinstance(other, type(self))
+            and self.chromosome == other.chromosome
+            and (self.start, self.stop) < (other.start, other.stop)
+        )
 
     def __le__(self, other):
-        return (isinstance(other, type(self)) and self.chromosome == other.chromosome and
-                (self.start, self.stop) <= (other.start, other.stop))
+        return (
+            isinstance(other, type(self))
+            and self.chromosome == other.chromosome
+            and (self.start, self.stop) <= (other.start, other.stop)
+        )
 
     def __contains__(self, other):
         return self.start <= other < self.stop
@@ -73,8 +89,9 @@ class ChromosomeInterval(object):
         if self.data is None:
             return "ChromosomeInterval('{}', {}, {}, '{}')".format(self.chromosome, self.start, self.stop, self.strand)
         else:
-            return "ChromosomeInterval('{}', {}, {}, '{}', '{}')".format(self.chromosome, self.start, self.stop,
-                                                                         self.strand, self.data)
+            return "ChromosomeInterval('{}', {}, {}, '{}', '{}')".format(
+                self.chromosome, self.start, self.stop, self.strand, self.data
+            )
 
     @property
     def is_null(self):
@@ -109,8 +126,10 @@ class ChromosomeInterval(object):
         :return: Two ChromosomeInterval objects representing the complement of this interval and the size.
         """
         assert 0 <= len(self) < size
-        return [ChromosomeInterval(self.chromosome, 0, self.start, self.strand),
-                ChromosomeInterval(self.chromosome, self.stop, size, self.strand)]
+        return [
+            ChromosomeInterval(self.chromosome, 0, self.start, self.strand),
+            ChromosomeInterval(self.chromosome, self.stop, size, self.strand),
+        ]
 
     def union(self, other):
         """
@@ -216,10 +235,10 @@ class ChromosomeInterval(object):
         :param stranded: Should we reverse complement negative strand sequences?
         :return: A sequence string.
         """
-        if stranded is False or self.strand is '+':
-            return seq_dict[self.chromosome][self.start: self.stop]
-        elif self.strand is '-':
-            return reverse_complement(seq_dict[self.chromosome][self.start: self.stop])
+        if stranded is False or self.strand is "+":
+            return seq_dict[self.chromosome][self.start : self.stop]
+        elif self.strand is "-":
+            return reverse_complement(seq_dict[self.chromosome][self.start : self.stop])
 
     def get_protein_sequence(self, seq_dict, frame, truncate=True):
         """
@@ -231,9 +250,9 @@ class ChromosomeInterval(object):
         """
         seq = self.get_sequence(seq_dict)
         if truncate:
-            return translate_sequence(seq[frame:len(seq) - len(seq) % 3])
+            return translate_sequence(seq[frame : len(seq) - len(seq) % 3])
         else:
-            return translate_sequence(seq[frame:len(seq)])
+            return translate_sequence(seq[frame : len(seq)])
 
 
 def gap_merge_intervals(intervals, gap):
@@ -246,13 +265,15 @@ def gap_merge_intervals(intervals, gap):
     new_intervals = []
     for interval in sorted(intervals):
         if not new_intervals:
-            new_intervals.append(ChromosomeInterval(interval.chromosome, interval.start, interval.stop,
-                                                    interval.strand, interval.data))
+            new_intervals.append(
+                ChromosomeInterval(interval.chromosome, interval.start, interval.stop, interval.strand, interval.data)
+            )
         elif interval.separation(new_intervals[-1]) <= gap:
             new_intervals[-1] = new_intervals[-1].hull(interval)
         else:
-            new_intervals.append(ChromosomeInterval(interval.chromosome, interval.start, interval.stop,
-                                                    interval.strand, interval.data))
+            new_intervals.append(
+                ChromosomeInterval(interval.chromosome, interval.start, interval.stop, interval.strand, interval.data)
+            )
     return new_intervals
 
 

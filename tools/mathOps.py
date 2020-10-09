@@ -16,7 +16,7 @@ def format_ratio(numerator, denominator, num_digits=None, resolve_nan=None):
     """
     if denominator == 0 or math.isnan(denominator) or math.isnan(numerator):
         if resolve_nan is None:
-            return float('nan')
+            return float("nan")
         else:
             return resolve_nan
     r = float(numerator) / float(denominator)

@@ -7,17 +7,17 @@ import parasail
 from .misc import pairwise
 from .psl import PslRow
 
-cigar_re = re.compile('([MIDNSHPX=])')
-INS = 'I'
-DEL = 'D'
-MATCH = '='
-MISMATCH = 'X'
+cigar_re = re.compile("([MIDNSHPX=])")
+INS = "I"
+DEL = "D"
+MATCH = "="
+MISMATCH = "X"
 
 
 def iter_cigar(cigar):
     ref_pos = cigar.beg_ref
     tgt_pos = cigar.beg_query
-    for num, op in pairwise(re.split(cigar_re, cigar.decode.decode('utf-8'))):
+    for num, op in pairwise(re.split(cigar_re, cigar.decode.decode("utf-8"))):
         num = int(num)
         yield ref_pos, tgt_pos, num, op
         if op == MATCH or op == MISMATCH:
@@ -36,20 +36,20 @@ def construct_fa(name1, seq1, name2, seq2, result):
     aln2 = []
     for ref_pos, tgt_pos, num, op in iter_cigar(result.cigar):
         if op == MATCH or op == MISMATCH:
-            aln1.append(seq1[ref_pos:ref_pos + num])
-            aln2.append(seq2[tgt_pos:tgt_pos + num])
+            aln1.append(seq1[ref_pos : ref_pos + num])
+            aln2.append(seq2[tgt_pos : tgt_pos + num])
         elif op == DEL:
-            aln1.append(''.join(['-'] * min(num, len(seq2) - tgt_pos)))
-            aln2.append(seq2[tgt_pos:tgt_pos + num])
+            aln1.append("".join(["-"] * min(num, len(seq2) - tgt_pos)))
+            aln2.append(seq2[tgt_pos : tgt_pos + num])
         elif op == INS:
-            aln1.append(seq1[ref_pos:ref_pos + num])
-            aln2.append(''.join(['-'] * min(num, len(seq1) - ref_pos)))
+            aln1.append(seq1[ref_pos : ref_pos + num])
+            aln2.append("".join(["-"] * min(num, len(seq1) - ref_pos)))
         assert len(aln1[-1]) == len(aln2[-1])
-    aln1 = ''.join(aln1)
-    aln2 = ''.join(aln2)
+    aln1 = "".join(aln1)
+    aln2 = "".join(aln2)
     assert len(aln1) == len(aln2)
     assert max(len(seq1), len(seq2)) == len(aln1)
-    return f'>{name1}\n{aln1}\n>{name2}\n{aln2}'
+    return f">{name1}\n{aln1}\n>{name2}\n{aln2}"
 
 
 def construct_psl(name1, name2, result):
@@ -68,7 +68,7 @@ def construct_psl(name1, name2, result):
     t_pos = result.cigar.beg_ref
     t_size = result.len_ref
 
-    parsed_cigar = list(pairwise(re.split(cigar_re, result.cigar.decode.decode('utf-8'))))
+    parsed_cigar = list(pairwise(re.split(cigar_re, result.cigar.decode.decode("utf-8"))))
 
     for i, (num, op) in enumerate(parsed_cigar):
         num = int(num)
@@ -96,10 +96,31 @@ def construct_psl(name1, name2, result):
         else:
             assert False
     block_count = len(block_sizes)
-    p = PslRow((matches, mismatches, 0, 0, q_num_insert, q_base_insert, t_num_insert, t_base_insert, '+',
-                name1, q_size, q_starts[0], q_starts[block_count - 1] + block_sizes[block_count - 1],
-                name2, t_size, t_starts[0], t_starts[block_count - 1] + block_sizes[block_count - 1],
-                block_count, ','.join(map(str, block_sizes)), ','.join(map(str, q_starts)), ','.join(map(str, t_starts))))
+    p = PslRow(
+        (
+            matches,
+            mismatches,
+            0,
+            0,
+            q_num_insert,
+            q_base_insert,
+            t_num_insert,
+            t_base_insert,
+            "+",
+            name1,
+            q_size,
+            q_starts[0],
+            q_starts[block_count - 1] + block_sizes[block_count - 1],
+            name2,
+            t_size,
+            t_starts[0],
+            t_starts[block_count - 1] + block_sizes[block_count - 1],
+            block_count,
+            ",".join(map(str, block_sizes)),
+            ",".join(map(str, q_starts)),
+            ",".join(map(str, t_starts)),
+        )
+    )
     return p
 
 

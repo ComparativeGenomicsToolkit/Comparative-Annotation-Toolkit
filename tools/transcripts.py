@@ -18,9 +18,27 @@ class Transcript(object):
     """
     Represent a transcript record from a bed file.
     """
-    __slots__ = ('name', 'strand', 'score', 'thick_start', 'rgb', 'thick_stop', 'start', 'stop', 'intron_intervals',
-                 'exon_intervals', 'exons', 'block_sizes', 'block_starts', 'block_count', 'chromosome',
-                 'interval', 'coding_interval', 'stranded')
+
+    __slots__ = (
+        "name",
+        "strand",
+        "score",
+        "thick_start",
+        "rgb",
+        "thick_stop",
+        "start",
+        "stop",
+        "intron_intervals",
+        "exon_intervals",
+        "exons",
+        "block_sizes",
+        "block_starts",
+        "block_count",
+        "chromosome",
+        "interval",
+        "coding_interval",
+        "stranded",
+    )
 
     def __init__(self, bed_tokens, stranded=True):
         self.chromosome = bed_tokens[0]
@@ -28,7 +46,7 @@ class Transcript(object):
         self.stop = int(bed_tokens[2])
         self.name = bed_tokens[3]
         self.score = int(bed_tokens[4])
-        self.strand = bed_tokens[5] if stranded else '.'
+        self.strand = bed_tokens[5] if stranded else "."
         self.thick_start = int(bed_tokens[6])
         self.thick_stop = int(bed_tokens[7])
         self.rgb = bed_tokens[8]
@@ -46,11 +64,11 @@ class Transcript(object):
     def __hash__(self):
         m = hashlib.sha256()
         for key in self.__slots__:
-            m.update(str(self.__getattribute__(key)).encode('utf-8'))
+            m.update(str(self.__getattribute__(key)).encode("utf-8"))
         return int(m.hexdigest(), 16) % 10 ** 12
 
     def __repr__(self):
-        return 'Transcript({})'.format(self.get_bed())
+        return "Transcript({})".format(self.get_bed())
 
     @property
     def cds_size(self):
@@ -146,8 +164,25 @@ class Transcript(object):
             else:
                 thick_start = new_start
                 thick_stop = new_stop
-            return list(map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start,
-                             thick_stop, rgb, 1, 0, 0]))
+            return list(
+                map(
+                    str,
+                    [
+                        self.chromosome,
+                        new_start,
+                        new_stop,
+                        name,
+                        self.score,
+                        self.strand,
+                        thick_start,
+                        thick_stop,
+                        rgb,
+                        1,
+                        0,
+                        0,
+                    ],
+                )
+            )
 
         if self.chromosome_coordinate_to_mrna(new_start) is None:
             new_start = find_closest([x.start for x in self.exon_intervals], new_start)
@@ -174,10 +209,27 @@ class Transcript(object):
             thick_start = 0
             thick_stop = 0
         block_count = len(exon_intervals)
-        block_sizes = ','.join(map(str, [len(x) for x in exon_intervals]))
-        block_starts = ','.join(map(str, [x.start - new_start for x in exon_intervals]))
-        return list(map(str, [self.chromosome, new_start, new_stop, name, self.score, self.strand, thick_start, thick_stop,
-                         rgb, block_count, block_sizes, block_starts]))
+        block_sizes = ",".join(map(str, [len(x) for x in exon_intervals]))
+        block_starts = ",".join(map(str, [x.start - new_start for x in exon_intervals]))
+        return list(
+            map(
+                str,
+                [
+                    self.chromosome,
+                    new_start,
+                    new_stop,
+                    name,
+                    self.score,
+                    self.strand,
+                    thick_start,
+                    thick_stop,
+                    rgb,
+                    block_count,
+                    block_sizes,
+                    block_starts,
+                ],
+            )
+        )
 
     def chromosome_coordinate_to_mrna(self, coord):
         if not (self.start <= coord < self.stop):
@@ -186,10 +238,10 @@ class Transcript(object):
         i = ChromosomeInterval(self.chromosome, coord, coord + 1, self.strand)
         if not any(i.overlap(x) for x in self.exon_intervals):
             return None
-        exon_intervals = self.exon_intervals if self.strand == '+' else reversed(self.exon_intervals)
+        exon_intervals = self.exon_intervals if self.strand == "+" else reversed(self.exon_intervals)
         for e in exon_intervals:
             if i.overlap(e):
-                if self.strand == '+':
+                if self.strand == "+":
                     p += coord - e.start
                 else:
                     p += e.stop - coord - 1
@@ -209,17 +261,17 @@ class Transcript(object):
         if not (0 <= coord < len(self)):
             return None
         p = 0
-        exon_intervals = self.exon_intervals if self.strand == '+' else reversed(self.exon_intervals)
+        exon_intervals = self.exon_intervals if self.strand == "+" else reversed(self.exon_intervals)
         for e in exon_intervals:
             if p + len(e) > coord:
-                if self.strand == '+':
+                if self.strand == "+":
                     return e.start + (coord - p)
                 else:
                     return e.stop - (coord - p) - 1
             p += len(e)
 
     def mrna_coordinate_to_cds(self, coord):
-        if self.strand == '+':
+        if self.strand == "+":
             cds_start = self.chromosome_coordinate_to_mrna(self.thick_start)
         else:
             cds_start = self.chromosome_coordinate_to_mrna(self.thick_stop - 1)
@@ -231,7 +283,7 @@ class Transcript(object):
     def cds_coordinate_to_mrna(self, coord):
         if not (0 <= coord < self.cds_size):
             return None
-        if self.strand == '+':
+        if self.strand == "+":
             cds_start = self.chromosome_coordinate_to_mrna(self.thick_start)
         else:
             cds_start = self.chromosome_coordinate_to_mrna(self.thick_stop - 1)
@@ -240,7 +292,7 @@ class Transcript(object):
     def cds_coordinate_to_chromosome(self, coord):
         if not (0 <= coord < self.cds_size):
             return None
-        if self.strand == '+':
+        if self.strand == "+":
             cds_start = self.chromosome_coordinate_to_mrna(self.thick_start)
         else:
             cds_start = self.chromosome_coordinate_to_mrna(self.thick_stop - 1)
@@ -257,11 +309,11 @@ class Transcript(object):
         assert self.stop <= len(sequence) + 1
         s = []
         for e in self.exon_intervals:
-            s.append(sequence[e.start:e.stop])
-        if self.strand == '+':
-            mrna = ''.join(s)
+            s.append(sequence[e.start : e.stop])
+        if self.strand == "+":
+            mrna = "".join(s)
         else:
-            mrna = reverse_complement(''.join(s))
+            mrna = reverse_complement("".join(s))
         return str(mrna)
 
     def get_sequence(self, seq_dict):
@@ -269,7 +321,7 @@ class Transcript(object):
         Returns the entire chromosome sequence for this transcript, (+) strand orientation.
         """
         sequence = seq_dict[self.chromosome]
-        return sequence[self.start:self.stop]
+        return sequence[self.start : self.stop]
 
     def get_cds(self, seq_dict):
         """
@@ -282,25 +334,25 @@ class Transcript(object):
         assert self.stop <= len(sequence) + 1
         # make sure this isn't a non-coding gene
         if self.thick_start == self.thick_stop == 0:
-            return ''
+            return ""
         s = []
         for e in self.exon_intervals:
             if self.thick_start < e.start and e.stop < self.thick_stop:
                 # squarely in the CDS
-                s.append(sequence[e.start:e.stop])
+                s.append(sequence[e.start : e.stop])
             elif e.start <= self.thick_start < e.stop < self.thick_stop:
                 # thickStart marks the start of the CDS
-                s.append(sequence[self.thick_start:e.stop])
+                s.append(sequence[self.thick_start : e.stop])
             elif e.start <= self.thick_start and self.thick_stop <= e.stop:
                 # thickStart and thickStop mark the whole CDS
-                s.append(sequence[self.thick_start: self.thick_stop])
+                s.append(sequence[self.thick_start : self.thick_stop])
             elif self.thick_start < e.start < self.thick_stop <= e.stop:
                 # thickStop marks the end of the CDS
-                s.append(sequence[e.start:self.thick_stop])
-        if self.strand == '-':
-            cds = reverse_complement(''.join(s))
+                s.append(sequence[e.start : self.thick_stop])
+        if self.strand == "-":
+            cds = reverse_complement("".join(s))
         else:
-            cds = ''.join(s)
+            cds = "".join(s)
         return str(cds)
 
     def get_protein_sequence(self, seq_dict):
@@ -310,7 +362,7 @@ class Transcript(object):
         """
         cds = self.get_cds(seq_dict)
         if len(cds) < 3:
-            return ''
+            return ""
         return translate_sequence(self.get_cds(seq_dict).upper())
 
     def get_start_intervals(self):
@@ -349,7 +401,7 @@ class Transcript(object):
         """
         Returns a ChromosomeInterval representing the 5' end
         """
-        if self.strand == '+':
+        if self.strand == "+":
             return ChromosomeInterval(self.chromosome, self.start, self.start + 1, self.strand)
         else:
             return ChromosomeInterval(self.chromosome, self.stop - 1, self.stop, self.strand)
@@ -358,7 +410,7 @@ class Transcript(object):
         """
         Returns a ChromosomeInterval representing the 3' end
         """
-        if self.strand == '-':
+        if self.strand == "-":
             return ChromosomeInterval(self.chromosome, self.start, self.start + 1, self.strand)
         else:
             return ChromosomeInterval(self.chromosome, self.stop - 1, self.stop, self.strand)
@@ -369,13 +421,14 @@ class GenePredTranscript(Transcript):
     Subclasses Transcript to represent genePred entries. genePred entries have the same information, except that they
     also tell you whether the CDS is complete on both ends, and the frame information of each exon.
     """
+
     # adding slots for new fields
-    __slots__ = ('cds_start_stat', 'cds_end_stat', 'exon_frames', 'name2', 'score')
+    __slots__ = ("cds_start_stat", "cds_end_stat", "exon_frames", "name2", "score")
 
     def __init__(self, gene_pred_tokens, stranded=True):
         name = gene_pred_tokens[0]
         chrom = gene_pred_tokens[1]
-        strand = gene_pred_tokens[2] if stranded is True else '.'
+        strand = gene_pred_tokens[2] if stranded is True else "."
         start = gene_pred_tokens[3]
         stop = gene_pred_tokens[4]
         thick_start = gene_pred_tokens[5]
@@ -387,25 +440,37 @@ class GenePredTranscript(Transcript):
         self.name2 = gene_pred_tokens[11]
         self.cds_start_stat = gene_pred_tokens[12]
         self.cds_end_stat = gene_pred_tokens[13]
-        self.exon_frames = [int(x) for x in gene_pred_tokens[14].split(',') if x != '']
+        self.exon_frames = [int(x) for x in gene_pred_tokens[14].split(",") if x != ""]
         # convert genePred format coordinates to BED-like coordinates to make intervals
-        block_starts = [int(x) for x in exon_starts.split(',') if x != '']
-        block_ends = [int(x) for x in exon_ends.split(',') if x != '']
+        block_starts = [int(x) for x in exon_starts.split(",") if x != ""]
+        block_ends = [int(x) for x in exon_ends.split(",") if x != ""]
         block_sizes = ",".join(map(str, [e - s for e, s in zip(block_ends, block_starts)]))
         block_starts = ",".join(map(str, [x - int(start) for x in block_starts]))
-        bed_tokens = [chrom, start, stop, name, self.score, strand, thick_start, thick_stop, '0', block_count,
-                      block_sizes, block_starts]
+        bed_tokens = [
+            chrom,
+            start,
+            stop,
+            name,
+            self.score,
+            strand,
+            thick_start,
+            thick_stop,
+            "0",
+            block_count,
+            block_sizes,
+            block_starts,
+        ]
         super(GenePredTranscript, self).__init__(bed_tokens, stranded=stranded)
 
     def __repr__(self):
-        return 'GenePredTranscript({})'.format(self.get_gene_pred())
+        return "GenePredTranscript({})".format(self.get_gene_pred())
 
     @property
     def offset(self):
         frames = [x for x in self.exon_frames if x != -1]
         if len(frames) == 0:
             return 0
-        if self.strand == '+':
+        if self.strand == "+":
             offset = 3 - frames[0]
         else:
             offset = 3 - frames[-1]
@@ -422,12 +487,12 @@ class GenePredTranscript(Transcript):
         for block_size, block_start, frame in zip(*(self.block_sizes, self.block_starts, self.exon_frames)):
             start = self.start + block_start
             stop = self.start + block_start + block_size
-            exon_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand, data={'frame': frame}))
+            exon_intervals.append(ChromosomeInterval(self.chromosome, start, stop, self.strand, data={"frame": frame}))
         return exon_intervals
 
     def _make_exon_idx_iter(self):
         """make iterator exon indexes in order of transcriptions"""
-        if self.strand == '+':
+        if self.strand == "+":
             return range(0, len(self.exon_intervals))
         else:
             return range(len(self.exon_intervals) - 1, -1, -1)
@@ -462,7 +527,7 @@ class GenePredTranscript(Transcript):
             frame = self._frame_incr(frame)
             amt += 1
         # min/max here avoids going negative, making a zero-length block
-        if cds_interval.strand == '+':
+        if cds_interval.strand == "+":
             start = min(cds_interval.start + amt, cds_interval.stop)
             stop = cds_interval.stop
             gap_start = cds_interval.start
@@ -473,7 +538,7 @@ class GenePredTranscript(Transcript):
             gap_start = cds_interval.stop - amt
             gap_stop = cds_interval.stop
         cds_interval = ChromosomeInterval(cds_interval.chromosome, start, stop, cds_interval.strand)
-        gap_interval = ChromosomeInterval(cds_interval.chromosome, gap_start, gap_stop, cds_interval.strand, 'gap')
+        gap_interval = ChromosomeInterval(cds_interval.chromosome, gap_start, gap_stop, cds_interval.strand, "gap")
         return cds_interval, gap_interval
 
     def _get_codon_intervals(self):
@@ -502,10 +567,10 @@ class GenePredTranscript(Transcript):
         else:
             codon_regions = sorted(codon_regions, key=lambda x: x.start)
 
-        if self.strand == '+':
-            cds = ''.join([str(x.get_sequence(seq_dict)) for x in codon_regions])
+        if self.strand == "+":
+            cds = "".join([str(x.get_sequence(seq_dict)) for x in codon_regions])
         else:
-            cds = ''.join([str(x.get_sequence(seq_dict)) for x in codon_regions[::-1]])
+            cds = "".join([str(x.get_sequence(seq_dict)) for x in codon_regions[::-1]])
         return cds
 
     def codon_iterator(self, seq_dict):
@@ -524,12 +589,12 @@ class GenePredTranscript(Transcript):
                     positions.append(p)
                     cds_pos += 1
 
-        if self.strand == '-':
+        if self.strand == "-":
             positions = positions[::-1]
 
         for i in range(0, cds_pos - cds_pos % 3, 3):
-            codon = cds[i:i + 3]
-            if self.strand == '+':
+            codon = cds[i : i + 3]
+            if self.strand == "+":
                 if positions[i + 2] + 1 != self.thick_stop:
                     yield positions[i], positions[i + 2] + 1, codon
             else:
@@ -546,7 +611,7 @@ class GenePredTranscript(Transcript):
         try:
             return translate_sequence(cds.upper())
         except AssertionError:
-            raise RuntimeError('Failed to translate transcript {} with sequence {}'.format(self.name, cds))
+            raise RuntimeError("Failed to translate transcript {} with sequence {}".format(self.name, cds))
 
     def get_gene_pred(self, name=None, new_start=None, new_stop=None, name2=None, score=None):
         """
@@ -564,12 +629,31 @@ class GenePredTranscript(Transcript):
 
         # if no resizing, just return what we have
         if new_start is None and new_stop is None:
-            exon_starts = ','.join(map(str, [exon.start for exon in self.exon_intervals]))
-            exon_ends = ','.join(map(str, [exon.stop for exon in self.exon_intervals]))
-            exon_frames = ','.join(map(str, self.exon_frames))
-            return list(map(str, [name, self.chromosome, self.strand, self.start, self.stop, self.thick_start,
-                             self.thick_stop, len(self.exon_intervals), exon_starts, exon_ends, score, name2,
-                             self.cds_start_stat, self.cds_end_stat, exon_frames]))
+            exon_starts = ",".join(map(str, [exon.start for exon in self.exon_intervals]))
+            exon_ends = ",".join(map(str, [exon.stop for exon in self.exon_intervals]))
+            exon_frames = ",".join(map(str, self.exon_frames))
+            return list(
+                map(
+                    str,
+                    [
+                        name,
+                        self.chromosome,
+                        self.strand,
+                        self.start,
+                        self.stop,
+                        self.thick_start,
+                        self.thick_stop,
+                        len(self.exon_intervals),
+                        exon_starts,
+                        exon_ends,
+                        score,
+                        name2,
+                        self.cds_start_stat,
+                        self.cds_end_stat,
+                        exon_frames,
+                    ],
+                )
+            )
         if new_start is not None and new_stop is not None:
             assert new_start <= new_stop
         if new_start is not None:
@@ -585,8 +669,8 @@ class GenePredTranscript(Transcript):
         new_interval = ChromosomeInterval(self.chromosome, new_start, new_stop, self.strand)
         exon_intervals = []
         exon_frames = []
-        exon_iter = self.exon_intervals if self.strand == '+' else self.exon_intervals[::-1]
-        frame_iter = self.exon_frames if self.strand == '+' else reversed(self.exon_frames)
+        exon_iter = self.exon_intervals if self.strand == "+" else self.exon_intervals[::-1]
+        frame_iter = self.exon_frames if self.strand == "+" else reversed(self.exon_frames)
 
         # attempt to find the first frame. If there is none, then we have a non-coding transcript and this is easy
         try:
@@ -614,7 +698,7 @@ class GenePredTranscript(Transcript):
                     cds_counter += len(coding_exon)
 
         # flip back around negative strand transcripts
-        if self.strand == '-':
+        if self.strand == "-":
             exon_intervals = exon_intervals[::-1]
             exon_frames = exon_frames[::-1]
 
@@ -626,14 +710,34 @@ class GenePredTranscript(Transcript):
 
         thick_start = max(self.thick_start, new_start)
         thick_stop = min(self.thick_stop, new_stop)
-        cds_start_stat = 'unk' if thick_start != self.thick_start else self.cds_start_stat
-        cds_end_stat = 'unk' if thick_stop != self.thick_stop else self.cds_end_stat
+        cds_start_stat = "unk" if thick_start != self.thick_start else self.cds_start_stat
+        cds_end_stat = "unk" if thick_stop != self.thick_stop else self.cds_end_stat
         exon_count = len(exon_intervals)
-        exon_starts = ','.join(map(str, [exon.start for exon in exon_intervals]))
-        exon_ends = ','.join(map(str, [exon.stop for exon in exon_intervals]))
-        exon_frames = ','.join(map(str, exon_frames))
-        return list(map(str, [name, self.chromosome, self.strand, new_start, new_stop, thick_start, thick_stop, exon_count,
-                         exon_starts, exon_ends, score, name2, cds_start_stat, cds_end_stat, exon_frames]))
+        exon_starts = ",".join(map(str, [exon.start for exon in exon_intervals]))
+        exon_ends = ",".join(map(str, [exon.stop for exon in exon_intervals]))
+        exon_frames = ",".join(map(str, exon_frames))
+        return list(
+            map(
+                str,
+                [
+                    name,
+                    self.chromosome,
+                    self.strand,
+                    new_start,
+                    new_stop,
+                    thick_start,
+                    thick_stop,
+                    exon_count,
+                    exon_starts,
+                    exon_ends,
+                    score,
+                    name2,
+                    cds_start_stat,
+                    cds_end_stat,
+                    exon_frames,
+                ],
+            )
+        )
 
 
 def get_gene_pred_dict(gp_file, stranded=True):
@@ -654,9 +758,9 @@ def gene_pred_iterator(gp_file, stranded=True):
     :return: tuples of (name, GenePredTranscript)
     """
     for i, x in enumerate(open(gp_file)):
-        tokens = x.rstrip().split('\t')
+        tokens = x.rstrip().split("\t")
         if len(tokens) != 15:
-            raise RuntimeError('GenePred line {} had {} tokens, not 15. Record: {}'.format(i + 1, len(tokens), tokens))
+            raise RuntimeError("GenePred line {} had {} tokens, not 15. Record: {}".format(i + 1, len(tokens), tokens))
         t = GenePredTranscript(tokens, stranded=stranded)
         yield t
 
@@ -681,7 +785,7 @@ def transcript_iterator(bed_file, stranded=True):
     with open(bed_file) as inf:
         for tokens in iter_lines(inf):
             if len(tokens) != 12:
-                raise RuntimeError('BED line had {} tokens, not 12. Record: {}'.format(len(tokens), tokens))
+                raise RuntimeError("BED line had {} tokens, not 12. Record: {}".format(len(tokens), tokens))
             t = Transcript(tokens, stranded=stranded)
             yield t
 
@@ -692,22 +796,22 @@ def load_gps(gp_list):
     for gp in gp_list:
         for t in gene_pred_iterator(gp):
             if t.name in r:
-                raise RuntimeError('Attempted to add duplicate GenePredTranscript object with name {}'.format(t.name))
+                raise RuntimeError("Attempted to add duplicate GenePredTranscript object with name {}".format(t.name))
             r[t.name] = t
     return r
 
 
 def convert_frame(exon_frame):
     """converts genePred-style exonFrame to GFF-style phase"""
-    mapping = {0: 0, 1: 2, 2: 1, -1: '.'}
+    mapping = {0: 0, 1: 2, 2: 1, -1: "."}
     return mapping[exon_frame]
 
 
 def create_bed_info_gp(gp):
     """Creates the block_starts, block_sizes and exon_frames fields from a GenePredTranscript object"""
-    block_starts = ','.join(map(str, gp.block_starts))
-    block_sizes = ','.join(map(str, gp.block_sizes))
-    exon_frames = ','.join(map(str, gp.exon_frames))
+    block_starts = ",".join(map(str, gp.block_starts))
+    block_sizes = ",".join(map(str, gp.block_sizes))
+    exon_frames = ",".join(map(str, gp.exon_frames))
     return block_starts, block_sizes, exon_frames
 
 
@@ -726,11 +830,25 @@ def intervals_to_bed(intervals, name=None, score=0, rgb=0, thick_start=0, thick_
     intervals = sorted(intervals)
     start = intervals[0].start
     stop = intervals[-1].stop
-    block_sizes = ','.join(map(str, [len(i) for i in intervals]))
-    block_starts = ','.join(map(str, [i.start - start for i in intervals]))
+    block_sizes = ",".join(map(str, [len(i) for i in intervals]))
+    block_starts = ",".join(map(str, [i.start - start for i in intervals]))
     i = intervals[0]
-    return Transcript([i.chromosome, start, stop, name, score, i.strand, thick_start, thick_stop, rgb,
-                       len(intervals), block_sizes, block_starts])
+    return Transcript(
+        [
+            i.chromosome,
+            start,
+            stop,
+            name,
+            score,
+            i.strand,
+            thick_start,
+            thick_stop,
+            rgb,
+            len(intervals),
+            block_sizes,
+            block_starts,
+        ]
+    )
 
 
 def cluster_txs(txs):
@@ -828,7 +946,7 @@ def has_start_codon(fasta, tx):
     s = tx.get_protein_sequence(fasta)
     if len(s) == 0:
         return False
-    return s[0] == 'M'
+    return s[0] == "M"
 
 
 def has_stop_codon(fasta, tx):
@@ -843,4 +961,4 @@ def has_stop_codon(fasta, tx):
     s = tx.get_protein_sequence(fasta)
     if len(s) == 0:
         return False
-    return s[-1] == '*'
+    return s[-1] == "*"

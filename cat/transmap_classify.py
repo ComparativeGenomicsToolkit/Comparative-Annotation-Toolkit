@@ -29,6 +29,7 @@ import tools.toilInterface
 import tools.procOps
 import tools.tm2hints
 import tools.mathOps
+import tools.intervals
 
 
 def transmap_classify(tm_eval_args):
@@ -51,21 +52,21 @@ def transmap_classify(tm_eval_args):
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         ref_aln = ref_psl_dict[tx_id]
         gene_id = ref_gp_dict[tx_id].name2
-        r.append([aln_id, tx_id, gene_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
-        r.append([aln_id, tx_id, gene_id, 'AlnPartialMap', alignment_partial_map(aln)])
-        r.append([aln_id, tx_id, gene_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
-        r.append([aln_id, tx_id, gene_id, 'PercentN', aln.percent_n])
-        r.append([aln_id, tx_id, gene_id, 'TransMapCoverage', 100 * aln.coverage])
-        r.append([aln_id, tx_id, gene_id, 'TransMapIdentity', 100 * aln.identity])
-        r.append([aln_id, tx_id, gene_id, 'TransMapGoodness', 100 * (1 - aln.badness)])
-        r.append([aln_id, tx_id, gene_id, 'TransMapOriginalIntronsPercent', percent_original_introns(aln, tx, ref_aln)])
-        r.append([aln_id, tx_id, gene_id, 'Synteny', synteny_scores[aln_id]])
-        r.append([aln_id, tx_id, gene_id, 'ValidStart', tools.transcripts.has_start_codon(fasta, tx)])
-        r.append([aln_id, tx_id, gene_id, 'ValidStop', tools.transcripts.has_stop_codon(fasta, tx)])
-        r.append([aln_id, tx_id, gene_id, 'ProperOrf', tx.cds_size % 3 == 0])
-    df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
+        r.append([aln_id, tx_id, gene_id, "AlnExtendsOffContig", aln_extends_off_contig(aln)])
+        r.append([aln_id, tx_id, gene_id, "AlnPartialMap", alignment_partial_map(aln)])
+        r.append([aln_id, tx_id, gene_id, "AlnAbutsUnknownBases", aln_abuts_unknown_bases(tx, fasta)])
+        r.append([aln_id, tx_id, gene_id, "PercentN", aln.percent_n])
+        r.append([aln_id, tx_id, gene_id, "TransMapCoverage", 100 * aln.coverage])
+        r.append([aln_id, tx_id, gene_id, "TransMapIdentity", 100 * aln.identity])
+        r.append([aln_id, tx_id, gene_id, "TransMapGoodness", 100 * (1 - aln.badness)])
+        r.append([aln_id, tx_id, gene_id, "TransMapOriginalIntronsPercent", percent_original_introns(aln, tx, ref_aln)])
+        r.append([aln_id, tx_id, gene_id, "Synteny", synteny_scores[aln_id]])
+        r.append([aln_id, tx_id, gene_id, "ValidStart", tools.transcripts.has_start_codon(fasta, tx)])
+        r.append([aln_id, tx_id, gene_id, "ValidStop", tools.transcripts.has_stop_codon(fasta, tx)])
+        r.append([aln_id, tx_id, gene_id, "ProperOrf", tx.cds_size % 3 == 0])
+    df = pd.DataFrame(r, columns=["AlignmentId", "TranscriptId", "GeneId", "classifier", "value"])
     df.value = pd.to_numeric(df.value)
-    return df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
+    return df.set_index(["GeneId", "TranscriptId", "AlignmentId", "classifier"])
 
 
 ###
@@ -110,7 +111,7 @@ def aln_abuts_unknown_bases(tx, fasta):
     Do any exons in this alignment immediately touch Ns?
 
     :param tx: a GenePredTranscript object
-    :param fasta: pyfasta Fasta object for genome
+    :param fasta: pyfaidx Fasta object for genome
     :return: boolean
     """
     chrom = tx.chromosome
@@ -123,7 +124,7 @@ def aln_abuts_unknown_bases(tx, fasta):
             right_base = None
         else:
             right_base = fasta[chrom][exon.stop]
-        if left_base == 'N' or right_base == 'N':
+        if left_base == "N" or right_base == "N":
             return True
     return False
 
@@ -136,6 +137,7 @@ def synteny(ref_gp_dict, gp_dict):
     :param gp_dict: Dictionary of GenePredTranscript objects from the transMap output
     :return:
     """
+
     def create_interval_dict(tx_dict):
         """
         Creates a dict mapping chromosome sequences to gene intervals [chrom][gene_id]: [list of tx intervals]
@@ -151,7 +153,7 @@ def synteny(ref_gp_dict, gp_dict):
         merged_interval_dict = collections.defaultdict(dict)
         for chrom in interval_dict:
             for gene_id, gene_intervals in interval_dict[chrom].items():
-                merged_intervals = tools.intervals.gap_merge_intervals(gene_intervals, float('inf'))
+                merged_intervals = tools.intervals.gap_merge_intervals(gene_intervals, float("inf"))
                 assert len(merged_intervals) == 1
                 merged_interval = merged_intervals[0]
                 merged_interval.data = gene_id
@@ -187,12 +189,12 @@ def synteny(ref_gp_dict, gp_dict):
         # find the genes from -5 to +5 in the target genome
         target_intervals = tm_chrom_intervals[tx.chromosome]
         target_position = bisect.bisect_left(target_intervals, tx.interval)
-        target_genes = {x.data for x in target_intervals[target_position - 5: target_position + 5]}
+        target_genes = {x.data for x in target_intervals[target_position - 5 : target_position + 5]}
         # find the same gene list in the reference genome
         ref_interval = ref_interval_map[tx.name2]
         ref_intervals = ref_chrom_intervals[ref_interval.chromosome]
         ref_position = bisect.bisect_left(ref_intervals, ref_interval)
-        reference_genes = {x.data for x in ref_intervals[ref_position - 5: ref_position + 5]}
+        reference_genes = {x.data for x in ref_intervals[ref_position - 5 : ref_position + 5]}
         scores[tx.name] = len(reference_genes & target_genes)
     return scores
 
