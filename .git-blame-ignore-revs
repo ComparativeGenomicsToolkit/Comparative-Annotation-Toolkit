@@ -1,0 +1,6 @@
+# This is a file that can be passed to git blame to keep it from thinking that
+# I wrote every line of this because I was the one who ran Black on it. Use
+#    git blame [file] --ignore-revs-file .git-blame-ignore-revs
+# or to make this permanent,
+#    git config blame.ignoreRevsFile .git-blame-ignore-revs
+6ebb6072ed57d2b73b98bc9c94c7d9fe432c8364
