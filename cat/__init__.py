@@ -941,8 +941,10 @@ class Gff3ToAttrs(PipelineTask):
         logger.info('Extracting gff3 attributes to sqlite database.')
         pipeline_args = self.get_pipeline_args()
         df = tools.gff3.parse_gff3(self.annotation_attrs, self.annotation_gp, self.genome != self.ref_genome)
-        if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
-            raise InvalidInputException('No genes or transcripts with biotype protein_coding found!')
+        if self.genome == self.ref_genome:
+            if 'protein_coding' not in set(df.GeneBiotype) or 'protein_coding' not in set(df.TranscriptBiotype):
+                raise InvalidInputException('No genes or transcripts with biotype protein_coding '
+                                            'found on the reference genome!')
         # validate number parsed
         tot_genes = len(open(self.annotation_gp).readlines())
         if tot_genes != len(df):
