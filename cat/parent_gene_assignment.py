@@ -13,8 +13,8 @@ import tools.intervals
 import tools.nameConversions
 
 
-def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.75,
-                   tm_jaccard_distance=0.2, stranded=True):
+def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.4,
+                   tm_jaccard_distance=0.25, stranded=True):
     """
     Main function for assigning parental genes. Parental gene assignment methodology:
     A) clusterGenes is used to cluster filtered transMap transcripts.
@@ -42,8 +42,8 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.7
     denovo_dict = tools.transcripts.get_gene_pred_dict(denovo_gp, stranded)
 
     with tools.fileOps.TemporaryFilePath() as tmp:
-        # cmd = ['clusterGenes', '-minOverlappingBases=30', tmp, 'no', unfiltered_tm_gp, denovo_gp]
-        # cmd = ['clusterGenes', '-minOverlappingBases=30', '-conflicted', tmp, 'no', unfiltered_tm_gp, denovo_gp]
+        # -ignoreBases = 10, to deal with potential overlap in exons
+        # -conflicted flag to track exon conflicts
         cmd = ['clusterGenes', '-ignoreBases=10', '-conflicted', tmp, 'no', unfiltered_tm_gp, denovo_gp]
         print ("cmd = ", cmd)
         if not stranded:
@@ -52,7 +52,6 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.7
         cluster_df = pd.read_csv(tmp, sep='\t')
 
     cluster_df['is_denovo'] = cluster_df.apply(assign_type, axis=1)
-    print(cluster_df)
 
     r = []
     for _, d in cluster_df.groupby('#cluster'):
@@ -70,66 +69,76 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.7
                 unfiltered_overlapping_tm_txs.add(unfiltered_transmap_dict[tx_id])
 
         # extract only gene names for the filtered set
-        # print("filtered_overlapping_tm_txs: ", filtered_overlapping_tm_txs)
         filtered_gene_ids = {tx.name2 for tx in filtered_overlapping_tm_txs}
         filtered_tx_ids = {tx.name for tx in filtered_overlapping_tm_txs}
-        tx_and_gene_ids = {}
+        tx_to_gene_ids = {}
+        gene_to_tx_ids = {}
         for tx in filtered_overlapping_tm_txs:
-            tx_and_gene_ids[tx.name] = tx.name2
+            tx_to_gene_ids[tx.name] = tx.name2
+            if tx.name2 in gene_to_tx_ids:
+                gene_to_tx_ids[tx.name2].append(tx.name)
+            else:
+                gene_to_tx_ids[tx.name2] = [tx.name]
 
-        # tx_ids_gene_ids = {(tx.name,tx.name2) for tx in filtered_overlapping_tm_txs}
-        # print("zipped tx and gene ids: ", tx_ids_gene_ids)
+        # print("\ndenovo_txs: ", denovo_txs)
+        
         for denovo_tx in denovo_txs:
             # denovo txs may not actually overlap despite being in the same cluster 
             # (such as a cluster involving a readthrough transcript)
             # use exon conflicts to resolve cases involving readthrough transcripts
-
-            # print("\ndenovo_tx: ", denovo_tx)
-            print('\n', denovo_tx.name)
+   
             # Get a list of all the conflicting exons for the current denovo transcript 
             exon_conflict_df = cluster_df.loc[cluster_df['gene']==denovo_tx.name, ['exonConflicts']]
             exon_conflict_df = exon_conflict_df.dropna()
-            # print("exon_conflict_df: ", exon_conflict_df)
             if not exon_conflict_df.empty:
                 # Convert into a numpy array
                 exon_conflicts = exon_conflict_df.to_numpy()[0][0].split(',')[:-1]
-                # exon_conflicts = exon_conflict_df.to_numpy()[0][0]
-                # if "," in exon_conflicts: #output of clusterGenes will be NaN if there are no conflicts
-                #     exon_conflicts = exon_conflicts.split(',')[:-1]
-                print("exon conflicts:\n ", exon_conflicts)
-                # only add to denovo exon conflicts if it is an augustusPB transcript
+                # only add to denovo exon conflicts if it is a de novo transcript
                 denovo_exon_conflicts = set()
                 for tx in exon_conflicts:
                     # print("current tx: ", tx)
                     if "augPB" in tx or "augCGP" in tx: 
                         denovo_exon_conflicts.add(tx)
-                print("\nfiltered gene ids: ", filtered_gene_ids)
-                print("denovo_exon_conflicts: ", denovo_exon_conflicts)
-
+       
+                nonoverlapping_genes = {}
                 nonoverlapping_gene_ids = set()
+                nonoverlapping_tx_ids = set()
                 refiltered_nonoverlapping_tm_txs = set()
+                # Need to deal with case where different transcripts from same gene can be both
+                # overlapping and nonoverlapping 
                 for conflict in exon_conflicts:
-                    # print("current conflict: ", conflict)
                     tx_conflict = conflict.split(':')[1]
-                    # print("current conflict: ", tx_conflict)
-                    if tx_conflict in tx_and_gene_ids: #otherwise this is a denovo augPB transcript
-                        nonoverlapping_gene_ids.add(tx_and_gene_ids[tx_conflict])
+                    if tx_conflict in tx_to_gene_ids: #otherwise this is a denovo augPB transcript
+                        if tx_to_gene_ids[tx_conflict] in nonoverlapping_genes:
+                            nonoverlapping_genes[tx_to_gene_ids[tx_conflict]].append(tx_conflict)
+                        else:
+                            nonoverlapping_genes[tx_to_gene_ids[tx_conflict]] = [tx_conflict]
+                        nonoverlapping_tx_ids.add(tx_conflict)
                         refiltered_nonoverlapping_tm_txs.add(filtered_transmap_dict[tx_conflict])
-                        # print("\toverlapping gene id: ", tx_and_gene_ids[tx_conflict])
-                print("nonoverlapping_gene_ids: ", nonoverlapping_gene_ids)
+                for gene in gene_to_tx_ids:
+                    if gene in nonoverlapping_genes and len(nonoverlapping_genes[gene]) == len(gene_to_tx_ids[gene]):
+                        nonoverlapping_gene_ids.add(gene)
+
+                # print("nonoverlapping_gene_ids: ", nonoverlapping_gene_ids)
                 overlapping_gene_ids = filtered_gene_ids - nonoverlapping_gene_ids
-                print("overlapping_gene_ids: ", overlapping_gene_ids)
+                # print("overlapping_gene_ids: ", overlapping_gene_ids)
                 refiltered_overlapping_tm_txs = filtered_overlapping_tm_txs - refiltered_nonoverlapping_tm_txs
-                # print("refiltered_nonoverlapping_tm_txs: ", refiltered_nonoverlapping_tm_txs)
-                # print("refiltered_overlapping_tm_txs: ", refiltered_overlapping_tm_txs)
+                # print("\tfiltered_overlapping_tm_txs: ", filtered_overlapping_tm_txs)
+                # print("\trefiltered_nonoverlapping_tm_txs: ", refiltered_nonoverlapping_tm_txs)
+                # print("\trefiltered_overlapping_tm_txs: ", refiltered_overlapping_tm_txs)
+                # print("\toverlapping_gene_ids: ", overlapping_gene_ids)
+                # print("\tnonoverlapping_gene_ids: ", nonoverlapping_gene_ids)
+                # print("\tfiltered_gene_ids: ", filtered_gene_ids)
 
                 # If there are any exon conflicts (denovo transcripts which do not share any exons), 
                 # do not consider those when resolving the transcript.
-                if len(nonoverlapping_gene_ids) > 1: 
+                if len(overlapping_gene_ids) == 0:
+                    resolved_name = resolution_method = None  # we have no matches, which means putative novel
+                elif len(nonoverlapping_gene_ids) > 1: 
                     resolved_name, resolution_method = resolve_multiple_genes(denovo_tx, refiltered_overlapping_tm_txs,
                                                                               min_distance, tm_jaccard_distance)
                 elif len(filtered_gene_ids) > 1:  # we have more than one match, so resolve it
-                    print("\nfiltered gene ids: ", filtered_gene_ids)
+                    # print("\nfiltered gene ids 1: ", filtered_gene_ids)
                     resolved_name, resolution_method = resolve_multiple_genes(denovo_tx, filtered_overlapping_tm_txs,
                                                                               min_distance, tm_jaccard_distance)
                 elif len(filtered_gene_ids) == 1:  # yay, we have exactly one match
@@ -138,7 +147,7 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.7
                 else:
                     resolved_name = resolution_method = None  # we have no matches, which means putative novel
                 # find only genes for the unfiltered set that are not present in the filtered set
-                alternative_gene_ids = {tx.name2 for tx in unfiltered_overlapping_tm_txs} - {resolved_name}
+                alternative_gene_ids = {tx.name2 for tx in refiltered_overlapping_tm_txs} - {resolved_name}
                 # print("alternative_gene_ids: ", alternative_gene_ids)
                 # print("unfiltered_overlapping_tm_txs: ", unfiltered_overlapping_tm_txs)
                 # print("resolved_name: ", resolved_name)
@@ -146,9 +155,10 @@ def assign_parents(filtered_tm_gp, unfiltered_tm_gp, denovo_gp, min_distance=0.7
                 alternative_gene_ids = ','.join(sorted(alternative_gene_ids)) if len(alternative_gene_ids) > 0 else None
                 r.append([denovo_tx.name, resolved_name, alternative_gene_ids, resolution_method])
             else:
+                # print("filtered_overlapping_tm_txs 2: ", filtered_overlapping_tm_txs)
                 # if the are no exon conflicts, resolve like normal 
                 if len(filtered_gene_ids) > 1:  # we have more than one match, so resolve it
-                    print("\nfiltered gene ids: ", filtered_gene_ids)
+                    # print("\nfiltered gene ids 2: ", filtered_gene_ids)
                     resolved_name, resolution_method = resolve_multiple_genes(denovo_tx, filtered_overlapping_tm_txs,
                                                                               min_distance, tm_jaccard_distance)
                 elif len(filtered_gene_ids) == 1:  # yay, we have exactly one match
@@ -178,10 +188,10 @@ def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance, tm_jacca
     # use Jaccard metric to determine if the problem lies with transMap or annotation
     tm_txs_by_gene = tools.transcripts.group_transcripts_by_name2(overlapping_tm_txs)
     tm_jaccards = [find_highest_gene_jaccard(x, y) for x, y in itertools.combinations(list(tm_txs_by_gene.values()), 2)]
-    # print("overlapping tms: ", overlapping_tm_txs)
-    print("jaccards: ", tm_jaccards)
-    print("jaccard distance: ", tm_jaccard_distance)
-    print("min distance: ", min_distance)
+    # print("overlapping_tm_txs: ", overlapping_tm_txs)
+    # print("jaccards: ", tm_jaccards)
+    # print("jaccard distance: ", tm_jaccard_distance)
+    # print("min distance: ", min_distance)
     if any(x > tm_jaccard_distance for x in tm_jaccards):
         return None, 'badAnnotOrTm'
     # calculate asymmetric difference for this prediction
@@ -189,17 +199,26 @@ def resolve_multiple_genes(denovo_tx, overlapping_tm_txs, min_distance, tm_jacca
     for tx in overlapping_tm_txs:
         scores[tx.name2].append(tools.intervals.calculate_bed12_asymmetric_jaccard(denovo_tx.exon_intervals,
          tx.exon_intervals))
-    print("scores: ", scores)
+    # print("scores: ", scores)
     best_scores = {gene_id: max(scores[gene_id]) for gene_id in scores}
+    # print("best_scores: ", best_scores)
     high_score = max(best_scores.values())
-    print("best_scores: ", best_scores)
-    print("high_score: ", high_score)
-    if all(high_score - x >= min_distance for x in best_scores.values() if x != high_score):
+    high_gene = max(best_scores, key=lambda key: best_scores[key])
+    # print("best_scores: ", best_scores)
+    # print("high_score: ", high_score)
+    # print("high_gene: ", high_gene)
+    # This currently will rescue transcripts that are ambiguous if two share the same best score
+    if all(high_score - x >= min_distance for x in best_scores.values() if (x != high_score)):
         best = sorted(iter(best_scores.items()), key=lambda gene_id_score: gene_id_score[1])[-1][0]
-        print ("rescued: ", best)
-        return best, 'rescued'
+        # print("best = ", best)
+        if best != high_gene:
+            # print("ambiguousOrFusion!!!")
+            return None, 'ambiguousOrFusion'
+        else:
+            # print ("rescued: ", best)
+            return best, 'rescued'
     else:
-        print("ambiguousOrFusion")
+        # print("ambiguousOrFusion")
         return None, 'ambiguousOrFusion'
 
 
