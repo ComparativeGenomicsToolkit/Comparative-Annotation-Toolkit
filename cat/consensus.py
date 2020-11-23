@@ -141,7 +141,7 @@ def generate_consensus(args):
                                                                          args.require_pacbio_support)
 
     if args.filter_overlapping_genes is True:
-        gene_resolved_consensus = resolve_overlapping_cds_intervals(args.overlapping_gene_distance,
+        gene_resolved_consensus = resolve_overlapping_cds_intervals(args.overlapping_ignore_bases,
                                                                     deduplicated_strand_resolved_consensus, tx_dict)
     else:
         gene_resolved_consensus = deduplicated_strand_resolved_consensus
@@ -751,7 +751,7 @@ def resolve_opposite_strand(deduplicated_consensus, tx_dict, metrics):
 ###
 
 
-def resolve_overlapping_cds_intervals(overlapping_gene_distance, deduplicated_strand_resolved_consensus, tx_dict):
+def resolve_overlapping_cds_intervals(overlapping_ignore_bases, deduplicated_strand_resolved_consensus, tx_dict):
     """
     Resolves overlapping genes that are the result of integrating gene predictions
     """
@@ -765,7 +765,7 @@ def resolve_overlapping_cds_intervals(overlapping_gene_distance, deduplicated_st
                 attr_df.append([tx_id, attrs['transcript_class'], attrs['gene_biotype'],
                                 attrs.get('source_gene', tx_obj.name2), attrs.get('score', None)])
         # cluster
-        cmd = ['clusterGenes', '-cds', f'-minOverlappingBases={overlapping_gene_distance}',
+        cmd = ['clusterGenes', '-cds', f'-ignoreBases={overlapping_ignore_bases}',
                tmp_clustered, 'no', tmp_gp]
         tools.procOps.run_proc(cmd)
         cluster_df = pd.read_csv(tmp_clustered, sep='\t')
