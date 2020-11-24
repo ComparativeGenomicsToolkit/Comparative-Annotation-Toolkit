@@ -135,6 +135,19 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with the balance of this value and the `--maxCores` parameter.
 
+## Augustus config options
+
+The augustus config files for all of the modes live in the CAT folder under `augustus_cfgs`. If you are running CAT from a folder that is not the installation folder, you will need to point CAT to these files directly.
+
+`--tm-cfg`: Config file for AugustusTM. Defaults to `augustus_cfgs/extrinsic.ETM1.cfg`.
+
+`--tmr-cfg`: Config file for AugustusTMR. Defaults to `augustus_cfgs/extrinsic.ETM2.cfg`.
+
+`--augustus-cgp-cfg-template`: Config file template for AugustusCGP. Defaults to `augustus_cfgs/cgp_extrinsic_template.cfg`.
+
+`--pb-cfg`": Config file for AugustusPB. Defaults to `augustus_cfgs/extrinsic.M.RM.PB.E.W.cfg`.
+
+
 ## transMap options
 `--global-near-best`: Adjusts the `globalNearBest` parameter passed to `pslCDnaFilter`. Defaults to 0.15. The `globalNearBest` algorithm determines which set of alignments are within a certain distance of the highest scoring alignment for a given source transcript. Making this value smaller will increase the number of alignments filtered out, decreasing the apparent paralogous alignment rate. Alignments which survive this filter are putatively paralogous. 
 

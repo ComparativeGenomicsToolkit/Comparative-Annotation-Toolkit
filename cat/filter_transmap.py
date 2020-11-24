@@ -148,10 +148,10 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
                     tools.fileOps.print_row(out_coding, tx.get_gene_pred())
                 else:
                     tools.fileOps.print_row(out_noncoding, tx.get_gene_pred())
-        cmd = ['clusterGenes', '-cds', f'-minOverlappingBases={overlapping_ignore_bases}',
+        cmd = ['clusterGenes', '-cds', f'-ignoreBases={overlapping_ignore_bases}',
                coding_tmp, 'no', coding_clusters]
         tools.procOps.run_proc(cmd)
-        cmd = ['clusterGenes', f'-minOverlappingBases={overlapping_ignore_bases}',
+        cmd = ['clusterGenes', f'-ignoreBases={overlapping_ignore_bases}',
                noncoding_tmp, 'no', noncoding_clusters]
         tools.procOps.run_proc(cmd)
         coding_clustered = pd.read_csv(coding_tmp, sep='\t')
