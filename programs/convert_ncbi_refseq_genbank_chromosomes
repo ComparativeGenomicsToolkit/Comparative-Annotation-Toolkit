@@ -47,7 +47,7 @@ if __name__ == "__main__":
     elif args.genbank_to_ucsc:
         from_col = column_map['genbank']
         to_col = column_map['ucsc']
-    elif ucsc_to_genbank:
+    elif args.ucsc_to_genbank:
         from_col = column_map['ucsc']
         to_col = column_map['genbank']
     else:
