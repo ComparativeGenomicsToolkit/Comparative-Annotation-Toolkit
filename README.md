@@ -133,7 +133,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--target-genomes`: List of genomes to use. If not set, all non-reference genomes in the HAL are used. Due to how `luigi` handles command line tuple parameters, this flag must be formatted as if it was a tuple being passed directly to python, single quoted. So, for example, if your target genomes were Human and Mouse, then you would pass `--target-genomes='("Human", "Mouse")'`. As always with python tuples, if you have only one member, you must have a trailing comma.
 
-`--workers`: Number of local cores to use. If running `toil` in singleMachine mode, care must be taken with the balance of this value and the `--maxCores` parameter.
+`--workers`: Number of local cores to use. If running `toil` in single_machine mode, care must be taken with the balance of this value and the `--maxCores` parameter.
 
 ## Augustus config options
 
@@ -229,7 +229,7 @@ See below for `toil` options shared with the hints database pipeline.
 
 The remaining options are passed directly along to `toil`:
 
-`--batchSystem`: Batch system to use. Defaults to singleMachine. If running in singleMachine mode, no cluster jobs will be submitted. In addition, care must be taken to balance the `--maxCores` field with the `--workers` field with the toil resources in `luigi.cfg`. Basically, you want to make sure that your # of toil resources multiplied by your `--maxCores` is fewer than the total number of system cores you want to use. However, I **highly** recommend using a non-local batch system. See the toil documentation for more.
+`--batchSystem`: Batch system to use. Defaults to single_machine. If running in single_machine mode, no cluster jobs will be submitted. In addition, care must be taken to balance the `--maxCores` field with the `--workers` field with the toil resources in `luigi.cfg`. Basically, you want to make sure that your # of toil resources multiplied by your `--maxCores` is fewer than the total number of system cores you want to use. However, I **highly** recommend using a non-local batch system. See the toil documentation for more.
 
 `--maxCores`: The number of cores each `toil` module will use. If submitting to a batch system, this limits the number of concurrent submissions.
 

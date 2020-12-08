@@ -127,7 +127,7 @@ class PipelineTask(luigi.Task):
     in_species_rna_support_only = luigi.BoolParameter(default=False, significant=True)
     rebuild_consensus = luigi.BoolParameter(default=False, significant=True)
     # Toil options
-    batchSystem = luigi.Parameter(default='singleMachine', significant=False)
+    batchSystem = luigi.Parameter(default='single_machine', significant=False)
     maxCores = luigi.IntParameter(default=8, significant=False)
     parasolCommand = luigi.Parameter(default=None, significant=False)
     defaultMemory = luigi.Parameter(default='8G', significant=False)
