@@ -42,8 +42,6 @@ alnMode:
 2) mRNA
 
 """
-import itertools
-
 import pandas as pd
 
 import tools.bio
@@ -248,11 +246,9 @@ def find_indels(tx, psl, aln_mode):
         assert left_chrom_pos is not None
         right_chrom_pos = coordinate_fn(right_pos)
         if right_chrom_pos is None:
-            right_chrom_pos = coordinate_fn(right_pos - 1)
-            if strand == '-':
-                left_chrom_pos += 1
-            else:
-                left_chrom_pos -= 1
+            # we should only be allowed to walk off the right side in CDS coordinates
+            assert aln_mode == "CDS"
+            right_chrom_pos = coordinate_fn(tx.cds_size - 1)
         assert right_chrom_pos is not None
         if strand == '-':
             left_chrom_pos, right_chrom_pos = right_chrom_pos, left_chrom_pos
