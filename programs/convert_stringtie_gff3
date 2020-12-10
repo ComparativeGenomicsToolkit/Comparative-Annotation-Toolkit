@@ -6,7 +6,7 @@ import gffutils
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("stringtie_gff3", type=argparse.FileType("r"))
+    parser.add_argument("stringtie_gff3")
     parser.add_argument("output_gff3", type=argparse.FileType("w"))
     parser.add_argument("--noncoding-biotype", default="unknown")
     parser.add_argument("--coding-biotype", default="unknown_likely_coding")
@@ -22,15 +22,24 @@ def add_qualifiers(obj, gene_id, tx_id, biotype):
 
 def main(args):
     db = gffutils.create_db(args.stringtie_gff3, dbfn=":memory:")
+    print("##gff-version 3", file=args.output_gff3)
+
+    num_discarded = 0
+    seen_genes = set()
+    tot_transcripts = 0
+
     for tx in sorted(db.features_of_type("transcript"), key=lambda x: (x.seqid, x.start)):
 
         children = list(db.children(tx))
         exons = [x for x in children if x.featuretype == "exon"]
         cds = [x for x in children if x.featuretype == "CDS"]
         if len(exons) < args.min_exons:
+            num_discarded += 1
             continue
 
         gene_id = tx.attributes["geneID"][0]
+        seen_genes.add(gene_id)
+        tot_transcripts += 1
         tx_id = tx.attributes["ID"][0]
         biotype = args.noncoding_biotype if len(cds) == 0 else args.coding_biotype
 
@@ -40,6 +49,9 @@ def main(args):
         for c in children:
             add_qualifiers(c, gene_id, tx_id, biotype)
             print(c, file=args.output_gff3)
+
+    print(f"Discarded {num_discarded} isoforms for too few exons")
+    print(f"Retained {len(seen_genes)} genes with {tot_transcripts} isoforms")
 
 
 if __name__ == "__main__":
