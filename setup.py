@@ -20,7 +20,7 @@ setup(
         'scipy>=0.18.1',
         'bx-python>=0.7.1',
         'parasail',
-        'bcbio-gff',
+        'gffutils',
         'biopython'
     ],
     scripts=['programs/cat_to_ncbi_submit', 'programs/translate_gene_pred',

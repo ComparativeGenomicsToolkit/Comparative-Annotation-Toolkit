@@ -1,0 +1,47 @@
+#!/usr/bin/env python
+
+import argparse
+import gffutils
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("stringtie_gff3", type=argparse.FileType("r"))
+    parser.add_argument("output_gff3", type=argparse.FileType("w"))
+    parser.add_argument("--noncoding-biotype", default="unknown")
+    parser.add_argument("--coding-biotype", default="unknown_likely_coding")
+    parser.add_argument("--min-exons", default=2, type=int, help="Minimum number of exons to retain a transcript")
+    return parser.parse_args()
+
+
+def add_qualifiers(obj, gene_id, tx_id, biotype):
+    obj["transcript_id"] = obj["transcript_name"] = [tx_id]
+    obj["gene_id"] = obj["gene_name"] = [gene_id]
+    obj["gene_biotype"] = obj["transcript_biotype"] = [biotype]
+
+
+def main(args):
+    db = gffutils.create_db(args.stringtie_gff3, dbfn=":memory:")
+    for tx in sorted(db.features_of_type("transcript"), key=lambda x: (x.seqid, x.start)):
+
+        children = list(db.children(tx))
+        exons = [x for x in children if x.featuretype == "exon"]
+        cds = [x for x in children if x.featuretype == "CDS"]
+        if len(exons) < args.min_exons:
+            continue
+
+        gene_id = tx.attributes["geneID"][0]
+        tx_id = tx.attributes["ID"][0]
+        biotype = args.noncoding_biotype if len(cds) == 0 else args.coding_biotype
+
+        add_qualifiers(tx, gene_id, tx_id, biotype)
+        print(tx, file=args.output_gff3)
+
+        for c in children:
+            add_qualifiers(c, gene_id, tx_id, biotype)
+            print(c, file=args.output_gff3)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)
