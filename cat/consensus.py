@@ -952,7 +952,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
 
         # incorporate gene_name tag for potential downstream CAT input
-        if attrs["source_gene_common_name"] is not None:
+        if attrs.get("source_gene_common_name") is not None:
             attrs["gene_name"] = attrs["source_gene_common_name"]
         else:
             attrs["gene_name"] = attrs["gene_id"]
@@ -967,7 +967,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs['Parent'] = attrs['gene_id']
 
         # incorporate transcript_name tag for potential downstream CAT input
-        if attrs["source_transcript_name"] is not None:
+        if attrs.get("source_transcript_name") is not None:
             attrs["transcript_name"] = attrs["source_transcript_name"]
         else:
             attrs["transcript_name"] = attrs["transcript_id"]
