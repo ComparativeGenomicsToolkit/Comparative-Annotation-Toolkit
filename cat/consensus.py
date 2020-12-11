@@ -948,8 +948,15 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs = attrs_list[0]
         useful_keys = ['source_gene_common_name', 'source_gene', 'gene_biotype',
                        'alternative_source_transcripts', 'gene_alternate_contigs',
-                       'gene_name', 'gene_id']
+                       'gene_id']
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
+
+        # incorporate gene_name tag for potential downstream CAT input
+        if attrs.get("source_gene_common_name") is not None:
+            attrs["gene_name"] = attrs["source_gene_common_name"]
+        else:
+            attrs["gene_name"] = attrs["gene_id"]
+
         attrs['transcript_modes'] = find_all_tx_modes(attrs_list)
         score, attrs_field = convert_attrs(attrs, gene_id)
         return [chrom, 'CAT', 'gene', intervals[0].start + 1, intervals[-1].stop, score, strand, '.', attrs_field]
@@ -958,6 +965,13 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         """generates transcript records, calls generate_exon_records to generate those too"""
         tx_id = attrs['transcript_id']
         attrs['Parent'] = attrs['gene_id']
+
+        # incorporate transcript_name tag for potential downstream CAT input
+        if attrs.get("source_transcript_name") is not None:
+            attrs["transcript_name"] = attrs["source_transcript_name"]
+        else:
+            attrs["transcript_name"] = attrs["transcript_id"]
+
         score, attrs_field = convert_attrs(attrs, tx_id)
         yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop, score, tx_obj.strand, '.', attrs_field]
         # hack to remove the frameshift field from lower objects
