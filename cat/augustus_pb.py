@@ -149,7 +149,7 @@ def join_genes(job, gff_chunks):
         matcher = re.compile("\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t")
         with open(out_joingenes_file, "w") as ofh:
             for l in open(injoingenes_file):
-                if matcher.match(l):
+                if matcher.search(l):
                     l = l.replace("jg", "augPB-")
                     ofh.write(l)
 
