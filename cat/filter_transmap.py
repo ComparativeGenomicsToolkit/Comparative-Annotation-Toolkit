@@ -355,11 +355,7 @@ def filter_clusters(clustered, ref_clustered, transcript_gene_map, gene_name_map
     # any gene IDs with multiple clusters need to be resolved to resolve paralogies
     for cluster_id, group in ref_clustered.groupby("#cluster"):
         gene_ids = set(group.gene_id)
-        try:
-            tgt_clusters = clustered_idx.loc[gene_ids]
-        except KeyError:
-            print(gene_ids)
-            continue
+        tgt_clusters = clustered_idx.loc[clustered_idx.index.intersection(gene_ids)]
         if len(set(tgt_clusters["#cluster"])) > 1:
             # pick the highest average scoring target cluster
             best_cluster = find_best_group(tgt_clusters, '#cluster')
