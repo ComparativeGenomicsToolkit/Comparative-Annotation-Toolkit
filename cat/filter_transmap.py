@@ -39,13 +39,14 @@ import tools.sqlInterface
 pd.options.mode.chained_assignment = None
 
 
-def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes,
+def filter_transmap(tm_psl, ref_psl, tm_gp, ref_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes,
                     overlapping_ignore_bases, json_tgt):
     """
     Entry point for transMap filtering.
     :param tm_psl: input PSL
     :param ref_psl: reference fake PSL
     :param tm_gp: genePred from tm_psl
+    :param ref_gp: genePred for the reference genome.
     :param db_path: Path to reference database, to get gene name to transcript name mapping
     :param psl_tgt: luigi.LocalTarget() object for PSL output
     :param global_near_best: globalNearBest value to pass to PslCDnaFilter
@@ -57,6 +58,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     # load all of the input alignments
     unfiltered = tools.psl.get_alignment_dict(tm_psl)
     unfiltered_tx_dict = tools.transcripts.get_gene_pred_dict(tm_gp)
+    ref_tx_dict = tools.transcripts.get_gene_pred_dict(ref_gp)
     ref_psl_dict = tools.psl.get_alignment_dict(ref_psl)
 
     # pre-filter out suspiciously large spans
@@ -73,7 +75,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     gene_biotype_map = tools.sqlInterface.get_gene_biotype_map(db_path)
     # get annotation information for common names
     annotation_df = tools.sqlInterface.load_annotation(db_path)
-    gene_name_map = dict(list(zip(annotation_df.GeneId, annotation_df.GeneName)))
+    gene_name_map = dict(zip(annotation_df.GeneId, annotation_df.GeneName))
 
     # Construct a hash of alignment metrics to alignment IDs
     # The reason for this is that pslCDnaFilter rearranges them internally, so we lose order information
@@ -141,7 +143,9 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
                     if any(x.cds_size > 0 for x in tx_list)}
 
     with tools.fileOps.TemporaryFilePath() as coding_tmp, tools.fileOps.TemporaryFilePath() as noncoding_tmp, \
-        tools.fileOps.TemporaryFilePath() as coding_clusters, tools.fileOps.TemporaryFilePath() as noncoding_clusters:
+        tools.fileOps.TemporaryFilePath() as coding_clusters, tools.fileOps.TemporaryFilePath() as noncoding_clusters, \
+        tools.fileOps.TemporaryFilePath() as ref_coding_tmp, tools.fileOps.TemporaryFilePath() as ref_noncoding_tmp, \
+        tools.fileOps.TemporaryFilePath() as ref_coding_clusters, tools.fileOps.TemporaryFilePath() as ref_noncoding_clusters:
         with open(coding_clusters, 'w') as out_coding, open(noncoding_clusters, 'w') as out_noncoding:
             for tx in global_best_txs:
                 if tx.name2 in coding_genes:
@@ -157,11 +161,31 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
         coding_clustered = pd.read_csv(coding_tmp, sep='\t')
         noncoding_clustered = pd.read_csv(noncoding_tmp, sep='\t')
 
+        with open(ref_coding_clusters, 'w') as out_coding, open(ref_noncoding_clusters, 'w') as out_noncoding:
+            for tx in ref_tx_dict.values():
+                if tx.name2 in coding_genes:
+                    tools.fileOps.print_row(out_coding, tx.get_gene_pred())
+                else:
+                    tools.fileOps.print_row(out_noncoding, tx.get_gene_pred())
+        cmd = ['clusterGenes', '-cds', f'-ignoreBases={overlapping_ignore_bases}',
+               ref_coding_tmp, 'no', ref_gp]
+        tools.procOps.run_proc(cmd)
+        cmd = ['clusterGenes', f'-ignoreBases={overlapping_ignore_bases}',
+               ref_noncoding_tmp, 'no', ref_gp]
+        tools.procOps.run_proc(cmd)
+
+        ref_coding_clustered = pd.read_csv(ref_coding_tmp, sep='\t')
+        ref_noncoding_clustered = pd.read_csv(ref_noncoding_tmp, sep='\t')
+
     metrics['Gene Family Collapse'] = collections.defaultdict(lambda: collections.Counter())
-    coding_merged_df, coding_collapse_filtered = filter_clusters(coding_clustered, transcript_gene_map,
+    coding_merged_df, coding_collapse_filtered = filter_clusters(coding_clustered,
+                                                                 ref_coding_clustered,
+                                                                 transcript_gene_map,
                                                                  gene_name_map, scores, metrics, gene_biotype_map,
                                                                  filter_overlapping_genes)
-    noncoding_merged_df, noncoding_collapse_filtered = filter_clusters(noncoding_clustered, transcript_gene_map,
+    noncoding_merged_df, noncoding_collapse_filtered = filter_clusters(noncoding_clustered,
+                                                                       ref_noncoding_clustered,
+                                                                       transcript_gene_map,
                                                                        gene_name_map, scores, metrics, gene_biotype_map,
                                                                        filter_overlapping_genes)
 
@@ -311,25 +335,34 @@ def construct_alt_loci(group, best_cluster):
     return ','.join('{}:{}-{}'.format(x.chromosome, x.start, x.stop) for x in merged_intervals)
 
 
-def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metrics, gene_biotype_map,
+def filter_clusters(clustered, ref_clustered, transcript_gene_map, gene_name_map, scores, metrics, gene_biotype_map,
                     filter_overlapping_genes):
     """
-    Wrapper for taking the output of clusterGenes and filtering it
+    Wrapper for taking the output of clusterGenes and filtering it.
+
+    Filters first by comparing the clusters seen in the reference annotation to the clusters in the target genome
+    to see if any paralogies are detected. After those clusters are filtered, detects if we have any overlapping
+    genes in the remaining clusters.
     """
     # add gene IDs and scores. clustered.gene is actually AlignmentId fields
     clustered['gene_id'] = [transcript_gene_map[tools.nameConversions.strip_alignment_numbers(x)] for x in clustered.gene]
     clustered['scores'] = [scores[x] for x in clustered.gene]
+    ref_clustered['gene_id'] = [transcript_gene_map[x] for x in ref_clustered.gene]
+    clustered_idx = clustered.set_index("gene_id")
 
     to_remove = set()  # set of cluster IDs to remove
     alt_loci = []  # will become a DataFrame of alt loci to populate that field
     # any gene IDs with multiple clusters need to be resolved to resolve paralogies
-    for gene_id, group in clustered.groupby('gene_id'):
-        if len(set(group['#cluster'])) > 1:
-            # pick the highest average scoring cluster
-            best_cluster = find_best_group(group, '#cluster')
+    for cluster_id, group in ref_clustered.groupby("#cluster"):
+        gene_ids = set(group.gene_id)
+        tgt_clusters = clustered_idx.loc[clustered_idx.index.intersection(gene_ids)]
+        if len(set(tgt_clusters["#cluster"])) > 1:
+            # pick the highest average scoring target cluster
+            best_cluster = find_best_group(tgt_clusters, '#cluster')
             best_cluster = int(best_cluster)
-            alt_loci.append([gene_id, construct_alt_loci(group, best_cluster)])
-            to_remove.update(set(group['#cluster']) - {best_cluster})
+            for gene_id in gene_ids:
+                alt_loci.append([gene_id, construct_alt_loci(tgt_clusters, best_cluster)])
+            to_remove.update(set(tgt_clusters['#cluster']) - {best_cluster})
     paralog_filtered = clustered[~clustered['#cluster'].isin(to_remove)]
     paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
 
