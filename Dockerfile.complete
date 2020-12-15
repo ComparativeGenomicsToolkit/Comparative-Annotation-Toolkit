@@ -4,9 +4,13 @@ FROM ubuntu:20.04 AS cat-python
 RUN apt update && apt install -y --no-install-recommends \
   gcc \
   python3-dev \
-  python3-pip
+  python3-pip \
+  wget
 
 COPY ./setup.py /
+
+RUN wget https://ont-research.s3-eu-west-1.amazonaws.com/parasail-1.1.17-py2.py3-none-manylinux1_x86_64.whl
+RUN pip3 install parasail-1.1.17-py2.py3-none-manylinux1_x86_64.whl
 
 RUN mkdir cat tools \
   && python3 setup.py egg_info \
