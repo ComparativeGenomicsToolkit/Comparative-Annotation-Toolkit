@@ -4,15 +4,15 @@
           for cross-species comparison of gene sets. HomGeneMapping uses
           the intron hints from the database to retrieve on a per-transcript
           basis information, which introns have RNA-Seq splice junctions (SJ) supported in which of the
-          input genomes. It essentially adds the "hgm_info" string to the last column of the gtf, 
+          input genomes. It essentially adds the "hgm_info" string to the last column of the gtf,
 
           hgm_info "16E-27,0E-13,1,2E-13,3E-1,4,5,6E-48,7E-30,8E-1,9,10E-1,11,12E-19,13E-27,14E-46,15E-6,17E-4";
-          
+
           that encodes genome name, type of evidence and multiplicity, e.g.
           in the example above, the intron has RNA-Seq SJ support in species 16 (with mult=26),
           in species 0 (with mult=13), in species 2 (with mult=13), in species 3 (with mult=1), etc.
           The header in the gtf, gives a list of species numbers and corresponding names, e.g.
-          
+
           # 0     129S1_SvImJ
           # 1     AKR_J
           # 2     A_J
@@ -202,8 +202,6 @@ def parse_hgm_gtf(hgm_out, genome):
         intron_annot = ','.join(map(str, [x.count('M') + x.count('N') for x in intron_info]))
         cds_annot = ','.join(map(str, [x.count('M') for x in cds_info]))
         exon_annot = ','.join(map(str, [x.count('M') for x in exon_info]))
-        assert len(intron_annot) + 2 == len(exon_annot) or len(intron_annot) == 0 and len(exon_annot) == 1, \
-            (len(intron_annot), len(exon_annot), aln_id)
         return [intron_annot, cds_annot, exon_annot]
 
     def calculate_all_species(intron_info, exon_info):
@@ -260,6 +258,7 @@ def parse_hgm_gtf(hgm_out, genome):
             intron_info = d[gene_id][aln_id]['intron']
             cds_info = d[gene_id][aln_id]['cds']
             exon_info = d[gene_id][aln_id]['exon']
+            assert len(exon_info) - 1 == len(intron_info)
             if tools.nameConversions.aln_id_is_denovo(aln_id):
                 tx_id = aln_id
             else:
