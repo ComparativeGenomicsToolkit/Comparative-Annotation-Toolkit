@@ -1287,7 +1287,7 @@ class FilterTransMap(PipelineTask):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         logger.info('Filtering transMap PSL for {}.'.format(self.genome))
         table_target, psl_target, json_target, gp_target = self.output()
-        resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp, tm_args.annotation_gp,
+        resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp,
                                       tm_args.ref_db_path, psl_target, tm_args.global_near_best,
                                       tm_args.filter_overlapping_genes, tm_args.overlapping_ignore_bases,
                                       json_target)
