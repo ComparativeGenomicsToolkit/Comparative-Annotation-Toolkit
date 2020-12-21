@@ -2781,7 +2781,6 @@ class EvaluationTrack(TrackTask):
             tools.procOps.run_proc(cmd, stderr='/dev/null')
             tools.fileOps.atomic_install(out_path, track.path)
 
-
         with trackdb.open('w') as outf:
             outf.write(error_template.format(genome=self.genome, path=os.path.basename(track.path)))
 
@@ -2925,6 +2924,11 @@ class SpliceTrack(TrackTask):
                 parsed = parse_entry(line.split('\t'))
                 if parsed[4] > 2:
                     entries.append(parsed)
+
+        if len(entries) == 0:
+            logger.info(f"Genome {self.genome} had no splice entries.")
+            tools.fileOps.touch(track.path)
+            return
 
         mults = [x[4] for x in entries]
         tot = sum(mults)
