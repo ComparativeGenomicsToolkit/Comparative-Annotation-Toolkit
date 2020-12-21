@@ -948,7 +948,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs = attrs_list[0]
         useful_keys = ['source_gene_common_name', 'source_gene', 'gene_biotype',
                        'alternative_source_transcripts', 'gene_alternate_contigs',
-                       'gene_id']
+                       'gene_id', 'collapsed_gene_ids', 'collapsed_gene_names']
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
 
         # incorporate gene_name tag for potential downstream CAT input
