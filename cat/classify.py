@@ -240,25 +240,44 @@ def find_indels(tx, psl, aln_mode):
     :param aln_mode: One of ('CDS', 'mRNA'). Determines if we aligned CDS or mRNA.
     :return: list of bed12-format lists
     """
-    def convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn, strand):
-        """convert alignment coordinates to target chromosome coordinates, inverting if negative strand"""
-        left_chrom_pos = coordinate_fn(left_pos)
-        assert left_chrom_pos is not None
-        right_chrom_pos = coordinate_fn(right_pos)
-        if right_chrom_pos is None:
-            # we should only be allowed to walk off the right side in CDS coordinates
-            assert aln_mode == "CDS"
-            right_chrom_pos = coordinate_fn(tx.cds_size - 1)
+    def convert_coordinates_to_chromosome(left_pos, right_pos, tx, aln_mode):
+        """convert alignment coordinates to target chromosome coordinates, inverting if negative strand.
+
+        Due to issues with indexing positions with exact positions on a interval, this function checks for the
+        positions walking off the left or right side of the transcript in the correct coordinate system.
+        """
+        # depending on mode, we convert the coordinates from either CDS or mRNA
+        # we also have a different position cutoff to make sure we are not evaluating terminal gaps
+        if aln_mode == 'CDS':
+            coordinate_fn = tx.cds_coordinate_to_chromosome
+        else:
+            coordinate_fn = tx.mrna_coordinate_to_chromosome
+
+        # it may be possible to walk off the right side for either left_pos or right_pos
+        # this would be the case either if an deletion overlaps the last base of the alignment
+        # or if a insertion pushes the alignment past the current bounds (this should only happen in CDS alignments)
+        # in either case, the solution is to push the positions in-bounds.
+        if aln_mode == "CDS":
+            right_bound = tx.cds_size - 1
+        else:
+            right_bound = len(tx) - 1
+        adj_left_pos = min(left_pos, right_bound)
+        adj_right_pos = min(right_pos, right_bound)
+
+        left_chrom_pos = coordinate_fn(adj_left_pos)
+        right_chrom_pos = coordinate_fn(adj_right_pos)
         assert right_chrom_pos is not None
-        if strand == '-':
+        assert left_chrom_pos is not None
+
+        if tx.strand == '-':
             left_chrom_pos, right_chrom_pos = right_chrom_pos, left_chrom_pos
         assert right_chrom_pos >= left_chrom_pos
         return left_chrom_pos, right_chrom_pos
 
-    def parse_indel(left_pos, right_pos, coordinate_fn, tx, offset, gap_type):
+    def parse_indel(left_pos, right_pos, tx, offset, gap_type, aln_mode):
         """Converts either an insertion or a deletion into a output transcript"""
-        left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn,
-                                                                            tx.strand)
+        left_chrom_pos, right_chrom_pos = convert_coordinates_to_chromosome(left_pos, right_pos,
+                                                                            tx, aln_mode)
         if left_chrom_pos is None or right_chrom_pos is None:
             assert aln_mode == 'CDS'
             return None
@@ -271,13 +290,6 @@ def find_indels(tx, psl, aln_mode):
         new_bed = tx.get_bed(new_start=left_chrom_pos, new_stop=right_chrom_pos, rgb=offset,
                              name=''.join([indel_type, gap_type]))
         return [tx.name] + new_bed
-
-    # depending on mode, we convert the coordinates from either CDS or mRNA
-    # we also have a different position cutoff to make sure we are not evaluating terminal gaps
-    if aln_mode == 'CDS':
-        coordinate_fn = tx.cds_coordinate_to_chromosome
-    else:
-        coordinate_fn = tx.mrna_coordinate_to_chromosome
 
     # r holds the output
     r = []
@@ -293,12 +305,12 @@ def find_indels(tx, psl, aln_mode):
         if q_offset != 0:  # query insertion -> insertion in target sequence
             left_pos = q_start - q_offset
             right_pos = q_start
-            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, q_offset, 'Insertion')
+            row = parse_indel(left_pos, right_pos, tx, q_offset, 'Insertion', aln_mode)
             if row is not None:
                 r.append(row)
-        if t_offset != 0:  # target insertion -> insertion in reference sequence
+        if t_offset != 0:  # target insertion -> insertion in reference sequence / deletion in target sequence
             left_pos = right_pos = q_start
-            row = parse_indel(left_pos, right_pos, coordinate_fn, tx, t_offset, 'Deletion')
+            row = parse_indel(left_pos, right_pos, tx, t_offset, 'Deletion', aln_mode)
             if row is not None:
                 r.append(row)
         q_pos = q_start
