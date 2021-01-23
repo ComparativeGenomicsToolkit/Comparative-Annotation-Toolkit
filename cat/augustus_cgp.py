@@ -330,7 +330,7 @@ def join_genes(job, gff_chunks):
         for file_grp in tools.dataOps.grouper(files, 250):
             # on first iteration, use file_grp only; on subsequent iterations, merge
             if last_file is not None:
-                file_grp = [last_file] + file_grp
+                file_grp = (last_file,) + file_grp
             intermediate_file = tools.fileOps.get_tmp_toil_file()
             cmd = [['joingenes', '-g', ','.join(file_grp), '-o', '/dev/stdout'],
                    ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
@@ -387,5 +387,3 @@ def write_genome_fofn(job, fasta_file_ids):
                 local_path = tools.procOps.singularify_arg(local_path)
             tools.fileOps.print_row(outf, [genome, local_path])
     return genome_fofn
-
-
