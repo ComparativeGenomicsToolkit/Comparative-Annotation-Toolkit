@@ -81,7 +81,7 @@ RUN mkdir -p /augustus
 COPY --from=builder /augustus/config /augustus/config
 
 # Python deps
-RUN pip3 install bd2k-python-lib toil[all] pyfasta numpy matplotlib
+RUN pip3 install bd2k-python-lib toil[all]==5.0 pyfasta numpy matplotlib
 
 # make Python 3 primary python
 RUN rm /usr/bin/python
