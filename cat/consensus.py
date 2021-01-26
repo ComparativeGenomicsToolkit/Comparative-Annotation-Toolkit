@@ -891,7 +891,7 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
     # its possible alternative_source_transcripts did not end up in the final result, so add it
     if 'alternative_source_transcripts' not in gp_info_df.columns:
         gp_info_df['alternative_source_transcripts'] = ['N/A'] * len(gp_info_df)
-    with luigi.LocalTarget(consensus_gp_info).open('wb') as outf:
+    with luigi.LocalTarget(consensus_gp_info).open('w') as outf:
         gp_info_df.to_csv(outf, sep='\t', na_rep='N/A')
     return consensus_gene_dict
 
