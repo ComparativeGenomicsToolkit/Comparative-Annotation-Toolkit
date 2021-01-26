@@ -1,6 +1,7 @@
 """
 Runs AugustusPB on a target genome
 """
+import re
 import os
 import argparse
 import collections
@@ -143,6 +144,15 @@ def join_genes(job, gff_chunks):
     - fixes truncated Txs at alignment boundaries,
       e.g. by merging them with other Txs (non trivial, introduces new Txs)
     """
+    def filter_joingenes(injoingenes_file, out_joingenes_file):
+        """Replace grep -P and sed"""
+        matcher = re.compile("\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t")
+        with open(out_joingenes_file, "w") as ofh:
+            for l in open(injoingenes_file):
+                if matcher.search(l):
+                    l = l.replace("jg", "augPB-")
+                    ofh.write(l)
+
     raw_gtf_file = tools.fileOps.get_tmp_toil_file()
     raw_gtf_fofn = tools.fileOps.get_tmp_toil_file()
     files = []
@@ -160,26 +170,11 @@ def join_genes(job, gff_chunks):
 
     join_genes_file = tools.fileOps.get_tmp_toil_file()
     join_genes_gp = tools.fileOps.get_tmp_toil_file()
-    # TODO: figure out why this fails on certain filesystems
-    try:
-        cmd = [['joingenes', '-f', raw_gtf_fofn, '-o', '/dev/stdout'],
-               ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
-               ['sed', ' s/jg/augPB-/g']]
-        tools.procOps.run_proc(cmd, stdout=join_genes_file)
-    except:
-        # it is quite like that this will exceed the maximum bash command length. Break it into chunks of 250
-        last_file = None
-        for file_grp in tools.dataOps.grouper(files, 250):
-            # on first iteration, use file_grp only; on subsequent iterations, merge
-            if last_file is not None:
-                file_grp = [last_file] + file_grp
-            intermediate_file = tools.fileOps.get_tmp_toil_file()
-            cmd = [['joingenes', '-g', ','.join(file_grp), '-o', '/dev/stdout'],
-                   ['grep', '-P', '\tAUGUSTUS\t(exon|CDS|start_codon|stop_codon|tts|tss)\t'],
-                   ['sed', ' s/jg/augPB-/g']]
-            tools.procOps.run_proc(cmd, stdout=intermediate_file)
-            last_file = intermediate_file
-        join_genes_file = last_file
+
+    tmp_join_genes_file = tools.fileOps.get_tmp_toil_file()
+    cmd = ['joingenes', '-f', raw_gtf_fofn, '-o', tmp_join_genes_file]
+    tools.procOps.run_proc(cmd)
+    filter_joingenes(tmp_join_genes_file, join_genes_file)
 
     # passing the joingenes output through gtfToGenePred then genePredToGtf fixes the sort order for homGeneMapping
     cmd = ['gtfToGenePred', '-genePredExt', join_genes_file, join_genes_gp]
