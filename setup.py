@@ -7,10 +7,10 @@ setup(
     python_requires='>=3.7.0',
     install_requires=[
         'pyfasta>=0.5.2',
-        'toil>=5.0',
+        'toil==5.0',
         'luigi>=2.5',
         'seaborn>=0.7',
-        'pandas>=1.0',
+        'pandas==1.0',
         'frozendict',
         'configobj>=5.0',
         'sqlalchemy>=1.0',
