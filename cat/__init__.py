@@ -437,7 +437,7 @@ class PipelineTask(luigi.Task):
         """write out a metrics dictionary to a path for later loading and plotting"""
         tools.fileOps.ensure_file_dir(out_target.path)
         with out_target.open('w') as outf:
-            json.dump(metrics_dict, outf)
+            json.dump(metrics_dict, outf, indent=4)
 
 
 @PipelineTask.event_handler(luigi.Event.PROCESSING_TIME)
