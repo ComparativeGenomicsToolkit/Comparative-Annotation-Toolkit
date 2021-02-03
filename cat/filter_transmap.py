@@ -35,12 +35,13 @@ import tools.procOps
 import tools.fileOps
 import tools.intervals
 import tools.sqlInterface
+import bisect
 
 pd.options.mode.chained_assignment = None
 
 
 def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes,
-                    overlapping_gene_distance, json_tgt):
+                    overlapping_gene_distance, json_tgt, annotation_gp):
     """
     Entry point for transMap filtering.
     :param tm_psl: input PSL
@@ -65,6 +66,39 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     with open(tmp_size_filtered, 'w') as outf:
         for aln in size_filtered.values():
             tools.fileOps.print_row(outf, aln.psl_string())
+
+    ### TODO: Remove this eventually if it doesn't end up used
+
+    # Calculate synteny scores 
+    # ref_gp_dict = tools.transcripts.get_gene_pred_dict(annotation_gp)
+    # synteny_scores = synteny(ref_gp_dict, unfiltered_tx_dict)
+    # synteny_scores_scaled = { key : value * 100.0 for key,value in synteny_scores.items()}
+
+    # Calculate original intron fraction 
+    # Retrive coverage and identity metrics
+    # Calculate the score for each transcript
+    # intron_fractions = {}
+    # tx_identities = {}
+    # tx_coverages = {}
+    # paralog_scores = {}
+    # for aln_id, tx in unfiltered_tx_dict.items():
+    #     aln = unfiltered[aln_id]
+    #     tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
+    #     ref_aln = ref_psl_dict[tx_id]
+    #     percent_original_intron = percent_original_introns(aln, tx, ref_aln)
+    #     intron_fractions[aln_id] = percent_original_intron
+    #     tx_identities[aln_id] = 100 * aln.identity
+    #     tx_coverages[aln_id] = 100 * aln.coverage
+    #     paralog_scores[aln_id] = synteny_scores_scaled[aln_id] + intron_fractions[aln_id] + tx_identities[aln_id] + tx_coverages[aln_id]
+
+    # for aln_id, tx in unfiltered_tx_dict.items():
+    #     print("*** Paralog stats for ", aln_id, " ***")
+    #     print("\tSynteny: ", synteny_scores_scaled[aln_id])
+    #     print("\tIntron fraction: ", intron_fractions[aln_id])
+    #     print("\tIdentity: ", tx_identities[aln_id])
+    #     print("\tCoverage: ", tx_coverages[aln_id])
+    #     print("\tTotal: ", paralog_scores[aln_id])
+
 
     # get transcript -> gene map
     transcript_gene_map = tools.sqlInterface.get_transcript_gene_map(db_path)
@@ -112,6 +146,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     # report counts by biotype
     grouped = tools.psl.group_alignments_by_qname(global_best)
     unfiltered_grouped = tools.psl.group_alignments_by_qname(iter(unfiltered.values()))
+
     metrics = {'Paralogy': collections.defaultdict(lambda: collections.Counter()),
                'UnfilteredParalogy': collections.defaultdict(lambda: collections.Counter())}
     paralogy_df = []
@@ -225,7 +260,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     # write the JSON
     tools.fileOps.ensure_file_dir(json_tgt.path)
     with json_tgt.open('w') as outf:
-        json.dump(metrics, outf)
+        json.dump(metrics, outf, indent=4)
 
     return resolved_df.set_index(['GeneId', 'TranscriptId'])
 
@@ -313,15 +348,19 @@ def construct_alt_loci(group, best_cluster):
 
 def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metrics, gene_biotype_map,
                     filter_overlapping_genes):
+    """ 
+    Wrapper for taking the output of clusterGenes and filtering it.
+    Only remove the corresponding mappings for each gene that map to multiple clusters,
+    rather than removing the entire cluster.
     """
-    Wrapper for taking the output of clusterGenes and filtering it
-    """
+
     # add gene IDs and scores. clustered.gene is actually AlignmentId fields
     clustered['gene_id'] = [transcript_gene_map[tools.nameConversions.strip_alignment_numbers(x)] for x in clustered.gene]
     clustered['scores'] = [scores[x] for x in clustered.gene]
 
-    to_remove = set()  # set of cluster IDs to remove
+    to_remove_alns = set() # set of specific alignment IDs to remove
     alt_loci = []  # will become a DataFrame of alt loci to populate that field
+
     # any gene IDs with multiple clusters need to be resolved to resolve paralogies
     for gene_id, group in clustered.groupby('gene_id'):
         if len(set(group['#cluster'])) > 1:
@@ -329,9 +368,11 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
             best_cluster = find_best_group(group, '#cluster')
             best_cluster = int(best_cluster)
             alt_loci.append([gene_id, construct_alt_loci(group, best_cluster)])
-            to_remove.update(set(group['#cluster']) - {best_cluster})
-    paralog_filtered = clustered[~clustered['#cluster'].isin(to_remove)]
+            bad_clusters= group[group['#cluster'].isin(set(group['#cluster']) - {best_cluster})]
+            to_remove_alns.update(set(bad_clusters['gene']))
+
     paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
+    paralog_filtered = clustered[~clustered['gene'].isin(to_remove_alns)]
 
     # group by cluster ID to identify gene family collapse
     genes_to_remove = set()  # set of gene IDs to collapse
@@ -352,7 +393,6 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
     collapsed_df = pd.DataFrame(collapsed_genes, columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
     merged_df = collapsed_df.merge(paralog_df, how='outer', on='GeneId')
     return merged_df, collapse_filtered
-
 
 def find_split_genes(gene_id, g, resolved_interval, split_gene_data):
     """
