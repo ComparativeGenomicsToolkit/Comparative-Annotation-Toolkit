@@ -41,7 +41,7 @@ pd.options.mode.chained_assignment = None
 
 
 def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes,
-                    overlapping_gene_distance, json_tgt, annotation_gp):
+                    overlapping_gene_distance, json_tgt):
     """
     Entry point for transMap filtering.
     :param tm_psl: input PSL

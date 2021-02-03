@@ -25,7 +25,8 @@ def test_paralog(gene_set):
                                 # overlapping_ignore_bases=0,
                                 overlapping_gene_distance=0,
                                 json_tgt=json_target,
-                                annotation_gp=get_input_file("gencode.v35.annotation.gff3.gp")) #json_target
+                                )
+                                # annotation_gp=get_input_file("gencode.v35.annotation.gff3.gp")) #json_target
     filteredDf.to_csv(get_output_file(".tsv"), sep='\t')
     # filteredDf.sort_values(["AssignedGeneId", "TranscriptId"], inplace=True)
     diff_expected(".tsv")
