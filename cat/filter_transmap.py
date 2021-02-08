@@ -390,7 +390,10 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
         collapse_filtered = paralog_filtered[~paralog_filtered['gene_id'].isin(genes_to_remove)]
     else:
         collapse_filtered = paralog_filtered
-    collapsed_df = pd.DataFrame(collapsed_genes, columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
+    if len(collapsed_genes) > 0:
+        collapsed_df = pd.DataFrame(collapsed_genes, columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
+    else:
+        collapsed_df = pd.DataFrame(columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
     merged_df = collapsed_df.merge(paralog_df, how='outer', on='GeneId')
     return merged_df, collapse_filtered
 
