@@ -371,7 +371,10 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
             bad_clusters= group[group['#cluster'].isin(set(group['#cluster']) - {best_cluster})]
             to_remove_alns.update(set(bad_clusters['gene']))
 
-    paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
+    if len(alt_loci) > 0:
+        paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
+    else:
+        paralog_df = pd.DataFrame(columns=['GeneId', 'GeneAlternateLoci'])
     paralog_filtered = clustered[~clustered['gene'].isin(to_remove_alns)]
 
     # group by cluster ID to identify gene family collapse
