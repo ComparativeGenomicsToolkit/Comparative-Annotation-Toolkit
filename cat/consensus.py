@@ -141,7 +141,7 @@ def generate_consensus(args):
                                                                          args.require_pacbio_support)
 
     if args.filter_overlapping_genes is True:
-        gene_resolved_consensus = resolve_overlapping_cds_intervals(args.overlapping_gene_distance,
+        gene_resolved_consensus = resolve_overlapping_cds_intervals(args.overlapping_ignore_bases,
                                                                     deduplicated_strand_resolved_consensus, tx_dict)
     else:
         gene_resolved_consensus = deduplicated_strand_resolved_consensus

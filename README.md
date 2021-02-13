@@ -217,7 +217,7 @@ As described above, the primary method to executing the pipeline is to follow th
 
 `--filter-overlapping-genes`: Should genes that get flagged as overlapping be removed? After consensus finding is finished, instances of gene family collapse or paralog mis-assignment may lead to overlapping CDS intervals on different genes. This also in some instances may be a feature of the original annotation set. However, some annotation databases do not like this, so this flag will remove all such instances and resolve them down to one gene. 
 
-`--overlapping-gene-distance`: This controls the amount of *exonic* overlap two genes must have to be flagged as overlapping. Setting this value higher than 1 is recommended for smaller genomes that likely have real overlapping genes. Default is 1.
+`--overlapping-ignore-bases`: This flag is passed to the tool `clusterGenes` as the `ignoreBases` parameter. This value represents the number of bases on the 3' and 5' of a transcript to ignore when generating gene clusters. Setting this value higher than 0 is recommended for smaller genomes that likely have real overlapping genes, otherwise overlapping genes will be incorrectly collapsed. Default is 0.
 
 `--intron-rnaseq-support`: Amount of RNA-seq intron support a transcript must have to be considered. Must be a value between 0 and 100. Default is 0.
 
