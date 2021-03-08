@@ -6,7 +6,7 @@ libboost-all-dev sqlite3 libsqlite3-0 libsqlite3-dev libgsl0-dev lp-solve liblps
 
 # htslib
 RUN git clone git://github.com/samtools/htslib.git
-RUN cd htslib && make install
+RUN cd htslib && git submodule update --init --recursive && make install
 
 # bcftools
 RUN git clone git://github.com/samtools/bcftools.git
