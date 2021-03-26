@@ -113,9 +113,12 @@ def parse_gff_attr_line(attr_line):
     """parse a GFF attributes line"""
     if len(attr_line) == 0:
         return {}
-    attr_line = [x.split('=') for x in re.split('; *', attr_line.replace('"', ''))]
-    attr_line[-1][-1] = attr_line[-1][-1].rstrip().replace(';', '')
-    return dict(attr_line)
+    try:
+        attr_line = [x.split('=') for x in re.split('; *', attr_line.replace('"', ''))]
+        attr_line[-1][-1] = attr_line[-1][-1].rstrip().replace(';', '')
+        return dict(attr_line)
+    except:
+        assert False, attr_line
 
 
 def slice_df(df, ix):
