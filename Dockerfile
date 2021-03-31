@@ -5,7 +5,7 @@ RUN apt-get install -y build-essential libssl-dev libncurses5-dev libcurl4-opens
 libboost-all-dev sqlite3 libsqlite3-0 libsqlite3-dev libgsl0-dev lp-solve liblpsolve55-dev libbamtools-dev wget git
 
 # htslib
-RUN git clone git://github.com/samtools/htslib.git
+RUN git clone --recursive git://github.com/samtools/htslib.git
 RUN cd htslib && make install
 
 # bcftools
