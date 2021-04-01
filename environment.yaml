@@ -69,7 +69,7 @@ dependencies:
   - numpy=1.18.1
   - openblas=0.3.6
   - openssl=1.1.1f
-  - pandas=1.0.3
+  - pandas=1.1.0
   - parasail-python=1.2
   - patsy=0.5.1
   - pcre=8.44
