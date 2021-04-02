@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+"""
+This script will attempt to assign unique identifiers to disjoint genes in a GFF3 file.
+
+"""
+import sys
+import argparse
+import tools.gff3
+import tools.procOps
+import tools.fileOps
+import tools.transcripts
+import collections
+import tools.misc
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('gff3', help='GFF3 to fix')
+    parser.add_argument('gff3_output', help="Place to write fixed gff3 to.")
+    return parser.parse_args()
+
+
+def fix_genes(gff3, disjoint_genes):
+    gene_counts = collections.Counter()
+    for row in open(gff3):
+        if row.startswith("#"):
+            yield row
+            continue
+        row = row.split("\t")
+        attrs = tools.misc.parse_gff_attr_line(row[-1])
+        if "gene_id" not in attrs:
+            yield "\t".join(row)
+        elif attrs["gene_id"] not in disjoint_genes:
+            yield "\t".join(row)
+        else:
+            gene_id = attrs["gene_id"]
+            if row[2] == "gene":
+                gene_counts[gene_id] += 1
+            attrs["gene_id"] = f"{gene_id}-{gene_counts[gene_id]}"
+            row[-1] = ";".join([f"{x}={y}" for x, y in attrs.items()])
+            yield "\t".join(row)
+
+
+def main():
+    args = parse_args()
+    with tools.fileOps.TemporaryFilePath() as attrs, tools.fileOps.TemporaryFilePath() as gp:
+        cmd = tools.gff3.convert_gff3_cmd(attrs, args.gff3)
+        tools.procOps.run_proc(cmd, stdout=gp)
+        tx_dict = tools.transcripts.get_gene_pred_dict(gp)
+    disjoint_genes = tools.gff3.check_gff3_for_disjoint_gene_ids(tx_dict)
+    if not disjoint_genes:
+        print("Did not find any disjoint genes. No output written.")
+        sys.exit()
+    with open(args.gff3_output, "w") as fh:
+        for row in fix_genes(args.gff3, disjoint_genes):
+            print(row, file=fh)
+
+
+if __name__ == "__main__":
+    main()

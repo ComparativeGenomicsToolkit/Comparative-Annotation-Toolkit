@@ -113,6 +113,8 @@ You may have any arbitrary set of keys and values in the GFF3 that are not the r
 
 If your GFF3 has duplicate transcript names, the pipeline will complain. One common cause of this is PAR locus genes. You will want to remove PAR genes -- If your GFF3 came from GENCODE, you should be able to do this: `grep -v PAR_Y $gff > $gff.fixed`.
 
+Your GFF3 file should not have any `gene_id` identifiers split across multiple chromosomes. Ideally, your GFF3 also has no disjoint genes (genes whose transcripts do not overlap). The script `validate_gff3` will warn about such genes, but it will not raise an error. The script `fix_chrom_disjoint_genes` will rename `gene_id` values that are shared on multiple chromosomes with a unique suffix.
+
 # Command line options
 
 As described above, the primary method to executing the pipeline is to follow the invocation `luigi --module cat RunCat --hal=${halfile} --ref-genome=${ref-genome} --config=${config}`. Below are the flags that can modify execution and output.

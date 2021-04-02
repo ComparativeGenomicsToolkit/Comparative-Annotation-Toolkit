@@ -32,6 +32,12 @@ if __name__ == '__main__':
         assert len(duplicates) == 0, 'Found {} duplicate genes: {}'.format(len(duplicates), '\n'.join(duplicates))
         df = tools.gff3.parse_gff3(attrs, gp)
         tx_dict = tools.transcripts.get_gene_pred_dict(gp)
+    chrom_disjoint_genes = tools.gff3.check_gff3_for_disjoint_gene_ids(tx_dict, by_chrom=True)
+    if chrom_disjoint_genes:
+        raise Exception(f"Found chromosome disjoint gene_ids {', '.join(chrom_disjoint_genes)} in the GFF3. "
+                        f"This is not allowed. Use the script programs/fix_chrom_disjoint_genes to "
+                        f"try and resolve this.")
+    disjoint_genes = tools.gff3.check_gff3_for_disjoint_gene_ids(tx_dict, by_chrom=False)
     assert len(tx_dict) == len(df)
     exons = {len(x.exon_intervals) for x in tx_dict.values()}
     if len(exons) == 1:
@@ -64,3 +70,6 @@ if __name__ == '__main__':
         print('Found {} genes where one gene name maps to multiple gene IDs:'.format(len(mixed_genes)))
         for x, y in mixed_genes.items():
             print('{}: {}'.format(x, y))
+    if disjoint_genes:
+        print(f'Found {len(disjoint_genes)} genes with disjoint transcripts. Please verify that these are intended'
+              f'to be the same locus: {", ".join(disjoint_genes)}')

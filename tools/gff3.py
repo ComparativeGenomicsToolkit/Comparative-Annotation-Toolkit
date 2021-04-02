@@ -18,6 +18,23 @@ reserved_keys = ['gene_biotype',
                  'Parent']
 
 
+def check_gff3_for_disjoint_gene_ids(tx_dict, by_chrom=True):
+    """Reports on gene identifiers that are disjoint in genomic space"""
+    # group by name2
+    tx_name2_map = transcripts.group_transcripts_by_name2(tx_dict.values())
+    bad_genes = []
+    for gene_id, tx_group in tx_name2_map.items():
+        if by_chrom is False:
+            locations = sorted((tx.interval for tx in tx_group))
+            for i in range(0, len(locations) - 1):
+                if not locations[i].overlap(locations[i+1]):
+                    bad_genes.append(gene_id)
+        else:
+            if len({tx.chromosome for tx in tx_group}) != 1:
+                bad_genes.append(gene_id)
+    return bad_genes
+
+
 def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
     def parse_attrs(attrs):
         r = collections.defaultdict(dict)
@@ -27,6 +44,11 @@ def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
 
     attrs_dict = parse_attrs(annotation_attrs)
     tx_dict = transcripts.get_gene_pred_dict(annotation_gp)
+    disjoint_genes = check_gff3_for_disjoint_gene_ids(tx_dict, by_chrom=True)
+    if disjoint_genes:
+        raise Exception(f"Found chromosome disjoint gene_ids {', '.join(disjoint_genes)} in the GFF3. "
+                        f"This is not allowed. Use the script programs/fix_chrom_disjoint_genes to "
+                        f"try and resolve this.")
     tx_name_map = {x: y.name2 for x, y in tx_dict.items()}
     results = []
     for tx_id, gene_id in tx_name_map.items():
