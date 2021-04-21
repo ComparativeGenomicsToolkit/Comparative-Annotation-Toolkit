@@ -24,9 +24,9 @@ def write_fasta(path_or_handle, name, seq, chunk_size=100, validate=None):
         fh = opengz(path_or_handle, 'w')
     else:
         fh = path_or_handle
-    if validate is 'DNA':
+    if validate == 'DNA':
         valid_chars = set('ACGTUYSWKMBDHVNacgtuyswkmbdhvn.-*')
-    elif validate is 'protein':
+    elif validate == 'protein':
         valid_chars = set('ABCDEFGHIKLMPQSRTVWXYZUabcdefghiklmpqsrtvwxyzuNn.-*')
     else:
         valid_chars = set()
