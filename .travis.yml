@@ -53,3 +53,10 @@ jobs:
           luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
           --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
           --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG
+    - stage: test_standalone
+      script:
+        - >
+          docker run -v $PWD/test_data:/test_data/ -i quay.io/ucsc_cgl/cat:latest
+          luigi --module cat RunCat --hal=test_data/vertebrates.hal --target-genomes='("hg38", "galGal4")' --ref-genome=mm10
+          --workers=2 --config=test_data/test.config --work-dir test_install --out-dir test_install --local-scheduler
+          --augustus --augustus-cgp --augustus-pb --assembly-hub --log-level DEBUG --binary-mode local
