@@ -2635,6 +2635,8 @@ class BgpTrack(TrackTask):
             """blue for coding, green for non-coding"""
             if info.TranscriptBiotype == 'protein_coding':
                 return '76,85,212'
+            elif "pseudogene" in info.TranscriptBiotype:
+                return '255,51,255'
             return '85,212,76'
 
         pipeline_args = self.get_pipeline_args()
@@ -2685,6 +2687,8 @@ class ConsensusTrack(TrackTask):
                 return '135,76,212'
             elif info.transcript_biotype == 'protein_coding':
                 return '76,85,212'
+            elif "pseudogene" in info.transcript_biotype:
+                return '255,51,255'
             return '85,212,76'
 
         pipeline_args = self.get_pipeline_args()
