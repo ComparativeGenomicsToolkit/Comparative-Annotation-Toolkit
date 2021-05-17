@@ -225,7 +225,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     # write the JSON
     tools.fileOps.ensure_file_dir(json_tgt.path)
     with json_tgt.open('w') as outf:
-        json.dump(metrics, outf)
+        json.dump(metrics, outf, indent=4)
 
     return resolved_df.set_index(['GeneId', 'TranscriptId'])
 
@@ -315,12 +315,14 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
                     filter_overlapping_genes):
     """
     Wrapper for taking the output of clusterGenes and filtering it
+    Only remove the corresponding mappings for each gene that map to multiple clusters,
+    rather than removing the entire cluster.
     """
     # add gene IDs and scores. clustered.gene is actually AlignmentId fields
     clustered['gene_id'] = [transcript_gene_map[tools.nameConversions.strip_alignment_numbers(x)] for x in clustered.gene]
     clustered['scores'] = [scores[x] for x in clustered.gene]
 
-    to_remove = set()  # set of cluster IDs to remove
+    to_remove_alns = set() # set of specific alignment IDs to remove
     alt_loci = []  # will become a DataFrame of alt loci to populate that field
     # any gene IDs with multiple clusters need to be resolved to resolve paralogies
     for gene_id, group in clustered.groupby('gene_id'):
@@ -329,9 +331,14 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
             best_cluster = find_best_group(group, '#cluster')
             best_cluster = int(best_cluster)
             alt_loci.append([gene_id, construct_alt_loci(group, best_cluster)])
-            to_remove.update(set(group['#cluster']) - {best_cluster})
-    paralog_filtered = clustered[~clustered['#cluster'].isin(to_remove)]
-    paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
+            bad_clusters= group[group['#cluster'].isin(set(group['#cluster']) - {best_cluster})]
+            to_remove_alns.update(set(bad_clusters['gene']))
+
+    if len(alt_loci) > 0:
+        paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
+    else:
+        paralog_df = pd.DataFrame(columns=['GeneId', 'GeneAlternateLoci'])
+    paralog_filtered = clustered[~clustered['gene'].isin(to_remove_alns)]
 
     # group by cluster ID to identify gene family collapse
     genes_to_remove = set()  # set of gene IDs to collapse
@@ -349,7 +356,10 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
         collapse_filtered = paralog_filtered[~paralog_filtered['gene_id'].isin(genes_to_remove)]
     else:
         collapse_filtered = paralog_filtered
-    collapsed_df = pd.DataFrame(collapsed_genes, columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
+    if len(collapsed_genes) > 0:
+        collapsed_df = pd.DataFrame(collapsed_genes, columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
+    else:
+        collapsed_df = pd.DataFrame(columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
     merged_df = collapsed_df.merge(paralog_df, how='outer', on='GeneId')
     return merged_df, collapse_filtered
 
