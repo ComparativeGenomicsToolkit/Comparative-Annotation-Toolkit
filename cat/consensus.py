@@ -656,7 +656,9 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
             tags = exref_annot.loc[aln_id].ExtraTags
             if len(tags) > 0:
                 for key, val in tools.misc.parse_gff_attr_line(tags).items():
-                    denovo_tx_dict[aln_id][key] = val
+                    # only add new tags if they don't already exist (and if they're informative)
+                    if key not in denovo_tx_dict[aln_id] and val != "N/A":
+                        denovo_tx_dict[aln_id][key] = val
 
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
