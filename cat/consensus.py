@@ -304,7 +304,8 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype == 'protein_coding']
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
     # add metrics information to coding df
-    metrics_df = pd.merge(mrna_metrics_df, cds_metrics_df, on='AlignmentId', suffixes=['_mRNA', '_CDS'])
+    # left merge so IDs without CDS aren't lost
+    metrics_df = pd.merge(mrna_metrics_df, cds_metrics_df, on='AlignmentId', how='left', suffixes=['_mRNA', '_CDS'])
     coding_df = pd.merge(coding_df, metrics_df, on='AlignmentId')
     # add evaluation information to coding df, where possible. This adds information on frame shifts.
     coding_df = pd.merge(coding_df, eval_df, on='AlignmentId', how='left')
@@ -365,6 +366,9 @@ def score_filtered_dfs(coding_df, non_coding_df, in_species_rna_support_only):
     def score(s):
         aln_id = s.AlnIdentity_CDS if s.TranscriptBiotype == 'protein_coding' else s.TransMapIdentity
         aln_cov = s.AlnCoverage_CDS if s.TranscriptBiotype == 'protein_coding' else s.TransMapCoverage
+        # identity and coverage can be NaN if len(CDS) == 0; change to be 0
+        if pd.isnull(aln_id): aln_id = 0
+        if pd.isnull(aln_cov): aln_cov = 0
         orig_intron = s.OriginalIntronsPercent_mRNA if s.TranscriptBiotype == 'protein_coding' else s.TransMapOriginalIntronsPercent
         if in_species_rna_support_only:
             rna_support = s.ExonRnaSupportPercent + s.IntronRnaSupportPercent
@@ -933,6 +937,13 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             return 'N/A'
         return vals[i]
 
+    def get_gene_name(attrs):
+        """returns the gene name associated with a given attrs list"""
+        if attrs.get("source_gene_common_name") is not None:
+            return attrs["source_gene_common_name"]
+        else:
+            return attrs["gene_id"]
+
     def generate_gene_record(chrom, tx_objs, gene_id, attrs_list):
         """calculates the gene interval for this list of tx"""
         def find_all_tx_modes(attrs_list):
@@ -954,10 +965,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
 
         # incorporate gene_name tag for potential downstream CAT input
-        if attrs.get("source_gene_common_name") is not None:
-            attrs["gene_name"] = attrs["source_gene_common_name"]
-        else:
-            attrs["gene_name"] = attrs["gene_id"]
+        attrs["gene_name"] = get_gene_name(attrs)
 
         attrs['transcript_modes'] = find_all_tx_modes(attrs_list)
         score, attrs_field = convert_attrs(attrs, gene_id)
@@ -973,6 +981,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             attrs["transcript_name"] = attrs["source_transcript_name"]
         else:
             attrs["transcript_name"] = attrs["transcript_id"]
+        if "gene_name" not in attrs:
+            attrs["gene_name"] = get_gene_name(attrs)
 
         score, attrs_field = convert_attrs(attrs, tx_id)
         yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop, score, tx_obj.strand, '.', attrs_field]
