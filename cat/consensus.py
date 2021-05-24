@@ -313,6 +313,8 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     coding_df['OriginalIntronsPercent_mRNA'] = coding_df.OriginalIntronsPercent_mRNA.fillna(100)
     coding_df['OriginalIntronsPercent_CDS'] = coding_df.OriginalIntronsPercent_CDS.fillna(100)
     non_coding_df['TransMapOriginalIntronsPercent'] = non_coding_df.TransMapOriginalIntronsPercent.fillna(100)
+    # if frameshift info is not present, add "False"
+    coding_df['Frameshift'] = coding_df.Frameshift.fillna(False)
 
     # huge ugly filtering expression for coding transcripts
     if in_species_rna_support_only is True:
