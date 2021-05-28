@@ -121,8 +121,12 @@ def generate_consensus(args):
     if len(args.denovo_tx_modes) > 0:
         metrics['denovo'] = {}
         for tx_mode in args.denovo_tx_modes:
-            metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
+            if args.denovo_allow_bad_annot_or_tm is True:
+                metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
                                           'Possible fusion': 0, 'Putative novel isoform': 0, 'Bad annot or tm': 0}
+            else:
+                metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
+                                          'Possible fusion': 0, 'Putative novel isoform': 0}
         denovo_dict = find_novel(args.db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map,
                                  args.denovo_num_introns, args.in_species_rna_support_only,
                                  args.denovo_tx_modes, args.denovo_splice_support, args.denovo_exon_support,
