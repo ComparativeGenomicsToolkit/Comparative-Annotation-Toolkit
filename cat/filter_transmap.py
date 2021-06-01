@@ -352,7 +352,7 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
             collapsed_gene_names = {gene_name_map[x] for x in collapsed_gene_ids}
             genes_to_remove.update(collapsed_gene_ids)
             collapsed_genes.append([best_gene, ','.join(collapsed_gene_ids), ','.join(collapsed_gene_names)])
-    if filter_overlapping_genes is True:
+    if filter_overlapping_genes == True:
         collapse_filtered = paralog_filtered[~paralog_filtered['gene_id'].isin(genes_to_remove)]
     else:
         collapse_filtered = paralog_filtered

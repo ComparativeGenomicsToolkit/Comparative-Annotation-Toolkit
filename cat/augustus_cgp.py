@@ -245,12 +245,12 @@ def cgp(job, tree, maf_chunk, args, input_file_ids, training=False):
            '--/CompPred/logreg=on',
            '--printOEs={}'.format(1 if training else 0),
            '--/CompPred/outdir={}'.format(os.getcwd())]
-    if training is False:
+    if training == False:
         cmd.append('--optCfgFile={}'.format(job.fileStore.readGlobalFile(input_file_ids.cgp_param)))
     else:
         cmd.append('--printSampled=true')
     tools.procOps.run_proc(cmd, stdout=stdout)
-    if training is True:
+    if training == True:
         cmd = ['cat', os.path.abspath('{}.sampled_GFs.gff'.format(args.ref_genome)),
                os.path.abspath('exonCands.{}.gff3'.format(args.ref_genome)),
                os.path.abspath('orthoExons.{}.gff3'.format(args.ref_genome))]

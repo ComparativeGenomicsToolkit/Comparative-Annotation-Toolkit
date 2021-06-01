@@ -307,7 +307,7 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
         df.columns = ['Result', 'Number of transcripts', 'Augustus mode', 'genome']
         has_pb = len(set(df['Augustus mode'])) == 2
         if len(set(df.genome)) > 1:  # if we ran in PB only, we may not have multiple genomes
-            if has_pb is True:
+            if has_pb == True:
                 ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
                                     hue='Augustus mode', col_wrap=2, row_order=ordered_genomes, sharex=True,
                                     sharey=False)
@@ -315,7 +315,7 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
                 ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
                                     col_wrap=2, row_order=ordered_genomes, sharex=True, sharey=False)
         else:
-            if has_pb is True:
+            if has_pb == True:
                 ax = sns.factorplot(data=df, x='Result', y='Number of transcripts', kind='bar', hue='Augustus mode')
             else:
                 ax = sns.factorplot(data=df, x='Result', y='Number of transcripts', kind='bar')
@@ -524,7 +524,7 @@ def generic_barplot(data, pdf, xlabel, ylabel, title, row_order=None, x=None, y=
         ax.margins(y=0.15)
         ax.autoscale(enable=True, axis='y', tight=False)
         ax.set_ylim(0, ax.get_ylim()[1])
-    if close is True:
+    if close == True:
         multipage_close(pdf, tight_layout=False)
     return g
 

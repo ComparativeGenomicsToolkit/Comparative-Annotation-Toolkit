@@ -121,7 +121,7 @@ def generate_consensus(args):
     if len(args.denovo_tx_modes) > 0:
         metrics['denovo'] = {}
         for tx_mode in args.denovo_tx_modes:
-            if args.denovo_allow_bad_annot_or_tm is True:
+            if args.denovo_allow_bad_annot_or_tm == True:
                 metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
                                           'Possible fusion': 0, 'Putative novel isoform': 0, 'Bad annot or tm': 0}
             else:
@@ -144,7 +144,7 @@ def generate_consensus(args):
                                                                          args.db_path, tx_dict, metrics,
                                                                          args.require_pacbio_support)
 
-    if args.filter_overlapping_genes is True:
+    if args.filter_overlapping_genes == True:
         gene_resolved_consensus = resolve_overlapping_cds_intervals(args.overlapping_ignore_bases,
                                                                     deduplicated_strand_resolved_consensus, tx_dict)
     else:
@@ -321,7 +321,7 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     coding_df['Frameshift'] = coding_df.Frameshift.fillna(False)
 
     # huge ugly filtering expression for coding transcripts
-    if in_species_rna_support_only is True:
+    if in_species_rna_support_only == True:
         filt = ((coding_df.OriginalIntronsPercent_mRNA >= original_intron_support) &
                 (coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (coding_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
@@ -336,7 +336,7 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     coding_df = coding_df[filt]
 
     # huge ugly filtering expression for non coding transcripts
-    if in_species_rna_support_only is True:
+    if in_species_rna_support_only == True:
         filt = ((non_coding_df.TransMapOriginalIntronsPercent >= original_intron_support) &
                 (non_coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (non_coding_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
@@ -420,7 +420,7 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
             d['pacbio_isoform_supported'] = True
             metrics['IsoSeq Transcript Validation'][True] += 1
             pb_resolved_consensus.append([tx_id, d])
-        elif require_pacbio_support is False:
+        elif require_pacbio_support == False:
             d['pacbio_isoform_supported'] = False
             metrics['IsoSeq Transcript Validation'][False] += 1
             pb_resolved_consensus.append([tx_id, d])
@@ -453,7 +453,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
     # incorporate any extra tags
     for key, val in tools.misc.parse_gff_attr_line(best_series.ExtraTags).items():
         d[key] = val
-    if hints_db_has_rnaseq is True:
+    if hints_db_has_rnaseq == True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
     if best_series.Paralogy is not None:
@@ -514,7 +514,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         """
         if s.AssignedGeneId is not None:
             return is_novel_supported(s)
-        if denovo_allow_bad_annot_or_tm is False and s.ResolutionMethod == 'badAnnotOrTm':
+        if denovo_allow_bad_annot_or_tm == False and s.ResolutionMethod == 'badAnnotOrTm':
             return None
         elif s.ResolutionMethod == 'ambiguousOrFusion' and s.IntronRnaSupportPercent != 100:
             return None
@@ -546,7 +546,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         elif in_species_rna_support_only and s.ExonRnaSupportPercent <= denovo_exon_support or \
                         s.IntronRnaSupportPercent <= denovo_splice_support:
             return None
-        elif in_species_rna_support_only is False and s.AllSpeciesExonRnaSupportPercent <= denovo_exon_support or \
+        elif in_species_rna_support_only == False and s.AllSpeciesExonRnaSupportPercent <= denovo_exon_support or \
                         s.AllSpeciesIntronRnaSupportPercent <= denovo_splice_support:
             return None
         # look for splices that are not supported by the reference annotation
@@ -555,7 +555,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         intron_vector = s.IntronRnaSupport if in_species_rna_support_only else s.AllSpeciesIntronRnaSupport
         for intron, rna in zip(*[denovo_tx_obj.intron_intervals, intron_vector]):
             if intron not in existing_splices:
-                if denovo_allow_unsupported is True or rna > 0:
+                if denovo_allow_unsupported == True or rna > 0:
                     new_supported_splices.add(intron)
         if len(new_supported_splices) == 0:
             return None
@@ -580,7 +580,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                                                                    five_p, denovo_novel_end_distance)
         three_p_matches = tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
                                                                                     three_p, denovo_novel_end_distance)
-        if denovo_allow_novel_ends is False:
+        if denovo_allow_novel_ends == False:
             tx_class = s.TranscriptClass
         else:
             tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
@@ -635,10 +635,10 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
     # filter out novel if requested by user
-    if denovo_ignore_novel_genes is True:
+    if denovo_ignore_novel_genes == True:
         filtered_denovo_df = filtered_denovo_df[(filtered_denovo_df.TranscriptClass == 'possible_paralog') |
                                                 (filtered_denovo_df.TranscriptClass == 'putative_novel_isoform')]
-    elif denovo_only_novel_genes is True:
+    elif denovo_only_novel_genes == True:
         filtered_denovo_df = filtered_denovo_df[~((filtered_denovo_df.TranscriptClass == 'possible_paralog') |
                                                 (filtered_denovo_df.TranscriptClass == 'putative_novel_isoform'))]
 
@@ -903,7 +903,10 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
     # its possible alternative_source_transcripts did not end up in the final result, so add it
     if 'alternative_source_transcripts' not in gp_info_df.columns:
         gp_info_df['alternative_source_transcripts'] = ['N/A'] * len(gp_info_df)
-    with luigi.LocalTarget(consensus_gp_info).open('w') as outf:
+    # TODO: Luigi LocalTarget leads to a pandas TypeError with pandas>=1.2.0
+    # write() argument must be str, not bytes
+    # with luigi.LocalTarget(consensus_gp_info).open('w') as outf:
+    with open(consensus_gp_info, 'w') as outf:
         gp_info_df.to_csv(outf, sep='\t', na_rep='N/A')
     return consensus_gene_dict
 
@@ -1030,12 +1033,12 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
         """generate start/stop codon GFF3 records, handling frame appropriately"""
-        if attrs.get('valid_start') is True:
+        if attrs.get('valid_start') == True:
             score, attrs_field = convert_attrs(attrs, 'start_codon:{}'.format(tx_id))
             for interval in tx_obj.get_start_intervals():
                 yield [chrom, 'CAT', 'start_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
                        interval.data, attrs_field]
-        if attrs.get('valid_stop') is True:
+        if attrs.get('valid_stop') == True:
             score, attrs_field = convert_attrs(attrs, 'stop_codon:{}'.format(tx_id))
             for interval in tx_obj.get_stop_intervals():
                 yield [chrom, 'CAT', 'stop_codon', interval.start + 1, interval.stop, score, tx_obj.strand,

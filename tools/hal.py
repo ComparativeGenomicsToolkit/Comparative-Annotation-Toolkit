@@ -31,7 +31,7 @@ def build_genome_order(hal, ref_genome, genome_subset=None, include_ancestors=Fa
     t = get_tree(hal)
     if len(t) == 1:  # this is a hacked HAL, we cannot determine distances
         return [t.name]
-    if include_ancestors is True:
+    if include_ancestors == True:
         distances = [[t.get_distance(ref_genome, x), x.name] for x in t.get_descendants() if x.name != ref_genome]
     else:
         distances = [[t.get_distance(ref_genome, x), x.name] for x in t.get_leaves() if x.name != ref_genome]
@@ -52,7 +52,7 @@ def extract_genomes(hal, include_ancestors=False, target_genomes=None):
     :return: tuple of genomes.
     """
     t = get_tree(hal)
-    if include_ancestors is True:
+    if include_ancestors == True:
         if target_genomes is None:
             return tuple(x.name for x in t.get_descendants())
         else:

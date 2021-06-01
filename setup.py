@@ -10,7 +10,7 @@ setup(
         'toil==5.0',
         'luigi>=2.5',
         'seaborn>=0.7',
-        'pandas==1.1.0',
+        'pandas>=1.1.0',
         'frozendict',
         'configobj>=5.0',
         'sqlalchemy>=1.0',

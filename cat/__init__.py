@@ -342,7 +342,7 @@ class PipelineTask(luigi.Task):
                 if not os.path.exists(annot):
                     raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
 
-        if all(g in args.hal_genomes for g in args.target_genomes) is False:
+        if all(g in args.hal_genomes for g in args.target_genomes) == False:
             bad_genomes = set(args.hal_genomes) - set(args.target_genomes)
             err_msg = 'Genomes {} present in configuration and not present in HAL.'.format(','.join(bad_genomes))
             raise UserException(err_msg)
@@ -359,13 +359,13 @@ class PipelineTask(luigi.Task):
     def get_modes(self, args):
         """returns a tuple of the execution modes being used here"""
         modes = ['transMap']
-        if args.augustus_cgp is True:
+        if args.augustus_cgp == True:
             modes.append('augCGP')
-        if args.augustus is True:
+        if args.augustus == True:
             modes.append('augTM')
             if len(set(args.rnaseq_genomes) & set(args.target_genomes)) > 0:
                 modes.append('augTMR')
-        if args.augustus_pb is True:
+        if args.augustus_pb == True:
             modes.append('augPB')
         if len(args.annotation_genomes) > 1:
             modes.append('exRef')
@@ -505,7 +505,7 @@ class ToilTask(PipelineTask):
                         job_store = i
                         toil_args.restart = True
                         break
-            if toil_args.restart is not True:
+            if toil_args.restart != True:
                 job_store = self.provisioner + ':' + self.zone + ':' + ''.join(
                     random.choice(string.ascii_lowercase) for _ in range(7))
                 try:
@@ -533,7 +533,7 @@ class ToilTask(PipelineTask):
             # container filesystems are transient overlays that don't
             # support hardlinking.
             toil_args.disableCaching = True
-        if toil_args.batchSystem == 'parasol' and toil_args.disableCaching is False:
+        if toil_args.batchSystem == 'parasol' and toil_args.disableCaching == False:
             raise RuntimeError('Running parasol without disabled caching is a very bad idea.')
         if toil_args.batchSystem == 'parasol' and toil_args.workDir is None:
             raise RuntimeError('Running parasol without setting a shared work directory will not work. Please specify '
@@ -589,7 +589,7 @@ class RebuildableTask(PipelineTask):
         """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
         super(PipelineTask, self).__init__(*args, **kwargs)
         # To force execution, we just remove all outputs before `complete()` is called
-        if self.rebuild_consensus is True:
+        if self.rebuild_consensus == True:
             outputs = luigi.task.flatten(self.output())
             for out in outputs:
                 if out.exists():
@@ -658,12 +658,12 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(Chaining)
         yield self.clone(TransMap)
         yield self.clone(EvaluateTransMap)
-        if self.augustus is True:
+        if self.augustus == True:
             yield self.clone(Augustus)
-        if self.augustus_cgp is True:
+        if self.augustus_cgp == True:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
-        if self.augustus_pb is True:
+        if self.augustus_pb == True:
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
@@ -672,7 +672,7 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
         yield self.clone(Plots)
-        if self.assembly_hub is True:
+        if self.assembly_hub == True:
             yield self.clone(AssemblyHub)
         yield self.clone(ReportStats)
 
@@ -1959,11 +1959,11 @@ class AlignTranscripts(PipelineWrapperTask):
         args.transcript_modes = {'transMap': {'gp': TransMap.get_args(pipeline_args, genome).filtered_tm_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
-        if pipeline_args.augustus is True:
+        if pipeline_args.augustus == True:
             args.transcript_modes['augTM'] = {'gp':  Augustus.get_args(pipeline_args, genome).augustus_tm_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.augTM.CDS.psl')}
-        if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
+        if pipeline_args.augustus == True and genome in pipeline_args.rnaseq_genomes:
             args.transcript_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
                                                'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
                                                'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
@@ -2097,16 +2097,16 @@ class Consensus(PipelineWrapperTask):
         gp_list = [TransMap.get_args(pipeline_args, genome).filtered_tm_gp]
         args.tx_modes = ['transMap']
         args.denovo_tx_modes = []
-        if pipeline_args.augustus is True:
+        if pipeline_args.augustus == True:
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tm_gp)
             args.tx_modes.append('augTM')
-        if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
+        if pipeline_args.augustus == True and genome in pipeline_args.rnaseq_genomes:
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tmr_gp)
             args.tx_modes.append('augTMR')
-        if pipeline_args.augustus_cgp is True:
+        if pipeline_args.augustus_cgp == True:
             gp_list.append(AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome])
             args.denovo_tx_modes.append('augCGP')
-        if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
+        if pipeline_args.augustus_pb == True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
             args.denovo_tx_modes.append('augPB')
         if genome in pipeline_args.external_ref_genomes:
@@ -2230,7 +2230,7 @@ class Plots(RebuildableTask):
         args.indel = luigi.LocalTarget(os.path.join(base_dir, 'coding_indels.pdf'))
         args.missing = luigi.LocalTarget(os.path.join(base_dir, 'missing_genes_transcripts.pdf'))
         # plots that depend on execution mode
-        if pipeline_args.augustus is True:
+        if pipeline_args.augustus == True:
             args.improvement = luigi.LocalTarget(os.path.join(base_dir, 'augustus_improvement.pdf'))
         if 'augCGP' in pipeline_args.modes or 'augPB' in pipeline_args.modes:
             args.denovo = luigi.LocalTarget(os.path.join(base_dir, 'denovo.pdf'))
@@ -2279,12 +2279,12 @@ class ReportStats(PipelineTask):
         yield self.clone(Chaining)
         yield self.clone(TransMap)
         yield self.clone(EvaluateTransMap)
-        if self.augustus is True:
+        if self.augustus == True:
             yield self.clone(Augustus)
-        if self.augustus_cgp is True:
+        if self.augustus_cgp == True:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
-        if self.augustus_pb is True:
+        if self.augustus_pb == True:
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
@@ -2293,7 +2293,7 @@ class ReportStats(PipelineTask):
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
         yield self.clone(Plots)
-        if self.assembly_hub is True:
+        if self.assembly_hub == True:
             yield self.clone(AssemblyHub)
 
     def output(self):
@@ -2440,10 +2440,10 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             return
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
-        if pipeline_args.augustus_cgp is True and self.genome in pipeline_args.target_genomes:
+        if pipeline_args.augustus_cgp == True and self.genome in pipeline_args.target_genomes:
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_cgp.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_cgp.txt'), mode='augCGP')
-        if pipeline_args.augustus_pb is True and self.genome in pipeline_args.isoseq_genomes:
+        if pipeline_args.augustus_pb == True and self.genome in pipeline_args.isoseq_genomes:
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_pb.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
@@ -2465,7 +2465,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'consensus.txt'))
 
             tx_modes = ['transMap']
-            if pipeline_args.augustus is True:
+            if pipeline_args.augustus == True:
                 tx_modes.append('augTM')
                 if self.genome in pipeline_args.rnaseq_genomes:
                     tx_modes.append('augTMR')
@@ -2482,7 +2482,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              annotation_genome=pipeline_args.ref_genome,
                              mode='tm')
 
-            if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
+            if pipeline_args.augustus == True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
                                  trackdb_path=os.path.join(out_dir, 'augustus.txt'))
 

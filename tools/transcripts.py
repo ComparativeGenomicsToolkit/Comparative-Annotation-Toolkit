@@ -375,7 +375,7 @@ class GenePredTranscript(Transcript):
     def __init__(self, gene_pred_tokens, stranded=True):
         name = gene_pred_tokens[0]
         chrom = gene_pred_tokens[1]
-        strand = gene_pred_tokens[2] if stranded is True else '.'
+        strand = gene_pred_tokens[2] if stranded == True else '.'
         start = gene_pred_tokens[3]
         stop = gene_pred_tokens[4]
         thick_start = gene_pred_tokens[5]
@@ -496,7 +496,7 @@ class GenePredTranscript(Transcript):
         Using the frame information, we can ignore indels in the CDS that cause frameshifts, producing proper codons.
         """
         codon_regions = self._get_codon_intervals()
-        if ignore_frameshift is True:
+        if ignore_frameshift == True:
             # sort, remove gap regions
             codon_regions = sorted((i for i in codon_regions if i.data is None), key=lambda x: x.start)
         else:
@@ -605,7 +605,7 @@ class GenePredTranscript(Transcript):
                 coding_exon = exon.intersection(self.coding_interval)
                 if coding_exon is None:
                     exon_frames.append(-1)
-                elif cds_flag is False:
+                elif cds_flag == False:
                     cds_flag = True
                     exon_frames.append(starting_frame)
                     cds_counter += len(coding_exon) + starting_frame

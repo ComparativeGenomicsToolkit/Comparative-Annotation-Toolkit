@@ -154,7 +154,7 @@ def psl_iterator(psl_file, make_unique=False):
     with open(psl_file) as inf:
         for tokens in iter_lines(inf):
             psl = PslRow(tokens)
-            if make_unique is True:
+            if make_unique == True:
                 numbered_aln_id = '-'.join([psl.q_name, str(counts[psl.q_name])])
                 counts[psl.q_name] += 1
                 psl.q_name = numbered_aln_id
