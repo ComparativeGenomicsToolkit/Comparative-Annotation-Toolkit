@@ -667,7 +667,8 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
