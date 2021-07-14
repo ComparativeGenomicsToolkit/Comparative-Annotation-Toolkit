@@ -606,7 +606,8 @@ class TrackTask(RebuildableTask):
         yield self.clone(Consensus)
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
@@ -2113,6 +2114,10 @@ class Consensus(PipelineWrapperTask):
         if genome in pipeline_args.external_ref_genomes:
             gp_list.append(ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
             args.denovo_tx_modes.append('exRef')
+        if pipeline_args.augustus == True or pipeline_args.augustus_cgp == True or pipeline_args.augustus_pb == True:
+            args.run_hgm = True 
+        else:
+            args.run_hgm = False
         args.gp_list = gp_list
         args.genome = genome
         args.transcript_modes = list(AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys())
@@ -2178,7 +2183,8 @@ class ConsensusDriverTask(RebuildableTask):
         pipeline_args = self.get_pipeline_args()
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
@@ -2259,7 +2265,8 @@ class Plots(RebuildableTask):
         yield self.clone(Consensus)
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
@@ -2289,7 +2296,8 @@ class ReportStats(PipelineTask):
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
@@ -2363,7 +2371,8 @@ class CreateDirectoryStructure(RebuildableTask):
         yield self.clone(Consensus)
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)

@@ -61,8 +61,45 @@ def generate_consensus(args):
     # load transMap evaluation data
     tm_eval_df = load_transmap_evals(args.db_path)
     # load the homGeneMapping data for transMap/augTM/augTMR
+    pd.set_option('max_columns', None)
     tx_modes = [x for x in args.tx_modes if x in ['transMap', 'augTM', 'augTMR']]
-    hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
+    if args.run_hgm == True:
+        hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
+    else:
+        # Get tm df but don't drop AlignmentId yet
+        tm_eval = tools.sqlInterface.load_alignment_evaluation(args.db_path)
+        tm_filter_eval = tools.sqlInterface.load_filter_evaluation(args.db_path)
+        tm_eval_df = pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
+        hgm_df = tm_eval_df.filter(['GeneId', 'TranscriptId', 'AlignmentId'], axis=1)
+        hgm_df['AllSpeciesIntronRnaSupport'] = ''
+        hgm_df['AllSpeciesExonRnaSupport'] = ''
+        hgm_df['IntronRnaSupport'] = ''
+        hgm_df['ExonRnaSupport'] = ''
+        hgm_df['IntronAnnotSupport'] = ''
+        hgm_df['CdsAnnotSupport'] = ''# ??
+        hgm_df['ExonAnnotSupport'] = ''
+        hgm_df.set_index('AlignmentId')
+        for tx in tx_dict:
+            num_exon_frames = len(tx_dict[tx].exon_frames)
+            num_intron_frames = num_exon_frames - 1
+            aln_id = tx_dict[tx].name
+            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'AllSpeciesIntronRnaSupport'] =  pd.Series([[0] * num_intron_frames] * len(hgm_df))
+            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'AllSpeciesExonRnaSupport'] = pd.Series([[0] * num_exon_frames] * len(hgm_df))
+            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'IntronRnaSupport'] =  pd.Series([[0] * num_intron_frames] * len(hgm_df))
+            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'ExonRnaSupport'] =  pd.Series([[0] * num_exon_frames] * len(hgm_df))
+            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'IntronAnnotSupport'] =  pd.Series([[0] * num_intron_frames] * len(hgm_df))
+            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'CdsAnnotSupport'] =  pd.Series([[0] * num_exon_frames] * len(hgm_df))
+            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'ExonAnnotSupport'] =  pd.Series([[0] * num_exon_frames] * len(hgm_df))
+        hgm_df['IntronAnnotSupportPercent'] = 0.0
+        hgm_df['ExonAnnotSupportPercent'] = 0.0
+        hgm_df['CdsAnnotSupportPercent'] = 0.0
+        hgm_df['ExonRnaSupportPercent'] = 0.0
+        hgm_df['IntronRnaSupportPercent'] = 0.0
+        hgm_df['AllSpeciesExonRnaSupportPercent'] = 0.0
+        hgm_df['AllSpeciesIntronRnaSupportPercent'] = 0.0
+        hgm_df.reset_index()
+        tm_eval_df = tm_eval_df.drop('AlignmentId', axis=1)
+
     # load the alignment metrics data
     mrna_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
     cds_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'CDS') for tx_mode in tx_modes])
