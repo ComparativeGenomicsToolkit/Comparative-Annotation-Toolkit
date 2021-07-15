@@ -71,25 +71,22 @@ def generate_consensus(args):
         tm_filter_eval = tools.sqlInterface.load_filter_evaluation(args.db_path)
         tm_eval_df = pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
         hgm_df = tm_eval_df.filter(['GeneId', 'TranscriptId', 'AlignmentId'], axis=1)
-        hgm_df['AllSpeciesIntronRnaSupport'] = ''
-        hgm_df['AllSpeciesExonRnaSupport'] = ''
-        hgm_df['IntronRnaSupport'] = ''
-        hgm_df['ExonRnaSupport'] = ''
-        hgm_df['IntronAnnotSupport'] = ''
-        hgm_df['CdsAnnotSupport'] = ''# ??
-        hgm_df['ExonAnnotSupport'] = ''
-        hgm_df.set_index('AlignmentId')
-        for tx in tx_dict:
-            num_exon_frames = len(tx_dict[tx].exon_frames)
-            num_intron_frames = num_exon_frames - 1
-            aln_id = tx_dict[tx].name
-            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'AllSpeciesIntronRnaSupport'] =  pd.Series([[0] * num_intron_frames] * len(hgm_df))
-            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'AllSpeciesExonRnaSupport'] = pd.Series([[0] * num_exon_frames] * len(hgm_df))
-            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'IntronRnaSupport'] =  pd.Series([[0] * num_intron_frames] * len(hgm_df))
-            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'ExonRnaSupport'] =  pd.Series([[0] * num_exon_frames] * len(hgm_df))
-            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'IntronAnnotSupport'] =  pd.Series([[0] * num_intron_frames] * len(hgm_df))
-            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'CdsAnnotSupport'] =  pd.Series([[0] * num_exon_frames] * len(hgm_df))
-            hgm_df.loc[hgm_df.AlignmentId == aln_id, 'ExonAnnotSupport'] =  pd.Series([[0] * num_exon_frames] * len(hgm_df))
+
+        def dummy_hgm_exons(aln_id):
+            num_exon_frames = len(tx_dict[aln_id].exon_frames)
+            return [0] * num_exon_frames
+
+        def dummy_hgm_introns(aln_id):
+            num_intron_frames = len(tx_dict[aln_id].exon_frames) - 1
+            return [0] * num_intron_frames
+
+        hgm_df['AllSpeciesIntronRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_introns(x['AlignmentId']), axis=1)
+        hgm_df['AllSpeciesExonRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
+        hgm_df['IntronRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_introns(x['AlignmentId']), axis=1)
+        hgm_df['ExonRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
+        hgm_df['IntronAnnotSupport'] = hgm_df.apply(lambda x: dummy_hgm_introns(x['AlignmentId']), axis=1)
+        hgm_df['CdsAnnotSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
+        hgm_df['ExonAnnotSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
         hgm_df['IntronAnnotSupportPercent'] = 0.0
         hgm_df['ExonAnnotSupportPercent'] = 0.0
         hgm_df['CdsAnnotSupportPercent'] = 0.0
@@ -97,7 +94,6 @@ def generate_consensus(args):
         hgm_df['IntronRnaSupportPercent'] = 0.0
         hgm_df['AllSpeciesExonRnaSupportPercent'] = 0.0
         hgm_df['AllSpeciesIntronRnaSupportPercent'] = 0.0
-        hgm_df.reset_index()
         tm_eval_df = tm_eval_df.drop('AlignmentId', axis=1)
 
     # load the alignment metrics data
