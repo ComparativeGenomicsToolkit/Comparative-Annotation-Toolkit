@@ -1153,6 +1153,14 @@ class Chaining(ToilTask):
         tgt_two_bits = {genome: tgt_files[genome].two_bit for genome in pipeline_args.target_genomes}
         chain_files = {genome: os.path.join(base_dir, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))
                        for genome in pipeline_args.target_genomes}
+        bigchain_files = {genome: os.path.join(base_dir, '{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, genome))
+                       for genome in pipeline_args.target_genomes}
+        biglink_files = {genome: os.path.join(base_dir, '{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, genome))
+                       for genome in pipeline_args.target_genomes}
+        # chain_tab_files = {genome: os.path.join(base_dir, 'chain.tab')
+        #                for genome in pipeline_args.target_genomes}
+        # link_tab_files = {genome: os.path.join(base_dir, 'link.tab')
+        #                for genome in pipeline_args.target_genomes}
         args = tools.misc.HashableNamespace()
         args.hal = pipeline_args.hal
         args.ref_genome = pipeline_args.ref_genome
@@ -1160,6 +1168,22 @@ class Chaining(ToilTask):
         args.query_sizes = ref_files.sizes
         args.target_two_bits = tgt_two_bits
         args.chain_files = chain_files
+        args.bigchain_files = bigchain_files
+        args.biglink_files = biglink_files
+        # args.chain_tab_files = chain_tab_files
+        # args.link_tab_files = link_tab_files
+        return args
+
+    @staticmethod
+    def get_genome_args(pipeline_args, genome):
+        base_dir = os.path.join(pipeline_args.work_dir, 'chaining')
+        chain_file = os.path.join(base_dir, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))
+        bigchain_file = os.path.join(base_dir, '{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, genome))
+        biglink_file = os.path.join(base_dir, '{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, genome))
+        args = tools.misc.HashableNamespace()
+        args.chain_file = chain_file
+        args.bigchain_file = bigchain_file
+        args.biglink_file = biglink_file
         return args
 
     def output(self):
@@ -1171,7 +1195,8 @@ class Chaining(ToilTask):
     def validate(self):
         if not tools.misc.is_exec('halLiftover'):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
-        for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort']:
+        # for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort']:
+        for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort', 'hgLoadChain', 'bedToBigBed']:
             if not tools.misc.is_exec(tool):
                     raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
@@ -2376,6 +2401,7 @@ class CreateDirectoryStructure(RebuildableTask):
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
+        yield self.clone(Chaining)
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -2424,7 +2450,8 @@ class CreateTracks(PipelineWrapperTask):
     Wrapper task for track creation.
     """
     def validate(self):
-        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig']:#, 'bamCoverage']:
+        # for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig']:#, 'bamCoverage']:
+        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig', 'hgLoadChain', 'bedToBigBed']:
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Tool {} not in global path.'.format(tool))
 
@@ -2450,6 +2477,11 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             return
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
+
+        # Create chain tracks 
+        # if self.genome in pipeline_args.target_genomes:
+        # yield self.clone(ChainTrack, track_path=os.path.join(out_dir, '{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, self.genome)), trackdb_path=os.path.join(out_dir, ))
+
         if pipeline_args.augustus_cgp == True and self.genome in pipeline_args.target_genomes:
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_cgp.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_cgp.txt'), mode='augCGP')
@@ -2528,6 +2560,56 @@ class CreateTrackDbs(RebuildableTask):
         return luigi.LocalTarget(directory_args.trackdbs[self.genome])
 
     def run(self):
+        def chain_hub_tracks(pipeline_args, genome):
+            chrom_sizes = GenomeFiles.get_args(pipeline_args, genome).sizes
+            chain_args = Chaining.get_genome_args(pipeline_args, genome)
+
+            bigchain_as_file = tools.fileOps.get_tmp_toil_file()
+            with open(bigchain_as_file, 'w') as outf:
+                outf.write(bigchain)
+
+            biglink_as_file = tools.fileOps.get_tmp_toil_file()
+            with open(biglink_as_file, 'w') as outf:
+                outf.write(biglink)
+
+            chain = chain_args.chain_file
+            bigChain_file = tools.fileOps.get_tmp_toil_file()
+            bigChain_bb = chain_args.bigchain_file
+            bigLink_file = tools.fileOps.get_tmp_toil_file()
+            bigLink_bb = chain_args.biglink_file
+
+            # TODO: how to change names of chain.tab and link.tab?
+            cwd = os.getcwd()
+            chain_tab_file = '{}.chain.tab'.format(self.genome)
+            link_tab_file = '{}.link.tab'.format(self.genome)
+            cmd = [['hgLoadChain', '-noBin', '-test', self.genome, 'bigChain', chain]
+                # ['cp', 'chain.tab', chain_tab_file],
+                # ['cp', 'link.tab', link_tab_file]
+            ]
+            tools.procOps.run_proc(cmd)
+            shutil.copy('chain.tab', chain_tab_file)
+            shutil.copy('link.tab', link_tab_file)
+
+            # tools.fileOps.ensure_file_dir(sizes_hub_path)
+
+            # Create bigChain file
+            tmp_file = tools.fileOps.get_tmp_toil_file()
+            cmd = ['sed', r's/.000000//', chain_tab_file]
+            tools.procOps.run_proc(cmd, stdout=tmp_file)
+            cmd = ['awk', r'BEGIN {OFS="\t"}{print $2, $4, $5, $11, 1000, $8, $3, $6, $7, $9, $10, $1}', tmp_file]
+            tools.procOps.run_proc(cmd, stdout=bigChain_file)
+            cmd = ['bedToBigBed', '-type=bed6+6', '-as={}'.format(bigchain_as_file), '-tab', bigChain_file, chrom_sizes, bigChain_bb]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+
+            # Create bigLink file
+            tmp_file = tools.fileOps.get_tmp_toil_file()
+            cmd = ['awk', r'BEGIN {OFS="\t"}{print $1, $2, $3, $5, $4}', link_tab_file]
+            tools.procOps.run_proc(cmd, stdout=tmp_file)
+            cmd = ['sort', '-k1,1', '-k2,2n', tmp_file]
+            tools.procOps.run_proc(cmd, stdout=bigLink_file)
+            cmd = ['bedToBigBed', '-type=bed4+1', '-as={}'.format(biglink_as_file), '-tab', bigLink_file, chrom_sizes, bigLink_bb]
+            tools.procOps.run_proc(cmd, stderr='/dev/null')
+
         pipeline_args = self.get_pipeline_args()
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
@@ -2550,6 +2632,25 @@ class CreateTrackDbs(RebuildableTask):
                     visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
                 hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))
                 outf.write(snake_template.format(genome=genome, hal_path=hal_path, visibility=visibility))
+
+            for genome in directory_args.genomes:
+                if genome != pipeline_args.ref_genome: # don't make a chain track from the reference to itself
+                    chain_hub_tracks(pipeline_args, genome)
+
+            if self.genome == pipeline_args.ref_genome:
+                outf.write(chain_composite.format(org_str=org_str))
+                for genome in directory_args.genomes:
+                    if genome != pipeline_args.ref_genome:
+                        visibility = 'full'
+                        bigChain_path = '../../chaining/{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, genome)
+                        bigLink_path = '../../chaining/{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, genome)  
+                        outf.write(chain_template.format(genome=genome, ref_genome=pipeline_args.ref_genome, bigChain_path=bigChain_path,bigLink_path=bigLink_path, visibility=visibility))
+            else:
+                outf.write(chain_composite.format(org_str='{}={}'.format(self.genome, self.genome)))
+                visibility = 'full'
+                bigChain_path = '../../chaining/{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, self.genome)
+                bigLink_path = '../../chaining/{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, self.genome)  
+                outf.write(chain_template.format(genome=self.genome, ref_genome=pipeline_args.ref_genome, bigChain_path=bigChain_path,bigLink_path=bigLink_path, visibility=visibility))
 
 
 class DenovoTrack(TrackTask):
@@ -2687,7 +2788,6 @@ class BgpTrack(TrackTask):
                                            label=self.label, visibility=self.visibility,
                                            path=os.path.basename(track.path)))
 
-
 class ConsensusTrack(TrackTask):
     """Constructs a modified bigGenePred for consensus gene sets"""
     def run(self):
@@ -2797,6 +2897,42 @@ class EvaluationTrack(TrackTask):
 
         with trackdb.open('w') as outf:
             outf.write(error_template.format(genome=self.genome, path=os.path.basename(track.path)))
+
+
+# class ChainTrack(TrackTask):
+#     """Constructs the chain's bigChain and bigLink"""
+#     def run(self):
+#         pipeline_args = self.get_pipeline_args()
+#         track, trackdb = self.output()
+#         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+#         chain_args = Chaining.get_args(pipeline_args, self.genome)
+
+#         bigchain_as_file = tools.fileOps.get_tmp_toil_file()
+#         with open(bigchain_as_file, 'w') as outf:
+#             outf.write(bigchain)
+
+#         biglink_as_file = tools.fileOps.get_tmp_toil_file()
+#         with open(biglink_as_file, 'w') as outf:
+#             outf.write(biglink)
+
+#         # chain_file_path = '../../chaining/{}-{}.chain'.format(pipeline_args.ref_genome, self.genome)
+#         chain_file_path = chain_args.chain_file
+#         chain = job.fileStore.readGlobalFile(chain_file)
+#         bigChain = tools.fileOps.get_tmp_toil_file()
+#         # bigChain_bb = '{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, self.genome)
+#         bigChain_bb = chain_args.bigchain_file
+#         bigLink = tools.fileOps.get_tmp_toil_file()
+#         # bigLink_bb = '{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, self.genome)
+#         bigLink_bb = chain_args.biglink_file
+
+#         # TODO: how to change names of chain.tab and link.tab?
+#         cmd = [['hgLoadChain', '-noBin', '-test', self.genome, 'bigChain', chain],
+#             ['sed', "'s/\\.1000000//'", 'chain.tab', '|awk', "'BEGIN {OFS='\t'} {print $2, $4, $5, $11, 1000, $8, $3, $6, $7, $9, $10, $1}'>", bigChain],
+#             ['bedToBigBed', '-type=bed6+6', '-as={}'.format(bigchain_as_file), '-tab', bigChain, chrom_sizes, bigChain_bb],
+#             ['awk', "'BEGIN {OFS='\t'} {print $1, $2, $3, $5, $4}'", 'link.tab', '|sort', '-k1,1', '-k2,2n>', bigLink],
+#             ['bedToBigBed', '-type=bed4+1', '-as={}'.format(biglink_as_file), '-tab', bigLink, chrom_sizes, bigLink_bb]
+#         ]
+#         tools.procOps.run_proc(cmd)
 
 
 class TransMapTrack(TrackTask):
@@ -3168,6 +3304,36 @@ bigpsl = '''table bigPsl
 
 '''
 
+# modified to turn chainScore into bigint to prevent integer overflow 
+bigchain = '''table bigChain
+"bigChain pairwise alignment"
+    (
+    string chrom;       "Reference sequence chromosome or scaffold"
+    uint   chromStart;  "Start position in chromosome"
+    uint   chromEnd;    "End position in chromosome"
+    string name;        "Name or ID of item, ideally both human readable and unique"
+    uint score;         "Score (0-1000)"
+    char[1] strand;     "+ or - for strand"
+    uint tSize;         "size of target sequence"
+    string qName;       "name of query sequence"
+    uint qSize;         "size of query sequence"
+    uint qStart;        "start of alignment on query sequence"
+    uint qEnd;          "end of alignment on query sequence"
+    bigint chainScore;    "score from chain"
+    )
+'''
+
+biglink = '''table bigLink
+"bigLink pairwise alignment"
+    (
+    string chrom;       "Reference sequence chromosome or scaffold"
+    uint   chromStart;  "Start position in chromosome"
+    uint   chromEnd;    "End position in chromosome"
+    string name;        "Name or ID of item, ideally both human readable and unique"
+    uint qStart;        "start of alignment on query sequence"
+    )
+'''
+
 
 ###
 # Templates for trackDb entries
@@ -3207,6 +3373,11 @@ defaultIsClosed 0
 name expression
 label Expression
 priority 3
+defaultIsClosed 0
+
+name chain
+label Chains
+priority 2
 defaultIsClosed 0
 
 '''
@@ -3392,5 +3563,44 @@ longLabel Consensus indels
 bigDataUrl {path}
 visibility hide
 priority 5
+
+'''
+
+chain_composite = '''track chainCentral
+compositeTrack on
+shortLabel Chains
+longLabel Chains
+description Chains
+group cat_tracks
+subGroup1 view Track_Type Chain=AllChains
+subGroup2 orgs Organisms {org_str}
+dragAndDrop subTracks
+dimensions dimensionX=view dimensionY=orgs
+noInherit on
+priority 0
+centerLabelsDense on
+visibility full
+type bigChain 3
+
+    track chains
+    shortLabel Chains
+    view AllChains
+    visibility full
+    subTrack chainCentral
+
+'''
+
+chain_template = '''        track chain{genome}
+        longLabel {ref_genome}-{genome} chain
+        shortLabel {ref_genome}-{genome} chain
+        otherSpecies {genome}
+        visibility {visibility}
+        parent chains off
+        priority 3
+        bigDataUrl {bigChain_path}
+        linkDataUrl {bigLink_path}
+        type bigChain 3
+        group chain
+        subGroups view=Chain orgs={genome}
 
 '''
