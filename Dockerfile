@@ -68,7 +68,7 @@ RUN apt-get install -y python3.7 python3-pip
 # Kent
 RUN for i in wigToBigWig faToTwoBit gff3ToGenePred genePredToBed genePredToFakePsl bamToPsl transMapPslToGenePred \
 pslPosTarget axtChain chainMergeSort pslMap pslRecalcMatch pslMapPostChain gtfToGenePred genePredToGtf bedtools \
-pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed; do \
+pslCheck pslCDnaFilter clusterGenes pslToBigPsl bedSort bedToBigBed hgLoadChain; do \
 wget -q http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/$i -O /bin/$i ; chmod +x /bin/$i ; done
 
 COPY --from=builder /hal/bin/* /bin/

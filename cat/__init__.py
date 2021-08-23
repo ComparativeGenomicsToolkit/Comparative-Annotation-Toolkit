@@ -72,7 +72,7 @@ class PipelineTask(luigi.Task):
     scheduler to know which parameters define a unique task ID. This would come into play if multiple instances of this
     pipeline are being run on the same scheduler at once.
     """
-    hal = luigi.Parameter()
+    hal = luigi.Parameter(default=None)
     ref_genome = luigi.Parameter()
     config = luigi.Parameter()
     out_dir = luigi.Parameter(default='./cat_output')
@@ -81,6 +81,11 @@ class PipelineTask(luigi.Task):
     annotate_ancestors = luigi.BoolParameter(default=False)
     binary_mode = luigi.ChoiceParameter(choices=["docker", "local", "singularity"], default='docker',
                                         significant=False)
+    # Parameters needed to run in chain-only mode
+    chain_mode = luigi.BoolParameter(default=False)
+    genome_fastas = luigi.TupleParameter(default=None)
+    genome_chains = luigi.TupleParameter(default=None)
+
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human', significant=False)
@@ -156,7 +161,11 @@ class PipelineTask(luigi.Task):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
         args = tools.misc.PipelineNamespace()
         args.set('binary_mode', self.binary_mode, False)
-        args.set('hal', os.path.abspath(self.hal), True)
+        if not self.chain_mode:
+            args.set('hal', os.path.abspath(self.hal), False)
+        else:
+            args.set('hal', None, False)
+        args.set('chain_mode', self.chain_mode, False)
         args.set('ref_genome', self.ref_genome, True)
         args.set('out_dir', os.path.abspath(self.out_dir), True)
         args.set('work_dir', os.path.abspath(self.work_dir), True)
@@ -220,11 +229,27 @@ class PipelineTask(luigi.Task):
         if not tools.misc.is_exec('halStats'):
             raise ToolMissingException('halStats from the HAL tools package not in global path')
 
-        args.set('hal_genomes', tools.hal.extract_genomes(args.hal, self.annotate_ancestors), True)
-        target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
-        target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
-        args.set('target_genomes', target_genomes, True)
         args.set('cfg', self.parse_cfg(), True)
+        if not self.chain_mode:
+            args.set('hal_genomes', tools.hal.extract_genomes(args.hal, self.annotate_ancestors), True)
+            target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
+            target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
+            args.set('target_genomes', target_genomes, True)
+        else:
+            # TODO: change name: in chain mode, hal_genomes isn't all genomes in HAL, but all genomes in the chains
+            target_genomes = set(list(args.cfg['CHAIN'].keys()))
+            hal_genomes = set(list(args.cfg['CHAIN'].keys()))
+            hal_genomes.add(self.ref_genome)
+            hal_genomes = frozenset(hal_genomes)
+            args.set('hal_genomes', hal_genomes, True)
+            target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
+            args.set('target_genomes', target_genomes, True)
+            genome_fastas = args.cfg['FASTA']
+            args.set('genome_fastas', genome_fastas, True)
+            genome_chains = args.cfg['CHAIN']
+            args.set('genome_chains', genome_chains, True)
+
+            
         args.set('dbs', PipelineTask.get_databases(args), True)
         args.set('annotation', args.cfg['ANNOTATION'][args.ref_genome], True)
         args.set('hints_db', os.path.join(args.work_dir, 'hints_database', 'hints.db'), True)
@@ -260,6 +285,9 @@ class PipelineTask(luigi.Task):
         [PROTEIN_FASTA]
         genome1 = /path/to/fasta/or/fofn
 
+        [CHAIN]
+        genome1 = /path/to/chain
+
         The annotation field must be populated for the reference genome.
 
         The protein fasta field should be populated for every genome you wish to perform protein alignment to.
@@ -267,7 +295,10 @@ class PipelineTask(luigi.Task):
         BAM annotations can be put either under INTRONBAM or BAM. Any INTRONBAM will only have intron data loaded,
         and is suitable for lower quality RNA-seq.
 
+        CHAIN files should be specified if running CAT in chain-only mode (no HAL file)
+
         """
+
         if not os.path.exists(self.config):
             raise MissingFileException('Config file {} not found.'.format(self.config))
         # configspec validates the input config file
@@ -275,15 +306,17 @@ class PipelineTask(luigi.Task):
                       '[INTRONBAM]', '__many__ = list',
                       '[BAM]', '__many__ = list',
                       '[ISO_SEQ_BAM]', '__many__ = list',
-                      '[PROTEIN_FASTA]', '__many__ = list']
+                      '[PROTEIN_FASTA]', '__many__ = list',
+                      '[CHAIN]', '__many__ = list',
+                      '[FASTA]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
         for key in parser:
-            if key not in ['ANNOTATION', 'INTRONBAM', 'BAM', 'ISO_SEQ_BAM', 'PROTEIN_FASTA']:
+            if key not in ['ANNOTATION', 'INTRONBAM', 'BAM', 'ISO_SEQ_BAM', 'PROTEIN_FASTA', 'CHAIN', 'FASTA']:
                 raise InvalidInputException('Invalid field {} in config file'.format(key))
 
         # convert the config into a new dict, parsing the fofns
         cfg = collections.defaultdict(dict)
-        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA', 'CHAIN', 'FASTA']:
             if dtype not in parser:
                 cfg[dtype] = {}
             else:
@@ -321,6 +354,7 @@ class PipelineTask(luigi.Task):
 
     def validate_cfg(self, args):
         """Validate the input config file."""
+
         if len(args.cfg['BAM']) + len(args.cfg['INTRONBAM']) + \
                 len(args.cfg['ISO_SEQ_BAM']) + len(args.cfg['ANNOTATION']) == 0:
             logger.warning('No extrinsic data or annotations found in config. Will load genomes only.')
@@ -337,15 +371,17 @@ class PipelineTask(luigi.Task):
                     if not os.path.exists(bam + '.bai'):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
 
-        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA', 'CHAIN', 'FASTA']:
             for genome, annot in args.cfg[dtype].items():
                 if not os.path.exists(annot):
                     raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
 
-        if all(g in args.hal_genomes for g in args.target_genomes) == False:
-            bad_genomes = set(args.hal_genomes) - set(args.target_genomes)
-            err_msg = 'Genomes {} present in configuration and not present in HAL.'.format(','.join(bad_genomes))
-            raise UserException(err_msg)
+        if not args.chain_mode:
+            if all(g in args.hal_genomes for g in args.target_genomes) == False:
+                bad_genomes = set(args.hal_genomes) - set(args.target_genomes)
+                err_msg = 'Genomes {} present in configuration and not present in HAL.'.format(','.join(bad_genomes))
+                raise UserException(err_msg)
+        # TODO else check that all the chain files are present 
 
         if args.ref_genome not in args.cfg['ANNOTATION']:
             raise UserException('Reference genome {} did not have a provided annotation.'.format(self.ref_genome))
@@ -355,6 +391,15 @@ class PipelineTask(luigi.Task):
             raise InvalidInputException('AugustusCGP is being ran without any RNA-seq hints!')
         if args.augustus_pb and len(args.isoseq_genomes) == 0:
             raise InvalidInputException('AugustusPB is being ran without any IsoSeq hints!')
+
+        # can't run augustusCGP without a hal file
+        # TODO should be able to run the other two types still, but for now, prevent it 
+        if args.augustus_cgp and args.chain_mode:
+            raise InvalidInputException('AugustusCGP cannot be run in chain-only mode without a HAL file!')
+        if args.augustus_pb and args.chain_mode:
+            raise InvalidInputException('AugustusPB cannot be run in chain-only mode!')
+        if args.augustus and args.chain_mode:
+            raise InvalidInputException('AugustusTM cannot be run in chain-only mode!')
 
     def get_modes(self, args):
         """returns a tuple of the execution modes being used here"""
@@ -607,7 +652,8 @@ class TrackTask(RebuildableTask):
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
         if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
-            yield self.clone(Hgm)
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
@@ -627,7 +673,7 @@ class RunCat(PipelineWrapperTask):
     """
     def validate(self, pipeline_args):
         """General input validation"""
-        if not os.path.exists(pipeline_args.hal):
+        if not pipeline_args.chain_mode and not os.path.exists(pipeline_args.hal):
             raise InputMissingException('HAL file not found at {}.'.format(pipeline_args.hal))
         for d in [pipeline_args.out_dir, pipeline_args.work_dir]:
             if not os.path.exists(d):
@@ -640,12 +686,14 @@ class RunCat(PipelineWrapperTask):
         if not os.path.exists(pipeline_args.annotation):
             raise InputMissingException('Annotation file {} not found.'.format(pipeline_args.annotation))
         # TODO: validate augustus species, tm/tmr/cgp/param files.
-        if pipeline_args.ref_genome not in pipeline_args.hal_genomes:
-            raise InvalidInputException('Reference genome {} not present in HAL.'.format(pipeline_args.ref_genome))
-        missing_genomes = {g for g in pipeline_args.target_genomes if g not in pipeline_args.hal_genomes}
-        if len(missing_genomes) > 0:
-            missing_genomes = ','.join(missing_genomes)
-            raise InvalidInputException('Target genomes {} not present in HAL.'.format(missing_genomes))
+        if not pipeline_args.chain_mode:
+            if pipeline_args.ref_genome not in pipeline_args.hal_genomes:
+                raise InvalidInputException('Reference genome {} not present in HAL.'.format(pipeline_args.ref_genome))
+            missing_genomes = {g for g in pipeline_args.target_genomes if g not in pipeline_args.hal_genomes}
+            if len(missing_genomes) > 0:
+                missing_genomes = ','.join(missing_genomes)
+                raise InvalidInputException('Target genomes {} not present in HAL.'.format(missing_genomes))
+        # TODO validate that all CHAINS have corresponding fasta files 
         if pipeline_args.ref_genome in pipeline_args.target_genomes:
             raise InvalidInputException('A target genome cannot be the reference genome.')
 
@@ -669,7 +717,8 @@ class RunCat(PipelineWrapperTask):
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
         if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
-            yield self.clone(Hgm)
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
@@ -700,19 +749,23 @@ class GenomeFiles(PipelineWrapperTask):
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'genome_files')
+        tools.fileOps.ensure_dir(base_dir)
         args = tools.misc.HashableNamespace()
         args.genome = genome
         args.fasta = os.path.join(base_dir, genome + '.fa')
         args.two_bit = os.path.join(base_dir, genome + '.2bit')
         args.sizes = os.path.join(base_dir, genome + '.chrom.sizes')
         args.flat_fasta = os.path.join(base_dir, genome + '.fa.flat')
+        args.chain_mode = pipeline_args.chain_mode
         return args
 
     def validate(self):
         for haltool in ['hal2fasta', 'halStats']:
             if not tools.misc.is_exec(haltool):
-                    raise ToolMissingException('{} from the HAL tools package not in global path'.format(haltool))
+                    raise ToolMissingException('{} fromthe HAL tools package not in global path'.format(haltool))
         if not tools.misc.is_exec('faToTwoBit'):
+            raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
+        if not tools.misc.is_exec('faSize'):
             raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
         if not tools.misc.is_exec('pyfasta'):
             raise ToolMissingException('pyfasta wrapper not found in global path.')
@@ -739,9 +792,16 @@ class GenomeFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.fasta)
 
     def run(self):
-        logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
-        self.run_cmd(cmd)
+        pipeline_args = self.get_pipeline_args()
+        if pipeline_args.chain_mode:
+            fasta_path = pipeline_args.genome_fastas[self.genome]
+            logger.info("Copying fasta to ", self.fasta)
+            cmd = ['cat', fasta_path]
+            self.run_cmd(cmd)
+        else:
+            logger.info('Extracting fasta for {}.'.format(self.genome))
+            cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
+            self.run_cmd(cmd)
 
 
 @requires(GenomeFasta)
@@ -760,21 +820,26 @@ class GenomeTwoBit(AbstractAtomicFileTask):
         cmd = ['faToTwoBit', self.fasta, '/dev/stdout']
         self.run_cmd(cmd)
 
-
+@requires(GenomeFasta)
 class GenomeSizes(AbstractAtomicFileTask):
     """
     Produces a genome chromosome sizes file. Requires halStats.
     """
     genome = luigi.Parameter()
     sizes = luigi.Parameter()
+    fasta = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.sizes)
 
     def run(self):
         logger.info('Extracting chromosome sizes for {}.'.format(self.genome))
-        cmd = ['halStats', '--chromSizes', self.genome, os.path.abspath(self.hal)]
-        self.run_cmd(cmd)
+        if not self.chain_mode:
+            cmd = ['halStats', '--chromSizes', self.genome, os.path.abspath(self.hal)]
+            self.run_cmd(cmd)
+        else:
+            cmd = ['faSize', '-detailed', '-tab', self.fasta]
+            self.run_cmd(cmd)
 
 
 @requires(GenomeTwoBit)
@@ -972,6 +1037,7 @@ class TranscriptBed(AbstractAtomicFileTask):
     def run(self):
         logger.info('Converting annotation genePred to BED.')
         cmd = ['genePredToBed', self.annotation_gp, '/dev/stdout']
+        logger.info("CMD: ", cmd)
         self.run_cmd(cmd)
 
 
@@ -1050,13 +1116,15 @@ class BuildDb(PipelineTask):
 
     TODO: output() should be way smarter than this. Currently, it only checks if the indices have been created.
     """
+
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'hints_database')
         args = tools.misc.HashableNamespace()
         args.genome = genome
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
-        args.hal = pipeline_args.hal
+        if not pipeline_args.chain_mode:
+            args.hal = pipeline_args.hal
         args.cfg = pipeline_args.cfg
         if genome == pipeline_args.ref_genome:
             args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
@@ -1144,6 +1212,8 @@ class Chaining(ToilTask):
     """
     Task that launches the Chaining toil pipeline. This pipeline operates on all genomes at once to reduce the
     repeated downloading of the HAL file.
+
+    TODO: edit README to explain how to use this functionality
     """
     @staticmethod
     def get_args(pipeline_args):
@@ -1157,12 +1227,15 @@ class Chaining(ToilTask):
                        for genome in pipeline_args.target_genomes}
         biglink_files = {genome: os.path.join(base_dir, '{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, genome))
                        for genome in pipeline_args.target_genomes}
-        # chain_tab_files = {genome: os.path.join(base_dir, 'chain.tab')
-        #                for genome in pipeline_args.target_genomes}
-        # link_tab_files = {genome: os.path.join(base_dir, 'link.tab')
-        #                for genome in pipeline_args.target_genomes}
         args = tools.misc.HashableNamespace()
-        args.hal = pipeline_args.hal
+        args.base_dir = base_dir
+        args.chain_mode = pipeline_args.chain_mode
+        if not pipeline_args.chain_mode:
+            args.hal = pipeline_args.hal
+            args.genome_chains = None
+        else:
+            args.hal = None
+            args.genome_chains = pipeline_args.genome_chains
         args.ref_genome = pipeline_args.ref_genome
         args.query_two_bit = ref_files.two_bit
         args.query_sizes = ref_files.sizes
@@ -1170,8 +1243,6 @@ class Chaining(ToilTask):
         args.chain_files = chain_files
         args.bigchain_files = bigchain_files
         args.biglink_files = biglink_files
-        # args.chain_tab_files = chain_tab_files
-        # args.link_tab_files = link_tab_files
         return args
 
     @staticmethod
@@ -1195,7 +1266,6 @@ class Chaining(ToilTask):
     def validate(self):
         if not tools.misc.is_exec('halLiftover'):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
-        # for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort']:
         for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort', 'hgLoadChain', 'bedToBigBed']:
             if not tools.misc.is_exec(tool):
                     raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
@@ -1206,10 +1276,11 @@ class Chaining(ToilTask):
     def run(self):
         self.validate()
         pipeline_args = self.get_pipeline_args()
+        chain_args = self.get_args(pipeline_args)
         logger.info('Launching Pairwise Chaining toil pipeline.')
+        tools.fileOps.ensure_dir(chain_args.base_dir)
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'chaining')
         toil_options = self.prepare_toil_options(toil_work_dir)
-        chain_args = self.get_args(pipeline_args)
         chaining(chain_args, toil_options)
         logger.info('Pairwise Chaining toil pipeline is complete.')
 
@@ -1271,14 +1342,31 @@ class TransMapPsl(PipelineTask):
     def run(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         logger.info('Running transMap for {}.'.format(self.genome))
-        cmd = [['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, '/dev/stdout'],
-               ['pslMapPostChain', '/dev/stdin', '/dev/stdout'],
+        tmp_tm_file = luigi.LocalTarget(is_tmp=True)
+        tm_cmd = ['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+        try:
+            with tmp_tm_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(tm_cmd, stderr='/dev/null')
+        except:
+            tm_cmd_swap = ['pslMap', '-swapMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+            with tmp_tm_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(tm_cmd_swap, stderr='/dev/null')
+
+        cmd = [['pslMapPostChain', tmp_tm_file, '/dev/stdout'],
                ['sort', '-k14,14', '-k16,16n'],
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
                ['sort', '-k10,10']]  # re-sort back to query name for filtering
+
         tmp_file = luigi.LocalTarget(is_tmp=True)
-        with tmp_file.open('w') as tmp_fh:
-            tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
+        try:
+            with tmp_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
+        except:
+            # TODO: Don't know why transMap occasionally fails on test data?!?
+            logger.warning("Part of transMap command failed, running again... ")
+            with tmp_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
+
         tm_psl_tgt, tm_gp_tgt = self.output()
         tools.fileOps.ensure_file_dir(tm_psl_tgt.path)
         with tm_psl_tgt.open('w') as outf:
@@ -1509,7 +1597,8 @@ class AugustusCgp(ToilTask):
         args.genomes = genomes
         args.annotate_ancestors = pipeline_args.annotate_ancestors
         args.fasta_files = fasta_files
-        args.hal = pipeline_args.hal
+        if not pipeline_args.chain_mode:
+            args.hal = pipeline_args.hal
         args.ref_genome = pipeline_args.ref_genome
         args.augustus_cgp_gp = output_gp_files
         args.augustus_cgp_gtf = output_gtf_files
@@ -2140,7 +2229,10 @@ class Consensus(PipelineWrapperTask):
             gp_list.append(ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
             args.denovo_tx_modes.append('exRef')
         if pipeline_args.augustus == True or pipeline_args.augustus_cgp == True or pipeline_args.augustus_pb == True:
-            args.run_hgm = True 
+            if pipeline_args.chain_mode == True:
+                args.run_hgm = False
+            else: 
+                args.run_hgm = True 
         else:
             args.run_hgm = False
         args.gp_list = gp_list
@@ -2209,7 +2301,8 @@ class ConsensusDriverTask(RebuildableTask):
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
         if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
-            yield self.clone(Hgm)
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
@@ -2240,9 +2333,13 @@ class Plots(RebuildableTask):
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
         tools.fileOps.ensure_dir(base_dir)
-        ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
+        if not pipeline_args.chain_mode:
+            ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
                                                        pipeline_args.target_genomes,
                                                        pipeline_args.annotate_ancestors)
+        else: 
+            ordered_genomes = list(pipeline_args.target_genomes)
+        # TODO make ordered_genomes for chain mode
         args = tools.misc.HashableNamespace()
         args.ordered_genomes = ordered_genomes
         # plots derived from transMap results
@@ -2291,7 +2388,8 @@ class Plots(RebuildableTask):
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
         if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
-            yield self.clone(Hgm)
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
@@ -2322,7 +2420,8 @@ class ReportStats(PipelineTask):
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
         if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
-            yield self.clone(Hgm)
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
@@ -2389,7 +2488,8 @@ class CreateDirectoryStructure(RebuildableTask):
         args.sizes = frozendict(sizes)
         args.twobits = frozendict(twobits)
         args.trackdbs = frozendict(trackdbs)
-        args.hal = os.path.join(args.out_dir, os.path.basename(pipeline_args.hal))
+        if not pipeline_args.chain_mode:
+            args.hal = os.path.join(args.out_dir, os.path.basename(pipeline_args.hal))
         return args
 
     def requires(self):
@@ -2397,7 +2497,8 @@ class CreateDirectoryStructure(RebuildableTask):
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
         if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
-            yield self.clone(Hgm)
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
@@ -2409,7 +2510,8 @@ class CreateDirectoryStructure(RebuildableTask):
         yield luigi.LocalTarget(args.hub_txt)
         yield luigi.LocalTarget(args.genomes_txt)
         yield luigi.LocalTarget(args.groups_txt)
-        yield luigi.LocalTarget(args.hal)
+        if not pipeline_args.chain_mode:
+            yield luigi.LocalTarget(args.hal)
         for local_path, hub_path in args.sizes.values():
             yield luigi.LocalTarget(hub_path)
         for local_path, hub_path in args.twobits.values():
@@ -2422,8 +2524,10 @@ class CreateDirectoryStructure(RebuildableTask):
 
         # write the hub.txt file
         with luigi.LocalTarget(args.hub_txt).open('w') as outf:
-            outf.write(hub_str.format(hal=os.path.splitext(os.path.basename(pipeline_args.hal))[0],
+            if not pipeline_args.chain_mode:
+                outf.write(hub_str.format(hal=os.path.splitext(os.path.basename(pipeline_args.hal))[0],
                                       email=pipeline_args.hub_email))
+            # TODO what to do in chain mode?
 
         # write the groups.txt file
         with luigi.LocalTarget(args.groups_txt).open('w') as outf:
@@ -2435,7 +2539,8 @@ class CreateDirectoryStructure(RebuildableTask):
                 outf.write(genome_str.format(genome=genome, default_pos=find_default_pos(sizes_local_path)))
 
         # link the hal
-        shutil.copy(pipeline_args.hal, args.hal)
+        if not pipeline_args.chain_mode:
+            shutil.copy(pipeline_args.hal, args.hal)
 
         # construct a directory for each genome
         for genome, (sizes_local_path, sizes_hub_path) in args.sizes.items():
@@ -2578,19 +2683,17 @@ class CreateTrackDbs(RebuildableTask):
             bigLink_file = tools.fileOps.get_tmp_toil_file()
             bigLink_bb = chain_args.biglink_file
 
-            # TODO: how to change names of chain.tab and link.tab?
+            # TODO: need to change names of chain.tab and link.tab in a better way--
+            # if running multiple processes simultaneously, can mess things up 
+            # The real fix would be modifying hgLoadChain so that the names can be 
+            # changed in there...
             cwd = os.getcwd()
             chain_tab_file = '{}.chain.tab'.format(self.genome)
             link_tab_file = '{}.link.tab'.format(self.genome)
-            cmd = [['hgLoadChain', '-noBin', '-test', self.genome, 'bigChain', chain]
-                # ['cp', 'chain.tab', chain_tab_file],
-                # ['cp', 'link.tab', link_tab_file]
-            ]
+            cmd = [['hgLoadChain', '-noBin', '-test', self.genome, 'bigChain', chain]]
             tools.procOps.run_proc(cmd)
             shutil.copy('chain.tab', chain_tab_file)
             shutil.copy('link.tab', link_tab_file)
-
-            # tools.fileOps.ensure_file_dir(sizes_hub_path)
 
             # Create bigChain file
             tmp_file = tools.fileOps.get_tmp_toil_file()
@@ -2630,7 +2733,10 @@ class CreateTrackDbs(RebuildableTask):
                         visibility = 'full'
                 else:
                     visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
-                hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))
+                if not pipeline_args.chain_mode:
+                    hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))
+                else:
+                    hal_path = ''
                 outf.write(snake_template.format(genome=genome, hal_path=hal_path, visibility=visibility))
 
             for genome in directory_args.genomes:
@@ -2897,42 +3003,6 @@ class EvaluationTrack(TrackTask):
 
         with trackdb.open('w') as outf:
             outf.write(error_template.format(genome=self.genome, path=os.path.basename(track.path)))
-
-
-# class ChainTrack(TrackTask):
-#     """Constructs the chain's bigChain and bigLink"""
-#     def run(self):
-#         pipeline_args = self.get_pipeline_args()
-#         track, trackdb = self.output()
-#         chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
-#         chain_args = Chaining.get_args(pipeline_args, self.genome)
-
-#         bigchain_as_file = tools.fileOps.get_tmp_toil_file()
-#         with open(bigchain_as_file, 'w') as outf:
-#             outf.write(bigchain)
-
-#         biglink_as_file = tools.fileOps.get_tmp_toil_file()
-#         with open(biglink_as_file, 'w') as outf:
-#             outf.write(biglink)
-
-#         # chain_file_path = '../../chaining/{}-{}.chain'.format(pipeline_args.ref_genome, self.genome)
-#         chain_file_path = chain_args.chain_file
-#         chain = job.fileStore.readGlobalFile(chain_file)
-#         bigChain = tools.fileOps.get_tmp_toil_file()
-#         # bigChain_bb = '{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, self.genome)
-#         bigChain_bb = chain_args.bigchain_file
-#         bigLink = tools.fileOps.get_tmp_toil_file()
-#         # bigLink_bb = '{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, self.genome)
-#         bigLink_bb = chain_args.biglink_file
-
-#         # TODO: how to change names of chain.tab and link.tab?
-#         cmd = [['hgLoadChain', '-noBin', '-test', self.genome, 'bigChain', chain],
-#             ['sed', "'s/\\.1000000//'", 'chain.tab', '|awk', "'BEGIN {OFS='\t'} {print $2, $4, $5, $11, 1000, $8, $3, $6, $7, $9, $10, $1}'>", bigChain],
-#             ['bedToBigBed', '-type=bed6+6', '-as={}'.format(bigchain_as_file), '-tab', bigChain, chrom_sizes, bigChain_bb],
-#             ['awk', "'BEGIN {OFS='\t'} {print $1, $2, $3, $5, $4}'", 'link.tab', '|sort', '-k1,1', '-k2,2n>', bigLink],
-#             ['bedToBigBed', '-type=bed4+1', '-as={}'.format(biglink_as_file), '-tab', bigLink, chrom_sizes, bigLink_bb]
-#         ]
-#         tools.procOps.run_proc(cmd)
 
 
 class TransMapTrack(TrackTask):

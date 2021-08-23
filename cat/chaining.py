@@ -5,6 +5,7 @@ import argparse
 import collections
 import logging
 import os
+import shutil
 
 try:
     from toil.fileStores import FileID
@@ -22,19 +23,30 @@ import tools.procOps
 def chaining(args, toil_options):
     """entry point to this program"""
     with Toil(toil_options) as t:
-        if not t.options.restart:
-            input_file_ids = argparse.Namespace()
-            input_file_ids.hal = FileID.forPath(t.importFile('file://' + args.hal), args.hal)
-            input_file_ids.query_sizes = FileID.forPath(t.importFile('file://' + args.query_sizes), args.query_sizes)
-            input_file_ids.query_two_bit = FileID.forPath(t.importFile('file://' + args.query_two_bit),
-                                                          args.query_two_bit)
-            target_two_bit_file_ids = {genome: FileID.forPath(t.importFile('file://' + f), f)
-                                       for genome, f in args.target_two_bits.items()}
-            input_file_ids.target_two_bits = target_two_bit_file_ids
-            job = Job.wrapJobFn(setup, args, input_file_ids)
-            chain_file_ids = t.start(job)
+        if args.chain_mode:
+            # If running in chain mode, only return IDs of existing chain files to copy
+            if not t.options.restart:
+                input_file_ids = argparse.Namespace()
+                input_file_ids.chain_ids = {genome: FileID.forPath(t.importFile('file://' + f), f)
+                                           for genome, f in args.genome_chains.items()}
+                job = Job.wrapJobFn(copy_chains, args, input_file_ids)
+                chain_file_ids = t.start(job)
+            else:
+                chain_file_ids = t.restart()
         else:
-            chain_file_ids = t.restart()
+            if not t.options.restart:
+                input_file_ids = argparse.Namespace()
+                input_file_ids.hal = FileID.forPath(t.importFile('file://' + args.hal), args.hal)
+                input_file_ids.query_sizes = FileID.forPath(t.importFile('file://' + args.query_sizes), args.query_sizes)
+                input_file_ids.query_two_bit = FileID.forPath(t.importFile('file://' + args.query_two_bit),
+                                                              args.query_two_bit)
+                target_two_bit_file_ids = {genome: FileID.forPath(t.importFile('file://' + f), f)
+                                           for genome, f in args.target_two_bits.items()}
+                input_file_ids.target_two_bits = target_two_bit_file_ids
+                job = Job.wrapJobFn(setup, args, input_file_ids)
+                chain_file_ids = t.start(job)
+            else:
+                chain_file_ids = t.restart()
         for chain_file, chain_file_id in chain_file_ids.items():
             tools.fileOps.ensure_file_dir(chain_file)
             t.exportFile(chain_file_id, 'file://' + chain_file)
@@ -68,6 +80,18 @@ def setup(job, args, input_file_ids):
         chain_files = tmp_chain_file_ids[genome]
         j = job.addFollowOnJobFn(merge, chain_files, genome, memory='8G', disk='8G')
         return_file_ids[chain_file] = j.rv()
+    return return_file_ids
+
+
+def copy_chains(job, args, input_file_ids):
+    """
+    Function to get IDs of files to copy existing chains, if running CAT in chain mode. 
+    :param args: argument dictionary
+    :param input_file_ids: file ID dictionary of imported files
+    """
+    return_file_ids = {}
+    for genome, chain_file in args.chain_files.items():
+        return_file_ids[chain_file] = input_file_ids.chain_ids[genome]
     return return_file_ids
 
 
