@@ -67,14 +67,15 @@ def setup(job, args, input_file_ids):
         for target_genome, target_two_bit_file_id in input_file_ids.target_two_bits.items():
             disk_usage = tools.toilInterface.find_total_disk_usage([input_file_ids.hal, target_two_bit_file_id,
                                                                     input_file_ids.query_two_bit])
-            # silly heuristic for chaining -- if the chrom is over 10mb, use 32G, otherwise use 8G
+            # silly heuristic for chaining -- if the chrom is over 10mb, use 16G, otherwise use 8G
             if size >= 10000000:
-                memory = '32G'
+                memory = '16G'
             else:
                 memory = '8G'
             j = job.addChildJobFn(chain_by_chromosome, args, chrom, size, input_file_ids, target_genome,
                                   target_two_bit_file_id, memory=memory, disk=disk_usage)
             tmp_chain_file_ids[target_genome].append(j.rv())
+            
     return_file_ids = {}
     for genome, chain_file in args.chain_files.items():
         chain_files = tmp_chain_file_ids[genome]

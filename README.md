@@ -225,6 +225,8 @@ The augustus config files for all of the modes live in the CAT folder under `aug
 
 `--hub-email`: Optionally, add an email to your assembly hub. Useful if you are planning on publishing the hub.
 
+`--hub-name`: Optionally, change the default name of your assembly hub. Useful if you are planning on publishing the hub.
+
 See below for `toil` options shared with the hints database pipeline.
 
 ## Toil
@@ -291,6 +293,23 @@ It is **extremely** important that you use high quality RNA-seq. Libraries shoul
 ## ISoSeq libraries
 
 If you are using IsoSeq data, it is recommended that you doing your mapping with `minimap2`. These BAM files must also be genomic coordinate sorted and indexed.
+
+## Chain mode
+
+If you do not have a HAL alignment file as input, but rather have .chain files that follow the format for UCSC genome browser chain files (https://genome.ucsc.edu/goldenPath/help/chain.html), you can run CAT using the following flags and modifications to the config file.
+
+`--chain_mode`: Run CAT in chain mode. You no longer need to provide a HAL alignment file. 
+
+Add the following CHAIN and FASTA fields to the config file. You will need to provide paths to the chain file between the reference genome and target genomes, as well as paths to all of the fasta files for the reference genome and target genomes.
+
+~~~~
+[CHAIN]
+Genome = /path/to/chain
+
+[FASTA]
+Genome = /path/to/genome/fasta
+~~~~
+
 
 # Execution modes
 
