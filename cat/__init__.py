@@ -1350,7 +1350,6 @@ class TransMapPsl(PipelineTask):
         # specified. Try each way to see which one works.
         if self.chain_mode:
             tm_cmd = ['pslMap', '-swapMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
-            print("tm_cmd = ", tm_cmd)
         try:
             with tmp_tm_file.open('w') as tmp_fh:
                 tools.procOps.run_proc(tm_cmd, stderr='/dev/null')
@@ -1358,7 +1357,6 @@ class TransMapPsl(PipelineTask):
             tm_cmd_swap = ['pslMap', '-swapMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
             if self.chain_mode:
                 tm_cmd_swap = ['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
-            print("tm_cmd_swap = ", tm_cmd_swap)
             with tmp_tm_file.open('w') as tmp_fh:
                 tools.procOps.run_proc(tm_cmd_swap, stderr='/dev/null')
 
@@ -1367,9 +1365,6 @@ class TransMapPsl(PipelineTask):
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
                ['sort', '--parallel=4', '-k10,10']]  # re-sort back to query name for filtering
         tmp_file = luigi.LocalTarget(is_tmp=True)
-        print("post-transmap commands: ")
-        for i in cmd:
-            print(i)
         try:
             with tmp_file.open('w') as tmp_fh:
                 tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
