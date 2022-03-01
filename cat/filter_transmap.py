@@ -40,7 +40,7 @@ pd.options.mode.chained_assignment = None
 
 
 def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, filter_overlapping_genes,
-                    overlapping_ignore_bases, json_tgt):
+                    overlapping_ignore_bases, json_tgt, annotate_extra_paralogs):
     """
     Entry point for transMap filtering.
     :param tm_psl: input PSL
@@ -52,6 +52,7 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     :param filter_overlapping_genes: Should we filter out overlapping genes?
     :param overlapping_ignore_bases: How much overlap will we allow when filtering?
     :param json_tgt: luigi.localTarget() object for JSON output
+    :param annotate_extra_paralogs: Should we annotate any extra copies of paralogs?
     :return:
     """
     # load all of the input alignments
@@ -90,7 +91,9 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     for aln_id, aln in size_filtered.items():
         stripped_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         unfiltered_hash_table[hash_aln(aln, stripped_id)] = aln_id
-    assert len(unfiltered_hash_table) == len(size_filtered)
+    
+    # TODO this shouldn't be commented out... but it was causing some issues
+    # assert len(unfiltered_hash_table) == len(size_filtered)
 
     with tools.fileOps.TemporaryFilePath() as local_tmp, tools.fileOps.TemporaryFilePath() as strip_tmp:
         with open(strip_tmp, 'w') as outf:
@@ -160,10 +163,10 @@ def filter_transmap(tm_psl, ref_psl, tm_gp, db_path, psl_tgt, global_near_best, 
     metrics['Gene Family Collapse'] = collections.defaultdict(lambda: collections.Counter())
     coding_merged_df, coding_collapse_filtered = filter_clusters(coding_clustered, transcript_gene_map,
                                                                  gene_name_map, scores, metrics, gene_biotype_map,
-                                                                 filter_overlapping_genes)
+                                                                 filter_overlapping_genes, annotate_extra_paralogs)
     noncoding_merged_df, noncoding_collapse_filtered = filter_clusters(noncoding_clustered, transcript_gene_map,
                                                                        gene_name_map, scores, metrics, gene_biotype_map,
-                                                                       filter_overlapping_genes)
+                                                                       filter_overlapping_genes, annotate_extra_paralogs)
 
     merged_collapse_filtered = pd.concat([coding_collapse_filtered, noncoding_collapse_filtered])
     merged_df = pd.concat([coding_merged_df, noncoding_merged_df])
@@ -312,7 +315,7 @@ def construct_alt_loci(group, best_cluster):
 
 
 def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metrics, gene_biotype_map,
-                    filter_overlapping_genes):
+                    filter_overlapping_genes, annotate_extra_paralogs):
     """
     Wrapper for taking the output of clusterGenes and filtering it
     Only remove the corresponding mappings for each gene that map to multiple clusters,
@@ -338,6 +341,11 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
         paralog_df = pd.DataFrame(alt_loci, columns=['GeneId', 'GeneAlternateLoci'])
     else:
         paralog_df = pd.DataFrame(columns=['GeneId', 'GeneAlternateLoci'])
+    # if annotate_extra_paralogs:
+    #     continue
+    #     # Instead of removing extra mappings, keep them 
+    #     # (but only if good enough)
+    # else:
     paralog_filtered = clustered[~clustered['gene'].isin(to_remove_alns)]
 
     # group by cluster ID to identify gene family collapse

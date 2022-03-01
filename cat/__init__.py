@@ -797,7 +797,7 @@ class GenomeFasta(AbstractAtomicFileTask):
         pipeline_args = self.get_pipeline_args()
         if pipeline_args.chain_mode:
             fasta_path = pipeline_args.genome_fastas[self.genome]
-            logger.info("Copying fasta to ", fasta_path)
+            logger.info("Copying fasta to {}".format(fasta_path))
             cmd = ['cat', fasta_path]
             self.run_cmd(cmd)
         else:
@@ -1350,6 +1350,7 @@ class TransMapPsl(PipelineTask):
         # specified. Try each way to see which one works.
         if self.chain_mode:
             tm_cmd = ['pslMap', '-swapMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+            print("tm_cmd = ", tm_cmd)
         try:
             with tmp_tm_file.open('w') as tmp_fh:
                 tools.procOps.run_proc(tm_cmd, stderr='/dev/null')
@@ -1357,6 +1358,7 @@ class TransMapPsl(PipelineTask):
             tm_cmd_swap = ['pslMap', '-swapMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
             if self.chain_mode:
                 tm_cmd_swap = ['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+            print("tm_cmd_swap = ", tm_cmd_swap)
             with tmp_tm_file.open('w') as tmp_fh:
                 tools.procOps.run_proc(tm_cmd_swap, stderr='/dev/null')
 
@@ -1365,6 +1367,9 @@ class TransMapPsl(PipelineTask):
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
                ['sort', '--parallel=4', '-k10,10']]  # re-sort back to query name for filtering
         tmp_file = luigi.LocalTarget(is_tmp=True)
+        print("post-transmap commands: ")
+        for i in cmd:
+            print(i)
         try:
             with tmp_file.open('w') as tmp_fh:
                 tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
@@ -1412,7 +1417,7 @@ class FilterTransMap(PipelineTask):
         resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp,
                                       tm_args.ref_db_path, psl_target, tm_args.global_near_best,
                                       tm_args.filter_overlapping_genes, tm_args.overlapping_ignore_bases,
-                                      json_target)
+                                      json_target, False)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
@@ -2851,22 +2856,22 @@ class CreateTrackDbs(RebuildableTask):
                 outf.write(chain_template.format(genome=self.genome, ref_genome=pipeline_args.ref_genome, bigChain_path=bigChain_path,bigLink_path=bigLink_path, visibility=visibility))
 
             # TODO make sure hal synteny can't be run in chain mode
-            if not pipeline_args.chain_mode:
-                for genome in directory_args.genomes:
-                    if genome != self.genome:
-                    # if genome != pipeline_args.ref_genome: 
-                        synteny_hub_tracks(pipeline_args, directory_args, genome)
+            # if not pipeline_args.chain_mode:
+            #     for genome in directory_args.genomes:
+            #         if genome != self.genome:
+            #         # if genome != pipeline_args.ref_genome: 
+            #             synteny_hub_tracks(pipeline_args, directory_args, genome)
 
-                # Write synteny tracks
-                outf.write(synteny_composite.format(org_str=org_str))
-                for genome in directory_args.genomes:
-                    if genome != self.genome:
-                        visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
-                        # visibility = 'full'
-                        bigPsl_path = '{}-{}.synteny.bigPsl.bb'.format(self.genome, genome)
-                        outf.write(bigpsl_template_synteny.format(name='Synteny-{}-{}'.format(self.genome, genome), 
-                            short_label='synteny-{}-{}'.format(self.genome, genome), long_label='synteny-{}-{}'.format(self.genome, genome),
-                             path=bigPsl_path, visibility=visibility, genome=genome))
+            #     # Write synteny tracks
+            #     outf.write(synteny_composite.format(org_str=org_str))
+            #     for genome in directory_args.genomes:
+            #         if genome != self.genome:
+            #             visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
+            #             # visibility = 'full'
+            #             bigPsl_path = '{}-{}.synteny.bigPsl.bb'.format(self.genome, genome)
+            #             outf.write(bigpsl_template_synteny.format(name='Synteny-{}-{}'.format(self.genome, genome), 
+            #                 short_label='synteny-{}-{}'.format(self.genome, genome), long_label='synteny-{}-{}'.format(self.genome, genome),
+            #                  path=bigPsl_path, visibility=visibility, genome=genome))
 
 
 class DenovoTrack(TrackTask):
