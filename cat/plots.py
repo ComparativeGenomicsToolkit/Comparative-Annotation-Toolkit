@@ -142,10 +142,10 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
     af = luigi.local_target.atomic_file(tgt.path)
     with PdfPages(af.tmp_path) as pdf:
         if len(ordered_genomes) > 1:
-            g = sns.factorplot(data=df, y='value', x='genome', col='variable', col_wrap=2, kind='violin', sharex=True,
+            g = sns.catplot(data=df, y='value', x='genome', col='variable', col_wrap=2, kind='violin', sharex=True,
                                sharey=True, row_order=ordered_genomes, cut=0)
         else:
-            g = sns.factorplot(data=df, y='value', x='variable', kind='violin', sharex=True,
+            g = sns.catplot(data=df, y='value', x='variable', kind='violin', sharex=True,
                                sharey=True, row_order=ordered_genomes, cut=0)
         adjust_plot(g, title)
         multipage_close(pdf, tight_layout=False)
@@ -155,10 +155,10 @@ def consensus_support_plot(consensus_data, ordered_genomes, biotypes, modes, tit
             biotype_df = biotype_filter(df, biotype)
             if biotype_df is not None:
                 if len(ordered_genomes) > 1:
-                    g = sns.factorplot(data=biotype_df, y='value', x='genome', col='variable', col_wrap=2,
+                    g = sns.catplot(data=biotype_df, y='value', x='genome', col='variable', col_wrap=2,
                                        kind='violin', sharex=True, sharey=True, row_order=ordered_genomes, cut=0)
                 else:
-                    g = sns.factorplot(data=df, y='value', x='variable', kind='violin', sharex=True,
+                    g = sns.catplot(data=df, y='value', x='variable', kind='violin', sharex=True,
                                        sharey=True, row_order=ordered_genomes, cut=0)
                 adjust_plot(g, this_title)
                 multipage_close(pdf, tight_layout=False)
@@ -216,7 +216,7 @@ def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
     tot_df = tot_df.sort_values('Gene Family Collapse')
     af = luigi.local_target.atomic_file(gene_family_tgt.path)
     with PdfPages(af.tmp_path) as pdf:
-        g = sns.factorplot(y='count', col='genome', x='Gene Family Collapse', data=tot_df, kind='bar',
+        g = sns.catplot(y='count', col='genome', x='Gene Family Collapse', data=tot_df, kind='bar',
                            col_order=ordered_genomes, col_wrap=4)
         g.fig.suptitle('Number of genes collapsed during gene family collapse')
         g.set_xlabels('Number of genes collapsed to one locus')
@@ -228,7 +228,7 @@ def tm_gene_family_plot(tm_data, ordered_genomes, biotypes, gene_family_tgt):
             if biotype_df is None:
                 continue
             biotype_df = biotype_df.sort_values('Gene Family Collapse')
-            g = sns.factorplot(y='count', col='genome', x='Gene Family Collapse', data=biotype_df, kind='bar',
+            g = sns.catplot(y='count', col='genome', x='Gene Family Collapse', data=biotype_df, kind='bar',
                                col_order=[x for x in ordered_genomes if x in set(biotype_df.genome)], col_wrap=4)
             g.fig.suptitle('Number of genes collapsed during gene family collapse for {}'.format(biotype))
             g.set_xlabels('Number of genes collapsed to one locus')
@@ -308,17 +308,17 @@ def denovo_plot(consensus_data, ordered_genomes, denovo_tgt):
         has_pb = len(set(df['Augustus mode'])) == 2
         if len(set(df.genome)) > 1:  # if we ran in PB only, we may not have multiple genomes
             if has_pb == True:
-                ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
+                ax = sns.catplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
                                     hue='Augustus mode', col_wrap=2, row_order=ordered_genomes, sharex=True,
                                     sharey=False)
             else:
-                ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
+                ax = sns.catplot(data=df, x='genome', y='Number of transcripts', kind='bar', col='Result',
                                     col_wrap=2, row_order=ordered_genomes, sharex=True, sharey=False)
         else:
             if has_pb == True:
-                ax = sns.factorplot(data=df, x='Result', y='Number of transcripts', kind='bar', hue='Augustus mode')
+                ax = sns.catplot(data=df, x='Result', y='Number of transcripts', kind='bar', hue='Augustus mode')
             else:
-                ax = sns.factorplot(data=df, x='Result', y='Number of transcripts', kind='bar')
+                ax = sns.catplot(data=df, x='Result', y='Number of transcripts', kind='bar')
         ax.set_xticklabels(rotation=90)
         ax.fig.suptitle('Incorporation of de-novo predictions')
         ax.fig.subplots_adjust(top=0.9)
@@ -351,7 +351,7 @@ def pb_support_plot(consensus_data, ordered_genomes, pb_genomes, pb_support_tgt)
             # no support information
             return
         df.columns = ['IsoSeq Transcript Validation', 'Number of transcripts', 'genome']
-        ax = sns.factorplot(data=df, x='genome', y='Number of transcripts', hue='IsoSeq Transcript Validation',
+        ax = sns.catplot(data=df, x='genome', y='Number of transcripts', hue='IsoSeq Transcript Validation',
                             kind='bar', row_order=pb_genomes)
         ax.set_xticklabels(rotation=90)
         ax.fig.suptitle('Isoforms validated by at least one IsoSeq read')
@@ -468,7 +468,7 @@ def indel_plot(consensus_data, ordered_genomes, indel_plot_tgt):
         df = pd.melt(df, id_vars=['genome', 'transcript set'],
                      value_vars=['CodingDeletion', 'CodingInsertion', 'CodingMult3Indel'])
         df.columns = ['Genome', 'Transcript set', 'Type', 'Percent of transcripts']
-        g = sns.factorplot(data=df, x='Genome', y='Percent of transcripts', col='Transcript set',
+        g = sns.catplot(data=df, x='Genome', y='Percent of transcripts', col='Transcript set',
                            hue='Type', kind='bar', row_order=ordered_genomes,
                            col_order=['transMap', 'Consensus'])
         g.set_xticklabels(rotation=90)
@@ -508,7 +508,7 @@ def cov_ident_plot(biotypes, ordered_genomes, mode, tgt, df, x=None, y=None, xla
 def generic_barplot(data, pdf, xlabel, ylabel, title, row_order=None, x=None, y=None, hue=None, hue_order=None,
                     order=None, col=None, col_wrap=None, sharex=True, sharey=True, col_order=None, palette=None,
                     close=True):
-    g = sns.factorplot(data=data, x=x, y=y, hue=hue, ci=None, kind='bar', hue_order=hue_order, row_order=row_order,
+    g = sns.catplot(data=data, x=x, y=y, hue=hue, ci=None, kind='bar', hue_order=hue_order, row_order=row_order,
                        col=col, col_wrap=col_wrap, sharex=sharex, sharey=sharey, col_order=col_order, palette=palette,
                        order=order)
     g.set_xticklabels(rotation=90)

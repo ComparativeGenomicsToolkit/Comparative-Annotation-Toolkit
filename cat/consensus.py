@@ -61,7 +61,7 @@ def generate_consensus(args):
     # load transMap evaluation data
     tm_eval_df = load_transmap_evals(args.db_path)
     # load the homGeneMapping data for transMap/augTM/augTMR
-    pd.set_option('max_columns', None)
+    # pd.set_option('max_columns', None)
     tx_modes = [x for x in args.tx_modes if x in ['transMap', 'augTM', 'augTMR']]
     if args.run_hgm == True:
         hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])

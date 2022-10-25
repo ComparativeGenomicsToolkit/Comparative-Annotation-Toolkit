@@ -9,7 +9,7 @@ setup(
         'pyfasta>=0.5.2',
         'toil==5.0',
         'luigi>=2.5',
-        'seaborn>=0.7',
+        'seaborn>=0.12.1',
         'pandas>=1.1.0',
         'frozendict',
         'configobj>=5.0',
