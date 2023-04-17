@@ -72,7 +72,7 @@ class PipelineTask(luigi.Task):
     scheduler to know which parameters define a unique task ID. This would come into play if multiple instances of this
     pipeline are being run on the same scheduler at once.
     """
-    hal = luigi.Parameter()
+    hal = luigi.Parameter(default=None)
     ref_genome = luigi.Parameter()
     config = luigi.Parameter()
     out_dir = luigi.Parameter(default='./cat_output')
@@ -81,6 +81,11 @@ class PipelineTask(luigi.Task):
     annotate_ancestors = luigi.BoolParameter(default=False)
     binary_mode = luigi.ChoiceParameter(choices=["docker", "local", "singularity"], default='docker',
                                         significant=False)
+    # Parameters needed to run in chain-only mode
+    chain_mode = luigi.BoolParameter(default=False)
+    genome_fastas = luigi.TupleParameter(default=None)
+    genome_chains = luigi.TupleParameter(default=None)
+
     # AugustusTM(R) parameters
     augustus = luigi.BoolParameter(default=False)
     augustus_species = luigi.Parameter(default='human', significant=False)
@@ -104,6 +109,7 @@ class PipelineTask(luigi.Task):
     # assemblyHub parameters
     assembly_hub = luigi.BoolParameter(default=False)
     hub_email = luigi.Parameter(default='NoEmail', significant=False)
+    hub_name = luigi.Parameter(default='None', significant=False)
     # Paralogy detection options
     global_near_best = luigi.FloatParameter(default=0.15, significant=False)
     filter_overlapping_genes = luigi.BoolParameter(default=False, significant=True)
@@ -156,7 +162,11 @@ class PipelineTask(luigi.Task):
         """returns a namespace of all of the arguments to the pipeline. Resolves the target genomes variable"""
         args = tools.misc.PipelineNamespace()
         args.set('binary_mode', self.binary_mode, False)
-        args.set('hal', os.path.abspath(self.hal), True)
+        if not self.chain_mode:
+            args.set('hal', os.path.abspath(self.hal), False)
+        else:
+            args.set('hal', None, False)
+        args.set('chain_mode', self.chain_mode, False)
         args.set('ref_genome', self.ref_genome, True)
         args.set('out_dir', os.path.abspath(self.out_dir), True)
         args.set('work_dir', os.path.abspath(self.work_dir), True)
@@ -212,6 +222,7 @@ class PipelineTask(luigi.Task):
         # flags for assembly hub building
         args.set('assembly_hub', self.assembly_hub, False)  # assembly hub doesn't need to cause rebuild of gene sets
         args.set('hub_email', self.hub_email, False)
+        args.set('hub_name', self.hub_name, False)
 
         # flags for figuring out which genomes we are going to annotate
         args.set('annotate_ancestors', self.annotate_ancestors, True)
@@ -220,11 +231,27 @@ class PipelineTask(luigi.Task):
         if not tools.misc.is_exec('halStats'):
             raise ToolMissingException('halStats from the HAL tools package not in global path')
 
-        args.set('hal_genomes', tools.hal.extract_genomes(args.hal, self.annotate_ancestors), True)
-        target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
-        target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
-        args.set('target_genomes', target_genomes, True)
         args.set('cfg', self.parse_cfg(), True)
+        if not self.chain_mode:
+            args.set('hal_genomes', tools.hal.extract_genomes(args.hal, self.annotate_ancestors), True)
+            target_genomes = tools.hal.extract_genomes(args.hal, self.annotate_ancestors, self.target_genomes)
+            target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
+            args.set('target_genomes', target_genomes, True)
+        else:
+            # TODO: change name: in chain mode, hal_genomes isn't all genomes in HAL, but all genomes in the chains
+            target_genomes = set(list(args.cfg['CHAIN'].keys()))
+            hal_genomes = set(list(args.cfg['CHAIN'].keys()))
+            hal_genomes.add(self.ref_genome)
+            hal_genomes = frozenset(hal_genomes)
+            args.set('hal_genomes', hal_genomes, True)
+            target_genomes = tuple(x for x in target_genomes if x != self.ref_genome)
+            args.set('target_genomes', target_genomes, True)
+            genome_fastas = args.cfg['FASTA']
+            args.set('genome_fastas', genome_fastas, True)
+            genome_chains = args.cfg['CHAIN']
+            args.set('genome_chains', genome_chains, True)
+
+            
         args.set('dbs', PipelineTask.get_databases(args), True)
         args.set('annotation', args.cfg['ANNOTATION'][args.ref_genome], True)
         args.set('hints_db', os.path.join(args.work_dir, 'hints_database', 'hints.db'), True)
@@ -260,6 +287,9 @@ class PipelineTask(luigi.Task):
         [PROTEIN_FASTA]
         genome1 = /path/to/fasta/or/fofn
 
+        [CHAIN]
+        genome1 = /path/to/chain
+
         The annotation field must be populated for the reference genome.
 
         The protein fasta field should be populated for every genome you wish to perform protein alignment to.
@@ -267,7 +297,10 @@ class PipelineTask(luigi.Task):
         BAM annotations can be put either under INTRONBAM or BAM. Any INTRONBAM will only have intron data loaded,
         and is suitable for lower quality RNA-seq.
 
+        CHAIN files should be specified if running CAT in chain-only mode (no HAL file)
+
         """
+
         if not os.path.exists(self.config):
             raise MissingFileException('Config file {} not found.'.format(self.config))
         # configspec validates the input config file
@@ -275,15 +308,17 @@ class PipelineTask(luigi.Task):
                       '[INTRONBAM]', '__many__ = list',
                       '[BAM]', '__many__ = list',
                       '[ISO_SEQ_BAM]', '__many__ = list',
-                      '[PROTEIN_FASTA]', '__many__ = list']
+                      '[PROTEIN_FASTA]', '__many__ = list',
+                      '[CHAIN]', '__many__ = list',
+                      '[FASTA]', '__many__ = list']
         parser = ConfigObj(self.config, configspec=configspec)
         for key in parser:
-            if key not in ['ANNOTATION', 'INTRONBAM', 'BAM', 'ISO_SEQ_BAM', 'PROTEIN_FASTA']:
+            if key not in ['ANNOTATION', 'INTRONBAM', 'BAM', 'ISO_SEQ_BAM', 'PROTEIN_FASTA', 'CHAIN', 'FASTA']:
                 raise InvalidInputException('Invalid field {} in config file'.format(key))
 
         # convert the config into a new dict, parsing the fofns
         cfg = collections.defaultdict(dict)
-        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA', 'CHAIN', 'FASTA']:
             if dtype not in parser:
                 cfg[dtype] = {}
             else:
@@ -321,6 +356,7 @@ class PipelineTask(luigi.Task):
 
     def validate_cfg(self, args):
         """Validate the input config file."""
+
         if len(args.cfg['BAM']) + len(args.cfg['INTRONBAM']) + \
                 len(args.cfg['ISO_SEQ_BAM']) + len(args.cfg['ANNOTATION']) == 0:
             logger.warning('No extrinsic data or annotations found in config. Will load genomes only.')
@@ -337,15 +373,17 @@ class PipelineTask(luigi.Task):
                     if not os.path.exists(bam + '.bai'):
                         raise MissingFileException('Missing BAM index {}.'.format(bam + '.bai'))
 
-        for dtype in ['ANNOTATION', 'PROTEIN_FASTA']:
+        for dtype in ['ANNOTATION', 'PROTEIN_FASTA', 'CHAIN', 'FASTA']:
             for genome, annot in args.cfg[dtype].items():
                 if not os.path.exists(annot):
                     raise MissingFileException('Missing {} file {}.'.format(dtype.lower(), annot))
 
-        if all(g in args.hal_genomes for g in args.target_genomes) is False:
-            bad_genomes = set(args.hal_genomes) - set(args.target_genomes)
-            err_msg = 'Genomes {} present in configuration and not present in HAL.'.format(','.join(bad_genomes))
-            raise UserException(err_msg)
+        if not args.chain_mode:
+            if all(g in args.hal_genomes for g in args.target_genomes) == False:
+                bad_genomes = set(args.hal_genomes) - set(args.target_genomes)
+                err_msg = 'Genomes {} present in configuration and not present in HAL.'.format(','.join(bad_genomes))
+                raise UserException(err_msg)
+        # TODO else check that all the chain files are present 
 
         if args.ref_genome not in args.cfg['ANNOTATION']:
             raise UserException('Reference genome {} did not have a provided annotation.'.format(self.ref_genome))
@@ -356,16 +394,25 @@ class PipelineTask(luigi.Task):
         if args.augustus_pb and len(args.isoseq_genomes) == 0:
             raise InvalidInputException('AugustusPB is being ran without any IsoSeq hints!')
 
+        # can't run augustusCGP without a hal file
+        # TODO should be able to run the other two types still, but for now, prevent it 
+        if args.augustus_cgp and args.chain_mode:
+            raise InvalidInputException('AugustusCGP cannot be run in chain-only mode without a HAL file!')
+        if args.augustus_pb and args.chain_mode:
+            raise InvalidInputException('AugustusPB cannot be run in chain-only mode!')
+        if args.augustus and args.chain_mode:
+            raise InvalidInputException('AugustusTM cannot be run in chain-only mode!')
+
     def get_modes(self, args):
         """returns a tuple of the execution modes being used here"""
         modes = ['transMap']
-        if args.augustus_cgp is True:
+        if args.augustus_cgp == True:
             modes.append('augCGP')
-        if args.augustus is True:
+        if args.augustus == True:
             modes.append('augTM')
             if len(set(args.rnaseq_genomes) & set(args.target_genomes)) > 0:
                 modes.append('augTMR')
-        if args.augustus_pb is True:
+        if args.augustus_pb == True:
             modes.append('augPB')
         if len(args.annotation_genomes) > 1:
             modes.append('exRef')
@@ -505,7 +552,7 @@ class ToilTask(PipelineTask):
                         job_store = i
                         toil_args.restart = True
                         break
-            if toil_args.restart is not True:
+            if toil_args.restart != True:
                 job_store = self.provisioner + ':' + self.zone + ':' + ''.join(
                     random.choice(string.ascii_lowercase) for _ in range(7))
                 try:
@@ -533,7 +580,7 @@ class ToilTask(PipelineTask):
             # container filesystems are transient overlays that don't
             # support hardlinking.
             toil_args.disableCaching = True
-        if toil_args.batchSystem == 'parasol' and toil_args.disableCaching is False:
+        if toil_args.batchSystem == 'parasol' and toil_args.disableCaching == False:
             raise RuntimeError('Running parasol without disabled caching is a very bad idea.')
         if toil_args.batchSystem == 'parasol' and toil_args.workDir is None:
             raise RuntimeError('Running parasol without setting a shared work directory will not work. Please specify '
@@ -589,7 +636,7 @@ class RebuildableTask(PipelineTask):
         """Allows us to force a task to be re-run. https://github.com/spotify/luigi/issues/595"""
         super(PipelineTask, self).__init__(*args, **kwargs)
         # To force execution, we just remove all outputs before `complete()` is called
-        if self.rebuild_consensus is True:
+        if self.rebuild_consensus == True:
             outputs = luigi.task.flatten(self.output())
             for out in outputs:
                 if out.exists():
@@ -606,7 +653,9 @@ class TrackTask(RebuildableTask):
         yield self.clone(Consensus)
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
@@ -626,7 +675,7 @@ class RunCat(PipelineWrapperTask):
     """
     def validate(self, pipeline_args):
         """General input validation"""
-        if not os.path.exists(pipeline_args.hal):
+        if not pipeline_args.chain_mode and not os.path.exists(pipeline_args.hal):
             raise InputMissingException('HAL file not found at {}.'.format(pipeline_args.hal))
         for d in [pipeline_args.out_dir, pipeline_args.work_dir]:
             if not os.path.exists(d):
@@ -639,12 +688,14 @@ class RunCat(PipelineWrapperTask):
         if not os.path.exists(pipeline_args.annotation):
             raise InputMissingException('Annotation file {} not found.'.format(pipeline_args.annotation))
         # TODO: validate augustus species, tm/tmr/cgp/param files.
-        if pipeline_args.ref_genome not in pipeline_args.hal_genomes:
-            raise InvalidInputException('Reference genome {} not present in HAL.'.format(pipeline_args.ref_genome))
-        missing_genomes = {g for g in pipeline_args.target_genomes if g not in pipeline_args.hal_genomes}
-        if len(missing_genomes) > 0:
-            missing_genomes = ','.join(missing_genomes)
-            raise InvalidInputException('Target genomes {} not present in HAL.'.format(missing_genomes))
+        if not pipeline_args.chain_mode:
+            if pipeline_args.ref_genome not in pipeline_args.hal_genomes:
+                raise InvalidInputException('Reference genome {} not present in HAL.'.format(pipeline_args.ref_genome))
+            missing_genomes = {g for g in pipeline_args.target_genomes if g not in pipeline_args.hal_genomes}
+            if len(missing_genomes) > 0:
+                missing_genomes = ','.join(missing_genomes)
+                raise InvalidInputException('Target genomes {} not present in HAL.'.format(missing_genomes))
+        # TODO validate that all CHAINS have corresponding fasta files 
         if pipeline_args.ref_genome in pipeline_args.target_genomes:
             raise InvalidInputException('A target genome cannot be the reference genome.')
 
@@ -658,21 +709,23 @@ class RunCat(PipelineWrapperTask):
         yield self.clone(Chaining)
         yield self.clone(TransMap)
         yield self.clone(EvaluateTransMap)
-        if self.augustus is True:
+        if self.augustus == True:
             yield self.clone(Augustus)
-        if self.augustus_cgp is True:
+        if self.augustus_cgp == True:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
-        if self.augustus_pb is True:
+        if self.augustus_pb == True:
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
         yield self.clone(Plots)
-        if self.assembly_hub is True:
+        if self.assembly_hub == True:
             yield self.clone(AssemblyHub)
         yield self.clone(ReportStats)
 
@@ -698,19 +751,23 @@ class GenomeFiles(PipelineWrapperTask):
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'genome_files')
+        tools.fileOps.ensure_dir(base_dir)
         args = tools.misc.HashableNamespace()
         args.genome = genome
         args.fasta = os.path.join(base_dir, genome + '.fa')
         args.two_bit = os.path.join(base_dir, genome + '.2bit')
         args.sizes = os.path.join(base_dir, genome + '.chrom.sizes')
         args.flat_fasta = os.path.join(base_dir, genome + '.fa.flat')
+        args.chain_mode = pipeline_args.chain_mode
         return args
 
     def validate(self):
         for haltool in ['hal2fasta', 'halStats']:
             if not tools.misc.is_exec(haltool):
-                    raise ToolMissingException('{} from the HAL tools package not in global path'.format(haltool))
+                    raise ToolMissingException('{} fromthe HAL tools package not in global path'.format(haltool))
         if not tools.misc.is_exec('faToTwoBit'):
+            raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
+        if not tools.misc.is_exec('faSize'):
             raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
         if not tools.misc.is_exec('pyfasta'):
             raise ToolMissingException('pyfasta wrapper not found in global path.')
@@ -737,9 +794,16 @@ class GenomeFasta(AbstractAtomicFileTask):
         return luigi.LocalTarget(self.fasta)
 
     def run(self):
-        logger.info('Extracting fasta for {}.'.format(self.genome))
-        cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
-        self.run_cmd(cmd)
+        pipeline_args = self.get_pipeline_args()
+        if pipeline_args.chain_mode:
+            fasta_path = pipeline_args.genome_fastas[self.genome]
+            logger.info("Copying fasta to {}".format(fasta_path))
+            cmd = ['cat', fasta_path]
+            self.run_cmd(cmd)
+        else:
+            logger.info('Extracting fasta for {}.'.format(self.genome))
+            cmd = ['hal2fasta', os.path.abspath(self.hal), self.genome]
+            self.run_cmd(cmd)
 
 
 @requires(GenomeFasta)
@@ -758,21 +822,26 @@ class GenomeTwoBit(AbstractAtomicFileTask):
         cmd = ['faToTwoBit', self.fasta, '/dev/stdout']
         self.run_cmd(cmd)
 
-
+@requires(GenomeFasta)
 class GenomeSizes(AbstractAtomicFileTask):
     """
     Produces a genome chromosome sizes file. Requires halStats.
     """
     genome = luigi.Parameter()
     sizes = luigi.Parameter()
+    fasta = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(self.sizes)
 
     def run(self):
         logger.info('Extracting chromosome sizes for {}.'.format(self.genome))
-        cmd = ['halStats', '--chromSizes', self.genome, os.path.abspath(self.hal)]
-        self.run_cmd(cmd)
+        if not self.chain_mode:
+            cmd = ['halStats', '--chromSizes', self.genome, os.path.abspath(self.hal)]
+            self.run_cmd(cmd)
+        else:
+            cmd = ['faSize', '-detailed', '-tab', self.fasta]
+            self.run_cmd(cmd)
 
 
 @requires(GenomeTwoBit)
@@ -1048,13 +1117,15 @@ class BuildDb(PipelineTask):
 
     TODO: output() should be way smarter than this. Currently, it only checks if the indices have been created.
     """
+
     @staticmethod
     def get_args(pipeline_args, genome):
         base_dir = os.path.join(pipeline_args.work_dir, 'hints_database')
         args = tools.misc.HashableNamespace()
         args.genome = genome
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
-        args.hal = pipeline_args.hal
+        if not pipeline_args.chain_mode:
+            args.hal = pipeline_args.hal
         args.cfg = pipeline_args.cfg
         if genome == pipeline_args.ref_genome:
             args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
@@ -1149,15 +1220,43 @@ class Chaining(ToilTask):
         ref_files = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome)
         tgt_files = {genome: GenomeFiles.get_args(pipeline_args, genome) for genome in pipeline_args.target_genomes}
         tgt_two_bits = {genome: tgt_files[genome].two_bit for genome in pipeline_args.target_genomes}
-        chain_files = {genome: os.path.join(base_dir, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))
+        chain_files = {genome: os.path.join(base_dir, genome, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))
                        for genome in pipeline_args.target_genomes}
+        bigchain_files = {genome: os.path.join(base_dir, genome, '{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, genome)) 
+                       for genome in pipeline_args.target_genomes}
+        biglink_files = {genome: os.path.join(base_dir, genome, '{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, genome))
+                       for genome in pipeline_args.target_genomes}
+        # TODO: Add equivalent files for chaining in the other direction, so chains can be viewed on both 
+        # the reference genome's assemblyHub and the target genome's
+        # Currently, to work with PGGB the files are only visible on the reference 
         args = tools.misc.HashableNamespace()
-        args.hal = pipeline_args.hal
+        args.base_dir = base_dir
+        args.chain_mode = pipeline_args.chain_mode
+        if not pipeline_args.chain_mode:
+            args.hal = pipeline_args.hal
+            args.genome_chains = None
+        else:
+            args.hal = None
+            args.genome_chains = pipeline_args.genome_chains
         args.ref_genome = pipeline_args.ref_genome
         args.query_two_bit = ref_files.two_bit
         args.query_sizes = ref_files.sizes
         args.target_two_bits = tgt_two_bits
         args.chain_files = chain_files
+        args.bigchain_files = bigchain_files
+        args.biglink_files = biglink_files
+        return args
+
+    @staticmethod
+    def get_genome_args(pipeline_args, genome):
+        base_dir = os.path.join(pipeline_args.work_dir, 'chaining')
+        chain_file = os.path.join(base_dir, genome, '{}-{}.chain'.format(pipeline_args.ref_genome, genome))
+        bigchain_file = os.path.join(base_dir, genome, '{}-{}.bigChain.bb'.format(pipeline_args.ref_genome, genome))
+        biglink_file = os.path.join(base_dir, genome, '{}-{}.bigChain.link.bb'.format(pipeline_args.ref_genome, genome))
+        args = tools.misc.HashableNamespace()
+        args.chain_file = chain_file
+        args.bigchain_file = bigchain_file
+        args.biglink_file = biglink_file
         return args
 
     def output(self):
@@ -1169,7 +1268,7 @@ class Chaining(ToilTask):
     def validate(self):
         if not tools.misc.is_exec('halLiftover'):
             raise ToolMissingException('halLiftover from the halTools package not in global path.')
-        for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort']:
+        for tool in ['pslPosTarget', 'axtChain', 'chainMergeSort', 'hgLoadChain', 'bedToBigBed']:
             if not tools.misc.is_exec(tool):
                     raise ToolMissingException('{} from the Kent tools package not in global path.'.format(tool))
 
@@ -1179,10 +1278,11 @@ class Chaining(ToilTask):
     def run(self):
         self.validate()
         pipeline_args = self.get_pipeline_args()
+        chain_args = self.get_args(pipeline_args)
         logger.info('Launching Pairwise Chaining toil pipeline.')
+        tools.fileOps.ensure_dir(chain_args.base_dir)
         toil_work_dir = os.path.join(self.work_dir, 'toil', 'chaining')
         toil_options = self.prepare_toil_options(toil_work_dir)
-        chain_args = self.get_args(pipeline_args)
         chaining(chain_args, toil_options)
         logger.info('Pairwise Chaining toil pipeline is complete.')
 
@@ -1197,7 +1297,7 @@ class TransMap(PipelineWrapperTask):
         ref_files = ReferenceFiles.get_args(pipeline_args)
         args = tools.misc.HashableNamespace()
         args.two_bit = GenomeFiles.get_args(pipeline_args, genome).two_bit
-        args.chain_file = Chaining.get_args(pipeline_args).chain_files[genome]
+        args.chain_file = Chaining.get_genome_args(pipeline_args, genome).chain_file
         args.transcript_fasta = ref_files.transcript_fasta
         args.ref_psl = ref_files.ref_psl
         args.annotation_gp = ref_files.annotation_gp
@@ -1244,14 +1344,36 @@ class TransMapPsl(PipelineTask):
     def run(self):
         tm_args = self.get_module_args(TransMap, genome=self.genome)
         logger.info('Running transMap for {}.'.format(self.genome))
-        cmd = [['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, '/dev/stdout'],
-               ['pslMapPostChain', '/dev/stdin', '/dev/stdout'],
-               ['sort', '-k14,14', '-k16,16n'],
+        tmp_tm_file = luigi.LocalTarget(is_tmp=True)
+        tm_cmd = ['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+        # TODO: currently the direction of the chain file between the reference and the genome file is not 
+        # specified. Try each way to see which one works.
+        if self.chain_mode:
+            tm_cmd = ['pslMap', '-swapMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+        try:
+            with tmp_tm_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(tm_cmd, stderr='/dev/null')
+        except:
+            tm_cmd_swap = ['pslMap', '-swapMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+            if self.chain_mode:
+                tm_cmd_swap = ['pslMap', '-chainMapFile', tm_args.ref_psl, tm_args.chain_file, tmp_tm_file]
+            with tmp_tm_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(tm_cmd_swap, stderr='/dev/null')
+
+        cmd = [['pslMapPostChain', tmp_tm_file, '/dev/stdout'],
+               ['sort', '--parallel=4', '-k14,14', '-k16,16n'],
                ['pslRecalcMatch', '/dev/stdin', tm_args.two_bit, tm_args.transcript_fasta, 'stdout'],
-               ['sort', '-k10,10']]  # re-sort back to query name for filtering
+               ['sort', '--parallel=4', '-k10,10']]  # re-sort back to query name for filtering
         tmp_file = luigi.LocalTarget(is_tmp=True)
-        with tmp_file.open('w') as tmp_fh:
-            tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
+        try:
+            with tmp_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
+        except:
+            # TODO: Don't know why transMap occasionally fails on test data?!?
+            logger.warning("Part of transMap command failed, running again... ")
+            with tmp_file.open('w') as tmp_fh:
+                tools.procOps.run_proc(cmd, stdout=tmp_fh, stderr='/dev/null')
+
         tm_psl_tgt, tm_gp_tgt = self.output()
         tools.fileOps.ensure_file_dir(tm_psl_tgt.path)
         with tm_psl_tgt.open('w') as outf:
@@ -1290,7 +1412,7 @@ class FilterTransMap(PipelineTask):
         resolved_df = filter_transmap(tm_args.tm_psl, tm_args.ref_psl, tm_args.tm_gp,
                                       tm_args.ref_db_path, psl_target, tm_args.global_near_best,
                                       tm_args.filter_overlapping_genes, tm_args.overlapping_ignore_bases,
-                                      json_target)
+                                      json_target, False)
         with tools.sqlite.ExclusiveSqlConnection(tm_args.db_path) as engine:
             resolved_df.to_sql(self.eval_table, engine, if_exists='replace')
             table_target.touch()
@@ -1482,7 +1604,8 @@ class AugustusCgp(ToilTask):
         args.genomes = genomes
         args.annotate_ancestors = pipeline_args.annotate_ancestors
         args.fasta_files = fasta_files
-        args.hal = pipeline_args.hal
+        if not pipeline_args.chain_mode:
+            args.hal = pipeline_args.hal
         args.ref_genome = pipeline_args.ref_genome
         args.augustus_cgp_gp = output_gp_files
         args.augustus_cgp_gtf = output_gtf_files
@@ -1959,11 +2082,11 @@ class AlignTranscripts(PipelineWrapperTask):
         args.transcript_modes = {'transMap': {'gp': TransMap.get_args(pipeline_args, genome).filtered_tm_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.transMap.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.transMap.CDS.psl')}}
-        if pipeline_args.augustus is True:
+        if pipeline_args.augustus == True:
             args.transcript_modes['augTM'] = {'gp':  Augustus.get_args(pipeline_args, genome).augustus_tm_gp,
                                               'mRNA': os.path.join(base_dir, genome + '.augTM.mRNA.psl'),
                                               'CDS': os.path.join(base_dir, genome + '.augTM.CDS.psl')}
-        if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
+        if pipeline_args.augustus == True and genome in pipeline_args.rnaseq_genomes:
             args.transcript_modes['augTMR'] = {'gp': Augustus.get_args(pipeline_args, genome).augustus_tmr_gp,
                                                'mRNA': os.path.join(base_dir, genome + '.augTMR.mRNA.psl'),
                                                'CDS': os.path.join(base_dir, genome + '.augTMR.CDS.psl')}
@@ -2097,21 +2220,28 @@ class Consensus(PipelineWrapperTask):
         gp_list = [TransMap.get_args(pipeline_args, genome).filtered_tm_gp]
         args.tx_modes = ['transMap']
         args.denovo_tx_modes = []
-        if pipeline_args.augustus is True:
+        if pipeline_args.augustus == True:
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tm_gp)
             args.tx_modes.append('augTM')
-        if pipeline_args.augustus is True and genome in pipeline_args.rnaseq_genomes:
+        if pipeline_args.augustus == True and genome in pipeline_args.rnaseq_genomes:
             gp_list.append(Augustus.get_args(pipeline_args, genome).augustus_tmr_gp)
             args.tx_modes.append('augTMR')
-        if pipeline_args.augustus_cgp is True:
+        if pipeline_args.augustus_cgp == True:
             gp_list.append(AugustusCgp.get_args(pipeline_args).augustus_cgp_gp[genome])
             args.denovo_tx_modes.append('augCGP')
-        if pipeline_args.augustus_pb is True and genome in pipeline_args.isoseq_genomes:
+        if pipeline_args.augustus_pb == True and genome in pipeline_args.isoseq_genomes:
             gp_list.append(AugustusPb.get_args(pipeline_args, genome).augustus_pb_gp)
             args.denovo_tx_modes.append('augPB')
         if genome in pipeline_args.external_ref_genomes:
             gp_list.append(ExternalReferenceFiles.get_args(pipeline_args, genome).annotation_gp)
             args.denovo_tx_modes.append('exRef')
+        if pipeline_args.augustus == True or pipeline_args.augustus_cgp == True or pipeline_args.augustus_pb == True:
+            if pipeline_args.chain_mode == True:
+                args.run_hgm = False
+            else: 
+                args.run_hgm = True 
+        else:
+            args.run_hgm = False
         args.gp_list = gp_list
         args.genome = genome
         args.transcript_modes = list(AlignTranscripts.get_args(pipeline_args, genome).transcript_modes.keys())
@@ -2177,7 +2307,9 @@ class ConsensusDriverTask(RebuildableTask):
         pipeline_args = self.get_pipeline_args()
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
@@ -2208,9 +2340,13 @@ class Plots(RebuildableTask):
     def get_args(pipeline_args):
         base_dir = os.path.join(pipeline_args.out_dir, 'plots')
         tools.fileOps.ensure_dir(base_dir)
-        ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
+        if not pipeline_args.chain_mode:
+            ordered_genomes = tools.hal.build_genome_order(pipeline_args.hal, pipeline_args.ref_genome,
                                                        pipeline_args.target_genomes,
                                                        pipeline_args.annotate_ancestors)
+        else: 
+            ordered_genomes = list(pipeline_args.target_genomes)
+        # TODO make ordered_genomes for chain mode
         args = tools.misc.HashableNamespace()
         args.ordered_genomes = ordered_genomes
         # plots derived from transMap results
@@ -2230,7 +2366,7 @@ class Plots(RebuildableTask):
         args.indel = luigi.LocalTarget(os.path.join(base_dir, 'coding_indels.pdf'))
         args.missing = luigi.LocalTarget(os.path.join(base_dir, 'missing_genes_transcripts.pdf'))
         # plots that depend on execution mode
-        if pipeline_args.augustus is True:
+        if pipeline_args.augustus == True:
             args.improvement = luigi.LocalTarget(os.path.join(base_dir, 'augustus_improvement.pdf'))
         if 'augCGP' in pipeline_args.modes or 'augPB' in pipeline_args.modes:
             args.denovo = luigi.LocalTarget(os.path.join(base_dir, 'denovo.pdf'))
@@ -2258,7 +2394,9 @@ class Plots(RebuildableTask):
         yield self.clone(Consensus)
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
@@ -2279,21 +2417,23 @@ class ReportStats(PipelineTask):
         yield self.clone(Chaining)
         yield self.clone(TransMap)
         yield self.clone(EvaluateTransMap)
-        if self.augustus is True:
+        if self.augustus == True:
             yield self.clone(Augustus)
-        if self.augustus_cgp is True:
+        if self.augustus_cgp == True:
             yield self.clone(AugustusCgp)
             yield self.clone(FindDenovoParents, mode='augCGP')
-        if self.augustus_pb is True:
+        if self.augustus_pb == True:
             yield self.clone(AugustusPb)
             yield self.clone(FindDenovoParents, mode='augPB')
             yield self.clone(IsoSeqTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(AlignTranscripts)
         yield self.clone(EvaluateTranscripts)
         yield self.clone(Consensus)
         yield self.clone(Plots)
-        if self.assembly_hub is True:
+        if self.assembly_hub == True:
             yield self.clone(AssemblyHub)
 
     def output(self):
@@ -2345,27 +2485,39 @@ class CreateDirectoryStructure(RebuildableTask):
         args.genomes_txt = os.path.join(args.out_dir, 'genomes.txt')
         args.groups_txt = os.path.join(args.out_dir, 'groups.txt')
         genome_files = frozendict({genome: GenomeFiles.get_args(pipeline_args, genome) for genome in args.genomes})
+        chain_files = frozendict({genome: Chaining.get_genome_args(pipeline_args, genome) for genome in args.genomes})
         sizes = {}
         twobits = {}
         trackdbs = {}
+        chains = {}
+        links = {}
         for genome, genome_file in genome_files.items():
             sizes[genome] = (genome_file.sizes, os.path.join(args.out_dir, genome, 'chrom.sizes'))
             twobits[genome] = (genome_file.two_bit, os.path.join(args.out_dir, genome, '{}.2bit'.format(genome)))
             trackdbs[genome] = os.path.join(args.out_dir, genome, 'trackDb.txt')
+        for genome, chain_file in chain_files.items():
+            chains[genome] = (chain_file.bigchain_file, os.path.join(args.out_dir, genome, 'chain.bb'))
+            links[genome] = (chain_file.biglink_file, os.path.join(args.out_dir, genome, 'link.bb'))
         args.sizes = frozendict(sizes)
         args.twobits = frozendict(twobits)
         args.trackdbs = frozendict(trackdbs)
-        args.hal = os.path.join(args.out_dir, os.path.basename(pipeline_args.hal))
+        args.chains = frozendict(chains)
+        args.links = frozendict(links)
+        if not pipeline_args.chain_mode:
+            args.hal = os.path.join(args.out_dir, os.path.basename(pipeline_args.hal))
         return args
 
     def requires(self):
         yield self.clone(Consensus)
         yield self.clone(EvaluateTransMap)
         yield self.clone(EvaluateTranscripts)
-        yield self.clone(Hgm)
+        if self.augustus == True or self.augustus_pb == True or self.augustus_cgp == True:
+            if not self.chain_mode:
+                yield self.clone(Hgm)
         yield self.clone(ReferenceFiles)
         yield self.clone(EvaluateTransMap)
         yield self.clone(TransMap)
+        yield self.clone(Chaining)
 
     def output(self):
         pipeline_args = self.get_pipeline_args()
@@ -2373,7 +2525,8 @@ class CreateDirectoryStructure(RebuildableTask):
         yield luigi.LocalTarget(args.hub_txt)
         yield luigi.LocalTarget(args.genomes_txt)
         yield luigi.LocalTarget(args.groups_txt)
-        yield luigi.LocalTarget(args.hal)
+        if not pipeline_args.chain_mode:
+            yield luigi.LocalTarget(args.hal)
         for local_path, hub_path in args.sizes.values():
             yield luigi.LocalTarget(hub_path)
         for local_path, hub_path in args.twobits.values():
@@ -2386,8 +2539,14 @@ class CreateDirectoryStructure(RebuildableTask):
 
         # write the hub.txt file
         with luigi.LocalTarget(args.hub_txt).open('w') as outf:
-            outf.write(hub_str.format(hal=os.path.splitext(os.path.basename(pipeline_args.hal))[0],
+            if not pipeline_args.chain_mode:
+                outf.write(hub_str.format(hal=os.path.splitext(os.path.basename(pipeline_args.hal))[0],
                                       email=pipeline_args.hub_email))
+            else: 
+                outf.write(hub_str.format(hal=pipeline_args.hub_name,
+                                      email=pipeline_args.hub_email))
+            # TODO what to do in chain mode?
+            # TODO let user change name of hub in all modes
 
         # write the groups.txt file
         with luigi.LocalTarget(args.groups_txt).open('w') as outf:
@@ -2399,7 +2558,8 @@ class CreateDirectoryStructure(RebuildableTask):
                 outf.write(genome_str.format(genome=genome, default_pos=find_default_pos(sizes_local_path)))
 
         # link the hal
-        shutil.copy(pipeline_args.hal, args.hal)
+        if not pipeline_args.chain_mode:
+            shutil.copy(pipeline_args.hal, args.hal)
 
         # construct a directory for each genome
         for genome, (sizes_local_path, sizes_hub_path) in args.sizes.items():
@@ -2414,7 +2574,7 @@ class CreateTracks(PipelineWrapperTask):
     Wrapper task for track creation.
     """
     def validate(self):
-        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig']:#, 'bamCoverage']:
+        for tool in ['bedSort', 'pslToBigPsl', 'wiggletools', 'wigToBigWig', 'hgLoadChain', 'bedToBigBed']: #'bamCoverage'
             if not tools.misc.is_exec(tool):
                 raise ToolMissingException('Tool {} not in global path.'.format(tool))
 
@@ -2440,10 +2600,11 @@ class CreateTracksDriverTask(PipelineWrapperTask):
             return
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
-        if pipeline_args.augustus_cgp is True and self.genome in pipeline_args.target_genomes:
+
+        if pipeline_args.augustus_cgp == True and self.genome in pipeline_args.target_genomes:
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_cgp.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_cgp.txt'), mode='augCGP')
-        if pipeline_args.augustus_pb is True and self.genome in pipeline_args.isoseq_genomes:
+        if pipeline_args.augustus_pb == True and self.genome in pipeline_args.isoseq_genomes:
             yield self.clone(DenovoTrack, track_path=os.path.join(out_dir, 'augustus_pb.bb'),
                              trackdb_path=os.path.join(out_dir, 'augustus_pb.txt'), mode='augPB')
 
@@ -2465,7 +2626,7 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              trackdb_path=os.path.join(out_dir, 'consensus.txt'))
 
             tx_modes = ['transMap']
-            if pipeline_args.augustus is True:
+            if pipeline_args.augustus == True:
                 tx_modes.append('augTM')
                 if self.genome in pipeline_args.rnaseq_genomes:
                     tx_modes.append('augTMR')
@@ -2482,9 +2643,11 @@ class CreateTracksDriverTask(PipelineWrapperTask):
                              annotation_genome=pipeline_args.ref_genome,
                              mode='tm')
 
-            if pipeline_args.augustus is True and self.genome in pipeline_args.rnaseq_genomes:
+            if pipeline_args.augustus == True and self.genome in pipeline_args.rnaseq_genomes:
                 yield self.clone(AugustusTrack, track_path=os.path.join(out_dir, 'augustus.bb'),
                                  trackdb_path=os.path.join(out_dir, 'augustus.txt'))
+
+            
 
         if self.genome in pipeline_args.isoseq_genomes:
             isoseq_bams = []
@@ -2518,6 +2681,126 @@ class CreateTrackDbs(RebuildableTask):
         return luigi.LocalTarget(directory_args.trackdbs[self.genome])
 
     def run(self):
+        # def chain_hub_tracks(pipeline_args, genome):
+        def chain_hub_tracks(pipeline_args):
+            """ Create chain tracks between genome and the reference genome """ 
+
+            chrom_sizes = GenomeFiles.get_args(pipeline_args, self.genome).sizes
+            chain_args = Chaining.get_genome_args(pipeline_args, self.genome)
+
+            # with tools.fileOps.TemporaryFilePath() as out_path:
+            # tmp = luigi.LocalTarget(is_tmp=True)
+
+            # bigchain_as_file = tools.fileOps.get_tmp_toil_file()
+            bigchain_as_file = luigi.LocalTarget(is_tmp=True)
+            with open(bigchain_as_file.path, 'w') as outf:
+                outf.write(bigchain)
+
+            # biglink_as_file = tools.fileOps.get_tmp_toil_file()
+            biglink_as_file = luigi.LocalTarget(is_tmp=True)
+            with open(biglink_as_file.path, 'w') as outf:
+                outf.write(biglink)
+
+            chain = chain_args.chain_file
+            bigChain_file = luigi.LocalTarget(is_tmp=True)
+            bigChain_bb = chain_args.bigchain_file
+            bigLink_file = luigi.LocalTarget(is_tmp=True)
+            bigLink_bb = chain_args.biglink_file
+
+            # TODO: need to change names of chain.tab and link.tab in a better way--
+            # if running multiple processes simultaneously, can mess things up 
+            # The real fix would be modifying hgLoadChain so that the names can be 
+            # changed in there...
+            chain_tab_file = '{}.chain.tab'.format(self.genome)
+            link_tab_file = '{}.link.tab'.format(self.genome)
+            cmd = [['hgLoadChain', '-noBin', '-test', self.genome, 'bigChain', chain]]
+            tools.procOps.run_proc(cmd)
+            shutil.copy('chain.tab', chain_tab_file)
+            shutil.copy('link.tab', link_tab_file)
+
+            # Create bigChain file
+            tmp_file = luigi.LocalTarget(is_tmp=True)
+            cmd = ['sed', r's/\.000000//', chain_tab_file]
+            tools.procOps.run_proc(cmd, stdout=tmp_file.path)
+            cmd = ['awk', r'BEGIN {OFS="\t"}{print $2, $4, $5, $11, 1000, $8, $3, $6, $7, $9, $10, $1}', tmp_file.path]
+            tools.procOps.run_proc(cmd, stdout=bigChain_file.path)
+            cmd = ['bedToBigBed', '-type=bed6+6', '-as={}'.format(bigchain_as_file.path), '-tab', bigChain_file.path, chrom_sizes, bigChain_bb]
+            
+            try:
+                tools.procOps.run_proc(cmd, stderr='/dev/null')
+            except:
+                # TODO fix so chain file can't be wrong
+                # If the chain file was the wrong way, need other chrom sizes
+                ref_chrom_sizes = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
+                cmd = ['bedToBigBed', '-type=bed6+6', '-as={}'.format(bigchain_as_file.path), '-tab', bigChain_file.path, ref_chrom_sizes, bigChain_bb]
+                tools.procOps.run_proc(cmd, stderr='/dev/null')
+
+            # Create bigLink file
+            tmp_file = luigi.LocalTarget(is_tmp=True)
+            cmd = ['awk', r'BEGIN {OFS="\t"}{print $1, $2, $3, $5, $4}', link_tab_file]
+            tools.procOps.run_proc(cmd, stdout=tmp_file.path)
+            cmd = ['sort', '--parallel=4', '-k1,1', '-k2,2n', tmp_file.path]
+            tools.procOps.run_proc(cmd, stdout=bigLink_file.path)
+            cmd = ['bedToBigBed', '-type=bed4+1', '-as={}'.format(biglink_as_file.path), '-tab', bigLink_file.path, chrom_sizes, bigLink_bb]
+            try:
+                tools.procOps.run_proc(cmd, stderr='/dev/null')
+            except:
+                ref_chrom_sizes = GenomeFiles.get_args(pipeline_args, pipeline_args.ref_genome).sizes
+                cmd = ['bedToBigBed', '-type=bed4+1', '-as={}'.format(biglink_as_file.path), '-tab', bigLink_file.path, ref_chrom_sizes, bigLink_bb]
+                tools.procOps.run_proc(cmd, stderr='/dev/null')
+
+
+        def synteny_hub_tracks(pipeline_args, directory_args, genome):
+            """ Create synteny tracks from the genome to every other genome """
+
+            # TODO ensure halSynteny is on the path 
+            # TODO: best params for bigger genomes should have --minBlockSize 1000000 --maxAnchorDistance 50000
+            print("WRITING SYNTENY TRACKS")
+            out_dir = os.path.join(directory_args.out_dir, self.genome)
+
+            bigpsl_as_file = luigi.LocalTarget(is_tmp=True)
+            with open(bigpsl_as_file.path, 'w') as outf:
+                outf.write(bigpsl)
+
+            # for other_genome in directory_args.genomes:
+            # if other_genome != genome: # Don't create synteny tracks to itself 
+                # Run halSynteny to get psl file 
+            tmp_psl_file = luigi.LocalTarget(is_tmp=True)
+            out_psl = os.path.join(out_dir, '{}-{}.synteny.psl'.format(self.genome, genome))
+            hal_cmd = ['halSynteny', '--queryGenome', self.genome, '--targetGenome', genome, pipeline_args.hal, tmp_psl_file.path]
+            print("RUNNING HAL SYNTENY")
+            for i in hal_cmd:
+                print(i, sep=' ', end=' ')
+            print()
+            tools.procOps.run_proc(hal_cmd, stdout='/dev/null', stderr='/dev/null')
+
+            # pslPosTarget
+            psl_pos_target_cmd = ['pslPosTarget', tmp_psl_file.path, out_psl]
+            tools.procOps.run_proc(psl_pos_target_cmd)
+
+            # Convert psl to bigPsl
+            # out_bigPsl = os.path.join(out_dir, '{}-{}.synteny.bigPsl'.format(genome, other_genome))
+            tmp_bigPsl_file = luigi.LocalTarget(is_tmp=True)
+            bigpsl_cmd = [['pslToBigPsl', out_psl, 'stdout'],
+                        ['sort', '--parallel=4', '-k1,1', '-k2,2n']]
+            print("\nRUNNING PSL TO BIG PSL")
+            for i in bigpsl_cmd:
+                for j in i:
+                    print(j, sep=' ', end=' ')
+                print()
+            print()
+            tools.procOps.run_proc(bigpsl_cmd, stdout=tmp_bigPsl_file.path, stderr='/dev/null')
+            # Convert bigPsl to bigPsl.bb
+            chrom_sizes = GenomeFiles.get_args(pipeline_args, genome).sizes
+            out_bigPsl_bb = os.path.join(out_dir, '{}-{}.synteny.bigPsl.bb'.format(self.genome, genome))
+            bb_cmd = ['bedToBigBed', '-as={}'.format(bigpsl_as_file.path), '-type=bed12+13', '-tab', tmp_bigPsl_file.path, chrom_sizes, out_bigPsl_bb]
+            print("RUNNING BED TO BIG BED")
+            for i in bb_cmd:
+                print(i, sep=' ', end=' ')
+            print()
+            tools.procOps.run_proc(bb_cmd, stdout='/dev/null', stderr='/dev/null')
+
+
         pipeline_args = self.get_pipeline_args()
         directory_args = CreateDirectoryStructure.get_args(pipeline_args)
         out_dir = os.path.join(directory_args.out_dir, self.genome)
@@ -2528,18 +2811,62 @@ class CreateTrackDbs(RebuildableTask):
                     outf.write('include {}\n'.format(f))
             outf.write('\n\n')
 
-            outf.write(snake_composite.format(org_str=org_str))
-            for genome in directory_args.genomes:
-                # by default, only the reference genome is visible unless we are on the reference, then all are
-                if self.genome == pipeline_args.ref_genome:
-                    if genome == pipeline_args.ref_genome:
-                        visibility = 'hide'
+            if not pipeline_args.chain_mode:
+                # Only write snake tracks if the HAL file exists
+                outf.write(snake_composite.format(org_str=org_str))
+                for genome in directory_args.genomes:
+                    # by default, only the reference genome is visible unless we are on the reference, then all are
+                    if self.genome == pipeline_args.ref_genome:
+                        if genome == pipeline_args.ref_genome:
+                            visibility = 'hide'
+                        else:
+                            visibility = 'full'
                     else:
-                        visibility = 'full'
-                else:
-                    visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
-                hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))
-                outf.write(snake_template.format(genome=genome, hal_path=hal_path, visibility=visibility))
+                        visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
+                    hal_path = '../{}'.format(os.path.basename(pipeline_args.hal))
+                    outf.write(snake_template.format(genome=genome, hal_path=hal_path, visibility=visibility))
+
+            # TODO make the chains from the ref genome to all of the others, too 
+            if self.genome != pipeline_args.ref_genome:
+                # chain_hub_tracks(pipeline_args, self.genome)
+                chain_hub_tracks(pipeline_args)
+                chain_local_path, chain_hub_path = directory_args.chains[self.genome]
+                shutil.copy(chain_local_path, chain_hub_path)
+                link_local_path, link_hub_path = directory_args.links[self.genome]
+                shutil.copy(link_local_path, link_hub_path)
+        
+
+            if self.genome == pipeline_args.ref_genome:
+                pass
+                # TODO: create chain tracks from the reference genome to each of the others
+            else:
+
+                outf.write(chain_composite.format(org_str='{}={}'.format(self.genome, self.genome)))
+                visibility = 'full' if pipeline_args.chain_mode else 'hide'
+                chain_args = Chaining.get_genome_args(pipeline_args, self.genome)
+                bigChain_bb = chain_args.bigchain_file
+                bigLink_bb = chain_args.biglink_file
+                bigChain_path = "chain.bb"
+                bigLink_path = "link.bb"
+                outf.write(chain_template.format(genome=self.genome, ref_genome=pipeline_args.ref_genome, bigChain_path=bigChain_path,bigLink_path=bigLink_path, visibility=visibility))
+
+            # TODO make sure hal synteny can't be run in chain mode
+            # if not pipeline_args.chain_mode:
+            #     for genome in directory_args.genomes:
+            #         if genome != self.genome:
+            #         # if genome != pipeline_args.ref_genome: 
+            #             synteny_hub_tracks(pipeline_args, directory_args, genome)
+
+            #     # Write synteny tracks
+            #     outf.write(synteny_composite.format(org_str=org_str))
+            #     for genome in directory_args.genomes:
+            #         if genome != self.genome:
+            #             visibility = 'hide' if genome != pipeline_args.ref_genome else 'full'
+            #             # visibility = 'full'
+            #             bigPsl_path = '{}-{}.synteny.bigPsl.bb'.format(self.genome, genome)
+            #             outf.write(bigpsl_template_synteny.format(name='Synteny-{}-{}'.format(self.genome, genome), 
+            #                 short_label='synteny-{}-{}'.format(self.genome, genome), long_label='synteny-{}-{}'.format(self.genome, genome),
+            #                  path=bigPsl_path, visibility=visibility, genome=genome))
 
 
 class DenovoTrack(TrackTask):
@@ -2622,6 +2949,7 @@ class DenovoTrack(TrackTask):
                                               path=os.path.basename(track.path)))
 
 
+
 class BgpTrack(TrackTask):
     """Constructs a standard modified bigGenePred track"""
     genepred_path = luigi.Parameter()
@@ -2635,6 +2963,8 @@ class BgpTrack(TrackTask):
             """blue for coding, green for non-coding"""
             if info.TranscriptBiotype == 'protein_coding':
                 return '76,85,212'
+            elif "pseudogene" in info.TranscriptBiotype:
+                return '255,51,255'
             return '85,212,76'
 
         pipeline_args = self.get_pipeline_args()
@@ -2685,6 +3015,8 @@ class ConsensusTrack(TrackTask):
                 return '135,76,212'
             elif info.transcript_biotype == 'protein_coding':
                 return '76,85,212'
+            elif "pseudogene" in info.transcript_biotype:
+                return '255,51,255'
             return '85,212,76'
 
         pipeline_args = self.get_pipeline_args()
@@ -3154,6 +3486,36 @@ bigpsl = '''table bigPsl
 
 '''
 
+# modified to turn chainScore into bigint to prevent integer overflow 
+bigchain = '''table bigChain
+"bigChain pairwise alignment"
+    (
+    string chrom;       "Reference sequence chromosome or scaffold"
+    uint   chromStart;  "Start position in chromosome"
+    uint   chromEnd;    "End position in chromosome"
+    string name;        "Name or ID of item, ideally both human readable and unique"
+    uint score;         "Score (0-1000)"
+    char[1] strand;     "+ or - for strand"
+    uint tSize;         "size of target sequence"
+    string qName;       "name of query sequence"
+    uint qSize;         "size of query sequence"
+    uint qStart;        "start of alignment on query sequence"
+    uint qEnd;          "end of alignment on query sequence"
+    bigint chainScore;    "score from chain"
+    )
+'''
+
+biglink = '''table bigLink
+"bigLink pairwise alignment"
+    (
+    string chrom;       "Reference sequence chromosome or scaffold"
+    uint   chromStart;  "Start position in chromosome"
+    uint   chromEnd;    "End position in chromosome"
+    string name;        "Name or ID of item, ideally both human readable and unique"
+    uint qStart;        "start of alignment on query sequence"
+    )
+'''
+
 
 ###
 # Templates for trackDb entries
@@ -3193,6 +3555,16 @@ defaultIsClosed 0
 name expression
 label Expression
 priority 3
+defaultIsClosed 0
+
+name chain
+label Chains
+priority 2
+defaultIsClosed 0
+
+name synteny
+label Synteny
+priority 2
 defaultIsClosed 0
 
 '''
@@ -3295,6 +3667,8 @@ searchIndex name
 '''
 
 
+
+
 denovo_template = '''track {name}
 shortLabel {short_label}
 longLabel {long_label}
@@ -3378,5 +3752,89 @@ longLabel Consensus indels
 bigDataUrl {path}
 visibility hide
 priority 5
+
+'''
+
+chain_composite = '''track chainCentral
+compositeTrack on
+shortLabel Chains
+longLabel Chains
+description Chains
+group cat_tracks
+subGroup1 view Track_Type Chain=AllChains
+subGroup2 orgs Organisms {org_str}
+dragAndDrop subTracks
+dimensions dimensionX=view dimensionY=orgs
+noInherit on
+priority 0
+centerLabelsDense on
+visibility full
+type bigChain 3
+
+    track chains
+    shortLabel Chains
+    view AllChains
+    visibility full
+    subTrack chainCentral
+
+'''
+
+chain_template = '''        track chain{genome}
+        longLabel {ref_genome}-{genome} chain
+        shortLabel {ref_genome}-{genome} chain
+        otherSpecies {genome}
+        visibility {visibility}
+        parent chains off
+        priority 3
+        bigDataUrl {bigChain_path}
+        linkDataUrl {bigLink_path}
+        type bigChain 3
+        group chain
+        subGroups view=Chain orgs={genome}
+
+'''
+
+synteny_composite = '''track syntenyCentral
+compositeTrack on
+shortLabel Synteny
+longLabel Synteny
+description Synteny tracks
+group cat_tracks
+subGroup1 view Track_Type Synteny=AllSynteny
+subGroup2 orgs Organisms {org_str}
+dragAndDrop subTracks
+dimensions dimensionX=view dimensionY=orgs
+priority 0
+centerLabelsDense on
+visibility full
+type bigPsl 3
+
+    track syntenyCentralPsls
+    shortLabel Synteny
+    view AllSynteny
+    visibility full
+    subTrack syntenyCentral
+
+'''
+
+bigpsl_template_synteny = '''        track {name}
+        shortLabel {short_label}
+        longLabel {long_label}
+        bigDataUrl {path}
+        parent syntenyCentralPsls off
+        type bigPsl
+        group synteny
+        itemRgb on
+        priority 2
+        visibility {visibility}
+        baseColorUseSequence lfExtra
+        baseColorDefault genomicCodons
+        baseColorUseCds given
+        indelDoubleInsert on
+        indelQueryInsert on
+        showDiffBasesAllScales .
+        showDiffBasesMaxZoom 10000.0
+        searchIndex name
+        subGroups view=Synteny orgs={genome}
 
 '''

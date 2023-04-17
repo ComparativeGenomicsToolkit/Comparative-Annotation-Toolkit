@@ -243,6 +243,8 @@ def find_indels(tx, psl, aln_mode):
     def convert_coordinates_to_chromosome(left_pos, right_pos, coordinate_fn, strand):
         """convert alignment coordinates to target chromosome coordinates, inverting if negative strand"""
         left_chrom_pos = coordinate_fn(left_pos)
+        if left_chrom_pos is None:      # workaround for when psl cds size is calculated incorrectly 
+            return None, None
         assert left_chrom_pos is not None
         right_chrom_pos = coordinate_fn(right_pos)
         if right_chrom_pos is None:

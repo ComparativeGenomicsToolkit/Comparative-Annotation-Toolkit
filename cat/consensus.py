@@ -61,8 +61,41 @@ def generate_consensus(args):
     # load transMap evaluation data
     tm_eval_df = load_transmap_evals(args.db_path)
     # load the homGeneMapping data for transMap/augTM/augTMR
+    # pd.set_option('max_columns', None)
     tx_modes = [x for x in args.tx_modes if x in ['transMap', 'augTM', 'augTMR']]
-    hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
+    if args.run_hgm == True:
+        hgm_df = pd.concat([load_hgm_vectors(args.db_path, tx_mode) for tx_mode in tx_modes])
+    else:
+        # Get tm df but don't drop AlignmentId yet
+        tm_eval = tools.sqlInterface.load_alignment_evaluation(args.db_path)
+        tm_filter_eval = tools.sqlInterface.load_filter_evaluation(args.db_path)
+        tm_eval_df = pd.merge(tm_eval, tm_filter_eval, on=['TranscriptId', 'AlignmentId'])
+        hgm_df = tm_eval_df.filter(['GeneId', 'TranscriptId', 'AlignmentId'], axis=1)
+
+        def dummy_hgm_exons(aln_id):
+            num_exon_frames = len(tx_dict[aln_id].exon_frames)
+            return [0] * num_exon_frames
+
+        def dummy_hgm_introns(aln_id):
+            num_intron_frames = len(tx_dict[aln_id].exon_frames) - 1
+            return [0] * num_intron_frames
+
+        hgm_df['AllSpeciesIntronRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_introns(x['AlignmentId']), axis=1)
+        hgm_df['AllSpeciesExonRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
+        hgm_df['IntronRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_introns(x['AlignmentId']), axis=1)
+        hgm_df['ExonRnaSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
+        hgm_df['IntronAnnotSupport'] = hgm_df.apply(lambda x: dummy_hgm_introns(x['AlignmentId']), axis=1)
+        hgm_df['CdsAnnotSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
+        hgm_df['ExonAnnotSupport'] = hgm_df.apply(lambda x: dummy_hgm_exons(x['AlignmentId']), axis=1)
+        hgm_df['IntronAnnotSupportPercent'] = 0.0
+        hgm_df['ExonAnnotSupportPercent'] = 0.0
+        hgm_df['CdsAnnotSupportPercent'] = 0.0
+        hgm_df['ExonRnaSupportPercent'] = 0.0
+        hgm_df['IntronRnaSupportPercent'] = 0.0
+        hgm_df['AllSpeciesExonRnaSupportPercent'] = 0.0
+        hgm_df['AllSpeciesIntronRnaSupportPercent'] = 0.0
+        tm_eval_df = tm_eval_df.drop('AlignmentId', axis=1)
+
     # load the alignment metrics data
     mrna_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'mRNA') for tx_mode in tx_modes])
     cds_metrics_df = pd.concat([load_metrics_from_db(args.db_path, tx_mode, 'CDS') for tx_mode in tx_modes])
@@ -121,7 +154,11 @@ def generate_consensus(args):
     if len(args.denovo_tx_modes) > 0:
         metrics['denovo'] = {}
         for tx_mode in args.denovo_tx_modes:
-            metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
+            if args.denovo_allow_bad_annot_or_tm == True:
+                metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
+                                          'Possible fusion': 0, 'Putative novel isoform': 0, 'Bad annot or tm': 0}
+            else:
+                metrics['denovo'][tx_mode] = {'Possible paralog': 0, 'Poor alignment': 0, 'Putative novel': 0,
                                           'Possible fusion': 0, 'Putative novel isoform': 0}
         denovo_dict = find_novel(args.db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_map,
                                  args.denovo_num_introns, args.in_species_rna_support_only,
@@ -140,7 +177,7 @@ def generate_consensus(args):
                                                                          args.db_path, tx_dict, metrics,
                                                                          args.require_pacbio_support)
 
-    if args.filter_overlapping_genes is True:
+    if args.filter_overlapping_genes == True:
         gene_resolved_consensus = resolve_overlapping_cds_intervals(args.overlapping_ignore_bases,
                                                                     deduplicated_strand_resolved_consensus, tx_dict)
     else:
@@ -304,7 +341,8 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype == 'protein_coding']
     non_coding_df = hgm_ref_tm_df[hgm_ref_tm_df.TranscriptBiotype != 'protein_coding']
     # add metrics information to coding df
-    metrics_df = pd.merge(mrna_metrics_df, cds_metrics_df, on='AlignmentId', suffixes=['_mRNA', '_CDS'])
+    # left merge so IDs without CDS aren't lost
+    metrics_df = pd.merge(mrna_metrics_df, cds_metrics_df, on='AlignmentId', how='left', suffixes=['_mRNA', '_CDS'])
     coding_df = pd.merge(coding_df, metrics_df, on='AlignmentId')
     # add evaluation information to coding df, where possible. This adds information on frame shifts.
     coding_df = pd.merge(coding_df, eval_df, on='AlignmentId', how='left')
@@ -312,9 +350,11 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     coding_df['OriginalIntronsPercent_mRNA'] = coding_df.OriginalIntronsPercent_mRNA.fillna(100)
     coding_df['OriginalIntronsPercent_CDS'] = coding_df.OriginalIntronsPercent_CDS.fillna(100)
     non_coding_df['TransMapOriginalIntronsPercent'] = non_coding_df.TransMapOriginalIntronsPercent.fillna(100)
+    # if frameshift info is not present, add "False"
+    coding_df['Frameshift'] = coding_df.Frameshift.fillna(False)
 
     # huge ugly filtering expression for coding transcripts
-    if in_species_rna_support_only is True:
+    if in_species_rna_support_only == True:
         filt = ((coding_df.OriginalIntronsPercent_mRNA >= original_intron_support) &
                 (coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (coding_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
@@ -329,7 +369,7 @@ def combine_and_filter_dfs(tx_dict, hgm_df, mrna_metrics_df, cds_metrics_df, tm_
     coding_df = coding_df[filt]
 
     # huge ugly filtering expression for non coding transcripts
-    if in_species_rna_support_only is True:
+    if in_species_rna_support_only == True:
         filt = ((non_coding_df.TransMapOriginalIntronsPercent >= original_intron_support) &
                 (non_coding_df.IntronAnnotSupportPercent >= intron_annot_support) &
                 (non_coding_df.IntronRnaSupportPercent >= intron_rnaseq_support) &
@@ -365,6 +405,9 @@ def score_filtered_dfs(coding_df, non_coding_df, in_species_rna_support_only):
     def score(s):
         aln_id = s.AlnIdentity_CDS if s.TranscriptBiotype == 'protein_coding' else s.TransMapIdentity
         aln_cov = s.AlnCoverage_CDS if s.TranscriptBiotype == 'protein_coding' else s.TransMapCoverage
+        # identity and coverage can be NaN if len(CDS) == 0; change to be 0
+        if pd.isnull(aln_id): aln_id = 0
+        if pd.isnull(aln_cov): aln_cov = 0
         orig_intron = s.OriginalIntronsPercent_mRNA if s.TranscriptBiotype == 'protein_coding' else s.TransMapOriginalIntronsPercent
         if in_species_rna_support_only:
             rna_support = s.ExonRnaSupportPercent + s.IntronRnaSupportPercent
@@ -410,7 +453,7 @@ def validate_pacbio_splices(deduplicated_strand_resolved_consensus, db_path, tx_
             d['pacbio_isoform_supported'] = True
             metrics['IsoSeq Transcript Validation'][True] += 1
             pb_resolved_consensus.append([tx_id, d])
-        elif require_pacbio_support is False:
+        elif require_pacbio_support == False:
             d['pacbio_isoform_supported'] = False
             metrics['IsoSeq Transcript Validation'][False] += 1
             pb_resolved_consensus.append([tx_id, d])
@@ -443,7 +486,7 @@ def incorporate_tx(best_rows, gene_id, metrics, hints_db_has_rnaseq):
     # incorporate any extra tags
     for key, val in tools.misc.parse_gff_attr_line(best_series.ExtraTags).items():
         d[key] = val
-    if hints_db_has_rnaseq is True:
+    if hints_db_has_rnaseq == True:
         d['exon_rna_support'] = ','.join(map(str, best_series.ExonRnaSupport))
         d['intron_rna_support'] = ','.join(map(str, best_series.IntronRnaSupport))
     if best_series.Paralogy is not None:
@@ -504,7 +547,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         """
         if s.AssignedGeneId is not None:
             return is_novel_supported(s)
-        if denovo_allow_bad_annot_or_tm is False and s.ResolutionMethod == 'badAnnotOrTm':
+        if denovo_allow_bad_annot_or_tm == False and s.ResolutionMethod == 'badAnnotOrTm':
             return None
         elif s.ResolutionMethod == 'ambiguousOrFusion' and s.IntronRnaSupportPercent != 100:
             return None
@@ -536,7 +579,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         elif in_species_rna_support_only and s.ExonRnaSupportPercent <= denovo_exon_support or \
                         s.IntronRnaSupportPercent <= denovo_splice_support:
             return None
-        elif in_species_rna_support_only is False and s.AllSpeciesExonRnaSupportPercent <= denovo_exon_support or \
+        elif in_species_rna_support_only == False and s.AllSpeciesExonRnaSupportPercent <= denovo_exon_support or \
                         s.AllSpeciesIntronRnaSupportPercent <= denovo_splice_support:
             return None
         # look for splices that are not supported by the reference annotation
@@ -545,7 +588,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
         intron_vector = s.IntronRnaSupport if in_species_rna_support_only else s.AllSpeciesIntronRnaSupport
         for intron, rna in zip(*[denovo_tx_obj.intron_intervals, intron_vector]):
             if intron not in existing_splices:
-                if denovo_allow_unsupported is True or rna > 0:
+                if denovo_allow_unsupported == True or rna > 0:
                     new_supported_splices.add(intron)
         if len(new_supported_splices) == 0:
             return None
@@ -570,7 +613,7 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
                                                                                    five_p, denovo_novel_end_distance)
         three_p_matches = tools.intervals.interval_not_within_wiggle_room_intervals(existing_5p[denovo_tx_obj.chromosome],
                                                                                     three_p, denovo_novel_end_distance)
-        if denovo_allow_novel_ends is False:
+        if denovo_allow_novel_ends == False:
             tx_class = s.TranscriptClass
         else:
             tx_class = 'putative_novel_isoform' if s.TranscriptClass is None and (five_p_matches or three_p_matches) else s.TranscriptClass
@@ -625,10 +668,10 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
     # fill in missing fields for novel loci
     filtered_denovo_df['GeneBiotype'] = filtered_denovo_df['GeneBiotype'].fillna('unknown_likely_coding')
     # filter out novel if requested by user
-    if denovo_ignore_novel_genes is True:
+    if denovo_ignore_novel_genes == True:
         filtered_denovo_df = filtered_denovo_df[(filtered_denovo_df.TranscriptClass == 'possible_paralog') |
                                                 (filtered_denovo_df.TranscriptClass == 'putative_novel_isoform')]
-    elif denovo_only_novel_genes is True:
+    elif denovo_only_novel_genes == True:
         filtered_denovo_df = filtered_denovo_df[~((filtered_denovo_df.TranscriptClass == 'possible_paralog') |
                                                 (filtered_denovo_df.TranscriptClass == 'putative_novel_isoform'))]
 
@@ -656,7 +699,9 @@ def find_novel(db_path, tx_dict, consensus_dict, ref_df, metrics, gene_biotype_m
             tags = exref_annot.loc[aln_id].ExtraTags
             if len(tags) > 0:
                 for key, val in tools.misc.parse_gff_attr_line(tags).items():
-                    denovo_tx_dict[aln_id][key] = val
+                    # only add new tags if they don't already exist (and if they're informative)
+                    if key not in denovo_tx_dict[aln_id] and val != "N/A":
+                        denovo_tx_dict[aln_id][key] = val
 
         # record some metrics
         metrics['denovo'][tx_mode][s.TranscriptClass.replace('_', ' ').capitalize()] += 1
@@ -891,7 +936,10 @@ def write_consensus_gps(consensus_gp, consensus_gp_info, final_consensus, tx_dic
     # its possible alternative_source_transcripts did not end up in the final result, so add it
     if 'alternative_source_transcripts' not in gp_info_df.columns:
         gp_info_df['alternative_source_transcripts'] = ['N/A'] * len(gp_info_df)
-    with luigi.LocalTarget(consensus_gp_info).open('w') as outf:
+    # TODO: Luigi LocalTarget leads to a pandas TypeError with pandas>=1.2.0
+    # write() argument must be str, not bytes
+    # with luigi.LocalTarget(consensus_gp_info).open('w') as outf:
+    with open(consensus_gp_info, 'w') as outf:
         gp_info_df.to_csv(outf, sep='\t', na_rep='N/A')
     return consensus_gene_dict
 
@@ -931,6 +979,13 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             return 'N/A'
         return vals[i]
 
+    def get_gene_name(attrs):
+        """returns the gene name associated with a given attrs list"""
+        if attrs.get("source_gene_common_name") is not None:
+            return attrs["source_gene_common_name"]
+        else:
+            return attrs["gene_id"]
+
     def generate_gene_record(chrom, tx_objs, gene_id, attrs_list):
         """calculates the gene interval for this list of tx"""
         def find_all_tx_modes(attrs_list):
@@ -952,10 +1007,7 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
         attrs = {key: attrs[key] for key in useful_keys if key in attrs}
 
         # incorporate gene_name tag for potential downstream CAT input
-        if attrs.get("source_gene_common_name") is not None:
-            attrs["gene_name"] = attrs["source_gene_common_name"]
-        else:
-            attrs["gene_name"] = attrs["gene_id"]
+        attrs["gene_name"] = get_gene_name(attrs)
 
         attrs['transcript_modes'] = find_all_tx_modes(attrs_list)
         score, attrs_field = convert_attrs(attrs, gene_id)
@@ -971,6 +1023,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             attrs["transcript_name"] = attrs["source_transcript_name"]
         else:
             attrs["transcript_name"] = attrs["transcript_id"]
+        if "gene_name" not in attrs:
+            attrs["gene_name"] = get_gene_name(attrs)
 
         score, attrs_field = convert_attrs(attrs, tx_id)
         yield [chrom, 'CAT', 'transcript', tx_obj.start + 1, tx_obj.stop, score, tx_obj.strand, '.', attrs_field]
@@ -1012,12 +1066,12 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
 
     def generate_start_stop_codon_records(chrom, tx_obj, tx_id, attrs):
         """generate start/stop codon GFF3 records, handling frame appropriately"""
-        if attrs.get('valid_start') is True:
+        if attrs.get('valid_start') == True:
             score, attrs_field = convert_attrs(attrs, 'start_codon:{}'.format(tx_id))
             for interval in tx_obj.get_start_intervals():
                 yield [chrom, 'CAT', 'start_codon', interval.start + 1, interval.stop, score, tx_obj.strand,
                        interval.data, attrs_field]
-        if attrs.get('valid_stop') is True:
+        if attrs.get('valid_stop') == True:
             score, attrs_field = convert_attrs(attrs, 'stop_codon:{}'.format(tx_id))
             for interval in tx_obj.get_stop_intervals():
                 yield [chrom, 'CAT', 'stop_codon', interval.start + 1, interval.stop, score, tx_obj.strand,

@@ -24,7 +24,7 @@ def check_gff3_for_disjoint_gene_ids(tx_dict, by_chrom=True):
     tx_name2_map = transcripts.group_transcripts_by_name2(tx_dict.values())
     bad_genes = []
     for gene_id, tx_group in tx_name2_map.items():
-        if by_chrom is False:
+        if by_chrom == False:
             locations = sorted((tx.interval for tx in tx_group))
             for i in range(0, len(locations) - 1):
                 if not locations[i].overlap(locations[i+1]):
@@ -70,7 +70,7 @@ def parse_gff3(annotation_attrs, annotation_gp, is_external_reference=False):
                 misc.parse_gff_attr_line(extra_tags)
             except:
                 raise Exception(f'Error parsing extra tags in input GFF3 {extra_tags}')
-        if is_external_reference is True:
+        if is_external_reference == True:
             # hack to fix names
             gene_id = f'exRef-{gene_id}'
             tx_id = f'exRef-{tx_id}'

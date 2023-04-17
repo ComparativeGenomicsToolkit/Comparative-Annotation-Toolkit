@@ -197,7 +197,7 @@ def filter_bam(job, file_id, is_paired):
     tmp_filtered = tools.fileOps.get_tmp_toil_file()
     filter_cmd = ['filterBam', '--uniq', '--in', bam_path, '--out', tmp_filtered]
 
-    if is_paired is True:
+    if is_paired == True:
         filter_cmd.extend(['--paired', '--pairwiseAlignments'])
     tools.procOps.run_proc(filter_cmd)
     if os.path.getsize(tmp_filtered) == 0:

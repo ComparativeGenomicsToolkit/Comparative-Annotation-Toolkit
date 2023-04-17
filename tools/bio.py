@@ -24,9 +24,9 @@ def write_fasta(path_or_handle, name, seq, chunk_size=100, validate=None):
         fh = opengz(path_or_handle, 'w')
     else:
         fh = path_or_handle
-    if validate is 'DNA':
+    if validate == 'DNA':
         valid_chars = set('ACGTUYSWKMBDHVNacgtuyswkmbdhvn.-*')
-    elif validate is 'protein':
+    elif validate == 'protein':
         valid_chars = set('ABCDEFGHIKLMPQSRTVWXYZUabcdefghiklmpqsrtvwxyzuNn.-*')
     else:
         valid_chars = set()
@@ -154,7 +154,7 @@ def get_sequence_dict(file_path, upper=True):
     flat_path = file_path + '.flat'
     assert os.path.exists(flat_path), ("Error: flat file does not exist for this fasta. We need the fasta files to be "
                                        "flattened in place prior to running the pipeline because of concurrency issues.")
-    if upper is True:
+    if upper == True:
         return Fasta(file_path, record_class=UpperNpyFastaRecord)
     else:
         return Fasta(file_path)
