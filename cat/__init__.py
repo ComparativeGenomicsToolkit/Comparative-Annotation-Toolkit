@@ -768,7 +768,7 @@ class GenomeFiles(PipelineWrapperTask):
         if not tools.misc.is_exec('faToTwoBit'):
             raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
         if not tools.misc.is_exec('faSize'):
-            raise ToolMissingException('faToTwoBit tool from the Kent tools package not in global path.')
+            raise ToolMissingException('faSize tool from the Kent tools package not in global path.')
         if not tools.misc.is_exec('pyfasta'):
             raise ToolMissingException('pyfasta wrapper not found in global path.')
 
