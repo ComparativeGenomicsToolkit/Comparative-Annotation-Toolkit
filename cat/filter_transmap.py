@@ -297,7 +297,10 @@ def find_best_group(group, key):
     cluster or gene_id
     """
     avg_scores = group[[key, 'scores']].groupby(key, as_index=False).mean()
-    return avg_scores.sort_values('scores', ascending=False).iloc[0][key]
+    if abs(avg_scores.sort_values('scores', ascending=False)['scores'][0] - avg_scores.sort_values('scores', ascending=False)['scores'][1]) < 0.01:
+        return [avg_scores.sort_values('scores', ascending=False).iloc[0][key], avg_scores.sort_values('scores', ascending=False).iloc[1][key]]
+    else:
+        return [avg_scores.sort_values('scores', ascending=False).iloc[0][key]]
 
 
 def construct_alt_loci(group, best_cluster):
@@ -318,8 +321,7 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
                     filter_overlapping_genes, annotate_extra_paralogs):
     """
     Wrapper for taking the output of clusterGenes and filtering it
-    Only remove the corresponding mappings for each gene that map to multiple clusters,
-    rather than removing the entire cluster.
+    Filtering out only alignments in other clusters instead of whole clusters and also some initial PAR fixes.
     """
     # add gene IDs and scores. clustered.gene is actually AlignmentId fields
     clustered['gene_id'] = [transcript_gene_map[tools.nameConversions.strip_alignment_numbers(x)] for x in clustered.gene]
@@ -331,10 +333,15 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
     for gene_id, group in clustered.groupby('gene_id'):
         if len(set(group['#cluster'])) > 1:
             # pick the highest average scoring cluster
-            best_cluster = find_best_group(group, '#cluster')
-            best_cluster = int(best_cluster)
-            alt_loci.append([gene_id, construct_alt_loci(group, best_cluster)])
-            bad_clusters= group[group['#cluster'].isin(set(group['#cluster']) - {best_cluster})]
+            best_clusters_list = find_best_group(group, '#cluster')
+            best_clusters = [int(best_cluster) for best_cluster in best_clusters_list]
+            best = best_clusters[0]
+            if len(best_clusters) > 1:
+                if best_clusters[0] in cluster_done:
+                    best = best_clusters[1]
+            cluster_done.append(best)
+            alt_loci.append([gene_id, construct_alt_loci(group, best)])
+            bad_clusters= group[group['#cluster'].isin(set(group['#cluster']) - {best})]
             to_remove_alns.update(set(bad_clusters['gene']))
 
     if len(alt_loci) > 0:
