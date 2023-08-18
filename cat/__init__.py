@@ -1457,6 +1457,7 @@ class EvaluateTransMap(PipelineWrapperTask):
         args.annotation_gp = ReferenceFiles.get_args(pipeline_args).annotation_gp
         args.genome = genome
         args.fasta = GenomeFiles.get_args(pipeline_args, genome).fasta
+        args.ref_fasta = GenomeFiles.get_args(pipeline_args, args.ref_genome).fasta
         args.ref_genome = pipeline_args.ref_genome
         return args
 
