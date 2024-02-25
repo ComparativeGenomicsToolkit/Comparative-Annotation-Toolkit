@@ -360,13 +360,15 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
     collapsed_genes = []  # will become a DataFrame of collapsed genes
     for cluster_id, group in paralog_filtered.groupby('#cluster'):
         if len(set(group['gene_id'])) > 1:
-            best_gene = find_best_group(group, 'gene_id')
-            collapsed_gene_ids = set(group.gene_id) - {best_gene}
-            gene_biotype = gene_biotype_map[best_gene]
-            metrics['Gene Family Collapse'][gene_biotype][len(collapsed_gene_ids)] += 1
+            best_genes = find_best_group(group, 'gene_id')
+            collapsed_gene_ids = set(group.gene_id)
+            gene_biotypes = [gene_biotype_map[best_gene] for best_gene in best_genes]
+            for gene_biotype in gene_biotypes:
+                metrics['Gene Family Collapse'][gene_biotype][len(collapsed_gene_ids)] += 1
             collapsed_gene_names = {gene_name_map[x] for x in collapsed_gene_ids}
             genes_to_remove.update(collapsed_gene_ids)
-            collapsed_genes.append([best_gene, ','.join(collapsed_gene_ids), ','.join(collapsed_gene_names)])
+            for best_gene in best_genes:
+                collapsed_genes.append([best_gene, ','.join(collapsed_gene_ids), ','.join(collapsed_gene_names)])
     if filter_overlapping_genes == True:
         collapse_filtered = paralog_filtered[~paralog_filtered['gene_id'].isin(genes_to_remove)]
     else:
@@ -377,7 +379,6 @@ def filter_clusters(clustered, transcript_gene_map, gene_name_map, scores, metri
         collapsed_df = pd.DataFrame(columns=['GeneId', 'CollapsedGeneIds', 'CollapsedGeneNames'])
     merged_df = collapsed_df.merge(paralog_df, how='outer', on='GeneId')
     return merged_df, collapse_filtered
-
 
 def find_split_genes(gene_id, g, resolved_interval, split_gene_data):
     """
