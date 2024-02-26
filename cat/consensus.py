@@ -970,8 +970,8 @@ def write_consensus_gff3(consensus_gene_dict, consensus_gff3):
             key = key.replace('=', '%3D').replace(';', '%3B')
             attrs_str.append(f"{key}={val}")
         return score, ";".join(attrs_str)
-
-   def find_feature_support(attrs, feature, i):
+        
+    def find_feature_support(attrs, feature, i):
         """Extracts the boolean value from the comma delimited string"""
         try:
             vals = list(map(bool, attrs[feature].split(',')))
