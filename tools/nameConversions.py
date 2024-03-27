@@ -92,4 +92,3 @@ def alignment_type(aln_id):
         return 'exRef'
     elif aln_id_is_transmap(aln_id):
         return 'transMap'
-    assert False
