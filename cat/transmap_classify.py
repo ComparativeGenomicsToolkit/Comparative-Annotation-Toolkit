@@ -14,6 +14,7 @@ Classify transMap transcripts producing the TransMapEvaluation table for each ge
 10. ValidStart -- start with ATG?
 11. ValidStop -- valid stop codon (in frame)?
 12. ProperOrf -- is the orf a multiple of 3?
+13. DnDs -- what is the non-synonymous change rate relative to the synonynmous change rate?
 """
 import bisect
 import collections
@@ -42,6 +43,7 @@ def transmap_classify(tm_eval_args):
     gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.filtered_tm_gp)
     ref_gp_dict = tools.transcripts.get_gene_pred_dict(tm_eval_args.annotation_gp)
     fasta = tools.bio.get_sequence_dict(tm_eval_args.fasta)
+    ref_fasta = tools.bio.get_sequence_dict(tm_eval_args.ref_fasta)
 
     synteny_scores = synteny(ref_gp_dict, gp_dict)
 
@@ -50,7 +52,8 @@ def transmap_classify(tm_eval_args):
         aln = psl_dict[aln_id]
         tx_id = tools.nameConversions.strip_alignment_numbers(aln_id)
         ref_aln = ref_psl_dict[tx_id]
-        gene_id = ref_gp_dict[tx_id].name2
+        ref_tx = ref_gp_dict[tx_id]
+        gene_id = ref_tx.name2
         r.append([aln_id, tx_id, gene_id, 'AlnExtendsOffContig', aln_extends_off_contig(aln)])
         r.append([aln_id, tx_id, gene_id, 'AlnPartialMap', alignment_partial_map(aln)])
         r.append([aln_id, tx_id, gene_id, 'AlnAbutsUnknownBases', aln_abuts_unknown_bases(tx, fasta)])
@@ -63,6 +66,7 @@ def transmap_classify(tm_eval_args):
         r.append([aln_id, tx_id, gene_id, 'ValidStart', tools.transcripts.has_start_codon(fasta, tx)])
         r.append([aln_id, tx_id, gene_id, 'ValidStop', tools.transcripts.has_stop_codon(fasta, tx)])
         r.append([aln_id, tx_id, gene_id, 'ProperOrf', tx.cds_size % 3 == 0])
+        r.append([aln_id, tx_id, gene_id, 'DnDs', dn_ds(ref_tx, tx, aln, fasta, ref_fasta)])
     df = pd.DataFrame(r, columns=['AlignmentId', 'TranscriptId', 'GeneId', 'classifier', 'value'])
     df.value = pd.to_numeric(df.value)
     return df.set_index(['GeneId', 'TranscriptId', 'AlignmentId', 'classifier'])
@@ -213,3 +217,45 @@ def percent_original_introns(aln, tx, ref_aln):
         if tools.tm2hints.is_fuzzy_intron(i, aln, ref_starts, fuzz_distance=7):
             c += 1
     return 100 * tools.mathOps.format_ratio(c, len(tx.intron_intervals), resolve_nan=None)
+
+
+def codon_pair_iterator(ref_tx, tx, aln, fasta, ref_fasta):
+    """
+    Inputs:
+    Transcript objects representing the annotation (query) transcript and the target transcript.
+    PslRow object that represents the alignment between the transcript objects.
+    pyfaidx Fasta objects that contain the genomic sequence for these two transcripts
+    Order is (target_cds_pos, target, query)
+    """
+    target_cds = tx.get_cds(fasta)
+    query_cds = ref_tx.get_cds(ref_fasta)
+    for i in range(ref_tx.offset, ref_tx.cds_size - ref_tx.cds_size % 3, 3):
+        target_cds_positions = []
+        for ref_cds_coord in range(i, i + 3):
+            ref_mrna_coord = ref_tx.cds_coordinate_to_mrna(ref_cds_coord)
+            chrom_coord = aln.query_coordinate_to_target(ref_mrna_coord)
+            if chrom_coord is None:
+                target_cds_positions.append(None)
+            else:
+                target_cds_positions.append(tx.chromosome_coordinate_to_cds(chrom_coord))
+        if None in target_cds_positions:
+            continue
+        target_codon = target_cds[target_cds_positions[0]:target_cds_positions[0] + 3]
+        query_codon = query_cds[i:i + 3]
+        assert len(target_codon) == len(query_codon) == 3, ref_tx.name
+        yield target_cds_positions[0], target_codon, query_codon
+
+
+def dn_ds(ref_tx, tx, aln, fasta, ref_fasta):
+    synon = 0
+    non_synon = 0
+    for pos, codon, ref_codon in codon_pair_iterator(ref_tx, tx, aln, fasta, ref_fasta):
+        if codon == ref_codon:
+            continue
+        tgt_aa = tools.bio.translate_sequence(codon)
+        ref_aa = tools.bio.translate_sequence(ref_codon)
+        if tgt_aa == ref_aa:
+            synon += 1
+        else:
+            non_synon += 1
+    return tools.mathOps.format_ratio(non_synon, synon)
